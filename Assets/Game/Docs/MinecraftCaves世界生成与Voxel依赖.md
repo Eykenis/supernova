@@ -179,7 +179,9 @@ density[x,y,z] = SampleFeatureDensity(worldPosition, type)
 
 绝对坐标采样保证相邻 chunk 不会因为各自局部坐标归零而产生噪声接缝，也保证负 chunk 坐标得到同一连续密度场。
 
-无限世界的后台生成函数执行相同逻辑，但先写入独立的 `float[32768]`，避免工作线程访问世界字典和 Unity 对象。
+无限世界的后台生成函数执行相同逻辑，同时写入独立的
+`float[32768]` 和 `VoxelTypeId[32768]`。实心样本先分配为配置的基岩类型，再由
+普通矿团阶段替换类型；工作线程不会访问世界字典和 Unity 资产。
 
 ### 4.2 展示体积与正式世界的区别
 
@@ -207,22 +209,26 @@ dx² + dy² + dz² <= 4²
 
 世界坐标到 chunk 坐标使用 `InfiniteVoxelWorld.WorldToChunk` 的 floor division，所以负坐标能够正确映射。
 
-## 6. 后台密度生成与主线程提交
+## 6. 后台密度/类型生成与主线程提交
 
 密度采样通过 `Task.Run` 在线程池执行，并由 `maxConcurrentGenerationJobs` 限制同时运行的任务数。
 
 每个任务：
 
-1. 分配一个 `float[VoxelVolume.VoxelCount]`；
+1. 分配一个 `float[VoxelVolume.VoxelCount]` 和一个
+   `VoxelTypeId[VoxelVolume.VoxelCount]`；
 2. 根据 chunk 坐标计算绝对原点；
 3. 遍历 `32³` 个采样点并计算 `Combined` 密度；
-4. 每完成一个 Z 切片检查一次取消令牌；
-5. 返回坐标和密度数组，不访问 `GameObject`、`Mesh` 或世界字典。
+4. 为实心样本分配基岩类型，并用确定性
+   `MinecraftOreFeatureGenerator` 写入普通矿团类型；
+5. 每完成一个 Z 切片以及每次矿团尝试时检查取消令牌；
+6. 返回坐标、密度和类型数组，不访问 `GameObject`、`Mesh`、世界字典或
+   `ScriptableObject`。
 
 主线程在 `Update` 中轮询已完成任务。只有结果对应的 chunk 仍在 required set 且尚未生成时才提交：
 
 1. 调用 `InfiniteVoxelWorld.EnsureChunk`；
-2. 把结果数组逐项复制到 `chunk.Data`；
+2. 通过 `SetSample` 把密度和类型逐项复制到 `chunk.Data`；
 3. 标记受该新密度影响的网格。
 
 离开加载范围的在途任务不会立即单独取消；它完成后若已不在 required set，结果会被丢弃。组件禁用、销毁或应用退出时会取消整个生成令牌并清理运行时状态。
@@ -268,7 +274,7 @@ MinecraftCaves 世界生成只使用以下 `Supernova.Voxels` 能力。
 ### 9.1 `VoxelVolume`
 
 - 固定尺寸 `32 × 32 × 32`；
-- 连续 `float[32768]` 密度存储；
+- 连续 `float[32768]` 密度和 `VoxelTypeId[32768]` 类型存储；
 - 提供局部 `(x,y,z)` 索引；
 - Gallery 直接创建该类型，无限世界通过 `VoxelChunkData` 间接持有。
 
@@ -287,7 +293,8 @@ MinecraftCaves 世界生成只使用以下 `Supernova.Voxels` 能力。
 - `GetDensityOrDefault` 为跨 chunk 网格采样提供世界密度；
 - `WorldToChunk` 使用 floor division 处理负坐标。
 
-`InfiniteVoxelChunk` 创建时默认填充正密度 `1`，但 MinecraftCaves 在提交后台结果时会用生成的完整密度数组覆盖它。
+`InfiniteVoxelChunk` 创建时默认填充正密度 `1`，但 MinecraftCaves 在提交后台
+结果时会用生成的完整密度和类型数组覆盖它。
 
 ### 9.4 `MarchingCubesMesher`
 
@@ -324,6 +331,9 @@ MinecraftCaves 生成代码：
 - `Assets/Game/Runtime/MinecraftCaveVolumeGenerator.cs`
 - `Assets/Game/Runtime/MinecraftCaveInfiniteWorld.cs`
 - `Assets/Game/Runtime/MinecraftCaveGallery.cs`
+- `Assets/Game/Runtime/MinecraftOreFeatureGenerator.cs`
+- `Assets/Game/Runtime/MinecraftOreFeatureSettings.cs`
+- `Assets/Game/Runtime/VoxelOreFeatureDefinition.cs`
 
 被引用的 Voxel 代码：
 

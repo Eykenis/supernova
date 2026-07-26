@@ -247,6 +247,18 @@ namespace Supernova.Voxels.Editor
     {
         private const string CatalogPath =
             "Assets/Game/Config/MinecraftVoxelTypes.asset";
+        private const string VoxelTypeFolder =
+            "Assets/Game/Config/VoxelTypes";
+        private const string DefaultVoxelTypePath =
+            VoxelTypeFolder + "/Default.asset";
+        private const string StoneVoxelTypePath =
+            VoxelTypeFolder + "/Stone.asset";
+        private const string OreVoxelTypePath =
+            VoxelTypeFolder + "/Ore.asset";
+        private const string OreFeatureFolder =
+            "Assets/Game/Config/OreFeatures";
+        private const string OreFeaturePath =
+            OreFeatureFolder + "/Ore.asset";
         private const string StructurePath =
             "Assets/Game/Structures/SpawnShelter.asset";
         private const string AuthoringScenePath =
@@ -258,22 +270,40 @@ namespace Supernova.Voxels.Editor
         public static void Build()
         {
             EnsureFolder("Assets/Game", "Config");
+            EnsureFolder("Assets/Game/Config", "VoxelTypes");
+            EnsureFolder("Assets/Game/Config", "OreFeatures");
             EnsureFolder("Assets/Game", "Structures");
 
+            VoxelTypeDefinition[] definitions =
+            {
+                EnsureVoxelTypeDefinition(
+                    DefaultVoxelTypePath,
+                    1,
+                    "Default",
+                    1),
+                EnsureVoxelTypeDefinition(
+                    StoneVoxelTypePath,
+                    2,
+                    "Stone",
+                    4),
+                EnsureVoxelTypeDefinition(
+                    OreVoxelTypePath,
+                    3,
+                    "Ore",
+                    8),
+            };
             VoxelTypeCatalog catalog =
                 AssetDatabase.LoadAssetAtPath<VoxelTypeCatalog>(CatalogPath);
             if (catalog == null)
             {
                 catalog = ScriptableObject.CreateInstance<VoxelTypeCatalog>();
-                catalog.SetDefinitions(new[]
-                {
-                    new VoxelTypeDefinition(1, 1),
-                    new VoxelTypeDefinition(2, 4),
-                    new VoxelTypeDefinition(3, 8),
-                });
                 AssetDatabase.CreateAsset(catalog, CatalogPath);
             }
+            catalog.SetDefinitions(definitions);
+            EditorUtility.SetDirty(catalog);
 
+            MinecraftCaves.VoxelOreFeatureDefinition oreFeature =
+                EnsureOreFeature(definitions[2], definitions[1]);
             VoxelStructureAsset structure =
                 AssetDatabase.LoadAssetAtPath<VoxelStructureAsset>(StructurePath);
             if (structure == null)
@@ -285,12 +315,62 @@ namespace Supernova.Voxels.Editor
 
             AssetDatabase.SaveAssets();
             CreateAuthoringScene(catalog, structure);
-            ConfigureInfiniteCaves(catalog, structure);
+            ConfigureInfiniteCaves(catalog, structure, oreFeature);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log(
                 $"Fixed voxel structure workflow ready. Edit {AuthoringScenePath} "
-                + $"and save into {StructurePath}.");
+                 + $"and save into {StructurePath}.");
+        }
+
+        private static VoxelTypeDefinition EnsureVoxelTypeDefinition(
+            string path,
+            ushort type,
+            string displayName,
+            int durability)
+        {
+            VoxelTypeDefinition definition =
+                AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(path);
+            if (definition != null)
+            {
+                return definition;
+            }
+
+            definition = ScriptableObject.CreateInstance<VoxelTypeDefinition>();
+            definition.Configure(type, displayName, durability);
+            AssetDatabase.CreateAsset(definition, path);
+            return definition;
+        }
+
+        private static MinecraftCaves.VoxelOreFeatureDefinition EnsureOreFeature(
+            VoxelTypeDefinition ore,
+            VoxelTypeDefinition stone)
+        {
+            MinecraftCaves.VoxelOreFeatureDefinition feature =
+                AssetDatabase.LoadAssetAtPath<
+                    MinecraftCaves.VoxelOreFeatureDefinition>(OreFeaturePath);
+            if (feature != null)
+            {
+                return feature;
+            }
+
+            feature = ScriptableObject.CreateInstance<
+                MinecraftCaves.VoxelOreFeatureDefinition>();
+            feature.Configure(
+                ore,
+                new[] { stone },
+                3109,
+                8,
+                1f,
+                MinecraftCaves.MinecraftOreFeatureSettings.HeightDistribution
+                    .Trapezoid,
+                -64,
+                64,
+                0,
+                8,
+                0.5f);
+            AssetDatabase.CreateAsset(feature, OreFeaturePath);
+            return feature;
         }
 
         private static void CreateDefaultSpawnShelter(VoxelStructureAsset asset)
@@ -398,7 +478,8 @@ namespace Supernova.Voxels.Editor
 
         private static void ConfigureInfiniteCaves(
             VoxelTypeCatalog catalog,
-            VoxelStructureAsset structure)
+            VoxelStructureAsset structure,
+            MinecraftCaves.VoxelOreFeatureDefinition oreFeature)
         {
             Scene scene = EditorSceneManager.OpenScene(
                 InfiniteScenePath,
@@ -418,6 +499,12 @@ namespace Supernova.Voxels.Editor
             serializedWorld.FindProperty("viewer").objectReferenceValue = player.transform;
             serializedWorld.FindProperty("placeViewerInCave").boolValue = true;
             serializedWorld.FindProperty("voxelTypeCatalog").objectReferenceValue = catalog;
+            serializedWorld.FindProperty("baseSolidVoxelType").objectReferenceValue =
+                catalog.Find(new VoxelTypeId(2));
+            SerializedProperty oreFeatures =
+                serializedWorld.FindProperty("oreFeatures");
+            oreFeatures.arraySize = 1;
+            oreFeatures.GetArrayElementAtIndex(0).objectReferenceValue = oreFeature;
             SerializedProperty rule =
                 serializedWorld.FindProperty("spawnPointStructureRule");
             rule.FindPropertyRelative("enabled").boolValue = true;

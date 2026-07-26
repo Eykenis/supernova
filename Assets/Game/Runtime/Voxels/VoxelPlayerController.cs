@@ -9,12 +9,11 @@ namespace Supernova.Voxels
         Move,
         Jump,
         Fall,
-        Attack,
+        ToolAction,
         Hurt,
         Dead,
         CrouchIdle,
         CrouchMove,
-        MagnetAttract,
     }
 
     /// <summary>
@@ -32,14 +31,17 @@ namespace Supernova.Voxels
         private static readonly int IdleBFlag = Animator.StringToHash("idleBFlag");
         private static readonly int SmileFlag = Animator.StringToHash("smileFlag");
         private static readonly int KocchiFlag = Animator.StringToHash("kocchiFlag");
-        private static readonly int MineFlag = Animator.StringToHash("Mine");
         private static readonly int HitFlag = Animator.StringToHash("Hit");
         private static readonly int DieFlag = Animator.StringToHash("Die");
         private static readonly int RecoverFlag = Animator.StringToHash("Recover");
         private static readonly int CrouchFlag = Animator.StringToHash("crouchFlag");
         private static readonly int CrouchMoveFlag = Animator.StringToHash("crouchMoveFlag");
-        private static readonly int PrimaryActionFlag = Animator.StringToHash("primaryActionFlag");
-        private static readonly int ToolIndexParam = Animator.StringToHash("toolIndex");
+        private static readonly int ToolActionTrigger = Animator.StringToHash("ToolAction");
+        private static readonly int ToolActionContinuousFlag =
+            Animator.StringToHash("ToolActionContinuous");
+        private static readonly int ToolPrimaryActionState =
+            Animator.StringToHash("Base Layer.Tool Primary Action");
+        private const string PrimaryActionPlaceholderClipName = "ToolPrimaryActionPlaceholder";
 
         [SerializeField] private Transform view;
         [SerializeField] private Animator animator;
@@ -74,14 +76,18 @@ namespace Supernova.Voxels
         private bool hasIdleBFlag;
         private bool hasSmileFlag;
         private bool hasKocchiFlag;
-        private bool hasMineFlag;
         private bool hasHitFlag;
         private bool hasDieFlag;
         private bool hasRecoverFlag;
         private bool hasCrouchFlag;
         private bool hasCrouchMoveFlag;
-        private bool hasPrimaryActionFlag;
-        private bool hasToolIndexParam;
+        private bool hasToolActionTrigger;
+        private bool hasToolActionContinuousFlag;
+        private RuntimeAnimatorController baseAnimatorController;
+        private AnimatorOverrideController toolAnimatorController;
+        private AnimationClip primaryActionPlaceholderClip;
+        private PlayerToolDefinition activeToolDefinition;
+        private bool periodicToolAnimationObserved;
         private int lowerBodyLayerIndex = -1;
         private float lowerBodyLayerTargetWeight;
         private float lowerBodyLayerWeight;
@@ -197,16 +203,12 @@ namespace Supernova.Voxels
             if (movement.sqrMagnitude > 1f) movement.Normalize();
             bool acceptsAction = Cursor.lockState == CursorLockMode.Locked;
             bool primaryHeld = acceptsAction && Input.GetMouseButton(0);
-            bool pickaxeSelected = toolController == null || toolController.IsPickaxeSelected;
-            bool magnetSelected = toolController != null
-                && toolController.IsCartAttractorSelected
-                && cartAttractor != null
-                && cartAttractor.CanOperate;
             return new PlayerInputSnapshot(
                 movement,
                 acceptsAction && Input.GetButtonDown("Jump"),
-                primaryHeld && pickaxeSelected,
-                primaryHeld && magnetSelected,
+                primaryHeld
+                    && toolController != null
+                    && toolController.CanUseSelectedPrimaryAction(),
                 Input.GetKey(Profile.CrouchKey));
         }
 
@@ -304,15 +306,10 @@ namespace Supernova.Voxels
 
         private bool TryEnterActionState()
         {
-            if (input.MagnetHeld)
+            if (input.PrimaryActionHeld
+                && CanStartToolAction(toolController.SelectedDefinition))
             {
-                stateMachine.Change(PlayerCharacterState.MagnetAttract);
-                return true;
-            }
-
-            if (input.AttackPressed && Time.time >= nextAttackTime)
-            {
-                stateMachine.Change(PlayerCharacterState.Attack);
+                stateMachine.Change(PlayerCharacterState.ToolAction);
                 return true;
             }
 
@@ -449,7 +446,7 @@ namespace Supernova.Voxels
             EnsureMotor();
             EnsureStateMachine();
             if (enabled && stateMachine.IsRunning
-                && stateMachine.Current == PlayerCharacterState.MagnetAttract)
+                && stateMachine.Current == PlayerCharacterState.ToolAction)
             {
                 stateMachine.Change(PlayerCharacterState.Idle);
             }
@@ -461,6 +458,7 @@ namespace Supernova.Voxels
 
         public void SetAnimator(Animator characterAnimator)
         {
+            if (animator != characterAnimator) ResetToolAnimatorController();
             animator = characterAnimator;
             if (animator != null) animator.applyRootMotion = false;
             CacheAnimatorParameters();
@@ -501,12 +499,13 @@ namespace Supernova.Voxels
 
             if (animator == null || !animator.gameObject.activeInHierarchy)
             {
-                Animator previousAnimator = animator;
-                animator = GetComponentInChildren<Animator>(false);
-                if (animator != null)
+                Animator resolvedAnimator = GetComponentInChildren<Animator>(false);
+                if (resolvedAnimator != animator)
                 {
-                    animator.applyRootMotion = false;
-                    if (animator != previousAnimator) CacheAnimatorParameters();
+                    ResetToolAnimatorController();
+                    animator = resolvedAnimator;
+                    if (animator != null) animator.applyRootMotion = false;
+                    CacheAnimatorParameters();
                 }
             }
             else if (animator.applyRootMotion)
@@ -567,7 +566,6 @@ namespace Supernova.Voxels
             hasIdleBFlag = HasAnimatorParameter(IdleBFlag, AnimatorControllerParameterType.Trigger);
             hasSmileFlag = HasAnimatorParameter(SmileFlag, AnimatorControllerParameterType.Bool);
             hasKocchiFlag = HasAnimatorParameter(KocchiFlag, AnimatorControllerParameterType.Bool);
-            hasMineFlag = HasAnimatorParameter(MineFlag, AnimatorControllerParameterType.Trigger);
             hasHitFlag = HasAnimatorParameter(HitFlag, AnimatorControllerParameterType.Trigger);
             hasDieFlag = HasAnimatorParameter(DieFlag, AnimatorControllerParameterType.Trigger);
             hasRecoverFlag = HasAnimatorParameter(RecoverFlag, AnimatorControllerParameterType.Trigger);
@@ -575,31 +573,141 @@ namespace Supernova.Voxels
             hasCrouchMoveFlag = HasAnimatorParameter(
                 CrouchMoveFlag,
                 AnimatorControllerParameterType.Bool);
-            hasPrimaryActionFlag = HasAnimatorParameter(
-                PrimaryActionFlag,
+            hasToolActionTrigger = HasAnimatorParameter(
+                ToolActionTrigger,
+                AnimatorControllerParameterType.Trigger);
+            hasToolActionContinuousFlag = HasAnimatorParameter(
+                ToolActionContinuousFlag,
                 AnimatorControllerParameterType.Bool);
-            hasToolIndexParam = HasAnimatorParameter(
-                ToolIndexParam,
-                AnimatorControllerParameterType.Int);
             lowerBodyLayerIndex = animator != null && animator.runtimeAnimatorController != null
                 ? animator.GetLayerIndex("LowerBody Layer")
                 : -1;
         }
 
         /// <summary>
-        /// Generic hook for "left-click action" states (Attack, MagnetAttract, ...). The tool
-        /// currently equipped is exposed as an int so the Animator Controller can branch to a
-        /// different clip per tool without any change to this state machine.
+        /// The Animator keeps the original one-shot trigger and transition timing. Tool data only
+        /// replaces the placeholder clip, so gameplay input never controls animation completion.
         /// </summary>
-        private void SetPrimaryActionState(bool active)
+        private void TriggerToolActionAnimation()
         {
             if (animator == null || animator.runtimeAnimatorController == null) return;
-            if (hasPrimaryActionFlag) animator.SetBool(PrimaryActionFlag, active);
-            if (hasToolIndexParam)
+            if (hasToolActionTrigger) animator.SetTrigger(ToolActionTrigger);
+        }
+
+        private void StartConfiguredToolActionAnimation()
+        {
+            if (activeToolDefinition == null) return;
+            switch (activeToolDefinition.AnimationTriggerMode)
             {
-                int toolIndex = toolController != null ? (int)toolController.SelectedItem : 0;
-                animator.SetInteger(ToolIndexParam, toolIndex);
+                case PlayerToolAnimationTriggerMode.Single:
+                    TriggerToolActionAnimation();
+                    break;
+                case PlayerToolAnimationTriggerMode.Continuous:
+                    SetContinuousToolActionAnimation(true);
+                    break;
             }
+        }
+
+        private void TriggerPeriodicToolActionAnimation()
+        {
+            if (activeToolDefinition != null
+                && activeToolDefinition.AnimationTriggerMode
+                    == PlayerToolAnimationTriggerMode.Periodic)
+            {
+                TriggerToolActionAnimation();
+            }
+        }
+
+        private void StopConfiguredToolActionAnimation()
+        {
+            if (activeToolDefinition != null
+                && activeToolDefinition.AnimationTriggerMode
+                    == PlayerToolAnimationTriggerMode.Continuous)
+            {
+                SetContinuousToolActionAnimation(false);
+            }
+        }
+
+        private void SetContinuousToolActionAnimation(bool active)
+        {
+            if (animator == null || animator.runtimeAnimatorController == null) return;
+            if (hasToolActionContinuousFlag)
+                animator.SetBool(ToolActionContinuousFlag, active);
+        }
+
+        private bool CanStartToolAction(PlayerToolDefinition definition)
+        {
+            if (definition == null || !definition.HasPrimaryAction) return false;
+            switch (definition.PrimaryAction)
+            {
+                case PlayerToolPrimaryAction.MineVoxel:
+                    return IsPeriodicToolActionCycleComplete();
+                case PlayerToolPrimaryAction.AttractCart:
+                    return cartAttractor != null && cartAttractor.CanOperate;
+                default:
+                    return false;
+            }
+        }
+
+        private void ApplyToolActionAnimation(PlayerToolDefinition definition)
+        {
+            if (definition == null
+                || definition.PrimaryActionAnimation == null
+                || !EnsureToolAnimatorController())
+            {
+                return;
+            }
+
+            toolAnimatorController[PrimaryActionPlaceholderClipName] =
+                definition.PrimaryActionAnimation;
+        }
+
+        private bool EnsureToolAnimatorController()
+        {
+            if (animator == null || animator.runtimeAnimatorController == null) return false;
+            if (toolAnimatorController != null && primaryActionPlaceholderClip != null) return true;
+
+            baseAnimatorController = animator.runtimeAnimatorController;
+            AnimationClip[] clips = baseAnimatorController.animationClips;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                if (clips[i] != null && clips[i].name == PrimaryActionPlaceholderClipName)
+                {
+                    primaryActionPlaceholderClip = clips[i];
+                    break;
+                }
+            }
+
+            if (primaryActionPlaceholderClip == null)
+            {
+                Debug.LogError(
+                    $"Animator '{baseAnimatorController.name}' has no "
+                    + $"'{PrimaryActionPlaceholderClipName}' clip for tool actions.",
+                    this);
+                return false;
+            }
+
+            toolAnimatorController = new AnimatorOverrideController(baseAnimatorController)
+            {
+                name = $"{baseAnimatorController.name} (Runtime Tool Override)",
+            };
+            animator.runtimeAnimatorController = toolAnimatorController;
+            return true;
+        }
+
+        private void ResetToolAnimatorController()
+        {
+            if (animator != null
+                && toolAnimatorController != null
+                && animator.runtimeAnimatorController == toolAnimatorController
+                && baseAnimatorController != null)
+            {
+                animator.runtimeAnimatorController = baseAnimatorController;
+            }
+
+            baseAnimatorController = null;
+            toolAnimatorController = null;
+            primaryActionPlaceholderClip = null;
         }
 
         private bool HasAnimatorParameter(int nameHash, AnimatorControllerParameterType type)
@@ -622,16 +730,10 @@ namespace Supernova.Voxels
             stateMachine.Add(new PlayerState(this, PlayerCharacterState.Fall, TickFall));
             stateMachine.Add(new PlayerState(
                 this,
-                PlayerCharacterState.Attack,
-                TickAttack,
-                EnterAttack,
-                ExitAttack));
-            stateMachine.Add(new PlayerState(
-                this,
-                PlayerCharacterState.MagnetAttract,
-                TickMagnetAttract,
-                EnterMagnetAttract,
-                ExitMagnetAttract));
+                PlayerCharacterState.ToolAction,
+                TickToolAction,
+                EnterToolAction,
+                ExitToolAction));
             stateMachine.Add(new PlayerState(this, PlayerCharacterState.Hurt, TickHurt, EnterHurt, ExitHurt));
             stateMachine.Add(new PlayerState(this, PlayerCharacterState.Dead, TickDead, EnterDead));
             stateMachine.Add(new PlayerState(this, PlayerCharacterState.CrouchIdle, TickCrouch));
@@ -687,81 +789,146 @@ namespace Supernova.Voxels
             if (motor.IsGrounded) SelectGroundOrAirState();
         }
 
-        private void EnterAttack()
+        private void EnterToolAction()
         {
+            EnsureMotor();
             stateSeconds = 0f;
             attackApplied = false;
-            TriggerMineSwing();
-            bool crouching = input.CrouchHeld && motor.IsGrounded;
-            SetAnimationState(false, !motor.IsGrounded, false, crouching);
-            SetPrimaryActionState(true);
+            activeToolDefinition = toolController != null
+                ? toolController.SelectedDefinition
+                : null;
+            bool grounded = motor != null && motor.IsGrounded;
+            bool crouching = input.CrouchHeld && grounded;
+            SetAnimationState(false, !grounded, false, crouching);
+            ApplyToolActionAnimation(activeToolDefinition);
+            StartConfiguredToolActionAnimation();
+
+            if (activeToolDefinition == null) return;
+            switch (activeToolDefinition.PrimaryAction)
+            {
+                case PlayerToolPrimaryAction.MineVoxel:
+                    TriggerMineSwing();
+                    break;
+                case PlayerToolPrimaryAction.AttractCart:
+                    cartAttractor?.BeginAttraction();
+                    break;
+            }
         }
 
-        private void ExitAttack()
+        private void ExitToolAction()
         {
-            SetPrimaryActionState(false);
+            if (activeToolDefinition != null
+                && activeToolDefinition.PrimaryAction == PlayerToolPrimaryAction.AttractCart)
+            {
+                cartAttractor?.EndAttraction();
+            }
+            StopConfiguredToolActionAnimation();
+            activeToolDefinition = null;
         }
 
-        // Performs one mining swing (animation + scheduled voxel hit) and sets the
-        // cadence gate. A real hit uses the full interval; an empty swing uses a
-        // short whiff cooldown so grazing a block edge doesn't stall the player.
+        // One mining cycle starts the configured animation and schedules its impact.
+        // The next cycle waits for that Animator state to finish, so the visual and
+        // gameplay cadence share the same source of truth.
         private void TriggerMineSwing()
         {
-            if (animator != null && hasMineFlag) animator.SetTrigger(MineFlag);
-            bool minedSomething = voxelInteractor != null
-                && voxelInteractor.TryScheduleMineAtCrosshair(Profile.VoxelDestructionDelay);
-            nextAttackTime = Time.time + (minedSomething
-                ? Profile.MineInterval
-                : Profile.MineWhiffCooldown);
+            periodicToolAnimationObserved = false;
+            TriggerPeriodicToolActionAnimation();
+            voxelInteractor?.TryScheduleMineAtCrosshair(
+                Profile.VoxelDestructionDelay,
+                activeToolDefinition != null
+                    ? activeToolDefinition.MiningBrush
+                    : VoxelMiningBrushSettings.SingleVoxel);
+
+            AnimationClip clip = activeToolDefinition != null
+                ? activeToolDefinition.PrimaryActionAnimation
+                : null;
+            float fallbackDuration = clip != null
+                ? Mathf.Max(0.02f, clip.length)
+                : Profile.MineInterval;
+            nextAttackTime = Time.time + fallbackDuration;
         }
 
-        private void TickAttack(float deltaTime)
+        private void TickToolAction(float deltaTime)
         {
+            if (activeToolDefinition == null
+                || toolController == null
+                || toolController.SelectedDefinition != activeToolDefinition)
+            {
+                SelectGroundOrAirState();
+                return;
+            }
+
             stateSeconds += deltaTime;
-            TickLocomotion(deltaTime, false);
+            TickLocomotion(deltaTime, activeToolDefinition.AllowMovementWhileUsing);
+            bool actionHeld = input.PrimaryActionHeld;
+            if (!actionHeld
+                && (activeToolDefinition.PrimaryAction != PlayerToolPrimaryAction.MineVoxel
+                    || stateSeconds >= Profile.AttackDuration))
+            {
+                SelectGroundOrAirState();
+                return;
+            }
+
+            switch (activeToolDefinition.PrimaryAction)
+            {
+                case PlayerToolPrimaryAction.MineVoxel:
+                    TickMiningToolAction(actionHeld);
+                    return;
+                case PlayerToolPrimaryAction.AttractCart:
+                    TickAttractorToolAction();
+                    return;
+                default:
+                    SelectGroundOrAirState();
+                    return;
+            }
+        }
+
+        private void TickMiningToolAction(bool actionHeld)
+        {
             if (!attackApplied && stateSeconds >= Profile.AttackWindup)
             {
                 attackApplied = true;
                 PerformAttack();
             }
 
-            // While the button stays held, keep swinging on cadence so digging is
-            // continuous instead of one block per click. We stay in the Attack
-            // state and re-trigger in place rather than re-entering the state.
-            if (input.AttackPressed)
+            if (actionHeld && IsPeriodicToolActionCycleComplete()) TriggerMineSwing();
+        }
+
+        private bool IsPeriodicToolActionCycleComplete()
+        {
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || !hasToolActionTrigger)
             {
-                if (Time.time >= nextAttackTime)
-                {
-                    TriggerMineSwing();
-                }
-                return;
+                return Time.time >= nextAttackTime;
             }
 
-            if (stateSeconds >= Profile.AttackDuration) SelectGroundOrAirState();
+            AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
+            bool animationIsPlaying = current.fullPathHash == ToolPrimaryActionState;
+            if (animator.IsInTransition(0))
+            {
+                AnimatorStateInfo next = animator.GetNextAnimatorStateInfo(0);
+                animationIsPlaying |= next.fullPathHash == ToolPrimaryActionState;
+            }
+
+            if (animationIsPlaying)
+            {
+                periodicToolAnimationObserved = true;
+                return false;
+            }
+
+            return periodicToolAnimationObserved || Time.time >= nextAttackTime;
         }
 
-        private void EnterMagnetAttract()
+        private void TickAttractorToolAction()
         {
-            cartAttractor?.BeginAttraction();
-            SetPrimaryActionState(true);
-        }
-
-        private void TickMagnetAttract(float deltaTime)
-        {
-            if (!input.MagnetHeld || cartAttractor == null || !cartAttractor.IsActionActive)
+            if (cartAttractor == null || !cartAttractor.IsActionActive)
             {
                 SelectGroundOrAirState();
                 return;
             }
 
             cartAttractor.TickAttraction();
-            TickLocomotion(deltaTime, true);
-        }
-
-        private void ExitMagnetAttract()
-        {
-            cartAttractor?.EndAttraction();
-            SetPrimaryActionState(false);
         }
 
         private void EnterHurt()
@@ -803,21 +970,18 @@ namespace Supernova.Voxels
             public PlayerInputSnapshot(
                 Vector2 move,
                 bool jumpPressed,
-                bool attackPressed,
-                bool magnetHeld,
+                bool primaryActionHeld,
                 bool crouchHeld)
             {
                 Move = move;
                 JumpPressed = jumpPressed;
-                AttackPressed = attackPressed;
-                MagnetHeld = magnetHeld;
+                PrimaryActionHeld = primaryActionHeld;
                 CrouchHeld = crouchHeld;
             }
 
             public Vector2 Move { get; }
             public bool JumpPressed { get; }
-            public bool AttackPressed { get; }
-            public bool MagnetHeld { get; }
+            public bool PrimaryActionHeld { get; }
             public bool CrouchHeld { get; }
         }
 

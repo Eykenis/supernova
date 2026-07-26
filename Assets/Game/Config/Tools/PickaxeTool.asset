@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6eac2d1eb75025b4dbb255c6dd3e15d9, type: 3}
+  m_Name: PickaxeTool
+  m_EditorClassIdentifier: 
+  item: 1
+  primaryAction: 1
+  animationTriggerMode: 1
+  primaryActionAnimation: {fileID: 7400000, guid: 89a3527a255c7c742bc515e47351fbf1,
+    type: 2}
+  heldModelPrefab: {fileID: 1392316285209212, guid: 869385138ceeb3c4e9ed5f72da8d50d7,
+    type: 3}
+  allowMovementWhileUsing: 0
+  miningPower: 2
+  miningRadius: 0.55
+  miningDepth: 0.75
+  miningFalloffExponent: 1.5
+  miningMinimumPowerFraction: 0.25
+  miningMaxAffectedSamples: 24

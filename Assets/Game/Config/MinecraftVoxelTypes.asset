@@ -13,12 +13,6 @@ MonoBehaviour:
   m_Name: MinecraftVoxelTypes
   m_EditorClassIdentifier: 
   definitions:
-  - type: 1
-    durability: 1
-    material: {fileID: 0}
-  - type: 2
-    durability: 4
-    material: {fileID: 0}
-  - type: 3
-    durability: 8
-    material: {fileID: 0}
+  - {fileID: 11400000, guid: 7aeb277ec604844479b4143209e930ae, type: 2}
+  - {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
+  - {fileID: 11400000, guid: 1a9e2026aa423a147aace7954349207d, type: 2}

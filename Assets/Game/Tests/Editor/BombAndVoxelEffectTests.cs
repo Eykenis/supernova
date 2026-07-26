@@ -113,11 +113,77 @@ namespace Supernova.Tests
 
             InvokePrivate(terrain, "ReportReadyState");
 
+            Assert.That(terrain.IsInitialLoadComplete, Is.True);
+            Assert.That(terrain.InitialLoadProgress, Is.EqualTo(1f).Within(0.001f));
+
             Assert.That(
                 terrain.RequiredChunkCount,
                 Is.EqualTo(MinecraftCaveInfiniteWorld.RequiredChunkCountAtRadius),
                 "The full streaming radius should continue loading after the player is released.");
             Assert.That(terrain.GenerationStage, Is.EqualTo(MinecraftCaveGenerationStage.Terrain));
+        }
+
+        [Test]
+        public void InitialLoadGravity_RestoresPreviousValueWhenWorldIsCleared()
+        {
+            GameObject terrainObject = Create("Terrain");
+            MinecraftCaveInfiniteWorld terrain =
+                terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            Vector3 originalGravity = Physics.gravity;
+            Vector3 gravityBeforeLoad = new Vector3(1.5f, -4.25f, 0.75f);
+
+            try
+            {
+                Physics.gravity = Vector3.zero;
+                SetPrivateField(terrain, "gravityBeforeInitialLoad", gravityBeforeLoad);
+                SetPrivateField(terrain, "globalGravitySuspended", true);
+
+                InvokePrivate(terrain, "ClearRuntimeState");
+
+                Assert.That(Physics.gravity, Is.EqualTo(gravityBeforeLoad));
+                Assert.That(terrain.IsGlobalGravitySuspendedForInitialLoad, Is.False);
+            }
+            finally
+            {
+                Physics.gravity = originalGravity;
+            }
+        }
+
+        [Test]
+        public void GroundedSpawn_UsesTerrainSurfaceBeforeEnablingThePlayer()
+        {
+            GameObject terrainObject = Create("Terrain");
+            MinecraftCaveInfiniteWorld terrain =
+                terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            GameObject viewer = Create("Viewer");
+            viewer.transform.position = new Vector3(0f, 5f, 0f);
+            CharacterController controller = viewer.AddComponent<CharacterController>();
+            controller.enabled = false;
+            SetPrivateField(terrain, "viewer", viewer.transform);
+            SetPrivateField(terrain, "frozenCharacterController", controller);
+            SetPrivateField(terrain, "targetSpawnWorldPosition", viewer.transform.position);
+
+            GameObject ground = Create("Generated Ground");
+            ground.transform.SetParent(terrain.transform, false);
+            ground.transform.localPosition = new Vector3(0f, -0.5f, 0f);
+            BoxCollider groundCollider = ground.AddComponent<BoxCollider>();
+            groundCollider.size = new Vector3(10f, 1f, 10f);
+
+            MethodInfo method = typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                "TryFindGroundedSpawnPosition",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            object[] arguments = { Vector3.zero };
+
+            bool found = (bool)method.Invoke(terrain, arguments);
+            Vector3 groundedPosition = (Vector3)arguments[0];
+
+            Assert.That(found, Is.True);
+            Assert.That(groundedPosition.x, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(groundedPosition.z, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(
+                groundedPosition.y,
+                Is.EqualTo(Mathf.Max(0.02f, controller.skinWidth * 2f)).Within(0.01f));
         }
 
         private static Queue<Vector3Int> GetMeshQueue(MinecraftCaveInfiniteWorld terrain)
@@ -160,4 +226,3 @@ namespace Supernova.Tests
         }
     }
 }
-

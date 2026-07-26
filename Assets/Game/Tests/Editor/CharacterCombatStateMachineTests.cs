@@ -80,10 +80,12 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerStateMachine_DeclaresDedicatedMagnetActionState()
+        public void PlayerStateMachine_DeclaresSingleConfiguredToolActionState()
         {
             Assert.That(System.Enum.IsDefined(
-                typeof(PlayerCharacterState), PlayerCharacterState.MagnetAttract), Is.True);
+                typeof(PlayerCharacterState), PlayerCharacterState.ToolAction), Is.True);
+            Assert.That(System.Enum.IsDefined(
+                typeof(PlayerCharacterState), "MagnetAttract"), Is.False);
         }
 
         [Test]
@@ -103,6 +105,10 @@ namespace Supernova.Tests
             FirstPersonCartAttractor attractor =
                 playerObject.AddComponent<FirstPersonCartAttractor>();
             PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
+            PlayerToolDefinition magnet = ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            SetPrivateField(magnet, "item", PlayerInventoryItem.Magnet);
+            SetPrivateField(magnet, "primaryAction", PlayerToolPrimaryAction.AttractCart);
+            SetPrivateField(inventory, "toolDefinitions", new[] { magnet });
             inventory.SelectSlot(1);
             VoxelPlayerController player = playerObject.AddComponent<VoxelPlayerController>();
 
@@ -117,12 +123,143 @@ namespace Supernova.Tests
             var machine = (CharacterStateMachine<PlayerCharacterState>)field.GetValue(player);
             Assert.That(machine, Is.Not.Null);
 
-            machine.Change(PlayerCharacterState.MagnetAttract);
-            Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.MagnetAttract));
+            machine.Change(PlayerCharacterState.ToolAction);
+            Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.ToolAction));
             Assert.That(attractor.IsActionActive, Is.True);
 
             machine.Change(PlayerCharacterState.Idle);
             Assert.That(attractor.IsActionActive, Is.False);
+            Object.DestroyImmediate(magnet);
+        }
+
+        [Test]
+        public void ToolDefinitions_SelectGameplayActionAndAnimationPerInventoryItem()
+        {
+            GameObject playerObject = Create("Player");
+            PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
+            PlayerToolDefinition pickaxe = ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            PlayerToolDefinition magnet = ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            AnimationClip pickaxeClip = new AnimationClip();
+            AnimationClip magnetClip = new AnimationClip();
+
+            SetPrivateField(pickaxe, "item", PlayerInventoryItem.Pickaxe);
+            SetPrivateField(pickaxe, "primaryAction", PlayerToolPrimaryAction.MineVoxel);
+            SetPrivateField(
+                pickaxe,
+                "animationTriggerMode",
+                PlayerToolAnimationTriggerMode.Periodic);
+            SetPrivateField(pickaxe, "primaryActionAnimation", pickaxeClip);
+            SetPrivateField(magnet, "item", PlayerInventoryItem.Magnet);
+            SetPrivateField(magnet, "primaryAction", PlayerToolPrimaryAction.AttractCart);
+            SetPrivateField(
+                magnet,
+                "animationTriggerMode",
+                PlayerToolAnimationTriggerMode.Single);
+            SetPrivateField(magnet, "primaryActionAnimation", magnetClip);
+            SetPrivateField(inventory, "toolDefinitions", new[] { pickaxe, magnet });
+
+            inventory.SelectSlot(0);
+            Assert.That(inventory.SelectedDefinition, Is.SameAs(pickaxe));
+            Assert.That(
+                inventory.SelectedDefinition.AnimationTriggerMode,
+                Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
+            Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(pickaxeClip));
+            inventory.SelectSlot(1);
+            Assert.That(inventory.SelectedDefinition, Is.SameAs(magnet));
+            Assert.That(
+                inventory.SelectedDefinition.AnimationTriggerMode,
+                Is.EqualTo(PlayerToolAnimationTriggerMode.Single));
+            Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(magnetClip));
+
+            Object.DestroyImmediate(pickaxeClip);
+            Object.DestroyImmediate(magnetClip);
+            Object.DestroyImmediate(pickaxe);
+            Object.DestroyImmediate(magnet);
+        }
+
+        [Test]
+        public void ToolAssets_ConfigurePickaxeAsPeriodicAndMagnetAsSingle()
+        {
+            PlayerToolDefinition pickaxe = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                "Assets/Game/Config/Tools/PickaxeTool.asset");
+            PlayerToolDefinition magnet = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                "Assets/Game/Config/Tools/MagnetTool.asset");
+
+            Assert.That(pickaxe, Is.Not.Null);
+            Assert.That(magnet, Is.Not.Null);
+            Assert.That(
+                pickaxe.AnimationTriggerMode,
+                Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
+            Assert.That(
+                magnet.AnimationTriggerMode,
+                Is.EqualTo(PlayerToolAnimationTriggerMode.Single));
+        }
+
+        [Test]
+        public void ToolAssets_ConfigurePickaxeModelAndLeaveMagnetModelEmpty()
+        {
+            PlayerToolDefinition pickaxe =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    "Assets/Game/Config/Tools/PickaxeTool.asset");
+            PlayerToolDefinition magnet =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    "Assets/Game/Config/Tools/MagnetTool.asset");
+
+            Assert.That(pickaxe, Is.Not.Null);
+            Assert.That(pickaxe.HeldModelPrefab, Is.Not.Null);
+            Assert.That(pickaxe.HeldModelPrefab.name, Is.EqualTo("pickaxe01"));
+            Assert.That(magnet, Is.Not.Null);
+            Assert.That(magnet.HeldModelPrefab, Is.Null);
+        }
+
+        [Test]
+        public void InventorySelection_ReplacesModelAtToolMountAndSupportsNullModel()
+        {
+            GameObject playerObject = Create("Player");
+            PlayerToolController inventory =
+                playerObject.AddComponent<PlayerToolController>();
+            GameObject mountObject = Create("Tool Model Mount");
+            mountObject.transform.SetParent(playerObject.transform);
+            GameObject pickaxeModel = Create("Pickaxe Model Prefab");
+            PlayerToolDefinition pickaxe =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            PlayerToolDefinition magnet =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(
+                    pickaxe,
+                    "item",
+                    PlayerInventoryItem.Pickaxe);
+                SetPrivateField(pickaxe, "heldModelPrefab", pickaxeModel);
+                SetPrivateField(
+                    magnet,
+                    "item",
+                    PlayerInventoryItem.Magnet);
+                SetPrivateField(
+                    inventory,
+                    "toolDefinitions",
+                    new[] { pickaxe, magnet });
+                SetPrivateField(
+                    inventory,
+                    "toolModelMount",
+                    mountObject.transform);
+
+                inventory.SelectSlot(0);
+                Assert.That(inventory.EquippedToolModel, Is.Not.Null);
+                Assert.That(
+                    inventory.EquippedToolModel.transform.parent,
+                    Is.SameAs(mountObject.transform));
+
+                inventory.SelectSlot(1);
+                Assert.That(inventory.EquippedToolModel, Is.Null);
+                Assert.That(mountObject.transform.childCount, Is.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(pickaxe);
+                Object.DestroyImmediate(magnet);
+            }
         }
 
         [Test]
@@ -261,6 +398,111 @@ namespace Supernova.Tests
                 "Crouch must no longer live on the unmasked Base Layer.");
             Assert.That(FindAnimatorState(baseLayerMachine, "Crouch Move"), Is.Null,
                 "Crouch must no longer live on the unmasked Base Layer.");
+        }
+
+        [Test]
+        public void PlayerAnimator_ToolActionUsesGenericStateAndConfiguredClipPlaceholder()
+        {
+            UnityAnimatorController controller = AssetDatabase.LoadAssetAtPath<UnityAnimatorController>(
+                "Assets/Game/Animations/P05Player.controller");
+            Assert.That(controller, Is.Not.Null);
+            Assert.That(
+                controller.parameters,
+                Has.Some.Matches<AnimatorControllerParameter>(parameter =>
+                    parameter.name == "ToolAction"
+                    && parameter.type == AnimatorControllerParameterType.Trigger));
+            Assert.That(
+                controller.parameters,
+                Has.Some.Matches<AnimatorControllerParameter>(parameter =>
+                    parameter.name == "ToolActionContinuous"
+                    && parameter.type == AnimatorControllerParameterType.Bool));
+            Assert.That(
+                controller.parameters,
+                Has.None.Matches<AnimatorControllerParameter>(parameter =>
+                    parameter.name == "Mine"));
+
+            AnimatorStateMachine baseLayerMachine = controller.layers[0].stateMachine;
+            AnimatorState toolAction = FindAnimatorState(
+                baseLayerMachine,
+                "Tool Primary Action");
+            Assert.That(toolAction, Is.Not.Null);
+            Assert.That(toolAction.motion, Is.Not.Null);
+            Assert.That(toolAction.motion.name, Is.EqualTo("ToolPrimaryActionPlaceholder"));
+            Assert.That(toolAction.transitions, Has.Length.EqualTo(1));
+            Assert.That(toolAction.transitions[0].hasExitTime, Is.True);
+            Assert.That(toolAction.transitions[0].exitTime, Is.EqualTo(0.7f));
+            Assert.That(toolAction.transitions[0].duration, Is.EqualTo(0.2f));
+            Assert.That(toolAction.transitions[0].conditions, Is.Empty);
+
+            AnimatorState continuousAction = FindAnimatorState(
+                baseLayerMachine,
+                "Tool Continuous Action");
+            Assert.That(continuousAction, Is.Not.Null);
+            Assert.That(continuousAction.motion, Is.Not.Null);
+            Assert.That(
+                continuousAction.motion.name,
+                Is.EqualTo("ToolPrimaryActionPlaceholder"));
+            Assert.That(continuousAction.transitions, Has.Length.EqualTo(1));
+            Assert.That(continuousAction.transitions[0].hasExitTime, Is.False);
+            Assert.That(continuousAction.transitions[0].conditions, Has.Length.EqualTo(1));
+            Assert.That(
+                continuousAction.transitions[0].conditions[0].parameter,
+                Is.EqualTo("ToolActionContinuous"));
+            Assert.That(
+                continuousAction.transitions[0].conditions[0].mode,
+                Is.EqualTo(AnimatorConditionMode.IfNot));
+
+            bool hasContinuousEntry = false;
+            foreach (AnimatorStateTransition transition in baseLayerMachine.anyStateTransitions)
+            {
+                if (transition.destinationState != continuousAction) continue;
+                hasContinuousEntry = true;
+                Assert.That(transition.canTransitionToSelf, Is.False);
+            }
+            Assert.That(hasContinuousEntry, Is.True);
+            Assert.That(FindAnimatorState(baseLayerMachine, "Mine"), Is.Null);
+        }
+
+        [Test]
+        public void PeriodicToolCycle_WaitsForConfiguredAnimatorStateToFinish()
+        {
+            RuntimeAnimatorController runtimeController =
+                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+                    "Assets/Game/Animations/P05Player.controller");
+            Assert.That(runtimeController, Is.Not.Null);
+
+            GameObject playerObject = Create("Player");
+            playerObject.AddComponent<CharacterController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            GameObject visual = Create("Visual");
+            visual.transform.SetParent(playerObject.transform);
+            Animator animator = visual.AddComponent<Animator>();
+            animator.runtimeAnimatorController = runtimeController;
+            player.SetAnimator(animator);
+            animator.Update(0f);
+
+            MethodInfo cycleComplete = typeof(VoxelPlayerController).GetMethod(
+                "IsPeriodicToolActionCycleComplete",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(cycleComplete, Is.Not.Null);
+            SetPrivateField(player, "nextAttackTime", Time.time + 10f);
+
+            animator.SetTrigger("ToolAction");
+            animator.Update(0.05f);
+            Assert.That(cycleComplete.Invoke(player, null), Is.False);
+
+            bool completed = false;
+            for (int i = 0; i < 40 && !completed; i++)
+            {
+                animator.Update(0.05f);
+                completed = (bool)cycleComplete.Invoke(player, null);
+            }
+
+            Assert.That(
+                completed,
+                Is.True,
+                "The next mining cycle should unlock when the tool animation exits.");
         }
 
         [Test]

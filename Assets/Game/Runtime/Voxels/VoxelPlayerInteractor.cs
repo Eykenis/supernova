@@ -1,3 +1,4 @@
+using Supernova.Effects;
 using Supernova.Gameplay;
 using Supernova.MinecraftCaves;
 using UnityEngine;
@@ -7,12 +8,30 @@ namespace Supernova.Voxels
     [RequireComponent(typeof(PlayerProfile))]
     public sealed class VoxelPlayerInteractor : MonoBehaviour
     {
+        private static readonly Vector3Int[] CellCornerOffsets =
+        {
+            new Vector3Int(0, 0, 0),
+            new Vector3Int(1, 0, 0),
+            new Vector3Int(0, 1, 0),
+            new Vector3Int(1, 1, 0),
+            new Vector3Int(0, 0, 1),
+            new Vector3Int(1, 0, 1),
+            new Vector3Int(0, 1, 1),
+            new Vector3Int(1, 1, 1),
+        };
+
         [SerializeField] private Camera viewCamera;
         [SerializeField] private MonoBehaviour terrain;
+        [SerializeField] private VoxelMiningImpactEffect miningImpactEffect;
         private PlayerProfile profile;
         private int raycastMask;
         private bool hasPendingMine;
         private Vector3Int pendingMineVoxel;
+        private Vector3 pendingMineDirection;
+        private Vector3 pendingMinePoint;
+        private Vector3 pendingMineNormal;
+        private VoxelMiningBrushSettings pendingMineBrush =
+            VoxelMiningBrushSettings.SingleVoxel;
         private float pendingMineTime;
 
         private IVoxelTerrain Terrain => terrain as IVoxelTerrain;
@@ -49,7 +68,10 @@ namespace Supernova.Voxels
                 out _,
                 out _,
                 out Vector3Int placeVoxel,
-                out bool canPlace);
+                out bool canPlace,
+                out _,
+                out _,
+                out _);
 
             if (Cursor.lockState != CursorLockMode.Locked)
             {
@@ -69,12 +91,34 @@ namespace Supernova.Voxels
 
         public bool TryScheduleMineAtCrosshair(float delay)
         {
+            return TryScheduleMineAtCrosshair(
+                delay,
+                VoxelMiningBrushSettings.SingleVoxel);
+        }
+
+        public bool TryScheduleMineAtCrosshair(
+            float delay,
+            VoxelMiningBrushSettings brush)
+        {
             ResolveReferences();
+
+            // The player controller and this component have no guaranteed Update order.
+            // Settle an expired hit here before selecting the next voxel, otherwise the
+            // next swing can overwrite the single pending slot before Update applies it.
+            ApplyPendingMineIfReady();
+            if (hasPendingMine)
+            {
+                return false;
+            }
+
             if (!TryGetTarget(
                     out Vector3Int removeVoxel,
                     out bool canRemove,
                     out _,
-                    out _)
+                    out _,
+                    out Vector3 mineDirection,
+                    out Vector3 hitPoint,
+                    out Vector3 hitNormal)
                 || !canRemove)
             {
                 return false;
@@ -83,10 +127,23 @@ namespace Supernova.Voxels
             float clampedDelay = Mathf.Max(0f, delay);
             if (clampedDelay <= 0f)
             {
-                return Terrain.TryMineVoxel(removeVoxel, out _);
+                bool mined = Terrain.TryMineBrush(
+                    removeVoxel,
+                    mineDirection,
+                    brush,
+                    out VoxelMiningBrushResult result);
+                if (mined)
+                {
+                    PlayMiningImpact(hitPoint, hitNormal, result);
+                }
+                return mined;
             }
 
             pendingMineVoxel = removeVoxel;
+            pendingMineDirection = mineDirection;
+            pendingMinePoint = hitPoint;
+            pendingMineNormal = hitNormal;
+            pendingMineBrush = brush;
             pendingMineTime = Time.time + clampedDelay;
             hasPendingMine = true;
             return true;
@@ -100,13 +157,59 @@ namespace Supernova.Voxels
                     out Vector3Int removeVoxel,
                     out bool canRemove,
                     out _,
-                    out _)
+                    out _,
+                    out _,
+                    out Vector3 hitPoint,
+                    out Vector3 hitNormal)
                 || !canRemove)
             {
                 return false;
             }
 
-            return Terrain.TryMineVoxel(removeVoxel, out result);
+            bool mined = Terrain.TryMineVoxel(removeVoxel, out result);
+            if (mined)
+            {
+                var brushResult = new VoxelMiningBrushResult(
+                    result.Coordinate,
+                    result.Type,
+                    1,
+                    1,
+                    result.Destroyed ? 1 : 0,
+                    result);
+                PlayMiningImpact(hitPoint, hitNormal, brushResult);
+            }
+            return mined;
+        }
+
+        public bool TryMineBrushAtCrosshair(
+            VoxelMiningBrushSettings brush,
+            out VoxelMiningBrushResult result)
+        {
+            result = default;
+            ResolveReferences();
+            if (!TryGetTarget(
+                    out Vector3Int removeVoxel,
+                    out bool canRemove,
+                    out _,
+                    out _,
+                    out Vector3 mineDirection,
+                    out Vector3 hitPoint,
+                    out Vector3 hitNormal)
+                || !canRemove)
+            {
+                return false;
+            }
+
+            bool mined = Terrain.TryMineBrush(
+                removeVoxel,
+                mineDirection,
+                brush,
+                out result);
+            if (mined)
+            {
+                PlayMiningImpact(hitPoint, hitNormal, result);
+            }
+            return mined;
         }
 
         private void ApplyPendingMineIfReady()
@@ -116,7 +219,18 @@ namespace Supernova.Voxels
             IVoxelTerrain voxelTerrain = Terrain;
             if (voxelTerrain != null)
             {
-                voxelTerrain.TryMineVoxel(pendingMineVoxel, out _);
+                bool mined = voxelTerrain.TryMineBrush(
+                    pendingMineVoxel,
+                    pendingMineDirection,
+                    pendingMineBrush,
+                    out VoxelMiningBrushResult result);
+                if (mined)
+                {
+                    PlayMiningImpact(
+                        pendingMinePoint,
+                        pendingMineNormal,
+                        result);
+                }
             }
         }
 
@@ -129,12 +243,18 @@ namespace Supernova.Voxels
             out Vector3Int removeVoxel,
             out bool canRemove,
             out Vector3Int placeVoxel,
-            out bool canPlace)
+            out bool canPlace,
+            out Vector3 mineDirection,
+            out Vector3 hitPoint,
+            out Vector3 hitNormal)
         {
             removeVoxel = default;
             placeVoxel = default;
             canRemove = false;
             canPlace = false;
+            mineDirection = default;
+            hitPoint = default;
+            hitNormal = default;
 
             IVoxelTerrain voxelTerrain = Terrain;
             if (viewCamera == null || voxelTerrain == null || voxelTerrain.World == null)
@@ -144,6 +264,7 @@ namespace Supernova.Voxels
 
             Vector3 camPos = viewCamera.transform.position;
             Vector3 forward = viewCamera.transform.forward;
+            mineDirection = forward;
 
             // Primary ray from the true camera position (the proven behavior).
             bool foundHit = TryRaycastTerrain(
@@ -173,37 +294,91 @@ namespace Supernova.Voxels
                 return false;
             }
 
-            // Resolve the target by marching along the view ray from the hit point
-            // instead of offsetting by the interpolated surface normal. The smooth
-            // mesh normal is not axis-aligned, so normal-based rounding lands on the
-            // wrong (often air) voxel near edges/slopes, causing the on/off flicker.
-            InfiniteVoxelWorld world = voxelTerrain.World;
-            float step = voxelTerrain.VoxelSize * 0.25f;
-            Vector3Int lastAir = voxelTerrain.WorldPositionToVoxel(hit.point - forward * step);
-            bool haveAir = world.TryGetDensity(lastAir.x, lastAir.y, lastAir.z, out float airDensity)
-                && airDensity < 0f;
+            hitPoint = hit.point;
+            hitNormal = hit.normal;
 
-            for (float d = 0f; d <= voxelTerrain.VoxelSize * 1.5f; d += step)
+            // A Marching Cubes triangle belongs to one grid cell. Resolve only from
+            // the eight samples around that surface cell instead of marching farther
+            // into the terrain, which could select a solid sample behind the visible
+            // surface. Sampling just inside/outside also handles hits on cell borders.
+            float sideOffset = voxelTerrain.VoxelSize * 0.05f;
+            canRemove = TryResolveCellSample(
+                hit.point + forward * sideOffset,
+                hit.point,
+                camPos,
+                forward,
+                voxelTerrain,
+                true,
+                out removeVoxel);
+            canPlace = TryResolveCellSample(
+                hit.point - forward * sideOffset,
+                hit.point,
+                camPos,
+                forward,
+                voxelTerrain,
+                false,
+                out placeVoxel);
+            return canRemove || canPlace;
+        }
+
+        private static bool TryResolveCellSample(
+            Vector3 pointOnSide,
+            Vector3 surfacePoint,
+            Vector3 rayOrigin,
+            Vector3 rayDirection,
+            IVoxelTerrain voxelTerrain,
+            bool requireSolid,
+            out Vector3Int coordinate)
+        {
+            coordinate = default;
+            Transform terrainTransform = voxelTerrain.TerrainTransform;
+            float voxelSize = voxelTerrain.VoxelSize;
+            Vector3 samplePosition =
+                terrainTransform.InverseTransformPoint(pointOnSide) / voxelSize;
+            var cellOrigin = new Vector3Int(
+                Mathf.FloorToInt(samplePosition.x),
+                Mathf.FloorToInt(samplePosition.y),
+                Mathf.FloorToInt(samplePosition.z));
+
+            bool found = false;
+            float bestSurfaceDistance = float.PositiveInfinity;
+            float bestRayDepth = float.PositiveInfinity;
+            float tieTolerance = voxelSize * voxelSize * 0.0001f;
+            InfiniteVoxelWorld world = voxelTerrain.World;
+
+            for (int i = 0; i < CellCornerOffsets.Length; i++)
             {
-                Vector3Int probe = voxelTerrain.WorldPositionToVoxel(hit.point + forward * d);
-                if (world.TryGetDensity(probe.x, probe.y, probe.z, out float density)
-                    && density >= 0f)
+                Vector3Int candidate = cellOrigin + CellCornerOffsets[i];
+                if (!world.TryGetSample(
+                        candidate.x,
+                        candidate.y,
+                        candidate.z,
+                        out VoxelSample sample)
+                    || sample.IsSolid(voxelTerrain.IsoLevel) != requireSolid)
                 {
-                    removeVoxel = probe;
-                    canRemove = true;
-                    if (haveAir)
-                    {
-                        placeVoxel = lastAir;
-                        canPlace = true;
-                    }
-                    return true;
+                    continue;
                 }
 
-                lastAir = probe;
-                haveAir = true;
+                Vector3 candidateWorld = terrainTransform.TransformPoint(
+                    (Vector3)candidate * voxelSize);
+                float surfaceDistance =
+                    (candidateWorld - surfacePoint).sqrMagnitude;
+                float rayDepth = Vector3.Dot(
+                    candidateWorld - rayOrigin,
+                    rayDirection);
+                if (surfaceDistance < bestSurfaceDistance - tieTolerance
+                    || (Mathf.Abs(surfaceDistance - bestSurfaceDistance)
+                        <= tieTolerance
+                        && rayDepth < bestRayDepth))
+                {
+                    coordinate = candidate;
+                    bestSurfaceDistance = surfaceDistance;
+                    bestRayDepth = rayDepth;
+                    found = true;
+                }
             }
 
-            return false;
+            return found;
         }
 
         // Returns the nearest terrain hit along the ray, skipping any non-terrain
@@ -240,6 +415,35 @@ namespace Supernova.Voxels
             return false;
         }
 
+        private void PlayMiningImpact(
+            Vector3 hitPoint,
+            Vector3 hitNormal,
+            VoxelMiningBrushResult result)
+        {
+            if (miningImpactEffect == null)
+            {
+                return;
+            }
+
+            var fallbackColor = new Color(0.46f, 0.49f, 0.5f, 1f);
+            Color voxelColor = fallbackColor;
+            var minecraftTerrain = terrain as MinecraftCaveInfiniteWorld;
+            if (minecraftTerrain != null
+                && minecraftTerrain.VoxelTypeCatalog != null)
+            {
+                voxelColor = VoxelTypeUtility.ResolveMaterialColor(
+                    result.TargetType,
+                    minecraftTerrain.VoxelTypeCatalog.Definitions,
+                    fallbackColor);
+            }
+
+            miningImpactEffect.Play(
+                hitPoint,
+                hitNormal,
+                voxelColor,
+                result);
+        }
+
         private void ResolveReferences()
         {
             if (viewCamera == null)
@@ -254,6 +458,11 @@ namespace Supernova.Voxels
             if (Terrain == null)
             {
                 terrain = FindObjectOfType<MinecraftCaveInfiniteWorld>();
+            }
+
+            if (miningImpactEffect == null)
+            {
+                miningImpactEffect = GetComponent<VoxelMiningImpactEffect>();
             }
         }
 

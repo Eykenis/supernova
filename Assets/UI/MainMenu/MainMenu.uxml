@@ -1,0 +1,71 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <ui:Style src="project://database/Assets/UI/MainMenu/MainMenu.uss" />
+    <ui:VisualElement name="root" class="main-menu">
+        <ui:VisualElement class="ambient ambient-one" picking-mode="Ignore" />
+        <ui:VisualElement class="ambient ambient-two" picking-mode="Ignore" />
+        <ui:VisualElement class="cave-ring cave-ring-one" picking-mode="Ignore" />
+        <ui:VisualElement class="cave-ring cave-ring-two" picking-mode="Ignore" />
+        <ui:VisualElement class="star star-a" picking-mode="Ignore" />
+        <ui:VisualElement class="star star-b" picking-mode="Ignore" />
+        <ui:VisualElement class="star star-c" picking-mode="Ignore" />
+        <ui:VisualElement class="star star-d" picking-mode="Ignore" />
+        <ui:VisualElement class="star star-e" picking-mode="Ignore" />
+        <ui:VisualElement class="star star-f" picking-mode="Ignore" />
+        <ui:VisualElement class="star star-g" picking-mode="Ignore" />
+        <ui:VisualElement class="top-bar">
+            <ui:VisualElement class="brand-lockup">
+                <ui:Label text="S" class="brand-mark" />
+                <ui:VisualElement class="brand-copy">
+                    <ui:Label text="SUPERNOVA" class="brand-name" />
+                    <ui:Label text="DEEP FIELD INITIATIVE" class="brand-subtitle" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:Label text="EXPEDITION BUILD // 0.1" class="build-label" />
+        </ui:VisualElement>
+        <ui:VisualElement class="main-content">
+            <ui:VisualElement class="hero-copy">
+                <ui:Label text="DEEP CAVE EXPEDITION // 07" class="eyebrow" />
+                <ui:Label text="SUPERNOVA" class="title-small" />
+                <ui:Label text="DESCENT" class="title-large" />
+                <ui:VisualElement class="title-rule">
+                    <ui:VisualElement class="title-rule-accent" />
+                </ui:VisualElement>
+                <ui:Label text="LIGHT FADES. THE WORLD KEEPS GROWING." class="tagline" />
+                <ui:Label text="Enter an uncharted living cave. Recover what the dark has kept, and find a way back." class="description" />
+                <ui:VisualElement class="mission-stats">
+                    <ui:VisualElement class="stat">
+                        <ui:Label text="01" class="stat-number" />
+                        <ui:Label text="ACTIVE EXPEDITION" class="stat-label" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="stat">
+                        <ui:Label text="INFINITE" class="stat-number" />
+                        <ui:Label text="UNMAPPED DEPTH" class="stat-label" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement class="menu-shell">
+                <ui:Label text="EXPEDITION CONTROL" class="menu-overline" />
+                <ui:VisualElement name="main-panel" class="menu-panel">
+                    <ui:Button name="play-button" text="BEGIN DESCENT" class="menu-button primary-button" />
+                    <ui:Button name="settings-button" text="SYSTEM SETTINGS" class="menu-button" />
+                    <ui:VisualElement class="menu-divider" />
+                    <ui:Button name="quit-button" text="LEAVE EXPEDITION" class="menu-button subtle-button" />
+                    <ui:Label name="status-label" text="SYSTEMS READY" class="status-label" />
+                </ui:VisualElement>
+                <ui:VisualElement name="settings-panel" class="settings-panel">
+                    <ui:Label text="SYSTEM SETTINGS" class="settings-title" />
+                    <ui:Label text="DISPLAY" class="settings-section" />
+                    <ui:Toggle name="fullscreen-toggle" label="FULLSCREEN" class="setting-toggle" />
+                    <ui:Label text="AUDIO" class="settings-section audio-section" />
+                    <ui:Slider name="volume-slider" label="MASTER VOLUME" low-value="0" high-value="100" value="80" class="volume-slider" />
+                    <ui:Label name="volume-value" text="80%" class="volume-value" />
+                    <ui:Button name="settings-back-button" text="RETURN" class="menu-button settings-back" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement class="footer">
+            <ui:Label text="WASD  MOVE    |    MOUSE  LOOK    |    E  INTERACT" class="footer-hint" />
+            <ui:Label text="SIGNAL // STABLE" class="signal-label" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

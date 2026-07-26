@@ -17,7 +17,6 @@ namespace Supernova.Gameplay
 
         [Header("Acquisition")]
         [SerializeField, Min(0.1f)] private float acquisitionDistance = 3.5f;
-        [SerializeField, Min(0f)] private float acquisitionRadius = 0.35f;
         [SerializeField] private LayerMask targetLayers = ~0;
 
         [Header("Soft hold")]
@@ -142,48 +141,38 @@ namespace Supernova.Gameplay
             if (viewCamera == null) return false;
 
             Transform cameraTransform = viewCamera.transform;
-            int count = Physics.SphereCastNonAlloc(
+            int count = Physics.RaycastNonAlloc(
                 cameraTransform.position,
-                Mathf.Max(0f, acquisitionRadius),
                 cameraTransform.forward,
                 acquisitionHits,
                 Mathf.Max(0.1f, acquisitionDistance),
                 targetLayers,
                 QueryTriggerInteraction.Ignore);
 
-            float nearestBlockingDistance = float.PositiveInfinity;
-            float nearestTargetDistance = float.PositiveInfinity;
-            PhysicsAttractable nearestTarget = null;
+            float focusedHitDistance = float.PositiveInfinity;
+            Collider focusedCollider = null;
 
             for (int i = 0; i < count; i++)
             {
                 RaycastHit hit = acquisitionHits[i];
                 Collider collider = hit.collider;
                 if (collider == null || IsOwnedByPlayer(collider.transform)) continue;
+                if (hit.distance >= focusedHitDistance) continue;
 
-                Rigidbody body = collider.attachedRigidbody;
-                PhysicsAttractable candidate = body != null
-                    ? body.GetComponent<PhysicsAttractable>()
-                    : null;
-                if (candidate != null && candidate.CanBeAttracted)
-                {
-                    if (hit.distance < nearestTargetDistance)
-                    {
-                        nearestTargetDistance = hit.distance;
-                        nearestTarget = candidate;
-                    }
-                }
-                else
-                {
-                    nearestBlockingDistance = Mathf.Min(nearestBlockingDistance, hit.distance);
-                }
+                focusedHitDistance = hit.distance;
+                focusedCollider = collider;
             }
 
-            if (nearestTarget == null || nearestBlockingDistance + 0.01f < nearestTargetDistance)
-                return false;
+            if (focusedCollider == null) return false;
 
-            heldTarget = nearestTarget;
-            heldBody = nearestTarget.Body;
+            Rigidbody body = focusedCollider.attachedRigidbody;
+            PhysicsAttractable focusedTarget = body != null
+                ? body.GetComponent<PhysicsAttractable>()
+                : null;
+            if (focusedTarget == null || !focusedTarget.CanBeAttracted) return false;
+
+            heldTarget = focusedTarget;
+            heldBody = focusedTarget.Body;
             heldBody.WakeUp();
             return true;
         }
@@ -228,4 +217,3 @@ namespace Supernova.Gameplay
         }
     }
 }
-

@@ -7,6 +7,19 @@ namespace Supernova.Tests
 {
     public sealed class VoxelStructureTests
     {
+        private readonly List<VoxelTypeDefinition> definitions =
+            new List<VoxelTypeDefinition>();
+
+        [TearDown]
+        public void TearDown()
+        {
+            for (int i = definitions.Count - 1; i >= 0; i--)
+            {
+                if (definitions[i] != null) Object.DestroyImmediate(definitions[i]);
+            }
+            definitions.Clear();
+        }
+
         [Test]
         public void StructureAsset_AppliesEntireFixedFieldRelativeToAnchor()
         {
@@ -105,11 +118,14 @@ namespace Supernova.Tests
             {
                 catalog.SetDefinitions(new[]
                 {
-                    new VoxelTypeDefinition(2, 5),
-                    new VoxelTypeDefinition(7, 11),
+                    CreateDefinition(2, 5, "Stone"),
+                    CreateDefinition(7, 11, "Crystal"),
                 });
 
                 Assert.That(catalog.Find(new VoxelTypeId(7)).Durability, Is.EqualTo(11));
+                Assert.That(
+                    catalog.Find(new VoxelTypeId(7)).DisplayName,
+                    Is.EqualTo("Crystal"));
                 Assert.That(catalog.Definitions, Has.Count.EqualTo(2));
             }
             finally
@@ -135,7 +151,7 @@ namespace Supernova.Tests
                     new float[27],
                     new ushort[27]);
                 catalog.SetDefinitions(
-                    new[] { new VoxelTypeDefinition(2, 4) });
+                    new[] { CreateDefinition(2, 4, "Stone") });
                 VoxelStructureAuthoring authoring =
                     root.AddComponent<VoxelStructureAuthoring>();
                 authoring.Configure(
@@ -161,6 +177,18 @@ namespace Supernova.Tests
                 Object.DestroyImmediate(catalog);
                 Object.DestroyImmediate(structure);
             }
+        }
+
+        private VoxelTypeDefinition CreateDefinition(
+            ushort type,
+            int durability,
+            string displayName)
+        {
+            VoxelTypeDefinition definition =
+                ScriptableObject.CreateInstance<VoxelTypeDefinition>();
+            definition.Configure(type, displayName, durability);
+            definitions.Add(definition);
+            return definition;
         }
     }
 }

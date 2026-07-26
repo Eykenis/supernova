@@ -11,7 +11,7 @@ namespace Supernova.Voxels
     public sealed class VoxelTypeCatalog : ScriptableObject
     {
         [SerializeField] private List<VoxelTypeDefinition> definitions =
-            new List<VoxelTypeDefinition> { new VoxelTypeDefinition() };
+            new List<VoxelTypeDefinition>();
 
         public IReadOnlyList<VoxelTypeDefinition> Definitions => definitions;
 

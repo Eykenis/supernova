@@ -78,11 +78,17 @@ namespace Supernova.Gameplay
     {
         [SerializeField, Range(0, PlayerInventory.SlotCount - 1)]
         private int initialSelectedSlot;
+        [Tooltip("One definition per usable inventory item. The definition owns its left-click action and animation.")]
+        [SerializeField] private PlayerToolDefinition[] toolDefinitions;
         [SerializeField] private FirstPersonCartAttractor cartAttractor;
+        [Tooltip("Placeholder under the character hand where the selected tool model is instantiated.")]
+        [SerializeField] private Transform toolModelMount;
         [SerializeField, Range(0, PlayerInventory.SlotCount - 1)]
         private int selectedSlotIndex;
 
         private PlayerInventory inventory;
+        private GameObject equippedToolModel;
+        private GameObject equippedToolModelPrefab;
 
         public event Action<int, PlayerInventoryItem> SelectionChanged;
 
@@ -98,9 +104,11 @@ namespace Supernova.Gameplay
         public int SelectedSlotIndex => Inventory.SelectedSlotIndex;
         public int SelectedSlotNumber => SelectedSlotIndex == 9 ? 0 : SelectedSlotIndex + 1;
         public PlayerInventoryItem SelectedItem => Inventory.SelectedItem;
+        public PlayerToolDefinition SelectedDefinition => GetDefinition(SelectedItem);
         public PlayerToolMode CurrentTool => (PlayerToolMode)SelectedItem;
         public bool IsPickaxeSelected => SelectedItem == PlayerInventoryItem.Pickaxe;
         public bool IsCartAttractorSelected => SelectedItem == PlayerInventoryItem.Magnet;
+        public GameObject EquippedToolModel => equippedToolModel;
 
         private void Awake()
         {
@@ -119,6 +127,7 @@ namespace Supernova.Gameplay
         private void OnDisable()
         {
             if (cartAttractor != null) cartAttractor.SetDeviceEnabled(false);
+            ClearEquippedToolModel();
         }
 
         private void Update()
@@ -130,6 +139,26 @@ namespace Supernova.Gameplay
         public PlayerInventoryItem GetItemAtSlot(int slotIndex)
         {
             return Inventory.GetItemAtSlot(slotIndex);
+        }
+
+        public PlayerToolDefinition GetDefinition(PlayerInventoryItem item)
+        {
+            if (toolDefinitions == null) return null;
+            for (int i = 0; i < toolDefinitions.Length; i++)
+            {
+                PlayerToolDefinition definition = toolDefinitions[i];
+                if (definition != null && definition.Item == item) return definition;
+            }
+
+            return null;
+        }
+
+        public bool CanUseSelectedPrimaryAction()
+        {
+            PlayerToolDefinition definition = SelectedDefinition;
+            if (definition == null || !definition.HasPrimaryAction) return false;
+            return definition.PrimaryAction != PlayerToolPrimaryAction.AttractCart
+                || (cartAttractor != null && cartAttractor.CanOperate);
         }
 
         public void SelectSlot(int slotIndex)
@@ -169,8 +198,61 @@ namespace Supernova.Gameplay
         private void ApplySelectedItem()
         {
             ResolveReferences();
+            PlayerToolDefinition definition = SelectedDefinition;
             if (cartAttractor != null)
-                cartAttractor.SetDeviceEnabled(IsCartAttractorSelected);
+            {
+                bool usesAttractor = definition != null
+                    ? definition.PrimaryAction == PlayerToolPrimaryAction.AttractCart
+                    : IsCartAttractorSelected;
+                cartAttractor.SetDeviceEnabled(usesAttractor);
+            }
+            ApplyEquippedToolModel(definition);
+        }
+
+        private void ApplyEquippedToolModel(PlayerToolDefinition definition)
+        {
+            GameObject modelPrefab = definition != null
+                ? definition.HeldModelPrefab
+                : null;
+            if (equippedToolModel != null
+                && equippedToolModelPrefab == modelPrefab)
+            {
+                return;
+            }
+
+            ClearEquippedToolModel();
+            if (toolModelMount == null || modelPrefab == null)
+            {
+                return;
+            }
+
+            equippedToolModel = Instantiate(modelPrefab, toolModelMount, false);
+            equippedToolModel.name = modelPrefab.name;
+            equippedToolModel.transform.localPosition = Vector3.zero;
+            equippedToolModel.transform.localRotation = Quaternion.identity;
+            equippedToolModel.transform.localScale = Vector3.one;
+            equippedToolModelPrefab = modelPrefab;
+        }
+
+        private void ClearEquippedToolModel()
+        {
+            equippedToolModelPrefab = null;
+            if (equippedToolModel == null)
+            {
+                return;
+            }
+
+            equippedToolModel.SetActive(false);
+            equippedToolModel.transform.SetParent(null, false);
+            if (Application.isPlaying)
+            {
+                Destroy(equippedToolModel);
+            }
+            else
+            {
+                DestroyImmediate(equippedToolModel);
+            }
+            equippedToolModel = null;
         }
 
         private void ResolveReferences()

@@ -1,7 +1,10 @@
 using Supernova.Gameplay;
+using Supernova.MinecraftCaves;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 namespace Supernova.UI
 {
@@ -27,36 +30,97 @@ namespace Supernova.UI
         [SerializeField] private TMP_Text healthValueLabel;
         [SerializeField] private GameObject hotbarRoot;
 
+        [Header("Pause Menu")]
+        [SerializeField] private Canvas pauseCanvas;
+        [SerializeField] private GameObject pausePanel;
+        [SerializeField] private Button resumeButton;
+
+        [Header("Loading View")]
+        [SerializeField] private Canvas loadingCanvas;
+        [SerializeField] private CanvasGroup loadingFadeGroup;
+        [SerializeField] private CanvasGroup loadingContentGroup;
+        [SerializeField] private GameObject loadingPanel;
+        [SerializeField] private RectTransform loadingSpinner;
+        [SerializeField] private RectTransform loadingFill;
+        [SerializeField] private TMP_Text loadingStatusLabel;
+        [SerializeField] private TMP_Text loadingProgressLabel;
+        [SerializeField, Min(1f)] private float loadingSpinnerDegreesPerSecond = 140f;
+        [SerializeField, Min(0.05f)] private float loadingFadeDuration = 0.35f;
+
         private IDamageable healthSource;
         private PlayerToolController inventorySource;
         private GameHudPresenter presenter;
         private HotbarPresenter hotbarPresenter;
         private float nextSourceSearchTime;
         private float nextInventorySourceSearchTime;
+        private float nextWorldSourceSearchTime;
+        private MinecraftCaveInfiniteWorld loadingSource;
+        private bool loadingRequestedVisible;
         private float displayedCurrentHealth = float.NaN;
         private float displayedMaximumHealth = float.NaN;
         private int displayedSlotIndex = -1;
+        private bool pauseMenuOpen;
+        private float timeScaleBeforePause = 1f;
+        private CursorLockMode cursorLockBeforePause;
+        private bool cursorVisibleBeforePause;
+        private static GameHudController pauseOwner;
+        private PauseMenuPresentation pausePresentation;
         private readonly Image[] hotbarSlotBackgrounds = new Image[PlayerInventory.SlotCount];
         private readonly Outline[] hotbarSlotOutlines = new Outline[PlayerInventory.SlotCount];
         private readonly TMP_Text[] hotbarItemLabels = new TMP_Text[PlayerInventory.SlotCount];
 
         public Canvas RootCanvas => rootCanvas;
         public Canvas CrosshairCanvas => crosshairCanvas;
+        public Canvas PauseCanvas => pauseCanvas;
+        public Canvas LoadingCanvas => loadingCanvas;
+        public bool IsPauseMenuVisible => pausePanel != null && pausePanel.activeSelf;
+        public bool IsLoadingVisible => loadingPanel != null && loadingPanel.activeSelf;
         public IDamageable HealthSource => healthSource;
         public PlayerToolController InventorySource => inventorySource;
+        public static bool IsPauseMenuOpen => pauseOwner != null && pauseOwner.pauseMenuOpen;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateRuntimeHud()
         {
-            if (FindObjectOfType<GameHudController>() != null) return;
-
-            GameObject hudObject = new GameObject("Game HUD");
-            DontDestroyOnLoad(hudObject);
-            hudObject.AddComponent<GameHudController>();
+            SceneManager.sceneLoaded -= HandleSceneLoaded;
+            SceneManager.sceneLoaded += HandleSceneLoaded;
+            HandleSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
         }
+
+private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            GameHudController existing = null;
+            foreach (GameHudController candidate in Resources.FindObjectsOfTypeAll<GameHudController>())
+            {
+                if (candidate != null && candidate.gameObject.scene.IsValid())
+                {
+                    existing = candidate;
+                    break;
+                }
+            }
+
+            if (scene.name == "MainMenu")
+            {
+                if (existing != null) existing.gameObject.SetActive(false);
+                return;
+            }
+
+            if (existing == null)
+            {
+                GameObject hudObject = new GameObject("Game HUD");
+                DontDestroyOnLoad(hudObject);
+                hudObject.AddComponent<GameHudController>();
+            }
+            else if (!existing.gameObject.activeSelf)
+            {
+                existing.gameObject.SetActive(true);
+            }
+        }
+
 
         private void Awake()
         {
+            loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
             EnsureView();
             BindHealthSource(healthSourceOverride as IDamageable);
             BindInventorySource(inventorySourceOverride);
@@ -66,6 +130,7 @@ namespace Supernova.UI
         {
             nextSourceSearchTime = 0f;
             nextInventorySourceSearchTime = 0f;
+            nextWorldSourceSearchTime = 0f;
             if (inventorySource != null)
                 BindInventorySource(inventorySource);
             RefreshNow();
@@ -73,12 +138,18 @@ namespace Supernova.UI
 
         private void OnDisable()
         {
+            ResumeGame();
             if (inventorySource != null)
                 inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
         }
 
         private void Update()
         {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                TogglePauseMenu();
+            }
+
             if (healthSource == null && Time.unscaledTime >= nextSourceSearchTime)
             {
                 nextSourceSearchTime = Time.unscaledTime + sourceSearchInterval;
@@ -91,7 +162,69 @@ namespace Supernova.UI
                 BindInventorySource(FindPlayerInventorySource());
             }
 
+            if (loadingSource == null && Time.unscaledTime >= nextWorldSourceSearchTime)
+            {
+                nextWorldSourceSearchTime = Time.unscaledTime + sourceSearchInterval;
+                loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
+            }
+
             RefreshNow();
+            AnimateLoading();
+        }
+
+        public void TogglePauseMenu()
+        {
+            if (pauseMenuOpen) ResumeGame();
+            else PauseGame();
+        }
+
+        public void PauseGame()
+        {
+            if (pauseMenuOpen) return;
+            if (pausePanel == null || resumeButton == null)
+            {
+                CacheViewReferences();
+                if (pausePanel == null || resumeButton == null)
+                    BuildPauseView();
+            }
+
+            pauseMenuOpen = true;
+            pauseOwner = this;
+            pausePanel.SetActive(true);
+            pausePresentation = pausePanel.GetComponent<PauseMenuPresentation>();
+            if (pausePresentation == null)
+                pausePresentation = pausePanel.AddComponent<PauseMenuPresentation>();
+            pausePresentation.PlayIntro();
+            if (EventSystem.current != null)
+                EventSystem.current.SetSelectedGameObject(resumeButton.gameObject);
+
+            if (!Application.isPlaying) return;
+            timeScaleBeforePause = Time.timeScale;
+            cursorLockBeforePause = Cursor.lockState;
+            cursorVisibleBeforePause = Cursor.visible;
+            Time.timeScale = 0f;
+            SetCursorState(CursorLockMode.None, true);
+        }
+
+        public void ResumeGame()
+        {
+            if (pausePresentation != null)
+                pausePresentation.StopPresentation();
+            if (pausePanel != null) pausePanel.SetActive(false);
+            if (!pauseMenuOpen) return;
+
+            pauseMenuOpen = false;
+            if (pauseOwner == this) pauseOwner = null;
+            if (!Application.isPlaying) return;
+            Time.timeScale = timeScaleBeforePause;
+            SetCursorState(cursorLockBeforePause, cursorVisibleBeforePause);
+        }
+
+        public void BindLoadingSource(MinecraftCaveInfiniteWorld source)
+        {
+            loadingSource = source;
+            nextWorldSourceSearchTime = 0f;
+            RefreshLoadingView();
         }
 
         public void BindHealthSource(IDamageable source)
@@ -135,6 +268,7 @@ namespace Supernova.UI
             }
 
             RefreshHotbar();
+            RefreshLoadingView();
         }
 
         private void RefreshHotbar()
@@ -145,6 +279,112 @@ namespace Supernova.UI
 
             displayedSlotIndex = slotIndex;
             hotbarPresenter.SetSelectedSlot(slotIndex);
+        }
+
+        private void RefreshLoadingView()
+        {
+            if (loadingPanel == null)
+            {
+                return;
+            }
+
+            loadingRequestedVisible = loadingSource != null
+                && !loadingSource.IsInitialLoadComplete;
+            if (loadingRequestedVisible && !loadingPanel.activeSelf)
+            {
+                loadingPanel.SetActive(true);
+                if (loadingFadeGroup != null) loadingFadeGroup.alpha = 1f;
+                if (loadingContentGroup != null) loadingContentGroup.alpha = 0f;
+            }
+            else if (!Application.isPlaying && !loadingRequestedVisible)
+            {
+                if (loadingFadeGroup != null) loadingFadeGroup.alpha = 0f;
+                loadingPanel.SetActive(false);
+            }
+
+            if (!loadingRequestedVisible)
+            {
+                return;
+            }
+
+            float progress = Mathf.Clamp01(loadingSource.InitialLoadProgress);
+            if (loadingFill != null)
+            {
+                Vector2 anchorMax = loadingFill.anchorMax;
+                anchorMax.x = progress;
+                loadingFill.anchorMax = anchorMax;
+            }
+            if (loadingStatusLabel != null)
+                loadingStatusLabel.text = GetLoadingStageLabel(loadingSource.GenerationStage);
+            if (loadingProgressLabel != null)
+                loadingProgressLabel.text = $"{Mathf.RoundToInt(progress * 100f)}%";
+        }
+
+        private void AnimateLoading()
+        {
+            UpdateLoadingFade(Time.unscaledDeltaTime);
+            if (loadingSpinner == null || loadingPanel == null || !loadingPanel.activeSelf
+                || !loadingRequestedVisible)
+            {
+                return;
+            }
+
+            loadingSpinner.Rotate(
+                0f,
+                0f,
+                -loadingSpinnerDegreesPerSecond * Time.unscaledDeltaTime,
+                Space.Self);
+        }
+
+        private void UpdateLoadingFade(float deltaTime)
+        {
+            if (loadingPanel == null || loadingFadeGroup == null || loadingContentGroup == null)
+            {
+                return;
+            }
+
+            float step = loadingFadeDuration > 0f
+                ? Mathf.Max(0f, deltaTime) / loadingFadeDuration
+                : 1f;
+            if (loadingRequestedVisible)
+            {
+                if (!loadingPanel.activeSelf) loadingPanel.SetActive(true);
+                loadingFadeGroup.alpha = 1f;
+                loadingContentGroup.alpha = Mathf.MoveTowards(
+                    loadingContentGroup.alpha, 1f, step);
+                return;
+            }
+
+            if (!loadingPanel.activeSelf)
+            {
+                return;
+            }
+
+            loadingFadeGroup.alpha = Mathf.MoveTowards(
+                loadingFadeGroup.alpha, 0f, step);
+            if (loadingFadeGroup.alpha <= 0f)
+            {
+                loadingPanel.SetActive(false);
+                loadingFadeGroup.alpha = 1f;
+                loadingContentGroup.alpha = 0f;
+            }
+        }
+
+        private static string GetLoadingStageLabel(MinecraftCaveGenerationStage stage)
+        {
+            switch (stage)
+            {
+                case MinecraftCaveGenerationStage.Terrain:
+                    return "GENERATING TERRAIN";
+                case MinecraftCaveGenerationStage.Structures:
+                    return "PLACING STRUCTURES";
+                case MinecraftCaveGenerationStage.Meshes:
+                    return "BUILDING CAVE MESHES";
+                case MinecraftCaveGenerationStage.Ready:
+                    return "READY";
+                default:
+                    return "PREPARING WORLD";
+            }
         }
 
         private void HandleInventorySelectionChanged(int slotIndex, PlayerInventoryItem item)
@@ -164,6 +404,8 @@ namespace Supernova.UI
             }
 
             BuildDefaultView();
+            BuildLoadingView();
+            BuildPauseView();
             CreatePresenter();
             RefreshNow();
         }
@@ -181,7 +423,21 @@ namespace Supernova.UI
                 BuildHotbarView((RectTransform)rootCanvas.transform);
             }
 
+            if (loadingCanvas == null || loadingFadeGroup == null || loadingContentGroup == null
+                || loadingPanel == null || loadingSpinner == null
+                || loadingFill == null || loadingStatusLabel == null
+                || loadingProgressLabel == null)
+            {
+                BuildLoadingView();
+            }
+
+            if (pauseCanvas == null || pausePanel == null || resumeButton == null)
+            {
+                BuildPauseView();
+            }
+
             CreatePresenter();
+            RefreshLoadingView();
         }
 
         private void CacheViewReferences()
@@ -204,6 +460,53 @@ namespace Supernova.UI
             Transform value = transform.Find("HUD Canvas/Health Panel/Header/Value");
             if (healthValueLabel == null && value != null)
                 healthValueLabel = value.GetComponent<TMP_Text>();
+
+            Transform pauseCanvasTransform = transform.Find("Pause Canvas");
+            if (pauseCanvas == null && pauseCanvasTransform != null)
+                pauseCanvas = pauseCanvasTransform.GetComponent<Canvas>();
+
+            Transform pausePanelTransform = transform.Find("Pause Canvas/Pause Panel");
+            if (pausePanel == null && pausePanelTransform != null)
+                pausePanel = pausePanelTransform.gameObject;
+            if (pausePresentation == null && pausePanel != null)
+                pausePresentation = pausePanel.GetComponent<PauseMenuPresentation>();
+
+            Transform resume = transform.Find("Pause Canvas/Pause Panel/Menu/Resume");
+            if (resumeButton == null && resume != null)
+                resumeButton = resume.GetComponent<Button>();
+
+            Transform loadingCanvasTransform = transform.Find("Loading Canvas");
+            if (loadingCanvas == null && loadingCanvasTransform != null)
+                loadingCanvas = loadingCanvasTransform.GetComponent<Canvas>();
+
+            Transform loadingPanelTransform = transform.Find("Loading Canvas/Loading Panel");
+            if (loadingPanel == null && loadingPanelTransform != null)
+                loadingPanel = loadingPanelTransform.gameObject;
+
+            Transform loadingContent = transform.Find("Loading Canvas/Loading Panel/Content");
+            if (loadingContentGroup == null && loadingContent != null)
+                loadingContentGroup = loadingContent.GetComponent<CanvasGroup>();
+            if (loadingFadeGroup == null && loadingPanelTransform != null)
+                loadingFadeGroup = loadingPanelTransform.GetComponent<CanvasGroup>();
+
+            Transform spinner = transform.Find("Loading Canvas/Loading Panel/Content/Spinner");
+            if (loadingSpinner == null && spinner != null)
+                loadingSpinner = spinner as RectTransform;
+
+            Transform loadingFillTransform = transform.Find(
+                "Loading Canvas/Loading Panel/Content/Progress Track/Fill");
+            if (loadingFill == null && loadingFillTransform != null)
+                loadingFill = loadingFillTransform as RectTransform;
+
+            Transform loadingStatus = transform.Find(
+                "Loading Canvas/Loading Panel/Content/Status");
+            if (loadingStatusLabel == null && loadingStatus != null)
+                loadingStatusLabel = loadingStatus.GetComponent<TMP_Text>();
+
+            Transform loadingProgress = transform.Find(
+                "Loading Canvas/Loading Panel/Content/Progress");
+            if (loadingProgressLabel == null && loadingProgress != null)
+                loadingProgressLabel = loadingProgress.GetComponent<TMP_Text>();
 
             Transform hotbar = transform.Find("HUD Canvas/Hotbar");
             if (hotbarRoot == null && hotbar != null) hotbarRoot = hotbar.gameObject;
@@ -260,8 +563,8 @@ namespace Supernova.UI
             CreateCrosshairBar("Vertical", crosshair, new Vector2(2f, 18f));
 
             RectTransform panel = CreateRect("Health Panel", rootRect);
-            SetAnchoredRect(panel, Vector2.zero, Vector2.zero, Vector2.zero,
-                new Vector2(24f, 24f), new Vector2(260f, 64f));
+            SetAnchoredRect(panel, Vector2.one, Vector2.one, Vector2.one,
+                new Vector2(-24f, -24f), new Vector2(260f, 64f));
             Image panelImage = panel.gameObject.AddComponent<Image>();
             panelImage.color = new Color(0.04f, 0.055f, 0.078f, 0.82f);
             panelImage.raycastTarget = false;
@@ -303,6 +606,220 @@ namespace Supernova.UI
             healthFillImage.raycastTarget = false;
 
             BuildHotbarView(rootRect);
+        }
+
+        private void BuildLoadingView()
+        {
+            Transform existing = transform.Find("Loading Canvas");
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+
+            RectTransform loadingRoot = CreateRect("Loading Canvas", transform);
+            loadingCanvas = loadingRoot.gameObject.AddComponent<Canvas>();
+            loadingCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            loadingCanvas.sortingOrder = 1000;
+            CanvasScaler scaler = loadingRoot.gameObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+
+            RectTransform panel = CreateRect("Loading Panel", loadingRoot);
+            panel.anchorMin = Vector2.zero;
+            panel.anchorMax = Vector2.one;
+            panel.offsetMin = Vector2.zero;
+            panel.offsetMax = Vector2.zero;
+            Image background = panel.gameObject.AddComponent<Image>();
+            background.color = new Color(0.018f, 0.026f, 0.041f, 1f);
+            background.raycastTarget = true;
+            loadingPanel = panel.gameObject;
+            loadingFadeGroup = panel.gameObject.AddComponent<CanvasGroup>();
+            loadingFadeGroup.alpha = 1f;
+
+            RectTransform content = CreateRect("Content", panel);
+            content.anchorMin = Vector2.zero;
+            content.anchorMax = Vector2.one;
+            content.offsetMin = Vector2.zero;
+            content.offsetMax = Vector2.zero;
+            loadingContentGroup = content.gameObject.AddComponent<CanvasGroup>();
+            loadingContentGroup.alpha = 0f;
+
+            TMP_Text brand = CreateText(
+                "Brand", content, "SUPERNOVA", TextAlignmentOptions.Center);
+            SetAnchoredRect((RectTransform)brand.transform,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 184f), new Vector2(560f, 44f));
+            brand.fontSize = 32f;
+            brand.characterSpacing = 8f;
+            brand.color = new Color(0.42f, 0.91f, 1f, 1f);
+
+            TMP_Text title = CreateText(
+                "Title", content, "LOADING WORLD", TextAlignmentOptions.Center);
+            SetAnchoredRect((RectTransform)title.transform,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 132f), new Vector2(560f, 36f));
+            title.fontSize = 18f;
+            title.characterSpacing = 3f;
+            title.color = new Color(0.82f, 0.86f, 0.9f, 1f);
+
+            loadingSpinner = CreateRect("Spinner", content);
+            SetAnchoredRect(loadingSpinner,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 54f), new Vector2(62f, 62f));
+            Image spinnerFrame = loadingSpinner.gameObject.AddComponent<Image>();
+            spinnerFrame.color = new Color(0.22f, 0.82f, 0.94f, 1f);
+            spinnerFrame.raycastTarget = false;
+            RectTransform spinnerCore = CreateRect("Core", loadingSpinner);
+            SetAnchoredRect(spinnerCore,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(48f, 48f));
+            Image spinnerCoreImage = spinnerCore.gameObject.AddComponent<Image>();
+            spinnerCoreImage.color = background.color;
+            spinnerCoreImage.raycastTarget = false;
+
+            loadingStatusLabel = CreateText(
+                "Status", content, "PREPARING WORLD", TextAlignmentOptions.Center);
+            SetAnchoredRect((RectTransform)loadingStatusLabel.transform,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(620f, 28f));
+            loadingStatusLabel.fontSize = 15f;
+            loadingStatusLabel.characterSpacing = 2f;
+
+            RectTransform track = CreateRect("Progress Track", content);
+            SetAnchoredRect(track,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -64f), new Vector2(520f, 12f));
+            Image trackImage = track.gameObject.AddComponent<Image>();
+            trackImage.color = new Color(0.12f, 0.15f, 0.19f, 1f);
+            trackImage.raycastTarget = false;
+
+            loadingFill = CreateRect("Fill", track);
+            loadingFill.anchorMin = Vector2.zero;
+            loadingFill.anchorMax = new Vector2(0f, 1f);
+            loadingFill.pivot = new Vector2(0f, 0.5f);
+            loadingFill.offsetMin = Vector2.zero;
+            loadingFill.offsetMax = Vector2.zero;
+            Image fillImage = loadingFill.gameObject.AddComponent<Image>();
+            fillImage.color = new Color(0.22f, 0.82f, 0.94f, 1f);
+            fillImage.raycastTarget = false;
+
+            loadingProgressLabel = CreateText(
+                "Progress", content, "0%", TextAlignmentOptions.Center);
+            SetAnchoredRect((RectTransform)loadingProgressLabel.transform,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -94f), new Vector2(300f, 30f));
+            loadingProgressLabel.fontSize = 17f;
+            loadingProgressLabel.color = new Color(0.7f, 0.93f, 0.98f, 1f);
+
+            TMP_Text hint = CreateText(
+                "Hint", content, "PREPARING A SAFE LANDING...", TextAlignmentOptions.Center);
+            SetAnchoredRect((RectTransform)hint.transform,
+                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f), new Vector2(0f, 46f), new Vector2(620f, 28f));
+            hint.fontSize = 12f;
+            hint.characterSpacing = 1.5f;
+            hint.color = new Color(0.42f, 0.5f, 0.58f, 1f);
+
+            loadingRequestedVisible = false;
+            loadingPanel.SetActive(false);
+        }
+
+        [ContextMenu("Rebuild Pause Menu View")]
+        public void RebuildPauseMenuView()
+        {
+            BuildPauseView();
+        }
+
+        private void BuildPauseView()
+        {
+            Transform existing = transform.Find("Pause Canvas");
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+
+            RectTransform pauseRoot = CreateRect("Pause Canvas", transform);
+            pauseCanvas = pauseRoot.gameObject.AddComponent<Canvas>();
+            pauseCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            pauseCanvas.sortingOrder = 1100;
+            CanvasScaler scaler = pauseRoot.gameObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
+            pauseRoot.gameObject.AddComponent<GraphicRaycaster>();
+
+            RectTransform panel = CreateRect("Pause Panel", pauseRoot);
+            panel.anchorMin = Vector2.zero;
+            panel.anchorMax = Vector2.one;
+            panel.offsetMin = Vector2.zero;
+            panel.offsetMax = Vector2.zero;
+            Image backdrop = panel.gameObject.AddComponent<Image>();
+            backdrop.color = new Color(0.012f, 0.02f, 0.032f, 0.88f);
+            backdrop.raycastTarget = true;
+            pausePanel = panel.gameObject;
+
+            RectTransform menu = CreateRect("Menu", panel);
+            SetAnchoredRect(menu,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(420f, 220f));
+            Image menuImage = menu.gameObject.AddComponent<Image>();
+            menuImage.color = new Color(0.04f, 0.055f, 0.078f, 0.98f);
+            Outline menuOutline = menu.gameObject.AddComponent<Outline>();
+            menuOutline.effectColor = new Color(0.42f, 0.91f, 1f, 0.45f);
+            menuOutline.effectDistance = new Vector2(1f, -1f);
+            menuOutline.useGraphicAlpha = false;
+
+            TMP_Text title = CreateText("Title", menu, "PAUSED", TextAlignmentOptions.Center);
+            SetAnchoredRect((RectTransform)title.transform,
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -38f), new Vector2(320f, 44f));
+            title.fontSize = 25f;
+            title.characterSpacing = 5f;
+            title.color = new Color(0.42f, 0.91f, 1f, 1f);
+
+            RectTransform resume = CreateRect("Resume", menu);
+            SetAnchoredRect(resume,
+                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f), new Vector2(0f, 34f), new Vector2(260f, 64f));
+            Image resumeImage = resume.gameObject.AddComponent<Image>();
+            resumeImage.color = new Color(0.12f, 0.5f, 0.6f, 1f);
+            resumeButton = resume.gameObject.AddComponent<Button>();
+            resumeButton.targetGraphic = resumeImage;
+            ColorBlock colors = resumeButton.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1.16f, 1.16f, 1.16f, 1f);
+            colors.pressedColor = new Color(0.78f, 0.86f, 0.9f, 1f);
+            colors.selectedColor = colors.highlightedColor;
+            resumeButton.colors = colors;
+            Navigation navigation = resumeButton.navigation;
+            navigation.mode = Navigation.Mode.None;
+            resumeButton.navigation = navigation;
+            resumeButton.onClick.AddListener(ResumeGame);
+
+            TMP_Text resumeLabel = CreateText(
+                "Label", resume, "RESUME", TextAlignmentOptions.Center);
+            SetAnchoredRect((RectTransform)resumeLabel.transform,
+                Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+                Vector2.zero, Vector2.zero);
+            resumeLabel.fontSize = 18f;
+            resumeLabel.characterSpacing = 2f;
+
+            EnsureEventSystem();
+            pausePanel.SetActive(pauseMenuOpen);
+        }
+
+        private void EnsureEventSystem()
+        {
+            if (EventSystem.current != null) return;
+            GameObject eventSystemObject = new GameObject("EventSystem");
+            eventSystemObject.transform.SetParent(transform, false);
+            eventSystemObject.AddComponent<EventSystem>();
+            eventSystemObject.AddComponent<StandaloneInputModule>();
         }
 
         private void BuildHotbarView(RectTransform rootRect)
@@ -393,6 +910,12 @@ namespace Supernova.UI
             rect.pivot = pivot;
             rect.anchoredPosition = anchoredPosition;
             rect.sizeDelta = sizeDelta;
+        }
+
+        private static void SetCursorState(CursorLockMode lockMode, bool visible)
+        {
+            Cursor.lockState = lockMode;
+            Cursor.visible = visible;
         }
 
         private static IDamageable FindPlayerHealthSource()
@@ -545,4 +1068,3 @@ namespace Supernova.UI
         }
     }
 }
-

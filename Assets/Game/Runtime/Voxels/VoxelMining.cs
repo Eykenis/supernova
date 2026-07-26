@@ -41,40 +41,62 @@ namespace Supernova.Voxels
             int durability,
             out VoxelMiningResult result)
         {
+            return TryApplyDamage(
+                coordinate,
+                sample,
+                durability,
+                1f,
+                true,
+                out result);
+        }
+
+        public bool TryApplyDamage(
+            Vector3Int coordinate,
+            VoxelSample sample,
+            int durability,
+            float damage,
+            bool inheritNeighbourProgress,
+            out VoxelMiningResult result)
+        {
             result = default;
-            if (!sample.IsSolid()) return false;
+            if (!sample.IsSolid() || damage <= 0f) return false;
 
             int requiredHits = Mathf.Max(1, durability);
-            int accumulatedHits = 1;
+            float accumulatedDamage = damage;
             if (damageByVoxel.TryGetValue(coordinate, out DamageState state)
                 && state.Type == sample.Type)
             {
-                accumulatedHits = state.AccumulatedHits + 1;
+                accumulatedDamage = state.AccumulatedDamage + damage;
             }
-            else if (TryInheritNeighbourProgress(coordinate, sample.Type, out int inheritedHits))
+            else if (inheritNeighbourProgress
+                && TryInheritNeighbourProgress(
+                    coordinate,
+                    sample.Type,
+                    out float inheritedDamage))
             {
                 // The crosshair jittered onto an adjacent same-type block between
                 // clicks. Carry over the accumulated progress so mining doesn't
                 // silently reset and stall.
-                accumulatedHits = inheritedHits + 1;
+                accumulatedDamage = inheritedDamage + damage;
             }
 
-            bool destroyed = accumulatedHits >= requiredHits;
-            accumulatedHits = Mathf.Min(accumulatedHits, requiredHits);
+            bool destroyed = accumulatedDamage >= requiredHits;
+            accumulatedDamage = Mathf.Min(accumulatedDamage, requiredHits);
             if (destroyed)
             {
                 damageByVoxel.Remove(coordinate);
             }
             else
             {
-                damageByVoxel[coordinate] = new DamageState(sample.Type, accumulatedHits);
+                damageByVoxel[coordinate] =
+                    new DamageState(sample.Type, accumulatedDamage);
             }
 
             result = new VoxelMiningResult(
                 coordinate,
                 sample.Type,
                 requiredHits,
-                accumulatedHits,
+                Mathf.CeilToInt(accumulatedDamage),
                 destroyed);
             return true;
         }
@@ -85,9 +107,9 @@ namespace Supernova.Voxels
         private bool TryInheritNeighbourProgress(
             Vector3Int coordinate,
             VoxelTypeId type,
-            out int inheritedHits)
+            out float inheritedDamage)
         {
-            inheritedHits = 0;
+            inheritedDamage = 0f;
             if (damageByVoxel.Count == 0) return false;
 
             for (int axis = 0; axis < 3; axis++)
@@ -99,7 +121,7 @@ namespace Supernova.Voxels
                     if (damageByVoxel.TryGetValue(neighbour, out DamageState state)
                         && state.Type == type)
                     {
-                        inheritedHits = state.AccumulatedHits;
+                        inheritedDamage = state.AccumulatedDamage;
                         damageByVoxel.Remove(neighbour);
                         return true;
                     }
@@ -121,14 +143,14 @@ namespace Supernova.Voxels
 
         private readonly struct DamageState
         {
-            public DamageState(VoxelTypeId type, int accumulatedHits)
+            public DamageState(VoxelTypeId type, float accumulatedDamage)
             {
                 Type = type;
-                AccumulatedHits = accumulatedHits;
+                AccumulatedDamage = accumulatedDamage;
             }
 
             public VoxelTypeId Type { get; }
-            public int AccumulatedHits { get; }
+            public float AccumulatedDamage { get; }
         }
     }
 
@@ -137,8 +159,14 @@ namespace Supernova.Voxels
         Transform TerrainTransform { get; }
         InfiniteVoxelWorld World { get; }
         float VoxelSize { get; }
+        float IsoLevel { get; }
         Vector3Int WorldPositionToVoxel(Vector3 worldPosition);
         bool TryMineVoxel(Vector3Int coordinate, out VoxelMiningResult result);
+        bool TryMineBrush(
+            Vector3Int primaryCoordinate,
+            Vector3 worldDirection,
+            VoxelMiningBrushSettings settings,
+            out VoxelMiningBrushResult result);
         bool TrySetVoxelAndRebuild(
             int worldX,
             int worldY,

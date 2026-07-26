@@ -1,3 +1,4 @@
+using Supernova.UI;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Serialization;
@@ -27,6 +28,7 @@ namespace Supernova.Gameplay
         [Header("Input")]
         [SerializeField, Min(0.01f)] private float mouseSensitivity = 2f;
         [SerializeField] private bool lockCursorOnEnable = true;
+        [SerializeField] private bool clickToRecaptureCursor = true;
         [FormerlySerializedAs("switchKey")]
         [SerializeField] private KeyCode switchViewKey = KeyCode.F5;
         [FormerlySerializedAs("initialMode")]
@@ -78,11 +80,14 @@ namespace Supernova.Gameplay
         private Transform animatedNeck;
         private float smoothedUpperBodyPitch;
         private float smoothedUpperBodyYaw;
+        private bool cursorLockRequested;
+        private bool hasApplicationFocus = true;
 
         public PlayerViewMode CurrentMode => currentMode;
         public Camera ControlledCamera => controlledCamera;
         public float MouseSensitivity => Mathf.Max(0.01f, mouseSensitivity);
         public bool LockCursorOnEnable => lockCursorOnEnable;
+        public bool CursorLockRequested => cursorLockRequested;
         public float ThirdPersonTurnSmoothTime => Mathf.Max(0.01f, thirdPersonTurnSmoothTime);
 
         private void Awake()
@@ -93,15 +98,39 @@ namespace Supernova.Gameplay
 
         private void OnEnable()
         {
-            if (Application.isPlaying && lockCursorOnEnable) SetCursorLocked(true);
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
+            hasApplicationFocus = true;
+            cursorLockRequested = lockCursorOnEnable;
+            if (cursorLockRequested) SetCursorLocked(true);
         }
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (GameHudController.IsPauseMenuOpen)
             {
-                SetCursorLocked(Cursor.lockState != CursorLockMode.Locked);
+                if (Cursor.lockState == CursorLockMode.Locked) SetCursorLocked(false);
+                return;
             }
+
+            if (Cursor.lockState != CursorLockMode.Locked
+                && clickToRecaptureCursor
+                && Input.GetMouseButtonDown(0))
+            {
+                cursorLockRequested = true;
+                SetCursorLocked(true);
+            }
+
+            if (hasApplicationFocus
+                && cursorLockRequested
+                && Cursor.lockState != CursorLockMode.Locked)
+            {
+                SetCursorLocked(true);
+            }
+
             if (Input.GetKeyDown(switchViewKey))
             {
                 CycleMode();
@@ -405,9 +434,31 @@ namespace Supernova.Gameplay
             animatedNeck = characterAnimator.GetBoneTransform(HumanBodyBones.Neck);
         }
 
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
+            hasApplicationFocus = hasFocus;
+            if (!hasFocus)
+            {
+                if (Cursor.lockState == CursorLockMode.Locked)
+                    cursorLockRequested = true;
+                SetCursorLocked(false);
+            }
+            else if (cursorLockRequested && !GameHudController.IsPauseMenuOpen)
+            {
+                SetCursorLocked(true);
+            }
+        }
+
         private void OnDisable()
         {
             SetFirstPersonRendererState(false);
+            cursorLockRequested = false;
+            hasApplicationFocus = false;
             if (Application.isPlaying) SetCursorLocked(false);
         }
 
