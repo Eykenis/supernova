@@ -27,6 +27,38 @@ namespace Supernova.MinecraftCaves
                 type);
         }
 
+        public static void FillColumn(
+            VoxelColumnChunkData column,
+            MinecraftCaveDensityField densityField,
+            MinecraftCaveType type = MinecraftCaveType.Combined)
+        {
+            if (column == null)
+            {
+                throw new ArgumentNullException(nameof(column));
+            }
+            if (densityField == null)
+            {
+                throw new ArgumentNullException(nameof(densityField));
+            }
+
+            for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
+            {
+                for (int y = 0; y < VoxelColumnChunkData.Height; y++)
+                {
+                    for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                    {
+                        Vector3 worldPosition = new Vector3(
+                            column.OriginX + x,
+                            y,
+                            column.OriginZ + z);
+                        column[x, y, z] = densityField.SampleFeatureDensity(
+                            worldPosition,
+                            type);
+                    }
+                }
+            }
+        }
+
         public static void FillWorldVolume(
             VoxelVolume volume,
             Vector3Int worldOrigin,

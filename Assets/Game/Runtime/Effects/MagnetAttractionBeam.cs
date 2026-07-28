@@ -1,4 +1,5 @@
 using Supernova.Gameplay;
+using Supernova.Voxels;
 using UnityEngine;
 
 namespace Supernova.Effects
@@ -13,6 +14,10 @@ namespace Supernova.Effects
         [Header("Source")]
         [SerializeField] private FirstPersonCartAttractor attractor;
         [SerializeField] private Camera viewCamera;
+        [SerializeField] private Animator characterAnimator;
+
+        private Transform leftHand;
+        private Transform rightHand;
 
         [Header("Shape")]
         [SerializeField, Range(4, 64)] private int segments = 24;
@@ -25,6 +30,8 @@ namespace Supernova.Effects
         [Header("Flow")]
         [SerializeField, Min(0f)] private float flowSpeed = 2.5f;
         [SerializeField, Min(0.01f)] private float flowBandLength = 0.35f;
+        [Tooltip("Normalized beam length used to fade smoothly from transparent at the hand.")]
+        [SerializeField, Range(0.01f, 0.5f)] private float startFadeLength = 0.2f;
         [SerializeField] private Color baseColor = new Color(0.25f, 0.85f, 1f, 0.35f);
         [SerializeField] private Color flowColor = new Color(0.85f, 0.98f, 1f, 0.9f);
 
@@ -57,7 +64,7 @@ namespace Supernova.Effects
             ResolveReferences();
             EnsureLine();
 
-            if (attractor == null || !attractor.IsHolding || attractor.HeldBody == null || viewCamera == null)
+            if (attractor == null || !attractor.IsHolding || attractor.HeldBody == null)
             {
                 line.enabled = false;
                 return;
@@ -66,26 +73,34 @@ namespace Supernova.Effects
             line.enabled = true;
             flowPhase += Time.deltaTime * flowSpeed;
 
-            Vector3 start = viewCamera.transform.position + viewCamera.transform.forward * 0.15f;
+            Vector3 start = ResolveBeamStart();
             Vector3 end = attractor.HeldBody.worldCenterOfMass;
             Vector3 chord = end - start;
             Vector3 up = Vector3.up;
             Vector3 side = Vector3.Cross(chord.normalized, up);
-            if (side.sqrMagnitude < 0.0001f) side = viewCamera.transform.right;
+            if (side.sqrMagnitude < 0.0001f)
+            {
+                side = viewCamera != null ? viewCamera.transform.right : transform.right;
+            }
             side.Normalize();
 
             for (int i = 0; i <= segments; i++)
             {
                 float t = (float)i / segments;
                 Vector3 point = Vector3.Lerp(start, end, t);
-                float sagAmount = Mathf.Sin(t * Mathf.PI) * sag;
+                float arcAmount = CalculateArcHeight(t);
                 float wave = Mathf.Sin(t * waveFrequency * Mathf.PI * 2f - flowPhase) * waveAmplitude
                     * Mathf.Sin(t * Mathf.PI);
-                point += up * -sagAmount + side * wave;
+                point += up * arcAmount + side * wave;
                 line.SetPosition(i, point);
             }
 
             UpdateFlowColor();
+        }
+
+        private float CalculateArcHeight(float t)
+        {
+            return Mathf.Sin(t * Mathf.PI) * sag;
         }
 
         private void UpdateFlowColor()
@@ -105,8 +120,12 @@ namespace Supernova.Effects
                 wrappedDistance = Mathf.Min(wrappedDistance, 1f - wrappedDistance);
                 float intensity = 1f - Mathf.Clamp01(wrappedDistance / flowBandLength);
                 Color color = Color.Lerp(baseColor, flowColor, intensity);
+                float startFade = Mathf.SmoothStep(
+                    0f,
+                    1f,
+                    Mathf.InverseLerp(0f, startFadeLength, t));
                 colorKeys[i] = new GradientColorKey(color, t);
-                alphaKeys[i] = new GradientAlphaKey(color.a, t);
+                alphaKeys[i] = new GradientAlphaKey(color.a * startFade, t);
             }
 
             gradient.SetKeys(colorKeys, alphaKeys);
@@ -118,6 +137,49 @@ namespace Supernova.Effects
             if (attractor == null) attractor = GetComponent<FirstPersonCartAttractor>();
             if (viewCamera == null && attractor != null) viewCamera = ResolveCameraFromAttractor();
             if (viewCamera == null) viewCamera = GetComponentInChildren<Camera>(true);
+            ResolveHandBones();
+        }
+
+        private void ResolveHandBones()
+        {
+            VoxelPlayerController player = GetComponent<VoxelPlayerController>();
+            Animator resolvedAnimator = player != null ? player.CharacterAnimator : null;
+            if (resolvedAnimator == null)
+            {
+                resolvedAnimator = GetComponentInChildren<Animator>(true);
+            }
+
+            if (resolvedAnimator != null && resolvedAnimator != characterAnimator)
+            {
+                characterAnimator = resolvedAnimator;
+                leftHand = null;
+                rightHand = null;
+            }
+
+            if (characterAnimator == null || !characterAnimator.isHuman) return;
+            if (leftHand == null)
+            {
+                leftHand = characterAnimator.GetBoneTransform(HumanBodyBones.LeftHand);
+            }
+            if (rightHand == null)
+            {
+                rightHand = characterAnimator.GetBoneTransform(HumanBodyBones.RightHand);
+            }
+        }
+
+        private Vector3 ResolveBeamStart()
+        {
+            if (leftHand != null && rightHand != null)
+            {
+                return (leftHand.position + rightHand.position) * 0.5f;
+            }
+
+            if (viewCamera != null)
+            {
+                return viewCamera.transform.position + viewCamera.transform.forward * 0.15f;
+            }
+
+            return transform.position;
         }
 
         private Camera ResolveCameraFromAttractor()
@@ -153,7 +215,15 @@ namespace Supernova.Effects
 
         private void OnDestroy()
         {
-            if (material != null) Destroy(material);
+            if (material == null) return;
+            if (Application.isPlaying)
+            {
+                Destroy(material);
+            }
+            else
+            {
+                DestroyImmediate(material);
+            }
         }
     }
 }

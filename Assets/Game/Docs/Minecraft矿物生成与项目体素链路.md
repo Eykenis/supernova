@@ -165,7 +165,7 @@ MinecraftCaveNoise
         ↓
 MinecraftCaveDensityField.SampleFeatureDensity(Combined)
         ↓
-后台任务生成 float[32³] + VoxelTypeId[32³]
+后台任务生成 float[32×256×32] + VoxelTypeId[32×256×32]
         ↓
 实心样本先赋 Base rock type
         ↓
@@ -173,7 +173,7 @@ MinecraftOreFeatureGenerator 放置普通矿团
         ↓
 主线程 CommitChunk
         ↓
-InfiniteVoxelWorld / VoxelChunkData / VoxelVolume
+InfiniteVoxelWorld / VoxelColumnChunkData
         ↓
 MarchingCubesMesher.BuildChunk
         ↓
@@ -184,13 +184,13 @@ VoxelTypeCatalog 解析材质与挖掘耐久度
 
 关键事实：
 
-- 区块固定保存 `32 × 32 × 32` 个样本；
+- 正式世界每根二维索引柱区块固定保存 `32 × 256 × 32` 个样本；
 - 每个样本同时有 `float density` 和 `VoxelTypeId type`；
 - 后台 `ChunkGenerationResult` 同时携带 `Densities` 和 `Types`；
 - `CommitChunk` 使用 `SetSample` 同时提交密度和类型，不再把所有实心样本归一化
   成 `VoxelTypeId.Default`；
-- 当前场景的自然基岩为 `Stone`（ID 2），矿团结果为 `Ore`（ID 3），空气仍为
-  `VoxelTypeId.Air`；
+- 当前场景的普通岩石为 `Stone`（ID 2），矿团结果为 `Ore`（ID 3），顶部和底部
+  边界为不可被矿团替换的 `Bedrock`（ID 4，耐久 9999），空气仍为 `VoxelTypeId.Air`；
 - 固定结构、玩家放置和测试代码可以显式写入非默认类型；
 - `MarchingCubesMesher` 已支持按类型分别 polygonise 并生成独立 submesh；
 - `VoxelTypeUtility.ResolveMaterials` 已支持按类型分配材质；
@@ -277,7 +277,7 @@ worldSeed + feature seedSalt + 16×16 region X/Z + attempt index
 
 没有使用 `UnityEngine.Random`，也没有共享可变的随机数状态。
 
-一个 32³ 项目 Chunk 会重放所有可能影响本区的周边 16×16 宿主区域候选，但只写
+一根 `32×256×32` 项目柱区块会重放所有可能影响本区的周边 16×16 宿主区域候选，但只写
 自己的 `VoxelTypeId[]`。相邻 Chunk 因而能独立得到同一条越界矿团：
 
 - 后台任务不互相写邻居；
@@ -302,6 +302,28 @@ EditMode 测试覆盖：
 
 大型 `OreVeinifier` 矿脉仍不在本次范围内；如果以后实现，应作为独立 feature，
 不应通过无限增大普通矿团 `size` 模拟。
+
+## 10. 采掘后的矿石刚体
+
+配置在 `MinecraftCaveInfiniteWorld.oreFeatures` 中的每一种结果类型都被视为矿石。
+当其中任意一个体素耐久耗尽时，系统按 26 邻域搜索同类型的完整连通矿脉，包括
+跨 Chunk 的相邻样本，并一次性采集整片矿脉。
+
+刚体网格不是用 Cube 或其他占位形状重建。采集前会针对该连通分量再次运行与
+Chunk 完全相同的 Marching Cubes 拓扑、密度插值和类型边界 inset，然后把得到的
+顶点平移到矿脉中心作为单个 `MinedOreDrop`：
+
+- 原矿脉的三角形形状和对应材质保持不变；
+- 名称、`VoxelTypeId` 和包含的体素数量被保留；
+- 小型矿脉使用凸 MeshCollider；超过凸网格三角形限制时使用复合 BoxCollider，
+  但渲染网格始终是原始矿脉网格；
+- 每个 `VoxelOreFeatureDefinition` 可配置 `Mass Density`。生成刚体的质量严格为
+  `Mass Density × 连通矿脉体素数量`，默认矿石配置为每体素 `10kg`；
+- 整片矿脉的样本随后统一变为空气，所有受影响 Chunk 立即重建；
+- 磁铁可直接通过刚体取得它，无需 `PhysicsAttractable` 标记。
+
+Stone 等仅作为 replaceable/base solid、但不是 ore feature 结果的类型仍按原方式
+单点移除，不会连片采集或生成掉落刚体。
 
 1. 后台结果同时携带 densities 和 types，避免主线程再做整块扫描。
 2. 随机性只依赖 `worldSeed + oreId + 绝对候选坐标`，不使用

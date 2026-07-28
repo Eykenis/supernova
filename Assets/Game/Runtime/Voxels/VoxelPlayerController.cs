@@ -23,6 +23,7 @@ namespace Supernova.Voxels
     [DisallowMultipleComponent]
     [RequireComponent(typeof(CharacterController))]
     [RequireComponent(typeof(PlayerProfile))]
+    [RequireComponent(typeof(PlayerEquipmentController))]
     public sealed class VoxelPlayerController : MonoBehaviour, IDamageable
     {
         private static readonly int WalkFlag = Animator.StringToHash("walkFlag");
@@ -41,7 +42,13 @@ namespace Supernova.Voxels
             Animator.StringToHash("ToolActionContinuous");
         private static readonly int ToolPrimaryActionState =
             Animator.StringToHash("Base Layer.Tool Primary Action");
+        private static readonly int EquipmentLocomotionState =
+            Animator.StringToHash("Base Layer.Equipment Locomotion");
+        private static readonly int IdleState =
+            Animator.StringToHash("Base Layer.Idle");
         private const string PrimaryActionPlaceholderClipName = "ToolPrimaryActionPlaceholder";
+        private const string EquipmentLocomotionPlaceholderClipName =
+            "EquipmentLocomotionPlaceholder";
 
         [SerializeField] private Transform view;
         [SerializeField] private Animator animator;
@@ -56,6 +63,7 @@ namespace Supernova.Voxels
 
         private FirstPersonCartAttractor cartAttractor;
         private PlayerToolController toolController;
+        private PlayerEquipmentController equipmentController;
         private VoxelPlayerInteractor voxelInteractor;
         private PlayerProfile profile;
         private CharacterVitals vitals = new CharacterVitals();
@@ -68,6 +76,7 @@ namespace Supernova.Voxels
         private float idleSeconds;
         private float stateSeconds;
         private float nextAttackTime;
+        private float nextProjectileThrowTime;
         private bool attackApplied;
         private bool debugFlyMode;
         private bool hasWalkFlag;
@@ -86,8 +95,13 @@ namespace Supernova.Voxels
         private RuntimeAnimatorController baseAnimatorController;
         private AnimatorOverrideController toolAnimatorController;
         private AnimationClip primaryActionPlaceholderClip;
+        private AnimationClip equipmentLocomotionPlaceholderClip;
+        private AnimationClip activeEquipmentLocomotionAnimation;
+        private bool equipmentLocomotionAnimationActive;
+        private bool equipmentLocomotionExitRequested;
         private PlayerToolDefinition activeToolDefinition;
         private bool periodicToolAnimationObserved;
+        private int pickaxeStrikeParity;
         private int lowerBodyLayerIndex = -1;
         private float lowerBodyLayerTargetWeight;
         private float lowerBodyLayerWeight;
@@ -133,6 +147,8 @@ namespace Supernova.Voxels
         private void OnDisable()
         {
             debugFlyMode = false;
+            equipmentController?.CancelActiveLocomotionOverride();
+            StopEquipmentLocomotionAnimation(false);
             idleSeconds = 0f;
             stateMachine?.Stop();
             motor?.ResetVerticalVelocity();
@@ -152,10 +168,15 @@ namespace Supernova.Voxels
 
             if (Input.GetKeyDown(Profile.DebugToggleKey)) SetDebugFlyMode(!debugFlyMode);
             input = CaptureInput();
+            equipmentController?.TickEquippedInteraction();
             if (debugFlyMode)
             {
                 UpdateDebugFlyMovement(input.Move);
                 SetAnimationState(false, false, true);
+            }
+            else if (TryUpdateEquipmentLocomotion())
+            {
+                motor.ResetVerticalVelocity();
             }
             else
             {
@@ -203,13 +224,15 @@ namespace Supernova.Voxels
             if (movement.sqrMagnitude > 1f) movement.Normalize();
             bool acceptsAction = Cursor.lockState == CursorLockMode.Locked;
             bool primaryHeld = acceptsAction && Input.GetMouseButton(0);
+            bool towingCart = cartAttractor != null && cartAttractor.IsTowingCart;
             return new PlayerInputSnapshot(
                 movement,
                 acceptsAction && Input.GetButtonDown("Jump"),
-                primaryHeld
+                primaryHeld && !towingCart
                     && toolController != null
                     && toolController.CanUseSelectedPrimaryAction(),
-                Input.GetKey(Profile.CrouchKey));
+                Input.GetKey(Profile.CrouchKey),
+                acceptsAction ? Input.mouseScrollDelta.y : 0f);
         }
 
 
@@ -382,9 +405,48 @@ namespace Supernova.Voxels
             transform.position += movement * Profile.DebugFlySpeed * multiplier * Time.deltaTime;
         }
 
+        private bool TryUpdateEquipmentLocomotion()
+        {
+            if (equipmentController == null
+                || !equipmentController.IsLocomotionOverrideActive)
+            {
+                StopEquipmentLocomotionAnimation(true);
+                return false;
+            }
+
+            if (stateMachine.Current == PlayerCharacterState.ToolAction)
+                stateMachine.Change(PlayerCharacterState.Idle);
+
+            Vector3 worldMovement = GetWorldMovement(input.Move);
+            UpdateThirdPersonFacing(worldMovement, Time.deltaTime);
+            bool handled = equipmentController.TryHandleLocomotion(
+                characterController,
+                worldMovement,
+                Profile.MoveSpeed,
+                Time.deltaTime);
+            if (!handled)
+                return false;
+
+            StartEquipmentLocomotionAnimation(
+                equipmentController.ActiveLocomotionAnimation);
+            bool moving = input.Move.sqrMagnitude
+                >= Profile.MovingThreshold * Profile.MovingThreshold;
+            PlayerCharacterState locomotionState = moving
+                ? PlayerCharacterState.Move
+                : PlayerCharacterState.Idle;
+            if (stateMachine.Current != locomotionState)
+                stateMachine.Change(locomotionState);
+            return true;
+        }
+
         private void UpdateExpressionAnimation()
         {
-            if (animator == null || animator.runtimeAnimatorController == null) return;
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || !animator.isInitialized)
+            {
+                return;
+            }
             if (hasSmileFlag) animator.SetBool(SmileFlag, Input.GetKey(Profile.SmileKey));
             if (hasHitFlag && Input.GetKeyDown(Profile.HitKey))
                 animator.SetTrigger(HitFlag);
@@ -416,7 +478,12 @@ namespace Supernova.Voxels
             bool crouching = false,
             bool crouchMoving = false)
         {
-            if (animator == null || animator.runtimeAnimatorController == null) return;
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || !animator.isInitialized)
+            {
+                return;
+            }
             if (hasWalkFlag) animator.SetBool(WalkFlag, walking);
             if (hasJumpFlag) animator.SetBool(JumpFlag, jumping);
             if (hasIdleFlag) animator.SetBool(IdleFlag, idle);
@@ -451,6 +518,8 @@ namespace Supernova.Voxels
                 stateMachine.Change(PlayerCharacterState.Idle);
             }
             debugFlyMode = enabled;
+            if (enabled)
+                equipmentController?.CancelActiveLocomotionOverride();
             idleSeconds = 0f;
             motor?.ResetVerticalVelocity();
             if (characterController != null) characterController.enabled = !enabled;
@@ -486,6 +555,12 @@ namespace Supernova.Voxels
             if (toolController == null)
             {
                 toolController = GetComponent<PlayerToolController>();
+            }
+            if (equipmentController == null)
+            {
+                equipmentController = GetComponent<PlayerEquipmentController>();
+                if (equipmentController == null)
+                    equipmentController = gameObject.AddComponent<PlayerEquipmentController>();
             }
             if (voxelInteractor == null)
             {
@@ -644,6 +719,9 @@ namespace Supernova.Voxels
                     return IsPeriodicToolActionCycleComplete();
                 case PlayerToolPrimaryAction.AttractCart:
                     return cartAttractor != null && cartAttractor.CanOperate;
+                case PlayerToolPrimaryAction.ThrowPersistentLight:
+                    return definition.ProjectilePrefab != null
+                        && Time.time >= nextProjectileThrowTime;
                 default:
                     return false;
             }
@@ -662,27 +740,131 @@ namespace Supernova.Voxels
                 definition.PrimaryActionAnimation;
         }
 
+        private void StartEquipmentLocomotionAnimation(AnimationClip animation)
+        {
+            if (animation == null
+                || !EnsureToolAnimatorController()
+                || equipmentLocomotionPlaceholderClip == null)
+            {
+                return;
+            }
+
+            bool animationChanged = activeEquipmentLocomotionAnimation != animation;
+            if (animationChanged)
+            {
+                toolAnimatorController[EquipmentLocomotionPlaceholderClipName] = animation;
+                activeEquipmentLocomotionAnimation = animation;
+            }
+
+            equipmentLocomotionAnimationActive = true;
+            bool isTransitioningAway =
+                IsTransitioningAwayFromEquipmentLocomotion();
+            equipmentLocomotionExitRequested = false;
+            if (IsEquipmentLocomotionStateActive() && !isTransitioningAway)
+            {
+                if (animationChanged)
+                {
+                    animator.CrossFadeInFixedTime(
+                        EquipmentLocomotionState,
+                        0.08f,
+                        0,
+                        0f);
+                }
+                return;
+            }
+
+            SetAnimationState(false, false, false);
+            animator.CrossFadeInFixedTime(
+                EquipmentLocomotionState,
+                0.12f,
+                0,
+                0f);
+        }
+
+        private void StopEquipmentLocomotionAnimation(bool crossFadeToIdle)
+        {
+            if (equipmentLocomotionExitRequested)
+            {
+                if (!IsEquipmentLocomotionStateActive())
+                    equipmentLocomotionExitRequested = false;
+                return;
+            }
+
+            if (!equipmentLocomotionAnimationActive
+                && !IsEquipmentLocomotionStateActive())
+                return;
+
+            equipmentLocomotionAnimationActive = false;
+            activeEquipmentLocomotionAnimation = null;
+            if (crossFadeToIdle
+                && animator != null
+                && animator.runtimeAnimatorController != null
+                && animator.isInitialized)
+            {
+                SetAnimationState(false, false, true);
+                animator.CrossFadeInFixedTime(IdleState, 0.12f, 0, 0f);
+                equipmentLocomotionExitRequested = true;
+            }
+        }
+
+        private bool IsTransitioningAwayFromEquipmentLocomotion()
+        {
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || !animator.isInitialized
+                || !animator.IsInTransition(0))
+            {
+                return false;
+            }
+
+            return animator.GetCurrentAnimatorStateInfo(0).fullPathHash
+                    == EquipmentLocomotionState
+                && animator.GetNextAnimatorStateInfo(0).fullPathHash
+                    != EquipmentLocomotionState;
+        }
+
+        private bool IsEquipmentLocomotionStateActive()
+        {
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || !animator.isInitialized)
+                return false;
+
+            AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
+            if (current.fullPathHash == EquipmentLocomotionState)
+                return true;
+            return animator.IsInTransition(0)
+                && animator.GetNextAnimatorStateInfo(0).fullPathHash
+                    == EquipmentLocomotionState;
+        }
+
         private bool EnsureToolAnimatorController()
         {
             if (animator == null || animator.runtimeAnimatorController == null) return false;
-            if (toolAnimatorController != null && primaryActionPlaceholderClip != null) return true;
+            if (toolAnimatorController != null
+                && primaryActionPlaceholderClip != null
+                && equipmentLocomotionPlaceholderClip != null)
+            {
+                return true;
+            }
 
             baseAnimatorController = animator.runtimeAnimatorController;
             AnimationClip[] clips = baseAnimatorController.animationClips;
             for (int i = 0; i < clips.Length; i++)
             {
-                if (clips[i] != null && clips[i].name == PrimaryActionPlaceholderClipName)
-                {
+                if (clips[i] == null) continue;
+                if (clips[i].name == PrimaryActionPlaceholderClipName)
                     primaryActionPlaceholderClip = clips[i];
-                    break;
-                }
+                else if (clips[i].name == EquipmentLocomotionPlaceholderClipName)
+                    equipmentLocomotionPlaceholderClip = clips[i];
             }
 
-            if (primaryActionPlaceholderClip == null)
+            if (primaryActionPlaceholderClip == null
+                || equipmentLocomotionPlaceholderClip == null)
             {
                 Debug.LogError(
                     $"Animator '{baseAnimatorController.name}' has no "
-                    + $"'{PrimaryActionPlaceholderClipName}' clip for tool actions.",
+                    + "required runtime animation placeholder clips.",
                     this);
                 return false;
             }
@@ -708,6 +890,10 @@ namespace Supernova.Voxels
             baseAnimatorController = null;
             toolAnimatorController = null;
             primaryActionPlaceholderClip = null;
+            equipmentLocomotionPlaceholderClip = null;
+            activeEquipmentLocomotionAnimation = null;
+            equipmentLocomotionAnimationActive = false;
+            equipmentLocomotionExitRequested = false;
         }
 
         private bool HasAnimatorParameter(int nameHash, AnimatorControllerParameterType type)
@@ -812,6 +998,9 @@ namespace Supernova.Voxels
                 case PlayerToolPrimaryAction.AttractCart:
                     cartAttractor?.BeginAttraction();
                     break;
+                case PlayerToolPrimaryAction.ThrowPersistentLight:
+                    ThrowConfiguredProjectile(activeToolDefinition);
+                    break;
             }
         }
 
@@ -833,11 +1022,20 @@ namespace Supernova.Voxels
         {
             periodicToolAnimationObserved = false;
             TriggerPeriodicToolActionAnimation();
-            voxelInteractor?.TryScheduleMineAtCrosshair(
-                Profile.VoxelDestructionDelay,
-                activeToolDefinition != null
-                    ? activeToolDefinition.MiningBrush
-                    : VoxelMiningBrushSettings.SingleVoxel);
+            bool isPickaxe = activeToolDefinition != null
+                && activeToolDefinition.Item == PlayerInventoryItem.Pickaxe;
+            int strikeNumber = isPickaxe ? pickaxeStrikeParity + 1 : 1;
+            VoxelMiningBrushSettings brush = activeToolDefinition != null
+                ? activeToolDefinition.GetMiningBrushForStrike(strikeNumber)
+                : VoxelMiningBrushSettings.SingleVoxel;
+            bool scheduled = voxelInteractor != null
+                && voxelInteractor.TryScheduleMineAtCrosshair(
+                    Profile.VoxelDestructionDelay,
+                    brush);
+            if (scheduled && isPickaxe)
+            {
+                pickaxeStrikeParity ^= 1;
+            }
 
             AnimationClip clip = activeToolDefinition != null
                 ? activeToolDefinition.PrimaryActionAnimation
@@ -876,6 +1074,8 @@ namespace Supernova.Voxels
                     return;
                 case PlayerToolPrimaryAction.AttractCart:
                     TickAttractorToolAction();
+                    return;
+                case PlayerToolPrimaryAction.ThrowPersistentLight:
                     return;
                 default:
                     SelectGroundOrAirState();
@@ -928,7 +1128,55 @@ namespace Supernova.Voxels
                 return;
             }
 
-            cartAttractor.TickAttraction();
+            cartAttractor.TickAttraction(input.AttractionDistanceSteps);
+        }
+
+        private PersistentLightProjectile ThrowConfiguredProjectile(
+            PlayerToolDefinition definition)
+        {
+            if (definition == null || definition.ProjectilePrefab == null)
+                return null;
+
+            Transform origin = view != null ? view : transform;
+            Vector3 forward = origin.forward.sqrMagnitude > 0.0001f
+                ? origin.forward.normalized
+                : transform.forward;
+            Vector3 position = origin.position
+                + forward * definition.ThrowForwardOffset;
+            PersistentLightProjectile projectile = Instantiate(
+                definition.ProjectilePrefab,
+                position,
+                Quaternion.LookRotation(forward, Vector3.up));
+            projectile.name = definition.ProjectilePrefab.name;
+            projectile.Launch(
+                forward * definition.ThrowSpeed
+                    + Vector3.up * definition.UpwardThrowSpeed,
+                Random.onUnitSphere * definition.ThrowSpinSpeed);
+            IgnoreOwnerCollisions(projectile);
+            nextProjectileThrowTime = Time.time + definition.ThrowCooldown;
+            return projectile;
+        }
+
+        private void IgnoreOwnerCollisions(PersistentLightProjectile projectile)
+        {
+            if (projectile == null) return;
+            Collider[] ownerColliders = GetComponentsInChildren<Collider>(true);
+            Collider[] projectileColliders =
+                projectile.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < ownerColliders.Length; i++)
+            {
+                if (ownerColliders[i] == null) continue;
+                for (int j = 0; j < projectileColliders.Length; j++)
+                {
+                    if (projectileColliders[j] != null)
+                    {
+                        Physics.IgnoreCollision(
+                            ownerColliders[i],
+                            projectileColliders[j],
+                            true);
+                    }
+                }
+            }
         }
 
         private void EnterHurt()
@@ -971,18 +1219,21 @@ namespace Supernova.Voxels
                 Vector2 move,
                 bool jumpPressed,
                 bool primaryActionHeld,
-                bool crouchHeld)
+                bool crouchHeld,
+                float attractionDistanceSteps)
             {
                 Move = move;
                 JumpPressed = jumpPressed;
                 PrimaryActionHeld = primaryActionHeld;
                 CrouchHeld = crouchHeld;
+                AttractionDistanceSteps = attractionDistanceSteps;
             }
 
             public Vector2 Move { get; }
             public bool JumpPressed { get; }
             public bool PrimaryActionHeld { get; }
             public bool CrouchHeld { get; }
+            public float AttractionDistanceSteps { get; }
         }
 
         private sealed class PlayerState : ICharacterState<PlayerCharacterState>

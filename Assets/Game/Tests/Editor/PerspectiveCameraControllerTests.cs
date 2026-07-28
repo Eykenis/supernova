@@ -2,6 +2,7 @@ using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Supernova.Tests
 {
@@ -41,6 +42,43 @@ namespace Supernova.Tests
 
             Assert.That(Quaternion.Angle(
                 cameraRotation, controller.ControlledCamera.transform.rotation), Is.LessThan(0.001f));
+        }
+
+        [Test]
+        public void FirstPerson_CollapsesVisibleHead_AndKeepsHiddenRendererInShadowPass()
+        {
+            player = new GameObject("Player");
+            GameObject head = new GameObject("Head");
+            head.transform.SetParent(player.transform);
+            head.transform.localScale = new Vector3(1.1f, 0.9f, 1.2f);
+            Vector3 expectedHeadScale = head.transform.localScale;
+
+            GameObject hiddenPart = new GameObject("FirstPersonHiddenPart");
+            hiddenPart.transform.SetParent(player.transform);
+            MeshRenderer hiddenRenderer = hiddenPart.AddComponent<MeshRenderer>();
+
+            GameObject cameraObject = new GameObject("Camera");
+            cameraObject.transform.SetParent(player.transform);
+            Camera camera = cameraObject.AddComponent<Camera>();
+            PerspectiveCameraController controller =
+                player.AddComponent<PerspectiveCameraController>();
+            controller.Bind(
+                player.transform,
+                head.transform,
+                camera,
+                new Renderer[] { hiddenRenderer });
+
+            controller.SetMode(PlayerViewMode.FirstPerson, true);
+
+            Assert.That(head.transform.localScale, Is.EqualTo(expectedHeadScale * 0.001f));
+            Assert.That(hiddenRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.ShadowsOnly));
+            Assert.That(hiddenRenderer.receiveShadows, Is.False);
+
+            controller.SetMode(PlayerViewMode.ThirdPerson, true);
+
+            Assert.That(head.transform.localScale, Is.EqualTo(expectedHeadScale));
+            Assert.That(hiddenRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.On));
+            Assert.That(hiddenRenderer.receiveShadows, Is.True);
         }
 
         [Test]

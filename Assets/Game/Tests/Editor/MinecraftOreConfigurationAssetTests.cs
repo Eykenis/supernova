@@ -42,14 +42,68 @@ namespace Supernova.Tests
                 feature.HeightDistribution,
                 Is.EqualTo(
                     MinecraftOreFeatureSettings.HeightDistribution.Trapezoid));
-            Assert.That(feature.MinHeight, Is.EqualTo(-64));
-            Assert.That(feature.MaxHeight, Is.EqualTo(64));
+            Assert.That(feature.MinHeight, Is.EqualTo(1));
+            Assert.That(
+                feature.MaxHeight,
+                Is.EqualTo(VoxelColumnChunkData.Height - 2),
+                "The default ore pass must cover the high caves while excluding top bedrock.");
             Assert.That(feature.Size, Is.EqualTo(8));
             Assert.That(feature.DiscardChanceOnAirExposure, Is.EqualTo(0.5f));
             Assert.That(
                 feature.TryCreateSettings(out _, out string error),
                 Is.True,
                 error);
+        }
+
+        [Test]
+        public void DefaultOreFeature_GeneratesOreAboveLegacyHeightLimit()
+        {
+            VoxelOreFeatureDefinition feature =
+                AssetDatabase.LoadAssetAtPath<VoxelOreFeatureDefinition>(FeaturePath);
+            Assert.That(
+                feature.TryCreateSettings(
+                    out MinecraftOreFeatureSettings settings,
+                    out string error),
+                Is.True,
+                error);
+
+            float[] densities = Enumerable
+                .Repeat(1f, VoxelColumnChunkData.VoxelCount)
+                .ToArray();
+            VoxelTypeId stone = feature.ReplaceableVoxelTypes[0].TypeId;
+            VoxelTypeId[] types = Enumerable
+                .Repeat(stone, VoxelColumnChunkData.VoxelCount)
+                .ToArray();
+
+            MinecraftOreFeatureGenerator.GenerateColumn(
+                Vector3Int.zero,
+                densities,
+                types,
+                18731,
+                new[] { settings },
+                (_, _, _) => 1f);
+
+            bool hasHighOre = false;
+            for (int z = 0; z < VoxelColumnChunkData.Depth && !hasHighOre; z++)
+            {
+                for (int y = 65; y < VoxelColumnChunkData.Height - 1 && !hasHighOre; y++)
+                {
+                    for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                    {
+                        if (types[VoxelColumnChunkData.ToIndex(x, y, z)]
+                            == settings.ResultType)
+                        {
+                            hasHighOre = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            Assert.That(
+                hasHighOre,
+                Is.True,
+                "The configured first-level ore pass should place veins above Y=64.");
         }
 
         [Test]

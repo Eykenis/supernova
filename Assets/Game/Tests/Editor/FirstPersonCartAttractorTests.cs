@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using UnityEngine;
@@ -20,7 +21,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void BeginAttraction_AcquiresCartUnderCrosshairInsteadOfNearbyCart()
+        public void BeginAttraction_AcquiresOnlyCartHandleUnderCrosshair()
         {
             GameObject player = Create("Player");
             Camera camera = Create("View Camera").AddComponent<Camera>();
@@ -35,20 +36,127 @@ namespace Supernova.Tests
 
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
-            Rigidbody nearbyBody = CreateCart(
-                "Nearby Cart",
+            Rigidbody nearbyBody = CreateBody(
+                "Nearby Body",
                 new Vector3(0.3f, 0f, 1.5f));
-            Rigidbody focusedBody = CreateCart(
-                "Focused Cart",
+            Rigidbody focusedBody = CreateBody(
+                "Focused Body",
                 new Vector3(0f, 0f, 2.5f));
+            focusedBody.gameObject.AddComponent<CartHandle>().Configure(focusedBody);
+            focusedBody.mass = 1000f;
             Physics.SyncTransforms();
 
-            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.BeginHandleTow(), Is.True);
             Assert.That(attractor.HeldBody, Is.SameAs(focusedBody));
             Assert.That(attractor.HeldBody, Is.Not.SameAs(nearbyBody));
         }
 
-        private Rigidbody CreateCart(string objectName, Vector3 position)
+        [Test]
+        public void AttractionForce_IsCappedToConfiguredNewtonStrength()
+        {
+            GameObject player = Create("Player");
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            SetPrivateField(attractor, "attractionForce", 125f);
+            SetPrivateField(attractor, "forceDamping", 0f);
+
+            Vector3 force = InvokePrivate<Vector3>(
+                attractor,
+                "CalculateAttractionForce",
+                Vector3.up * 20f,
+                Vector3.zero);
+
+            Assert.That(force.magnitude, Is.EqualTo(125f).Within(0.001f));
+            Assert.That(force.normalized, Is.EqualTo(Vector3.up));
+        }
+
+        [Test]
+        public void OrientationHold_DampsUnrequestedRotationOnEveryAxis()
+        {
+            GameObject player = Create("Player");
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            SetPrivateField(attractor, "heldTargetRotation", Quaternion.identity);
+            SetPrivateField(attractor, "hasHeldTargetRotation", true);
+            SetPrivateField(attractor, "orientationSpring", 55f);
+            SetPrivateField(attractor, "orientationDamping", 10f);
+            SetPrivateField(attractor, "maximumOrientationTorque", 1000f);
+
+            Vector3 angularVelocity = new Vector3(1f, -2f, 3f);
+            Vector3 torque = InvokePrivate<Vector3>(
+                attractor,
+                "CalculateOrientationTorque",
+                Quaternion.identity,
+                angularVelocity);
+
+            Assert.That(torque, Is.EqualTo(-angularVelocity * 10f));
+        }
+
+        [Test]
+        public void MagnetAttraction_AcquiresOrdinaryRigidbody()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody body = CreateBody("Ordinary Body", new Vector3(0f, 0f, 2f));
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HeldBody, Is.SameAs(body));
+        }
+
+        [Test]
+        public void MagnetAttraction_RejectsCartBody()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            Rigidbody cart = CreateBody("Cart", new Vector3(0f, 0f, 2f));
+            cart.gameObject.AddComponent<CartHandle>().Configure(cart);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HeldBody, Is.Null);
+        }
+
+        private static void SetPrivateField(
+            object target,
+            string name,
+            object value)
+        {
+            FieldInfo field = target.GetType().GetField(
+                name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            field.SetValue(target, value);
+        }
+
+        private static T InvokePrivate<T>(
+            object target,
+            string name,
+            params object[] arguments)
+        {
+            MethodInfo method = target.GetType().GetMethod(
+                name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            return (T)method.Invoke(target, arguments);
+        }
+
+        private Rigidbody CreateBody(string objectName, Vector3 position)
         {
             GameObject cart = Create(objectName);
             cart.transform.position = position;
@@ -56,7 +164,6 @@ namespace Supernova.Tests
             collider.size = Vector3.one * 0.2f;
             Rigidbody body = cart.AddComponent<Rigidbody>();
             body.useGravity = false;
-            cart.AddComponent<PhysicsAttractable>();
             return body;
         }
 

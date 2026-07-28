@@ -106,6 +106,37 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void MiningProgress_ReportsDamageBeyondRemainingDurability()
+        {
+            var progress = new VoxelMiningProgress();
+            var coordinate = new Vector3Int(3, 4, 5);
+            var stone = new VoxelSample(1f, new VoxelTypeId(2));
+
+            Assert.That(
+                progress.TryApplyDamage(
+                    coordinate,
+                    stone,
+                    2,
+                    1f,
+                    false,
+                    out VoxelMiningResult first),
+                Is.True);
+            Assert.That(first.Destroyed, Is.False);
+            Assert.That(first.ExcessDamage, Is.Zero);
+
+            progress.TryApplyDamage(
+                coordinate,
+                stone,
+                2,
+                4f,
+                false,
+                out VoxelMiningResult second);
+            Assert.That(second.Destroyed, Is.True);
+            Assert.That(second.ExcessDamage, Is.EqualTo(3f));
+        }
+
+
+        [Test]
         public void CrosshairMining_UsesDurabilityAndHonoursProfileReach()
         {
             VoxelTypeCatalog catalog = ScriptableObject.CreateInstance<VoxelTypeCatalog>();
@@ -341,21 +372,182 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MiningBrush_DestroysSeveralSamplesButLocksToPrimaryVoxelType()
+        public void MiningOre_HarvestsWholeConnectedVeinAndPreservesMesh()
+        {
+            VoxelTypeCatalog catalog =
+                ScriptableObject.CreateInstance<VoxelTypeCatalog>();
+            VoxelOreFeatureDefinition feature =
+                ScriptableObject.CreateInstance<VoxelOreFeatureDefinition>();
+            try
+            {
+                VoxelTypeDefinition stone =
+                    CreateDefinition(2, 1, "Stone");
+                VoxelTypeDefinition ore =
+                    CreateDefinition(3, 1, "Test Ore");
+                catalog.SetDefinitions(new[] { stone, ore });
+                feature.Configure(
+                    ore,
+                    new[] { stone },
+                    3109,
+                    1,
+                    1f,
+                    MinecraftOreFeatureSettings.HeightDistribution.Uniform,
+                    -8,
+                    8,
+                    0,
+                    4,
+                    0f,
+                    2.5f);
+
+                GameObject terrainObject = Create("Ore Drop Terrain");
+                MinecraftCaveInfiniteWorld terrain =
+                    terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+                SetPrivateField(terrain, "voxelTypeCatalog", catalog);
+                SetPrivateField(
+                    terrain,
+                    "oreFeatures",
+                    new List<VoxelOreFeatureDefinition> { feature });
+                terrain.InitializeWorld();
+
+                InfiniteVoxelChunk leftChunk =
+                    terrain.World.EnsureChunk(Vector3Int.zero);
+                InfiniteVoxelChunk rightChunk =
+                    terrain.World.EnsureChunk(Vector3Int.right);
+                leftChunk.Data.Fill(1f, stone.TypeId);
+                rightChunk.Data.Fill(1f, stone.TypeId);
+
+                var first = new Vector3Int(31, 5, 6);
+                var second = new Vector3Int(32, 5, 6);
+                var diagonal = new Vector3Int(33, 6, 7);
+                var disconnected = new Vector3Int(36, 5, 6);
+                var component = new HashSet<Vector3Int>
+                {
+                    first,
+                    second,
+                    diagonal,
+                };
+                foreach (Vector3Int coordinate in component)
+                {
+                    terrain.World.SetVoxel(
+                        coordinate.x,
+                        coordinate.y,
+                        coordinate.z,
+                        1f,
+                        ore.TypeId);
+                }
+                terrain.World.SetVoxel(
+                    disconnected.x,
+                    disconnected.y,
+                    disconnected.z,
+                    1f,
+                    ore.TypeId);
+
+                VoxelMeshData expectedMeshData =
+                    MarchingCubesMesher.BuildTypeComponent(
+                        terrain.World,
+                        component,
+                        ore.TypeId,
+                        terrain.IsoLevel,
+                        terrain.VoxelSize,
+                        MarchingCubesVertexPlacement.DensityInterpolated);
+                Vector3[] expectedVertices =
+                    expectedMeshData.Vertices.ToArray();
+                int[] expectedTriangles =
+                    expectedMeshData.Triangles.ToArray();
+
+                Assert.That(
+                    terrain.TryMineVoxel(
+                        first,
+                        out VoxelMiningResult result),
+                    Is.True);
+                Assert.That(result.Destroyed, Is.True);
+                Assert.That(terrain.ActiveOreDrops, Has.Count.EqualTo(1));
+
+                MinedOreDrop drop = terrain.ActiveOreDrops[0];
+                Assert.That(drop, Is.Not.Null);
+                Assert.That(drop.VoxelType, Is.EqualTo(ore.TypeId));
+                Assert.That(drop.VoxelCount, Is.EqualTo(component.Count));
+                Assert.That(drop.MassDensity, Is.EqualTo(2.5f));
+                Assert.That(drop.Mesh, Is.Not.Null);
+                Assert.That(
+                    drop.Mesh.vertexCount,
+                    Is.GreaterThan(8),
+                    "The vein must keep its Marching Cubes mesh, not become a Cube.");
+                Assert.That(drop.Body, Is.Not.Null);
+                Assert.That(
+                    drop.Body.mass,
+                    Is.EqualTo(2.5f * component.Count).Within(0.001f));
+                Assert.That(drop.Body.isKinematic, Is.False);
+                Assert.That(drop.GetComponent<Collider>(), Is.Not.Null);
+                CollectionAssert.AreEqual(
+                    expectedTriangles,
+                    drop.Mesh.triangles);
+                Vector3[] actualVertices = drop.Mesh.vertices;
+                Assert.That(
+                    actualVertices,
+                    Has.Length.EqualTo(expectedVertices.Length));
+                for (int i = 0; i < actualVertices.Length; i++)
+                {
+                    Vector3 actualTerrainLocal =
+                        terrain.transform.InverseTransformPoint(
+                            drop.transform.TransformPoint(actualVertices[i]));
+                    Assert.That(
+                        Vector3.Distance(
+                            actualTerrainLocal,
+                            expectedVertices[i]),
+                        Is.LessThan(0.0001f),
+                        $"Extracted mesh vertex {i} changed.");
+                }
+                foreach (Vector3Int coordinate in component)
+                {
+                    Assert.That(
+                        terrain.World.GetSampleOrDefault(
+                            coordinate.x,
+                            coordinate.y,
+                            coordinate.z).IsSolid(),
+                        Is.False);
+                }
+                Assert.That(
+                    terrain.World.GetSampleOrDefault(
+                        disconnected.x,
+                        disconnected.y,
+                        disconnected.z).Type,
+                    Is.EqualTo(ore.TypeId),
+                    "A disconnected vein of the same type must remain.");
+
+                var stoneCoordinate = new Vector3Int(7, 5, 6);
+                terrain.World.SetVoxel(
+                    stoneCoordinate.x,
+                    stoneCoordinate.y,
+                    stoneCoordinate.z,
+                    1f,
+                    stone.TypeId);
+                Assert.That(
+                    terrain.TryMineVoxel(stoneCoordinate, out _),
+                    Is.True);
+                Assert.That(
+                    terrain.ActiveOreDrops,
+                    Has.Count.EqualTo(1),
+                    "Base stone should still disappear without becoming a drop.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(feature);
+                Object.DestroyImmediate(catalog);
+            }
+        }
+
+        [Test]
+        public void MiningPropagation_UsesAll26DirectionsAndDoesNotReturn()
         {
             VoxelTypeCatalog catalog = ScriptableObject.CreateInstance<VoxelTypeCatalog>();
             try
             {
                 var stone = new VoxelTypeId(2);
-                var ore = new VoxelTypeId(3);
                 catalog.SetDefinitions(
-                    new[]
-                    {
-                        CreateDefinition(stone.Value, 2, "Stone"),
-                        CreateDefinition(ore.Value, 1, "Ore"),
-                    });
+                    new[] { CreateDefinition(stone.Value, 1, "Stone") });
 
-                GameObject terrainObject = Create("Mining Brush Terrain");
+                GameObject terrainObject = Create("Mining Propagation Terrain");
                 MinecraftCaveInfiniteWorld terrain =
                     terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
                 SetPrivateField(terrain, "voxelTypeCatalog", catalog);
@@ -365,35 +557,32 @@ namespace Supernova.Tests
                 chunk.Data.Fill(-1f, VoxelTypeId.Air);
 
                 var primary = new Vector3Int(8, 8, 8);
-                var stoneAtSide = new Vector3Int(9, 8, 8);
-                var stoneAtDepth = new Vector3Int(8, 8, 9);
-                var oreInsideBrush = new Vector3Int(8, 9, 8);
-                chunk.Data.SetSample(primary.x, primary.y, primary.z, 1f, stone);
-                chunk.Data.SetSample(
-                    stoneAtSide.x,
-                    stoneAtSide.y,
-                    stoneAtSide.z,
-                    1f,
-                    stone);
-                chunk.Data.SetSample(
-                    stoneAtDepth.x,
-                    stoneAtDepth.y,
-                    stoneAtDepth.z,
-                    1f,
-                    stone);
-                chunk.Data.SetSample(
-                    oreInsideBrush.x,
-                    oreInsideBrush.y,
-                    oreInsideBrush.z,
-                    1f,
-                    ore);
+                for (int z = -2; z <= 2; z++)
+                {
+                    for (int y = -2; y <= 2; y++)
+                    {
+                        for (int x = -2; x <= 2; x++)
+                        {
+                            Vector3Int coordinate =
+                                primary + new Vector3Int(x, y, z);
+                            chunk.Data.SetSample(
+                                coordinate.x,
+                                coordinate.y,
+                                coordinate.z,
+                                1f,
+                                stone);
+                        }
+                    }
+                }
+
                 var brush = new VoxelMiningBrushSettings(
-                    2f,
-                    terrain.VoxelSize * 1.5f,
-                    terrain.VoxelSize * 2f,
+                    4f,
+                    terrain.VoxelSize,
+                    terrain.VoxelSize,
                     1f,
                     1f,
-                    24);
+                    128,
+                    2f);
 
                 Assert.That(
                     terrain.TryMineBrush(
@@ -404,33 +593,48 @@ namespace Supernova.Tests
                     Is.True);
 
                 Assert.That(result.TargetType, Is.EqualTo(stone));
-                Assert.That(result.DestroyedCount, Is.EqualTo(3));
+                Assert.That(result.CandidateCount, Is.EqualTo(125));
+                Assert.That(result.DamagedCount, Is.EqualTo(125));
+                Assert.That(result.DestroyedCount, Is.EqualTo(27));
                 Assert.That(result.PrimaryDestroyed, Is.True);
+
+                Vector3Int faceNeighbour = primary + Vector3Int.right;
+                Vector3Int edgeNeighbour = primary
+                    + new Vector3Int(1, 1, 0);
+                Vector3Int cornerNeighbour = primary
+                    + new Vector3Int(1, 1, 1);
                 Assert.That(
                     terrain.World.GetSampleOrDefault(
-                        primary.x,
-                        primary.y,
-                        primary.z).IsSolid(),
+                        faceNeighbour.x,
+                        faceNeighbour.y,
+                        faceNeighbour.z).IsSolid(),
                     Is.False);
                 Assert.That(
                     terrain.World.GetSampleOrDefault(
-                        stoneAtSide.x,
-                        stoneAtSide.y,
-                        stoneAtSide.z).IsSolid(),
+                        edgeNeighbour.x,
+                        edgeNeighbour.y,
+                        edgeNeighbour.z).IsSolid(),
                     Is.False);
                 Assert.That(
                     terrain.World.GetSampleOrDefault(
-                        stoneAtDepth.x,
-                        stoneAtDepth.y,
-                        stoneAtDepth.z).IsSolid(),
+                        cornerNeighbour.x,
+                        cornerNeighbour.y,
+                        cornerNeighbour.z).IsSolid(),
                     Is.False);
-                VoxelSample untouchedOre =
+
+                Vector3Int secondLayer = primary + Vector3Int.right * 2;
+                Assert.That(
                     terrain.World.GetSampleOrDefault(
-                        oreInsideBrush.x,
-                        oreInsideBrush.y,
-                        oreInsideBrush.z);
-                Assert.That(untouchedOre.IsSolid(), Is.True);
-                Assert.That(untouchedOre.Type, Is.EqualTo(ore));
+                        secondLayer.x,
+                        secondLayer.y,
+                        secondLayer.z).IsSolid(),
+                    Is.True,
+                    "0.25 propagated damage must stop without destroying or returning.");
+                Assert.That(
+                    GetPrivateField<VoxelMiningProgress>(
+                        terrain,
+                        "miningProgress").DamagedVoxelCount,
+                    Is.EqualTo(98));
             }
             finally
             {
@@ -439,24 +643,169 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PickaxeAsset_ConfiguresBatchBrushWithoutChangingAnimationMode()
+        public void MiningPropagation_DoesNotCrossVoxelTypesInEitherDirection()
+        {
+            VoxelTypeCatalog catalog =
+                ScriptableObject.CreateInstance<VoxelTypeCatalog>();
+            try
+            {
+                var stone = new VoxelTypeId(2);
+                var ore = new VoxelTypeId(3);
+                catalog.SetDefinitions(
+                    new[]
+                    {
+                        CreateDefinition(stone.Value, 1, "Stone"),
+                        CreateDefinition(ore.Value, 1, "Ore"),
+                    });
+
+                GameObject terrainObject =
+                    Create("Typed Mining Propagation Terrain");
+                MinecraftCaveInfiniteWorld terrain =
+                    terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+                SetPrivateField(terrain, "voxelTypeCatalog", catalog);
+                terrain.InitializeWorld();
+                InfiniteVoxelChunk chunk =
+                    terrain.World.EnsureChunk(Vector3Int.zero);
+                chunk.Data.Fill(-1f, VoxelTypeId.Air);
+
+                var brush = new VoxelMiningBrushSettings(
+                    4f,
+                    terrain.VoxelSize,
+                    terrain.VoxelSize,
+                    1f,
+                    1f,
+                    128,
+                    2f);
+
+                var stonePrimary = new Vector3Int(8, 8, 8);
+                Vector3Int oreBarrier = stonePrimary + Vector3Int.right;
+                Vector3Int stoneBehindOre = oreBarrier + Vector3Int.right;
+                chunk.Data.SetSample(
+                    stonePrimary.x,
+                    stonePrimary.y,
+                    stonePrimary.z,
+                    1f,
+                    stone);
+                chunk.Data.SetSample(
+                    oreBarrier.x,
+                    oreBarrier.y,
+                    oreBarrier.z,
+                    1f,
+                    ore);
+                chunk.Data.SetSample(
+                    stoneBehindOre.x,
+                    stoneBehindOre.y,
+                    stoneBehindOre.z,
+                    1f,
+                    stone);
+
+                Assert.That(
+                    terrain.TryMineBrush(
+                        stonePrimary,
+                        Vector3.right,
+                        brush,
+                        out VoxelMiningBrushResult stoneResult),
+                    Is.True);
+                Assert.That(stoneResult.DestroyedCount, Is.EqualTo(1));
+                Assert.That(
+                    terrain.World.GetSampleOrDefault(
+                        oreBarrier.x,
+                        oreBarrier.y,
+                        oreBarrier.z).IsSolid(),
+                    Is.True,
+                    "Stone propagation must not damage ore.");
+                Assert.That(
+                    terrain.World.GetSampleOrDefault(
+                        stoneBehindOre.x,
+                        stoneBehindOre.y,
+                        stoneBehindOre.z).IsSolid(),
+                    Is.True,
+                    "Propagation must not pass through an ore barrier.");
+
+                var orePrimary = new Vector3Int(16, 8, 8);
+                Vector3Int stoneBarrier = orePrimary + Vector3Int.right;
+                Vector3Int oreBehindStone = stoneBarrier + Vector3Int.right;
+                chunk.Data.SetSample(
+                    orePrimary.x,
+                    orePrimary.y,
+                    orePrimary.z,
+                    1f,
+                    ore);
+                chunk.Data.SetSample(
+                    stoneBarrier.x,
+                    stoneBarrier.y,
+                    stoneBarrier.z,
+                    1f,
+                    stone);
+                chunk.Data.SetSample(
+                    oreBehindStone.x,
+                    oreBehindStone.y,
+                    oreBehindStone.z,
+                    1f,
+                    ore);
+
+                Assert.That(
+                    terrain.TryMineBrush(
+                        orePrimary,
+                        Vector3.right,
+                        brush,
+                        out VoxelMiningBrushResult oreResult),
+                    Is.True);
+                Assert.That(oreResult.DestroyedCount, Is.EqualTo(1));
+                Assert.That(
+                    terrain.World.GetSampleOrDefault(
+                        stoneBarrier.x,
+                        stoneBarrier.y,
+                        stoneBarrier.z).IsSolid(),
+                    Is.True,
+                    "Ore propagation must not damage stone.");
+                Assert.That(
+                    terrain.World.GetSampleOrDefault(
+                        oreBehindStone.x,
+                        oreBehindStone.y,
+                        oreBehindStone.z).IsSolid(),
+                    Is.True,
+                    "Propagation must not pass through a stone barrier.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(catalog);
+            }
+        }
+
+        [Test]
+        public void PickaxeAsset_ConfiguresAlternatingDamageAndPropagation()
         {
             PlayerToolDefinition pickaxe =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
                     "Assets/Game/Config/Tools/PickaxeTool.asset");
+            VoxelTypeDefinition stone =
+                AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                    "Assets/Game/Config/VoxelTypes/Stone.asset");
 
             Assert.That(pickaxe, Is.Not.Null);
+            Assert.That(stone, Is.Not.Null);
             Assert.That(
                 pickaxe.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
-            Assert.That(pickaxe.MiningBrush.Power, Is.EqualTo(2f));
-            Assert.That(pickaxe.MiningBrush.Radius, Is.EqualTo(0.55f));
-            Assert.That(pickaxe.MiningBrush.Depth, Is.EqualTo(0.75f));
-            Assert.That(pickaxe.MiningBrush.FalloffExponent, Is.EqualTo(1.5f));
+            Assert.That(pickaxe.MiningBrush.Power, Is.EqualTo(1f));
+            Assert.That(pickaxe.MiningEvenHitMultiplier, Is.EqualTo(4f));
             Assert.That(
-                pickaxe.MiningBrush.MinimumPowerFraction,
-                Is.EqualTo(0.25f));
-            Assert.That(pickaxe.MiningBrush.MaxAffectedSamples, Is.EqualTo(24));
+                pickaxe.GetMiningBrushForStrike(1).Power,
+                Is.EqualTo(1f));
+            Assert.That(
+                pickaxe.GetMiningBrushForStrike(2).Power,
+                Is.EqualTo(4f));
+            Assert.That(
+                pickaxe.GetMiningBrushForStrike(3).Power,
+                Is.EqualTo(1f));
+            Assert.That(
+                pickaxe.MiningBrush.PropagationDivisor,
+                Is.EqualTo(2f));
+            Assert.That(
+                pickaxe.MiningBrush.MaxAffectedSamples,
+                Is.EqualTo(128));
+            Assert.That(stone.Durability, Is.EqualTo(1));
         }
 
         [Test]
@@ -481,7 +830,8 @@ namespace Supernova.Tests
 
             effect.Play(
                 new Vector3(1f, 2f, 3f),
-                Vector3.back,
+                Vector3.up,
+                Vector3.right,
                 new Color(0.9f, 0.1f, 0.05f, 1f),
                 brushResult);
 
@@ -495,6 +845,27 @@ namespace Supernova.Tests
             Assert.That(count, Is.GreaterThan(0));
             Assert.That(particles[0].startColor.r, Is.GreaterThan(
                 particles[0].startColor.g));
+
+            ParticleSystem chipSystem = null;
+            for (int i = 0; i < systems.Length; i++)
+            {
+                if (systems[i].name == "Mining Chips")
+                {
+                    chipSystem = systems[i];
+                    break;
+                }
+            }
+            Assert.That(chipSystem, Is.Not.Null);
+
+            count = chipSystem.GetParticles(particles);
+            Assert.That(count, Is.GreaterThan(0));
+            for (int i = 0; i < count; i++)
+            {
+                Assert.That(
+                    Vector3.Dot(particles[i].velocity, Vector3.left),
+                    Is.GreaterThanOrEqualTo(0.44f),
+                    "Every chip should initially recoil opposite the mining direction.");
+            }
         }
 
         [Test]

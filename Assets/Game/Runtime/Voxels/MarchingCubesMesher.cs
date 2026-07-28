@@ -4,8 +4,15 @@ using UnityEngine;
 
 namespace Supernova.Voxels
 {
+    public enum MarchingCubesVertexPlacement
+    {
+        EdgeMidpoint,
+        DensityInterpolated,
+    }
+
     /// <summary>
-    /// Extracts a binary isosurface with a fixed 256-case lookup table and edge midpoints.
+    /// Extracts an isosurface with the fixed 256-case topology table. Vertex placement
+    /// can preserve the legacy edge midpoints or interpolate the sampled density.
     /// </summary>
     public static class MarchingCubesMesher
     {
@@ -314,7 +321,9 @@ namespace Supernova.Voxels
         public static VoxelMeshData Build(
             VoxelVolume volume,
             float isoLevel = 0f,
-            float voxelSize = 1f)
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint)
         {
             if (volume == null)
             {
@@ -327,7 +336,8 @@ namespace Supernova.Voxels
                 VoxelVolume.Size - 1,
                 VoxelVolume.Size - 1,
                 isoLevel,
-                voxelSize);
+                voxelSize,
+                vertexPlacement);
         }
 
         public static VoxelMeshData BuildChunk(
@@ -335,7 +345,9 @@ namespace Supernova.Voxels
             int chunkX,
             int chunkZ,
             float isoLevel = 0f,
-            float voxelSize = 1f)
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint)
         {
             if (region == null)
             {
@@ -363,36 +375,192 @@ namespace Supernova.Voxels
                 VoxelVolume.Size,
                 VoxelVolume.Size,
                 isoLevel,
-                voxelSize);
+                voxelSize,
+                vertexPlacement);
         }
 
         public static VoxelMeshData BuildChunk(
             InfiniteVoxelWorld world,
             Vector3Int chunkCoordinate,
             float isoLevel = 0f,
-            float voxelSize = 1f)
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint,
+            VoxelTypeId? outsideType = null,
+            VoxelTypeId? verticalOutsideType = null)
+        {
+            return BuildColumnRange(
+                world,
+                chunkCoordinate,
+                0,
+                VoxelColumnChunkData.Height,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                outsideType,
+                verticalOutsideType);
+        }
+
+        public static VoxelMeshData BuildColumnSection(
+            InfiniteVoxelWorld world,
+            Vector3Int columnCoordinate,
+            int startY,
+            int height,
+            float isoLevel = 0f,
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint,
+            VoxelTypeId? outsideType = null,
+            VoxelTypeId? verticalOutsideType = null)
+        {
+            if (startY < 0
+                || height <= 0
+                || startY + height > VoxelColumnChunkData.Height)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(startY),
+                    $"Mesh section {startY}..{startY + height} is outside "
+                    + $"0..{VoxelColumnChunkData.Height}.");
+            }
+
+            return BuildColumnRange(
+                world,
+                columnCoordinate,
+                startY,
+                height,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                outsideType,
+                verticalOutsideType);
+        }
+
+        private static VoxelMeshData BuildColumnRange(
+            InfiniteVoxelWorld world,
+            Vector3Int columnCoordinate,
+            int startY,
+            int height,
+            float isoLevel,
+            float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement,
+            VoxelTypeId? outsideType,
+            VoxelTypeId? verticalOutsideType)
         {
             if (world == null)
             {
                 throw new ArgumentNullException(nameof(world));
             }
 
-            Vector3Int origin = chunkCoordinate * VoxelVolume.Size;
+            var origin = new Vector3Int(
+                columnCoordinate.x * VoxelColumnChunkData.Width,
+                startY,
+                columnCoordinate.z * VoxelColumnChunkData.Depth);
             // Ungenerated neighbours remain assumed solid, matching the existing
-            // infinite-world streaming behavior. Their fallback type is Default.
+            // infinite-world streaming behavior.
             float outsideDensity = isoLevel + 1f;
             return BuildGrid(
-                (x, y, z) => world.GetSampleOrDefault(
-                    origin.x + x,
-                    origin.y + y,
-                    origin.z + z,
-                    outsideDensity,
-                    VoxelTypeId.Default),
-                VoxelVolume.Size,
-                VoxelVolume.Size,
-                VoxelVolume.Size,
+                (x, y, z) =>
+                {
+                    int worldY = origin.y + y;
+                    VoxelTypeId fallbackType = InfiniteVoxelWorld.IsWorldYInBounds(worldY)
+                        ? outsideType ?? VoxelTypeId.Default
+                        : verticalOutsideType ?? outsideType ?? VoxelTypeId.Default;
+                    return world.GetSampleOrDefault(
+                        origin.x + x,
+                        worldY,
+                        origin.z + z,
+                        outsideDensity,
+                        fallbackType);
+                },
+                VoxelColumnChunkData.Width,
+                height,
+                VoxelColumnChunkData.Depth,
                 isoLevel,
-                voxelSize);
+                voxelSize,
+                vertexPlacement);
+        }
+
+        /// <summary>
+        /// Rebuilds one connected component of a voxel type in terrain-local world
+        /// coordinates. The same polygonisation and vertex placement as Chunk meshes
+        /// are used, so the extracted geometry matches the component before removal.
+        /// </summary>
+        public static VoxelMeshData BuildTypeComponent(
+            InfiniteVoxelWorld world,
+            HashSet<Vector3Int> component,
+            VoxelTypeId targetType,
+            float isoLevel = 0f,
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint)
+        {
+            if (world == null)
+            {
+                throw new ArgumentNullException(nameof(world));
+            }
+            if (component == null)
+            {
+                throw new ArgumentNullException(nameof(component));
+            }
+            if (component.Count == 0)
+            {
+                throw new ArgumentException(
+                    "A type component must contain at least one sample.",
+                    nameof(component));
+            }
+            if (targetType.IsAir)
+            {
+                throw new ArgumentException(
+                    "Air cannot be extracted as a mesh component.",
+                    nameof(targetType));
+            }
+
+            Vector3Int minimum = new Vector3Int(
+                int.MaxValue,
+                int.MaxValue,
+                int.MaxValue);
+            Vector3Int maximum = new Vector3Int(
+                int.MinValue,
+                int.MinValue,
+                int.MinValue);
+            foreach (Vector3Int coordinate in component)
+            {
+                minimum = Vector3Int.Min(minimum, coordinate);
+                maximum = Vector3Int.Max(maximum, coordinate);
+            }
+
+            Vector3Int cellOrigin = minimum - Vector3Int.one;
+            Vector3Int cellCounts = maximum - minimum
+                + Vector3Int.one * 2;
+            VoxelTypeId excludedType = targetType != VoxelTypeId.Default
+                ? VoxelTypeId.Default
+                : new VoxelTypeId(ushort.MaxValue);
+            float outsideDensity = isoLevel + 1f;
+
+            return BuildGrid(
+                (x, y, z) =>
+                {
+                    Vector3Int coordinate = cellOrigin
+                        + new Vector3Int(x, y, z);
+                    VoxelSample sample = world.GetSampleOrDefault(
+                        coordinate.x,
+                        coordinate.y,
+                        coordinate.z,
+                        outsideDensity,
+                        VoxelTypeId.Default);
+                    return sample.Type == targetType
+                        && !component.Contains(coordinate)
+                            ? new VoxelSample(sample.Density, excludedType)
+                            : sample;
+                },
+                cellCounts.x,
+                cellCounts.y,
+                cellCounts.z,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                targetType,
+                (Vector3)cellOrigin * voxelSize);
         }
 
         private static VoxelMeshData BuildGrid(
@@ -401,7 +569,10 @@ namespace Supernova.Voxels
             int cellCountY,
             int cellCountZ,
             float isoLevel,
-            float voxelSize)
+            float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement,
+            VoxelTypeId? requestedType = null,
+            Vector3 vertexOffset = default)
         {
             if (voxelSize <= 0f)
             {
@@ -432,7 +603,9 @@ namespace Supernova.Voxels
                     {
                         VoxelSample voxel = sample(x, y, z);
                         sampleCache[rowStart + x] = voxel;
-                        if (voxel.IsSolid(isoLevel) && ActiveTypeSet.Add(voxel.Type))
+                        if (!requestedType.HasValue
+                            && voxel.IsSolid(isoLevel)
+                            && ActiveTypeSet.Add(voxel.Type))
                         {
                             ActiveTypes.Add(voxel.Type);
                         }
@@ -440,8 +613,7 @@ namespace Supernova.Voxels
                 }
             }
 
-            ActiveTypes.Sort();
-            foreach (VoxelTypeId type in ActiveTypes)
+            if (requestedType.HasValue)
             {
                 for (int z = 0; z < cellCountZ; z++)
                 {
@@ -456,11 +628,43 @@ namespace Supernova.Voxels
                                 x,
                                 y,
                                 z,
-                                type,
+                                requestedType.Value,
                                 isoLevel,
                                 voxelSize,
+                                vertexPlacement,
+                                vertexOffset,
                                 edgeVertexIndices,
                                 meshData);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                ActiveTypes.Sort();
+                foreach (VoxelTypeId type in ActiveTypes)
+                {
+                    for (int z = 0; z < cellCountZ; z++)
+                    {
+                        for (int y = 0; y < cellCountY; y++)
+                        {
+                            for (int x = 0; x < cellCountX; x++)
+                            {
+                                PolygoniseCell(
+                                    sampleCache,
+                                    sampleCountX,
+                                    sampleCountY,
+                                    x,
+                                    y,
+                                    z,
+                                    type,
+                                    isoLevel,
+                                    voxelSize,
+                                    vertexPlacement,
+                                    vertexOffset,
+                                    edgeVertexIndices,
+                                    meshData);
+                            }
                         }
                     }
                 }
@@ -481,6 +685,8 @@ namespace Supernova.Voxels
             VoxelTypeId targetType,
             float isoLevel,
             float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement,
+            Vector3 vertexOffset,
             int[] edgeVertexIndices,
             VoxelMeshData output)
         {
@@ -511,7 +717,8 @@ namespace Supernova.Voxels
                 edgeVertexIndices[edge] = -1;
             }
 
-            Vector3 cellOrigin = new Vector3(cellX, cellY, cellZ) * voxelSize;
+            Vector3 cellOrigin = vertexOffset
+                + new Vector3(cellX, cellY, cellZ) * voxelSize;
             for (int tableIndex = 0; tableIndex < 16; tableIndex++)
             {
                 int edge = TriangleTable[cubeIndex, tableIndex];
@@ -534,7 +741,8 @@ namespace Supernova.Voxels
                             cellZ,
                             edge,
                             targetType,
-                            isoLevel) * voxelSize);
+                            isoLevel,
+                            vertexPlacement) * voxelSize);
                     edgeVertexIndices[edge] = vertexIndex;
                 }
 
@@ -551,7 +759,8 @@ namespace Supernova.Voxels
             int cellZ,
             int edge,
             VoxelTypeId targetType,
-            float isoLevel)
+            float isoLevel,
+            MarchingCubesVertexPlacement vertexPlacement)
         {
             int cornerA = EdgeCorners[edge, 0];
             int cornerB = EdgeCorners[edge, 1];
@@ -573,6 +782,14 @@ namespace Supernova.Voxels
                 t = aIsTarget
                     ? 0.5f - TypeBoundaryInset
                     : 0.5f + TypeBoundaryInset;
+            }
+            else if (vertexPlacement == MarchingCubesVertexPlacement.DensityInterpolated)
+            {
+                float densityRange = sampleB.Density - sampleA.Density;
+                if (Mathf.Abs(densityRange) > Mathf.Epsilon)
+                {
+                    t = Mathf.Clamp01((isoLevel - sampleA.Density) / densityRange);
+                }
             }
 
             return Vector3.Lerp(

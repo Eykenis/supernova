@@ -100,6 +100,7 @@ namespace Supernova.Voxels
             EnsureStorage();
             Vector3Int origin = GetWorldOrigin(worldAnchor, ruleOffset);
             int index = 0;
+            int written = 0;
             for (int z = 0; z < size.z; z++)
             {
                 for (int y = 0; y < size.y; y++)
@@ -108,17 +109,23 @@ namespace Supernova.Voxels
                     {
                         float density = densities[index];
                         var type = new VoxelTypeId(types[index]);
+                        int worldY = origin.y + y;
+                        index++;
+                        if (!InfiniteVoxelWorld.IsWorldYInBounds(worldY))
+                        {
+                            continue;
+                        }
                         world.SetVoxel(
                             origin.x + x,
-                            origin.y + y,
+                            worldY,
                             origin.z + z,
                             density,
                             density >= 0f ? type : VoxelTypeId.Air);
-                        index++;
+                        written++;
                     }
                 }
             }
-            return index;
+            return written;
         }
 
         private void OnValidate()

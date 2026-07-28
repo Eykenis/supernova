@@ -34,6 +34,10 @@ namespace Supernova.MinecraftCaves
         [SerializeField, Range(0f, 1f)]
         private float discardChanceOnAirExposure = 0.5f;
 
+        [Header("Mined Rigidbody")]
+        [Tooltip("Rigidbody mass contributed by each voxel in the connected ore vein.")]
+        [SerializeField, Min(0.001f)] private float massDensity = 10f;
+
         public VoxelTypeDefinition ResultVoxelType => resultVoxelType;
         public IReadOnlyList<VoxelTypeDefinition> ReplaceableVoxelTypes =>
             replaceableVoxelTypes;
@@ -48,6 +52,7 @@ namespace Supernova.MinecraftCaves
         public int Size => size;
         public float DiscardChanceOnAirExposure =>
             discardChanceOnAirExposure;
+        public float MassDensity => Mathf.Max(0.001f, massDensity);
 
         public void Configure(
             VoxelTypeDefinition result,
@@ -60,7 +65,8 @@ namespace Supernova.MinecraftCaves
             int maximumHeight,
             int heightPlateau,
             int veinSize,
-            float airExposureDiscardChance)
+            float airExposureDiscardChance,
+            float rigidbodyMassDensity = 10f)
         {
             resultVoxelType = result;
             replaceableVoxelTypes = replaceable != null
@@ -76,6 +82,7 @@ namespace Supernova.MinecraftCaves
             size = Mathf.Clamp(veinSize, 1, 64);
             discardChanceOnAirExposure =
                 Mathf.Clamp01(airExposureDiscardChance);
+            massDensity = Mathf.Max(0.001f, rigidbodyMassDensity);
         }
 
         public bool TryCreateSettings(
@@ -142,6 +149,7 @@ namespace Supernova.MinecraftCaves
             size = Mathf.Clamp(size, 1, 64);
             discardChanceOnAirExposure =
                 Mathf.Clamp01(discardChanceOnAirExposure);
+            massDensity = Mathf.Max(0.001f, massDensity);
         }
     }
 }

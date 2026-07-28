@@ -46,9 +46,27 @@ The infinite-world pipeline has explicit stages:
    commit scalar samples.
 2. Structures: SpawnPointStructureRule applies the fixed field with its anchor
    aligned to the selected cave spawn voxel.
-3. Meshes: only after both data passes complete are all required chunks queued
+3. Boundary: the top and bottom layers are restored to Bedrock after the fixed
+   structure field is written.
+4. Clearance: the Cell interior, its cave exit, and the Cell footprint above
+   the spawn floor are carved. The vertical landing shaft
+   reaches world `Y=255`, leaving an open route through the top bedrock while
+   retaining bedrock outside the shaft.
+5. Landing ground: a rounded safe apron is finalized around the Cell,
+   independently of cave noise. It fills several samples of Stone below the
+   floor and clears player headroom above it, so the first steps outside the
+   pod cannot open directly into a procedural pit. Running this after the exit
+   pass keeps the apron level; a passage toward a lower cave begins descending
+   only after it leaves the safety margin. The guaranteed ground, clearance,
+   passage, and landing-shaft cores remain unchanged, while their outer edges
+   blend into the procedural density field across a Cell-scaled transition
+   band (about one to two voxel samples with the current scene settings).
+6. Meshes: only after all data passes complete are all required columns queued
    for Marching Cubes.
-4. Ready: all required mesh and collider builds have completed.
+7. Ready: all required mesh and collider builds have completed.
+
+The formal world uses X/Z-indexed `32 x 256 x 32` columns. Structure samples
+outside world Y `0..255` are clipped instead of creating vertical chunks.
 
 The player root Transform is the streaming viewer. During the initial build its
 CharacterController is disabled and its position is held at the structure's

@@ -49,10 +49,12 @@ namespace Supernova.UI
 
         private IDamageable healthSource;
         private PlayerToolController inventorySource;
+        private PlayerEquipmentController equipmentSource;
         private GameHudPresenter presenter;
         private HotbarPresenter hotbarPresenter;
         private float nextSourceSearchTime;
         private float nextInventorySourceSearchTime;
+        private float nextEquipmentSourceSearchTime;
         private float nextWorldSourceSearchTime;
         private MinecraftCaveInfiniteWorld loadingSource;
         private bool loadingRequestedVisible;
@@ -124,12 +126,14 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             EnsureView();
             BindHealthSource(healthSourceOverride as IDamageable);
             BindInventorySource(inventorySourceOverride);
+            equipmentSource = FindObjectOfType<PlayerEquipmentController>();
         }
 
         private void OnEnable()
         {
             nextSourceSearchTime = 0f;
             nextInventorySourceSearchTime = 0f;
+            nextEquipmentSourceSearchTime = 0f;
             nextWorldSourceSearchTime = 0f;
             if (inventorySource != null)
                 BindInventorySource(inventorySource);
@@ -160,6 +164,13 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             {
                 nextInventorySourceSearchTime = Time.unscaledTime + sourceSearchInterval;
                 BindInventorySource(FindPlayerInventorySource());
+            }
+
+            if (equipmentSource == null
+                && Time.unscaledTime >= nextEquipmentSourceSearchTime)
+            {
+                nextEquipmentSourceSearchTime = Time.unscaledTime + sourceSearchInterval;
+                equipmentSource = FindObjectOfType<PlayerEquipmentController>();
             }
 
             if (loadingSource == null && Time.unscaledTime >= nextWorldSourceSearchTime)
@@ -194,6 +205,9 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             pausePresentation = pausePanel.GetComponent<PauseMenuPresentation>();
             if (pausePresentation == null)
                 pausePresentation = pausePanel.AddComponent<PauseMenuPresentation>();
+            if (equipmentSource == null)
+                equipmentSource = FindObjectOfType<PlayerEquipmentController>();
+            pausePresentation.BindEquipment(equipmentSource);
             pausePresentation.PlayIntro();
             if (EventSystem.current != null)
                 EventSystem.current.SetSelectedGameObject(resumeButton.gameObject);
@@ -431,7 +445,10 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
                 BuildLoadingView();
             }
 
-            if (pauseCanvas == null || pausePanel == null || resumeButton == null)
+            bool pauseViewNeedsUpgrade =
+                transform.Find("Pause Canvas/Pause Panel/Menu/Back Slot") == null;
+            if (pauseCanvas == null || pausePanel == null || resumeButton == null
+                || pauseViewNeedsUpgrade)
             {
                 BuildPauseView();
             }
@@ -766,7 +783,7 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             RectTransform menu = CreateRect("Menu", panel);
             SetAnchoredRect(menu,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(420f, 220f));
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560f, 430f));
             Image menuImage = menu.gameObject.AddComponent<Image>();
             menuImage.color = new Color(0.04f, 0.055f, 0.078f, 0.98f);
             Outline menuOutline = menu.gameObject.AddComponent<Outline>();
@@ -774,18 +791,85 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             menuOutline.effectDistance = new Vector2(1f, -1f);
             menuOutline.useGraphicAlpha = false;
 
-            TMP_Text title = CreateText("Title", menu, "PAUSED", TextAlignmentOptions.Center);
+            TMP_Text title = CreateText("Title", menu, "SYSTEM PAUSED", TextAlignmentOptions.Left);
             SetAnchoredRect((RectTransform)title.transform,
-                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f), new Vector2(0f, -38f), new Vector2(320f, 44f));
-            title.fontSize = 25f;
+                new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(30f, -28f), new Vector2(500f, 44f));
+            title.fontSize = 24f;
             title.characterSpacing = 5f;
             title.color = new Color(0.42f, 0.91f, 1f, 1f);
+
+            TMP_Text loadout = CreateText(
+                "Loadout Header",
+                menu,
+                "LOADOUT  /  EQUIPMENT",
+                TextAlignmentOptions.Left);
+            SetAnchoredRect((RectTransform)loadout.transform,
+                new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(30f, -84f), new Vector2(500f, 28f));
+            loadout.fontSize = 12f;
+            loadout.characterSpacing = 3f;
+            loadout.color = new Color(0.55f, 0.65f, 0.72f, 1f);
+
+            RectTransform backSlot = CreateRect("Back Slot", menu);
+            SetAnchoredRect(backSlot,
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -122f), new Vector2(500f, 140f));
+            Image backSlotImage = backSlot.gameObject.AddComponent<Image>();
+            backSlotImage.color = new Color(0.025f, 0.08f, 0.11f, 0.96f);
+            Button backSlotButton = backSlot.gameObject.AddComponent<Button>();
+            backSlotButton.targetGraphic = backSlotImage;
+            ColorBlock backColors = backSlotButton.colors;
+            backColors.normalColor = Color.white;
+            backColors.highlightedColor = new Color(1.18f, 1.18f, 1.18f, 1f);
+            backColors.pressedColor = new Color(0.72f, 0.84f, 0.9f, 1f);
+            backColors.selectedColor = backColors.highlightedColor;
+            backSlotButton.colors = backColors;
+            Outline backOutline = backSlot.gameObject.AddComponent<Outline>();
+            backOutline.effectColor = new Color(0.28f, 0.86f, 1f, 0.7f);
+            backOutline.effectDistance = new Vector2(1f, -1f);
+            backOutline.useGraphicAlpha = false;
+
+            TMP_Text slotName = CreateText(
+                "Slot Name", backSlot, "BACK MODULE", TextAlignmentOptions.TopLeft);
+            SetAnchoredRect((RectTransform)slotName.transform,
+                Vector2.zero, Vector2.one, new Vector2(0f, 1f),
+                new Vector2(18f, -14f), new Vector2(-36f, -24f));
+            slotName.fontSize = 12f;
+            slotName.characterSpacing = 2f;
+            slotName.color = new Color(0.55f, 0.65f, 0.72f, 1f);
+
+            TMP_Text equipmentName = CreateText(
+                "Equipment Name", backSlot, "NO EQUIPMENT", TextAlignmentOptions.Left);
+            SetAnchoredRect((RectTransform)equipmentName.transform,
+                new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(0f, 0.5f), new Vector2(18f, 5f), new Vector2(310f, 38f));
+            equipmentName.fontSize = 23f;
+            equipmentName.fontStyle = FontStyles.Bold;
+            equipmentName.color = new Color(0.86f, 0.96f, 1f, 1f);
+
+            TMP_Text equipmentState = CreateText(
+                "State", backSlot, "EMPTY", TextAlignmentOptions.TopRight);
+            SetAnchoredRect((RectTransform)equipmentState.transform,
+                Vector2.zero, Vector2.one, new Vector2(1f, 1f),
+                new Vector2(-18f, -14f), new Vector2(-36f, -24f));
+            equipmentState.fontSize = 12f;
+            equipmentState.characterSpacing = 2f;
+            equipmentState.color = new Color(0.28f, 0.86f, 1f, 1f);
+
+            TMP_Text equipmentHint = CreateText(
+                "Hint", backSlot, "NO MODULE AVAILABLE", TextAlignmentOptions.BottomLeft);
+            SetAnchoredRect((RectTransform)equipmentHint.transform,
+                Vector2.zero, Vector2.one, new Vector2(0f, 0f),
+                new Vector2(18f, 12f), new Vector2(-36f, -24f));
+            equipmentHint.fontSize = 10f;
+            equipmentHint.characterSpacing = 1f;
+            equipmentHint.color = new Color(0.55f, 0.65f, 0.72f, 1f);
 
             RectTransform resume = CreateRect("Resume", menu);
             SetAnchoredRect(resume,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0.5f, 0f), new Vector2(0f, 34f), new Vector2(260f, 64f));
+                new Vector2(0.5f, 0f), new Vector2(0f, 28f), new Vector2(500f, 58f));
             Image resumeImage = resume.gameObject.AddComponent<Image>();
             resumeImage.color = new Color(0.12f, 0.5f, 0.6f, 1f);
             resumeButton = resume.gameObject.AddComponent<Button>();
@@ -853,11 +937,17 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
                 key.fontSize = 11f;
                 key.color = new Color(0.7f, 0.75f, 0.8f, 1f);
 
-                string itemText = i == 0 ? "PICKAXE" : i == 1 ? "MAGNET" : string.Empty;
+                string itemText = i == 0
+                    ? "PICKAXE"
+                    : i == 1
+                        ? "MAGNET"
+                        : i == 2
+                            ? "FLASHLIGHT"
+                            : string.Empty;
                 TMP_Text item = CreateText("Item", slot, itemText, TextAlignmentOptions.Center);
                 SetAnchoredRect((RectTransform)item.transform, Vector2.zero, Vector2.one,
                     new Vector2(0.5f, 0.5f), new Vector2(3f, -6f), new Vector2(-6f, -16f));
-                item.fontSize = 9f;
+                item.fontSize = i == 2 ? 7f : 9f;
                 item.color = new Color(0.92f, 0.94f, 0.96f, 1f);
                 hotbarItemLabels[i] = item;
             }
@@ -1011,7 +1101,14 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             for (int i = 0; i < itemLabels.Length; i++)
             {
                 if (itemLabels[i] == null) continue;
-                itemLabels[i].text = i == 0 ? "PICKAXE" : i == 1 ? "MAGNET" : string.Empty;
+                itemLabels[i].text = i == 0
+                    ? "PICKAXE"
+                    : i == 1
+                        ? "MAGNET"
+                        : i == 2
+                            ? "FLASHLIGHT"
+                            : string.Empty;
+                itemLabels[i].fontSize = i == 2 ? 7f : 9f;
             }
         }
     }

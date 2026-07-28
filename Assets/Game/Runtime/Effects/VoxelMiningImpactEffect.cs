@@ -27,6 +27,8 @@ namespace Supernova.Effects
         [SerializeField, Min(0.01f)] private float chipLifetime = 0.68f;
         [SerializeField, Min(0.001f)] private float chipSize = 0.045f;
         [SerializeField, Min(0f)] private float chipSpeed = 1.35f;
+        [Tooltip("Initial chip velocity opposite the player's mining direction.")]
+        [SerializeField, Min(0f)] private float chipRecoilSpeed = 0.9f;
         [SerializeField, Min(0f)] private float chipGravity = 1.1f;
 
         private ParticleSystem dustParticles;
@@ -41,6 +43,7 @@ namespace Supernova.Effects
         public void Play(
             Vector3 position,
             Vector3 surfaceNormal,
+            Vector3 miningDirection,
             Color voxelColor,
             VoxelMiningBrushResult result)
         {
@@ -54,6 +57,9 @@ namespace Supernova.Effects
             Vector3 normal = surfaceNormal.sqrMagnitude > 0.0001f
                 ? surfaceNormal.normalized
                 : Vector3.up;
+            Vector3 recoilDirection = miningDirection.sqrMagnitude > 0.0001f
+                ? -miningDirection.normalized
+                : normal;
             int destroyedBoost = Mathf.Clamp(result.DestroyedCount, 0, 8);
             int dustCount = Mathf.Min(
                 MaximumParticlesPerSystem,
@@ -77,7 +83,13 @@ namespace Supernova.Effects
             dustParticles.Play(false);
             chipParticles.Play(false);
             EmitDust(position, normal, opaqueColor, dustCount, random);
-            EmitChips(position, normal, opaqueColor, chipCount, random);
+            EmitChips(
+                position,
+                normal,
+                recoilDirection,
+                opaqueColor,
+                chipCount,
+                random);
         }
 
         private void EmitDust(
@@ -115,6 +127,7 @@ namespace Supernova.Effects
         private void EmitChips(
             Vector3 position,
             Vector3 normal,
+            Vector3 recoilDirection,
             Color color,
             int count,
             System.Random random)
@@ -125,15 +138,27 @@ namespace Supernova.Effects
                 Vector3 direction =
                     (normal * 1.1f + scatter * 0.85f + Vector3.up * 0.2f)
                     .normalized;
+                Vector3 velocity = direction
+                    * chipSpeed
+                    * Lerp(0.65f, 1.35f, Next01(random));
+                float recoilSpeed = chipRecoilSpeed
+                    * Lerp(0.8f, 1.2f, Next01(random));
+                velocity += recoilDirection * recoilSpeed;
+                float minimumRecoilSpeed = chipRecoilSpeed * 0.5f;
+                float currentRecoilSpeed =
+                    Vector3.Dot(velocity, recoilDirection);
+                if (currentRecoilSpeed < minimumRecoilSpeed)
+                {
+                    velocity += recoilDirection
+                        * (minimumRecoilSpeed - currentRecoilSpeed);
+                }
                 float brightness = Lerp(0.68f, 1.16f, Next01(random));
                 var emit = new ParticleSystem.EmitParams
                 {
                     position = position
                         + RandomTangentOffset(normal, chipSize, random)
                         + normal * 0.015f,
-                    velocity = direction
-                        * chipSpeed
-                        * Lerp(0.65f, 1.35f, Next01(random)),
+                    velocity = velocity,
                     startLifetime = chipLifetime
                         * Lerp(0.8f, 1.2f, Next01(random)),
                     startSize = chipSize

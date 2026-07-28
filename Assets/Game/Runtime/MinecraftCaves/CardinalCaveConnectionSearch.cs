@@ -25,14 +25,11 @@ namespace Supernova.MinecraftCaves
 
     /// <summary>
     /// Finds a standable cave point in the four horizontal chunk columns directly
-    /// adjacent to the spawn chunk. The vertical layer may vary by one chunk so a
-    /// cave floor just above or below a chunk seam remains discoverable; diagonal
-    /// horizontal chunks are deliberately excluded.
+    /// adjacent to the spawn column. Every column spans the complete finite world
+    /// height; diagonal horizontal columns are deliberately excluded.
     /// </summary>
     public static class CardinalCaveConnectionSearch
     {
-        private const int VerticalChunkSearchRadius = 1;
-
         private static readonly Vector3Int[] CardinalChunkDirections =
         {
             Vector3Int.right,
@@ -77,76 +74,85 @@ namespace Supernova.MinecraftCaves
             {
                 Vector3Int chunkDirection =
                     CardinalChunkDirections[directionIndex];
-                for (int verticalOffset = -VerticalChunkSearchRadius;
-                    verticalOffset <= VerticalChunkSearchRadius;
-                    verticalOffset++)
+                Vector3Int chunkCoordinate = spawnChunk + chunkDirection;
+                if (!world.TryGetChunk(chunkCoordinate, out _))
                 {
-                    Vector3Int chunkCoordinate = spawnChunk
-                        + chunkDirection
-                        + Vector3Int.up * verticalOffset;
-                    if (!world.TryGetChunk(chunkCoordinate, out _))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    Vector3Int chunkOrigin = chunkCoordinate * VoxelVolume.Size;
-                    int minimumY = chunkOrigin.y + 1;
-                    int maximumY = chunkOrigin.y + VoxelVolume.Size
-                        - headroomSamples;
-                    int minimumX = chunkOrigin.x + clearanceRadiusSamples;
-                    int maximumX = chunkOrigin.x + VoxelVolume.Size
-                        - clearanceRadiusSamples - 1;
-                    int minimumZ = chunkOrigin.z + clearanceRadiusSamples;
-                    int maximumZ = chunkOrigin.z + VoxelVolume.Size
-                        - clearanceRadiusSamples - 1;
+                int originX =
+                    chunkCoordinate.x * VoxelColumnChunkData.Width;
+                int originZ =
+                    chunkCoordinate.z * VoxelColumnChunkData.Depth;
+                int minimumX = originX + clearanceRadiusSamples;
+                int maximumX = originX + VoxelColumnChunkData.Width
+                    - clearanceRadiusSamples - 1;
+                int minimumZ = originZ + clearanceRadiusSamples;
+                int maximumZ = originZ + VoxelColumnChunkData.Depth
+                    - clearanceRadiusSamples - 1;
+                int farthestX = Mathf.Max(
+                    Mathf.Abs(minimumX - spawnAirVoxel.x),
+                    Mathf.Abs(maximumX - spawnAirVoxel.x));
+                int farthestZ = Mathf.Max(
+                    Mathf.Abs(minimumZ - spawnAirVoxel.z),
+                    Mathf.Abs(maximumZ - spawnAirVoxel.z));
+                int maximumVerticalDelta = Mathf.CeilToInt(Mathf.Max(
+                    4f,
+                    Mathf.Sqrt(farthestX * farthestX + farthestZ * farthestZ)
+                        * 0.5f));
+                int minimumY = Mathf.Max(
+                    1,
+                    spawnAirVoxel.y - maximumVerticalDelta);
+                int maximumY = Mathf.Min(
+                    VoxelColumnChunkData.Height - headroomSamples - 1,
+                    spawnAirVoxel.y + maximumVerticalDelta);
 
-                    for (int z = minimumZ; z <= maximumZ; z++)
+                for (int z = minimumZ; z <= maximumZ; z++)
+                {
+                    for (int y = minimumY; y <= maximumY; y++)
                     {
-                        for (int y = minimumY; y <= maximumY; y++)
+                        for (int x = minimumX; x <= maximumX; x++)
                         {
-                            for (int x = minimumX; x <= maximumX; x++)
-                            {
-                                var candidate = new Vector3Int(x, y, z);
-                                if (!IsStandableCavePoint(
-                                        world,
-                                        candidate,
-                                        isoLevel,
-                                        headroomSamples,
-                                        clearanceRadiusSamples))
-                                {
-                                    continue;
-                                }
-
-                                Vector3 offset = candidate - spawnAirVoxel;
-                                float horizontalDistanceSquared =
-                                    offset.x * offset.x + offset.z * offset.z;
-                                float horizontalDistance = Mathf.Sqrt(
-                                    horizontalDistanceSquared);
-                                if (horizontalDistanceSquared
-                                        < minimumHorizontalDistanceSquared
-                                    || horizontalDistance <= Mathf.Epsilon
-                                    || Mathf.Abs(offset.y)
-                                        > Mathf.Max(
-                                            4f,
-                                            horizontalDistance * 0.5f))
-                                {
-                                    continue;
-                                }
-
-                                float squaredDistance = offset.sqrMagnitude;
-                                if (squaredDistance >= bestSquaredDistance)
-                                {
-                                    continue;
-                                }
-
-                                bestSquaredDistance = squaredDistance;
-                                target = new CardinalCaveTarget(
+                            var candidate = new Vector3Int(x, y, z);
+                            if (!IsStandableCavePoint(
+                                    world,
                                     candidate,
-                                    chunkCoordinate,
-                                    chunkDirection,
-                                    squaredDistance);
-                                found = true;
+                                    isoLevel,
+                                    headroomSamples,
+                                    clearanceRadiusSamples))
+                            {
+                                continue;
                             }
+
+                            Vector3 offset = candidate - spawnAirVoxel;
+                            float horizontalDistanceSquared =
+                                offset.x * offset.x + offset.z * offset.z;
+                            float horizontalDistance = Mathf.Sqrt(
+                                horizontalDistanceSquared);
+                            if (horizontalDistanceSquared
+                                    < minimumHorizontalDistanceSquared
+                                || horizontalDistance <= Mathf.Epsilon
+                                || Mathf.Abs(offset.y)
+                                    > Mathf.Max(
+                                        4f,
+                                        horizontalDistance * 0.5f))
+                            {
+                                continue;
+                            }
+
+                            float squaredDistance = offset.sqrMagnitude;
+                            if (squaredDistance >= bestSquaredDistance)
+                            {
+                                continue;
+                            }
+
+                            bestSquaredDistance = squaredDistance;
+                            target = new CardinalCaveTarget(
+                                candidate,
+                                chunkCoordinate,
+                                chunkDirection,
+                                squaredDistance);
+                            found = true;
                         }
                     }
                 }

@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55c4c72518c3412459e3a631737b16ad, type: 3}
+  m_Name: HolyBookTreasure
+  m_EditorClassIdentifier: 
+  prefab: {fileID: 7212807089758395303, guid: 9b2c6fdf9ab72d54fa063f718b699d81, type: 3}
+  value: 140
+  weight: 3
+  spawnChance: 1
+  attemptsPerChunk: 2
+  maximumSurfaceSlope: 12
+  requiredHeadroom: 1.5

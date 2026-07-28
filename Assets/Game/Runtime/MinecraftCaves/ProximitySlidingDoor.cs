@@ -17,6 +17,8 @@ namespace Supernova.MinecraftCaves
         [SerializeField, Min(0.1f)] private float openingDistance = 1.8f;
         [SerializeField, Min(0.1f)] private float closingDistance = 3f;
         [SerializeField, Min(0.1f)] private float travelSpeed = 3.5f;
+        [Tooltip("Once opened, this door stays open for the rest of the scene.")]
+        [SerializeField] private bool stayOpenAfterFirstOpen;
 
         private Vector3 closedLocalPosition;
         private Vector3 activationLocalPosition;
@@ -24,9 +26,11 @@ namespace Supernova.MinecraftCaves
         private AudioSource doorAudio;
         private bool initialized;
         private bool openRequested;
+        private bool hasOpened;
 
         public bool IsOpenRequested => openRequested;
         public Transform DoorLeaf => doorLeaf;
+        public bool StayOpenAfterFirstOpen => stayOpenAfterFirstOpen;
 
         private void Awake()
         {
@@ -79,7 +83,7 @@ namespace Supernova.MinecraftCaves
 
             if (openRequested)
             {
-                if (distance >= closingDistance)
+                if (!stayOpenAfterFirstOpen && distance >= closingDistance)
                 {
                     openRequested = false;
                     PlayDoorSound();
@@ -88,7 +92,13 @@ namespace Supernova.MinecraftCaves
             else if (distance <= openingDistance)
             {
                 openRequested = true;
+                hasOpened = true;
                 PlayDoorSound();
+            }
+
+            if (stayOpenAfterFirstOpen && hasOpened)
+            {
+                openRequested = true;
             }
 
             Vector3 target = closedLocalPosition
@@ -97,6 +107,12 @@ namespace Supernova.MinecraftCaves
                 doorLeaf.localPosition,
                 target,
                 travelSpeed * Mathf.Max(0f, deltaTime));
+        }
+
+        public void SetStayOpenAfterFirstOpen(bool value)
+        {
+            stayOpenAfterFirstOpen = value;
+            if (value && hasOpened) openRequested = true;
         }
 
         private bool EnsureInitialized()

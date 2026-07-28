@@ -11,7 +11,7 @@
 5. 修正吸附器最初只在水平面作用、无法改变矿车 Y 轴位置的问题。
 6. 添加玩家工具模式：
    - 数字键 `1`：镐子，左键维持原有挖掘功能。
-   - 数字键 `2`：矿车吸附器，按住左键吸附，松开左键释放。
+   - 数字键 `2`：磁铁，按住左键吸附准星下的动态刚体，松开左键释放。
 
 ---
 
@@ -111,7 +111,8 @@ Rigidbody.GetPointVelocity(wheelPivot.position)
 
 ### 4.2 用途
 
-该组件被添加到 `EmptyCart` 根节点，用于标记此刚体可以被玩家吸附器取得。
+该组件仍保留在 `EmptyCart` 根节点，供旧内容记录“可吸附”元数据。磁铁现在直接
+接受准星命中的任意动态 `Rigidbody`，不再要求目标必须带此标记。
 
 主要接口：
 
@@ -121,16 +122,16 @@ Rigidbody Body
 void SetCanBeAttracted(bool value)
 ```
 
-只有满足以下条件的目标才允许被吸附：
+磁铁目标只需满足：
 
-- 存在 `PhysicsAttractable`。
-- 存在 `Rigidbody`。
-- Rigidbody 不是 Kinematic。
-- `canBeAttracted` 没有被关闭。
+- 准星射线首先命中其碰撞体；
+- 碰撞体关联到 `Rigidbody`；
+- Rigidbody 不是 Kinematic；
+- 目标不属于玩家自身层级。
 
 ---
 
-## 5. 第一人称矿车吸附器
+## 5. 第一人称刚体吸附器
 
 ### 5.1 新增脚本
 
@@ -149,20 +150,21 @@ void SetCanBeAttracted(bool value)
 - 鼠标光标处于锁定状态。
 - 玩家按住鼠标左键。
 
-目标检测使用非分配式球形投射：
+目标检测使用从相机准星发出的非分配式射线：
 
 ```csharp
-Physics.SphereCastNonAlloc(...)
+Physics.RaycastNonAlloc(...)
 ```
 
 默认参数：
 
 - 最大取得距离：`3.5m`
-- 检测半径：`0.35m`
+- 检测层：`targetLayers`
 
-如果玩家与矿车之间存在更近的非吸附碰撞体，则不会隔着障碍物取得矿车。
+如果玩家与目标之间存在更近的静态碰撞体，则不会隔着障碍物取得刚体。矿车与
+采出的矿石刚体走同一条取得和软物理吸附链路。
 
-### 5.3 软物理吸附
+### 5.3 固定力物理吸附
 
 吸附器不会执行以下操作：
 
@@ -171,27 +173,36 @@ Physics.SphereCastNonAlloc(...)
 - 不把矿车设置为玩家子节点。
 - 不使用瞬移方式强制跟随。
 
-矿车位置通过弹簧和阻尼加速度控制：
+磁铁向目标点施加有上限的真实物理力：
 
 ```csharp
-acceleration = positionError * positionSpring
-    + (targetVelocity - bodyVelocity) * positionDamping;
+force = normalize(positionError) * attractionForce
+    + relativeVelocity * forceDamping;
+force = ClampMagnitude(force, attractionForce);
 
-rigidbody.AddForce(acceleration, ForceMode.Acceleration);
+rigidbody.AddForce(force, ForceMode.Force);
 ```
 
 默认参数：
 
+- Attraction Force：`800N`
+- Force Damping：`90N/(m/s)`
 - Hold Distance：`2m`
-- Position Spring：`22`
-- Position Damping：`8`
-- Maximum Acceleration：`45`
-- Break Distance：`5m`
+- Hold Distance 范围：`0.5m`–`6m`
+- 每格滚轮距离：`0.35m`
+- Break Distance：`8m`
 
-矿车朝向通过 Y 轴软扭矩逐渐对齐玩家前方：
+`ForceMode.Force` 不会绕过质量：同样的 800N 对轻物体产生较大加速度，对重物体
+产生较小加速度。如果向上的力不足以抵消 `mass * gravity`，物体就无法离地。磁铁
+不会读取质量后用代码判断“允许/禁止抬起”，取得逻辑仍只检查是否为动态刚体。
+
+吸附期间滚轮向上会把目标点推远，滚轮向下会把目标点拉近。目标点始终位于准星
+方向，并限制在配置的最小、最大距离内。
+
+矿车朝向通过 `ForceMode.Force` 的 Y 轴扭矩逐渐对齐玩家前方：
 
 ```csharp
-rigidbody.AddTorque(yawTorque, ForceMode.Acceleration);
+rigidbody.AddTorque(yawTorque, ForceMode.Force);
 ```
 
 ### 5.4 Y 轴吸附修正
@@ -261,7 +272,7 @@ public enum PlayerToolMode
 | 按键 | 工具 | 左键功能 |
 |---|---|---|
 | `1` / `Keypad 1` | Pickaxe | 保留原有攻击/挖掘流程，执行 mining |
-| `2` / `Keypad 2` | Cart Attractor | 按住吸附矿车，松开释放 |
+| `2` / `Keypad 2` | Magnet | 按住吸附准星下的动态刚体，松开释放 |
 
 默认工具为：
 

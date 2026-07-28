@@ -88,6 +88,40 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void Tick_LevelDoorStaysOpenAfterFirstActivation()
+        {
+            root = new GameObject("Level Door");
+            GameObject leafObject = new GameObject("Door Leaf");
+            leafObject.transform.SetParent(root.transform, false);
+            leafObject.AddComponent<BoxCollider>();
+            playerObject = new GameObject("Player");
+            playerObject.AddComponent<CharacterController>();
+
+            ProximitySlidingDoor door =
+                root.AddComponent<ProximitySlidingDoor>();
+            door.Configure(
+                leafObject.transform,
+                playerObject.transform,
+                new Vector3(0f, -3f, 0f),
+                1.8f,
+                3f,
+                10f);
+            door.SetStayOpenAfterFirstOpen(true);
+
+            playerObject.transform.position = Vector3.zero;
+            Physics.SyncTransforms();
+            door.Tick(1f);
+            playerObject.transform.position = Vector3.forward * 10f;
+            Physics.SyncTransforms();
+            door.Tick(1f);
+
+            Assert.That(door.IsOpenRequested, Is.True);
+            Assert.That(
+                leafObject.transform.localPosition.y,
+                Is.EqualTo(-3f).Within(0.001f));
+        }
+
+        [Test]
         public void CarveTerrainClearance_RemovesRockAboveTheCellFloorOnly()
         {
             root = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -97,7 +131,7 @@ namespace Supernova.Tests
             SpawnPointSceneStructure structure =
                 root.AddComponent<SpawnPointSceneStructure>();
             var world = new Supernova.Voxels.InfiniteVoxelWorld();
-            for (int y = -1; y <= 5; y++)
+            for (int y = 0; y <= 5; y++)
             {
                 for (int z = -3; z <= 3; z++)
                 {
@@ -228,7 +262,7 @@ namespace Supernova.Tests
                 root.AddComponent<SpawnPointSceneStructure>();
             structure.SetExitTarget(new Vector3(0f, 4f, 8f));
             var world = new InfiniteVoxelWorld();
-            for (int y = -1; y <= 9; y++)
+            for (int y = 0; y <= 9; y++)
             {
                 for (int z = -3; z <= 9; z++)
                 {
@@ -272,7 +306,7 @@ namespace Supernova.Tests
                 root.AddComponent<SpawnPointSceneStructure>();
             structure.SetExitTarget(new Vector3(0f, 0f, 8f));
             var world = new InfiniteVoxelWorld();
-            for (int y = -1; y <= 5; y++)
+            for (int y = 0; y <= 5; y++)
             {
                 for (int z = -2; z <= 9; z++)
                 {
@@ -302,6 +336,217 @@ namespace Supernova.Tests
                 world.GetDensityOrDefault(0, 4, 6),
                 Is.GreaterThanOrEqualTo(0f),
                 "The 0.7 Cell must also reduce the passage height.");
+            Object.DestroyImmediate(terrainObject);
+        }
+
+        [Test]
+        public void CarveTerrainClearance_CarvesLandingShaftThroughWorldTop()
+        {
+            root = new GameObject("Cell");
+            root.transform.position = new Vector3(31f, 96f, 31f);
+            root.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+            GameObject cellGeometry =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cellGeometry.name = "Cell Geometry";
+            cellGeometry.transform.SetParent(root.transform, false);
+            cellGeometry.transform.localScale = new Vector3(4f, 4f, 4f);
+            SpawnPointSceneStructure structure =
+                root.AddComponent<SpawnPointSceneStructure>();
+            var world = new InfiniteVoxelWorld();
+            world.EnsureChunk(new Vector2Int(0, 0));
+            world.EnsureChunk(new Vector2Int(1, 0));
+            world.EnsureChunk(new Vector2Int(0, 1));
+            world.EnsureChunk(new Vector2Int(1, 1));
+            GameObject terrainObject = new GameObject("Terrain");
+
+            int cleared = structure.CarveTerrainClearance(
+                world,
+                terrainObject.transform,
+                1f,
+                -1f);
+
+            Assert.That(cleared, Is.GreaterThan(0));
+            Assert.That(
+                world.GetDensityOrDefault(
+                    31,
+                    VoxelColumnChunkData.Height - 1,
+                    31),
+                Is.LessThan(0f),
+                "The shaft must open through the world's top boundary.");
+            Assert.That(
+                world.GetDensityOrDefault(
+                    33,
+                    VoxelColumnChunkData.Height - 2,
+                    31),
+                Is.LessThan(0f),
+                "The complete Cell footprint must remain open across columns.");
+            Assert.That(
+                world.GetDensityOrDefault(
+                    36,
+                    VoxelColumnChunkData.Height - 1,
+                    31),
+                Is.GreaterThanOrEqualTo(0f),
+                "Top bedrock outside the shaft transition must remain.");
+            Assert.That(
+                world.GetDensityOrDefault(
+                    33,
+                    VoxelColumnChunkData.Height - 1,
+                    29),
+                Is.InRange(-0.999f, 0.999f),
+                "A rotated Cell must use its real local footprint, not the "
+                + "corners of an expanded world-space AABB, while retaining "
+                + "a soft density transition outside the footprint.");
+            Assert.That(
+                world.GetDensityOrDefault(31, 95, 31),
+                Is.GreaterThanOrEqualTo(0f),
+                "The landing shaft must not remove support below the Cell floor.");
+            Assert.That(
+                world.GetSampleOrDefault(
+                    31,
+                    VoxelColumnChunkData.Height - 1,
+                    31).Type,
+                Is.EqualTo(VoxelTypeId.Air));
+
+            Object.DestroyImmediate(terrainObject);
+        }
+
+        [Test]
+        public void StabilizeLandingGround_FillsPitAndClearsSafeHeadroom()
+        {
+            root = new GameObject("Cell");
+            root.transform.position = new Vector3(31f, 96f, 31f);
+            root.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+            GameObject cellGeometry =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cellGeometry.name = "Cell Geometry";
+            cellGeometry.transform.SetParent(root.transform, false);
+            cellGeometry.transform.localScale = new Vector3(4f, 4f, 4f);
+            SpawnPointSceneStructure structure =
+                root.AddComponent<SpawnPointSceneStructure>();
+            structure.SetExitTarget(
+                root.transform.position
+                + root.transform.forward * 16f
+                + Vector3.down * 8f);
+            var world = new InfiniteVoxelWorld();
+            world.EnsureChunk(new Vector2Int(0, 0));
+            world.EnsureChunk(new Vector2Int(1, 0));
+            world.EnsureChunk(new Vector2Int(0, 1));
+            world.EnsureChunk(new Vector2Int(1, 1));
+            var stoneType = new VoxelTypeId(7);
+            world.SetVoxel(37, 95, 31, -1f, VoxelTypeId.Air);
+            world.SetVoxel(37, 92, 31, -1f, VoxelTypeId.Air);
+            world.SetVoxel(45, 95, 31, -1f, VoxelTypeId.Air);
+            GameObject terrainObject = new GameObject("Terrain");
+
+            structure.CarveTerrainClearance(
+                world,
+                terrainObject.transform,
+                1f,
+                -1f);
+            int supported = structure.StabilizeLandingGround(
+                world,
+                terrainObject.transform,
+                1f,
+                1f,
+                stoneType,
+                -1f,
+                out int clearedHeadroom);
+
+            Assert.That(supported, Is.GreaterThan(0));
+            Assert.That(clearedHeadroom, Is.GreaterThan(0));
+            Assert.That(
+                world.GetDensityOrDefault(37, 95, 31),
+                Is.GreaterThanOrEqualTo(0f),
+                "A procedural pit inside the safety apron must be filled.");
+            Assert.That(
+                world.GetSampleOrDefault(37, 95, 31).Type,
+                Is.EqualTo(stoneType));
+            Assert.That(
+                world.GetDensityOrDefault(37, 97, 31),
+                Is.LessThan(0f),
+                "The supported apron must retain enough player headroom.");
+            Assert.That(
+                world.GetDensityOrDefault(33, 95, 33),
+                Is.GreaterThanOrEqualTo(0f),
+                "A passage toward a lower cave must remain level until it "
+                + "leaves the safety apron.");
+            Assert.That(
+                world.GetDensityOrDefault(33, 97, 33),
+                Is.LessThan(0f),
+                "Finalizing the level apron must not block the exit headroom.");
+            Assert.That(
+                world.GetDensityOrDefault(37, 92, 31),
+                Is.LessThan(0f),
+                "The rule should add a bounded foundation, not fill the "
+                + "entire cave below the Cell.");
+            Assert.That(
+                world.GetDensityOrDefault(45, 95, 31),
+                Is.LessThan(0f),
+                "Terrain outside the rounded safety margin must remain "
+                + "procedural.");
+
+            Object.DestroyImmediate(terrainObject);
+        }
+
+        [Test]
+        public void StabilizeLandingGround_BlendsOutsideGuaranteedCore()
+        {
+            root = new GameObject("Cell");
+            root.transform.position = new Vector3(31f, 96f, 31f);
+            GameObject cellGeometry =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cellGeometry.name = "Cell Geometry";
+            cellGeometry.transform.SetParent(root.transform, false);
+            cellGeometry.transform.localScale = new Vector3(4f, 4f, 4f);
+            SpawnPointSceneStructure structure =
+                root.AddComponent<SpawnPointSceneStructure>();
+            var world = new InfiniteVoxelWorld();
+            world.EnsureChunk(new Vector2Int(0, 0));
+            world.EnsureChunk(new Vector2Int(1, 0));
+            world.EnsureChunk(new Vector2Int(0, 1));
+            world.EnsureChunk(new Vector2Int(1, 1));
+            var stoneType = new VoxelTypeId(7);
+            for (int x = 39; x <= 41; x++)
+            {
+                world.SetVoxel(x, 95, 31, -1f, VoxelTypeId.Air);
+            }
+            GameObject terrainObject = new GameObject("Terrain");
+
+            structure.StabilizeLandingGround(
+                world,
+                terrainObject.transform,
+                1f,
+                1f,
+                stoneType,
+                -1f,
+                out _);
+
+            Assert.That(
+                world.GetDensityOrDefault(39, 95, 31),
+                Is.EqualTo(1f).Within(0.0001f),
+                "The guaranteed apron core must retain full support.");
+            Assert.That(
+                world.GetDensityOrDefault(40, 95, 31),
+                Is.InRange(-0.999f, 0.999f),
+                "Ground just outside the safe core should blend toward the "
+                + "procedural field.");
+            Assert.That(
+                world.GetDensityOrDefault(41, 95, 31),
+                Is.EqualTo(-1f).Within(0.0001f),
+                "Ground beyond the transition band must remain procedural.");
+            Assert.That(
+                world.GetDensityOrDefault(39, 97, 31),
+                Is.EqualTo(-1f).Within(0.0001f),
+                "The safe core must retain full headroom.");
+            Assert.That(
+                world.GetDensityOrDefault(40, 97, 31),
+                Is.InRange(-0.999f, 0.999f),
+                "Headroom should use the same soft transition.");
+            Assert.That(
+                world.GetDensityOrDefault(41, 97, 31),
+                Is.EqualTo(1f).Within(0.0001f),
+                "Rock beyond the transition band must remain unchanged.");
+
             Object.DestroyImmediate(terrainObject);
         }
 

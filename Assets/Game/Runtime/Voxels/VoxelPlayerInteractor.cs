@@ -134,7 +134,11 @@ namespace Supernova.Voxels
                     out VoxelMiningBrushResult result);
                 if (mined)
                 {
-                    PlayMiningImpact(hitPoint, hitNormal, result);
+                    PlayMiningImpact(
+                        hitPoint,
+                        hitNormal,
+                        mineDirection,
+                        result);
                 }
                 return mined;
             }
@@ -158,7 +162,7 @@ namespace Supernova.Voxels
                     out bool canRemove,
                     out _,
                     out _,
-                    out _,
+                    out Vector3 mineDirection,
                     out Vector3 hitPoint,
                     out Vector3 hitNormal)
                 || !canRemove)
@@ -176,7 +180,11 @@ namespace Supernova.Voxels
                     1,
                     result.Destroyed ? 1 : 0,
                     result);
-                PlayMiningImpact(hitPoint, hitNormal, brushResult);
+                PlayMiningImpact(
+                    hitPoint,
+                    hitNormal,
+                    mineDirection,
+                    brushResult);
             }
             return mined;
         }
@@ -207,7 +215,11 @@ namespace Supernova.Voxels
                 out result);
             if (mined)
             {
-                PlayMiningImpact(hitPoint, hitNormal, result);
+                PlayMiningImpact(
+                    hitPoint,
+                    hitNormal,
+                    mineDirection,
+                    result);
             }
             return mined;
         }
@@ -229,6 +241,7 @@ namespace Supernova.Voxels
                     PlayMiningImpact(
                         pendingMinePoint,
                         pendingMineNormal,
+                        pendingMineDirection,
                         result);
                 }
             }
@@ -418,6 +431,7 @@ namespace Supernova.Voxels
         private void PlayMiningImpact(
             Vector3 hitPoint,
             Vector3 hitNormal,
+            Vector3 miningDirection,
             VoxelMiningBrushResult result)
         {
             if (miningImpactEffect == null)
@@ -440,6 +454,7 @@ namespace Supernova.Voxels
             miningImpactEffect.Play(
                 hitPoint,
                 hitNormal,
+                miningDirection,
                 voxelColor,
                 result);
         }

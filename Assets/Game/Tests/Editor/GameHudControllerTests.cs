@@ -47,11 +47,14 @@ namespace Supernova.Tests
             Assert.That(hotbar.childCount, Is.EqualTo(PlayerInventory.SlotCount));
             Assert.That(hotbar.Find("Slot 1/Item")?.GetComponent<TMP_Text>().text, Is.EqualTo("PICKAXE"));
             Assert.That(hotbar.Find("Slot 2/Item")?.GetComponent<TMP_Text>().text, Is.EqualTo("MAGNET"));
+            Assert.That(
+                hotbar.Find("Slot 3/Item")?.GetComponent<TMP_Text>().text,
+                Is.EqualTo("FLASHLIGHT"));
             Assert.That(hotbar.Find("Slot 10/Key")?.GetComponent<TMP_Text>().text, Is.EqualTo("0"));
         }
 
         [Test]
-        public void PauseMenu_HasOnlyResumeAndTogglesVisibility()
+        public void PauseMenu_HasResumeAndBackEquipmentSlotAndTogglesVisibility()
         {
             hudObject = new GameObject("Game HUD");
             GameHudController controller = hudObject.AddComponent<GameHudController>();
@@ -62,9 +65,14 @@ namespace Supernova.Tests
             Selectable[] options = panel.GetComponentsInChildren<Selectable>(true);
 
             Assert.That(panel.gameObject.activeSelf, Is.False);
-            Assert.That(options, Has.Length.EqualTo(1));
+            Assert.That(options, Has.Length.EqualTo(2));
             Assert.That(resume.GetComponent<Button>(), Is.Not.Null);
             Assert.That(resume.Find("Label").GetComponent<TMP_Text>().text, Is.EqualTo("RESUME"));
+            Transform backSlot = panel.Find("Menu/Back Slot");
+            Assert.That(backSlot.GetComponent<Button>(), Is.Not.Null);
+            Assert.That(
+                backSlot.Find("Slot Name").GetComponent<TMP_Text>().text,
+                Is.EqualTo("BACK MODULE"));
             Assert.That(controller.PauseCanvas.sortingOrder,
                 Is.GreaterThan(controller.LoadingCanvas.sortingOrder));
 

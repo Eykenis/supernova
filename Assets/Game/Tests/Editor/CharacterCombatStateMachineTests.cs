@@ -64,19 +64,77 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerInventory_UsesTenSlotsWithOnlyPickaxeAndMagnetPopulated()
+        public void PlayerInventory_UsesTenSlotsWithThreeConfiguredTools()
         {
             var inventory = new PlayerInventory();
 
             Assert.That(PlayerInventory.SlotCount, Is.EqualTo(10));
             Assert.That(inventory.GetItemAtSlot(0), Is.EqualTo(PlayerInventoryItem.Pickaxe));
             Assert.That(inventory.GetItemAtSlot(1), Is.EqualTo(PlayerInventoryItem.Magnet));
-            for (int i = 2; i < PlayerInventory.SlotCount; i++)
+            Assert.That(inventory.GetItemAtSlot(2), Is.EqualTo(PlayerInventoryItem.Flashlight));
+            for (int i = 3; i < PlayerInventory.SlotCount; i++)
                 Assert.That(inventory.GetItemAtSlot(i), Is.EqualTo(PlayerInventoryItem.Empty));
 
             Assert.That(inventory.SelectSlot(9), Is.True);
             Assert.That(inventory.SelectedSlotIndex, Is.EqualTo(9));
             Assert.That(inventory.SelectedItem, Is.EqualTo(PlayerInventoryItem.Empty));
+        }
+
+        [Test]
+        public void FlashlightTool_UsesThirdSlotAndPersistentLightPrefab()
+        {
+            PlayerToolDefinition flashlight =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    "Assets/Game/Config/Tools/FlashlightTool.asset");
+            GameObject playerPrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/Game/Prefabs/Player.prefab");
+
+            Assert.That(flashlight, Is.Not.Null);
+            Assert.That(flashlight.Item, Is.EqualTo(PlayerInventoryItem.Flashlight));
+            Assert.That(
+                flashlight.PrimaryAction,
+                Is.EqualTo(PlayerToolPrimaryAction.ThrowPersistentLight));
+            Assert.That(flashlight.HeldModelPrefab, Is.Not.Null);
+            Assert.That(flashlight.ProjectilePrefab, Is.Not.Null);
+            Assert.That(flashlight.ThrowSpeed, Is.GreaterThan(0f));
+            Assert.That(
+                playerPrefab.GetComponent<PlayerToolController>()
+                    .GetDefinition(PlayerInventoryItem.Flashlight),
+                Is.SameAs(flashlight));
+
+            PersistentLightProjectile projectile = flashlight.ProjectilePrefab;
+            Assert.That(projectile.GetComponent<Rigidbody>(), Is.Not.Null);
+            Assert.That(projectile.GetComponent<Collider>(), Is.Not.Null);
+            Assert.That(projectile.LightSource, Is.Not.Null);
+            Assert.That(projectile.LightSource.type, Is.EqualTo(LightType.Point));
+            Assert.That(projectile.LightSource.intensity, Is.EqualTo(0.55f));
+            Assert.That(projectile.LightSource.range, Is.EqualTo(14f));
+            Assert.That(projectile.LightSource.shadows, Is.EqualTo(LightShadows.None));
+            Assert.That(projectile.GetComponent<TimedBomb>(), Is.Null);
+        }
+
+        [Test]
+        public void PersistentLightProjectile_LaunchSetsVelocityWithoutArmingLifetime()
+        {
+            GameObject projectilePrefab =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    "Assets/Game/Prefabs/Tools/FlashlightProjectile.prefab");
+            GameObject instance = Object.Instantiate(projectilePrefab);
+            objects.Add(instance);
+            PersistentLightProjectile projectile =
+                instance.GetComponent<PersistentLightProjectile>();
+            Vector3 velocity = new Vector3(1f, 2f, 3f);
+            Vector3 angularVelocity = new Vector3(4f, 5f, 6f);
+
+            projectile.Launch(velocity, angularVelocity);
+
+            Assert.That(projectile.Body.velocity, Is.EqualTo(velocity));
+            Assert.That(
+                projectile.Body.angularVelocity,
+                Is.EqualTo(angularVelocity));
+            Assert.That(projectile.LightSource.enabled, Is.True);
+            Assert.That(instance.GetComponent<TimedBomb>(), Is.Null);
         }
 
         [Test]
@@ -275,7 +333,9 @@ namespace Supernova.Tests
 
             inventory.SelectSlot(2);
             Assert.That(attractor.DeviceEnabled, Is.False);
-            Assert.That(inventory.SelectedItem, Is.EqualTo(PlayerInventoryItem.Empty));
+            Assert.That(
+                inventory.SelectedItem,
+                Is.EqualTo(PlayerInventoryItem.Flashlight));
         }
 
         [Test]

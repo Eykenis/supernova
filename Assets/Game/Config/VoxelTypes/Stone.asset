@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 2
   displayName: Stone
-  durability: 4
+  durability: 1
   material: {fileID: 0}

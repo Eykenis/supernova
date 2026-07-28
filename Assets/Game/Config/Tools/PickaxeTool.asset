@@ -20,9 +20,11 @@ MonoBehaviour:
   heldModelPrefab: {fileID: 1392316285209212, guid: 869385138ceeb3c4e9ed5f72da8d50d7,
     type: 3}
   allowMovementWhileUsing: 0
-  miningPower: 2
+  miningPower: 1
+  miningEvenHitMultiplier: 4
+  miningPropagationDivisor: 2
   miningRadius: 0.55
   miningDepth: 0.75
   miningFalloffExponent: 1.5
   miningMinimumPowerFraction: 0.25
-  miningMaxAffectedSamples: 24
+  miningMaxAffectedSamples: 128

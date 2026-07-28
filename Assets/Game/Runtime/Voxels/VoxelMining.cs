@@ -10,13 +10,15 @@ namespace Supernova.Voxels
             VoxelTypeId type,
             int durability,
             int accumulatedHits,
-            bool destroyed)
+            bool destroyed,
+            float excessDamage = 0f)
         {
             Coordinate = coordinate;
             Type = type;
             Durability = Mathf.Max(1, durability);
             AccumulatedHits = Mathf.Clamp(accumulatedHits, 0, Durability);
             Destroyed = destroyed;
+            ExcessDamage = Mathf.Max(0f, excessDamage);
         }
 
         public Vector3Int Coordinate { get; }
@@ -25,6 +27,7 @@ namespace Supernova.Voxels
         public int AccumulatedHits { get; }
         public int RemainingHits => Mathf.Max(0, Durability - AccumulatedHits);
         public bool Destroyed { get; }
+        public float ExcessDamage { get; }
     }
 
     /// <summary>Stores partial mining damage per world voxel coordinate.</summary>
@@ -63,9 +66,11 @@ namespace Supernova.Voxels
 
             int requiredHits = Mathf.Max(1, durability);
             float accumulatedDamage = damage;
+            float damageBeforeHit = 0f;
             if (damageByVoxel.TryGetValue(coordinate, out DamageState state)
                 && state.Type == sample.Type)
             {
+                damageBeforeHit = state.AccumulatedDamage;
                 accumulatedDamage = state.AccumulatedDamage + damage;
             }
             else if (inheritNeighbourProgress
@@ -77,10 +82,16 @@ namespace Supernova.Voxels
                 // The crosshair jittered onto an adjacent same-type block between
                 // clicks. Carry over the accumulated progress so mining doesn't
                 // silently reset and stall.
+                damageBeforeHit = inheritedDamage;
                 accumulatedDamage = inheritedDamage + damage;
             }
 
             bool destroyed = accumulatedDamage >= requiredHits;
+            float remainingDurabilityBeforeHit =
+                Mathf.Max(0f, requiredHits - damageBeforeHit);
+            float excessDamage = destroyed
+                ? Mathf.Max(0f, damage - remainingDurabilityBeforeHit)
+                : 0f;
             accumulatedDamage = Mathf.Min(accumulatedDamage, requiredHits);
             if (destroyed)
             {
@@ -97,7 +108,8 @@ namespace Supernova.Voxels
                 sample.Type,
                 requiredHits,
                 Mathf.CeilToInt(accumulatedDamage),
-                destroyed);
+                destroyed,
+                excessDamage);
             return true;
         }
 

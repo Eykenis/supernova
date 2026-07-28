@@ -8,6 +8,7 @@ namespace Supernova.Gameplay
         Empty = 0,
         Pickaxe = 1,
         Magnet = 2,
+        Flashlight = 3,
     }
 
     // Kept for callers that used the tool API before the hotbar was introduced.
@@ -16,6 +17,7 @@ namespace Supernova.Gameplay
         None = 0,
         Pickaxe = 1,
         CartAttractor = 2,
+        Flashlight = 3,
     }
 
     /// <summary>Fixed ten-slot player inventory used by the numeric hotbar.</summary>
@@ -27,7 +29,7 @@ namespace Supernova.Gameplay
         {
             PlayerInventoryItem.Pickaxe,
             PlayerInventoryItem.Magnet,
-            PlayerInventoryItem.Empty,
+            PlayerInventoryItem.Flashlight,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
@@ -108,6 +110,7 @@ namespace Supernova.Gameplay
         public PlayerToolMode CurrentTool => (PlayerToolMode)SelectedItem;
         public bool IsPickaxeSelected => SelectedItem == PlayerInventoryItem.Pickaxe;
         public bool IsCartAttractorSelected => SelectedItem == PlayerInventoryItem.Magnet;
+        public bool IsFlashlightSelected => SelectedItem == PlayerInventoryItem.Flashlight;
         public GameObject EquippedToolModel => equippedToolModel;
 
         private void Awake()
@@ -132,6 +135,7 @@ namespace Supernova.Gameplay
 
         private void Update()
         {
+            if (cartAttractor != null && cartAttractor.IsTowingCart) return;
             int requestedSlot = ReadRequestedSlot();
             if (requestedSlot >= 0) SelectSlot(requestedSlot);
         }
@@ -163,6 +167,7 @@ namespace Supernova.Gameplay
 
         public void SelectSlot(int slotIndex)
         {
+            if (cartAttractor != null && cartAttractor.IsTowingCart) return;
             EnsureInventory();
             bool changed = inventory.SelectSlot(slotIndex);
             selectedSlotIndex = inventory.SelectedSlotIndex;
@@ -181,8 +186,11 @@ namespace Supernova.Gameplay
                 case PlayerToolMode.Pickaxe:
                     SelectSlot(0);
                     break;
-                default:
+                case PlayerToolMode.Flashlight:
                     SelectSlot(2);
+                    break;
+                default:
+                    SelectSlot(3);
                     break;
             }
         }
@@ -201,10 +209,10 @@ namespace Supernova.Gameplay
             PlayerToolDefinition definition = SelectedDefinition;
             if (cartAttractor != null)
             {
-                bool usesAttractor = definition != null
+                bool usesMagnet = definition != null
                     ? definition.PrimaryAction == PlayerToolPrimaryAction.AttractCart
                     : IsCartAttractorSelected;
-                cartAttractor.SetDeviceEnabled(usesAttractor);
+                cartAttractor.SetDeviceEnabled(usesMagnet);
             }
             ApplyEquippedToolModel(definition);
         }

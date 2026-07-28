@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Supernova.Gameplay;
 using Supernova.Voxels;
 using UnityEngine;
 
@@ -21,13 +22,28 @@ namespace Supernova.MinecraftCaves
     public sealed class MinecraftCaveInfiniteWorld : MonoBehaviour, IVoxelTerrain
     {
         public const int GenerationRadiusInChunks = 4;
-        public const int RequiredChunkCountAtRadius = 257;
+        public const int RequiredChunkCountAtRadius = 49;
+        public const int MeshSectionHeight = 32;
+        public const int MeshSectionsPerColumn =
+            VoxelColumnChunkData.Height / MeshSectionHeight;
+        public const int MinimumSpawnDepthBelowTop = 32;
+        public const int MaximumSpawnDepthBelowTop = 160;
+        public const int HighestSpawnY =
+            VoxelColumnChunkData.Height - 1 - MinimumSpawnDepthBelowTop;
+        public const int LowestSpawnY =
+            VoxelColumnChunkData.Height - 1 - MaximumSpawnDepthBelowTop;
         private const int InitialSpawnRadiusInChunks = 1;
+        private const float BoundaryBedrockDensity = 1f;
         private const float TerrainProgressWeight = 0.72f;
         private const float MinimumGroundClearance = 0.02f;
         private const float MinimumExitHeadroom = 2.1f;
         private const int MinimumExitClearanceRadiusInSamples = 1;
         private const float InitialLoadPresentationFadeSeconds = 0.5f;
+        private const string SoftFalloffLitShaderName =
+            "Supernova/Lighting/Soft Falloff Lit";
+
+        private static readonly int SoftFalloffParametersId =
+            Shader.PropertyToID("_SupernovaSoftFalloffParams");
 
         private static readonly ReadOnlyCollection<Vector3Int> RequiredOffsets =
             Array.AsReadOnly(BuildRequiredOffsets());
@@ -42,18 +58,35 @@ namespace Supernova.MinecraftCaves
 
         [Header("Streaming")]
         [SerializeField, Range(1, 8)] private int maxConcurrentGenerationJobs = 4;
-        [SerializeField, Range(1, 8)] private int meshesBuiltPerFrame = 2;
+        [SerializeField, Range(1, 8)] private int meshesBuiltPerFrame = 1;
 
         [Header("Rendering")]
         [SerializeField, Min(0.01f)] private float voxelSize = 0.42f;
         [SerializeField] private float isoLevel;
+        [SerializeField]
+        private MarchingCubesVertexPlacement vertexPlacement =
+            MarchingCubesVertexPlacement.DensityInterpolated;
         [SerializeField] private bool generateColliders;
         [SerializeField] private VoxelTypeCatalog voxelTypeCatalog;
 
+        [Header("Punctual Lighting")]
+        [SerializeField, Range(0.25f, 1f)]
+        private float punctualLightFalloffPower = 0.55f;
+        [SerializeField, Min(0.01f)]
+        private float punctualLightAttenuationLimit = 1.5f;
+        [SerializeField, Min(0.01f)]
+        private float punctualLightMultiplier = 1f;
+
         [Header("Voxel Generation")]
         [SerializeField] private VoxelTypeDefinition baseSolidVoxelType;
+        [SerializeField] private VoxelTypeDefinition bedrockVoxelType;
         [SerializeField] private List<VoxelOreFeatureDefinition> oreFeatures =
             new List<VoxelOreFeatureDefinition>();
+
+        [Header("Natural Treasures")]
+        [SerializeField] private TreasureSpawnTable treasureSpawnTable;
+        [Tooltip("No natural treasure may spawn this close to the initial player/CELL area.")]
+        [SerializeField, Min(0f)] private float treasureSpawnExclusionRadius = 12f;
 
         [Header("Structures")]
         [SerializeField]
@@ -64,8 +97,8 @@ namespace Supernova.MinecraftCaves
         private readonly HashSet<Vector3Int> requiredChunks = new HashSet<Vector3Int>();
         private readonly Queue<Vector3Int> generationQueue = new Queue<Vector3Int>();
         private readonly HashSet<Vector3Int> queuedChunks = new HashSet<Vector3Int>();
-        private readonly Dictionary<Vector3Int, Task<ChunkGenerationResult>> generationTasks =
-            new Dictionary<Vector3Int, Task<ChunkGenerationResult>>();
+        private readonly Dictionary<Vector3Int, GenerationTaskHandle> generationTasks =
+            new Dictionary<Vector3Int, GenerationTaskHandle>();
         private readonly Queue<Vector3Int> meshQueue = new Queue<Vector3Int>();
         private readonly HashSet<Vector3Int> dirtyMeshes = new HashSet<Vector3Int>();
         private readonly HashSet<Vector3Int> builtMeshes = new HashSet<Vector3Int>();
@@ -84,10 +117,22 @@ namespace Supernova.MinecraftCaves
         private readonly Dictionary<Vector3Int, Mesh> chunkMeshes =
             new Dictionary<Vector3Int, Mesh>();
         private readonly VoxelMiningProgress miningProgress = new VoxelMiningProgress();
+        private readonly List<MinedOreDrop> activeOreDrops =
+            new List<MinedOreDrop>();
+        private readonly List<TreasurePickup> activeTreasures =
+            new List<TreasurePickup>();
+        private readonly HashSet<Vector3Int> treasureSpawnedColumns =
+            new HashSet<Vector3Int>();
+        private readonly HashSet<Vector3Int> pendingTreasureColumns =
+            new HashSet<Vector3Int>();
+        private readonly Dictionary<Vector3Int, List<SuspendedBodyState>>
+            suspendedBodiesByColumn =
+                new Dictionary<Vector3Int, List<SuspendedBodyState>>();
 
         private InfiniteVoxelWorld world;
         private MinecraftCaveDensityField densityField;
         private VoxelTypeId baseSolidType = VoxelTypeId.Default;
+        private VoxelTypeId bedrockType = VoxelTypeId.Default;
         private MinecraftOreFeatureSettings[] oreFeatureSettings =
             Array.Empty<MinecraftOreFeatureSettings>();
         private CancellationTokenSource generationCancellation;
@@ -156,15 +201,37 @@ namespace Supernova.MinecraftCaves
         }
         public VoxelTypeCatalog VoxelTypeCatalog => voxelTypeCatalog;
         public VoxelTypeDefinition BaseSolidVoxelType => baseSolidVoxelType;
+        public VoxelTypeDefinition BedrockVoxelType => bedrockVoxelType;
         public IReadOnlyList<VoxelOreFeatureDefinition> OreFeatures => oreFeatures;
+        public IReadOnlyList<MinedOreDrop> ActiveOreDrops => activeOreDrops;
+        public IReadOnlyList<TreasurePickup> ActiveTreasures => activeTreasures;
         public static IReadOnlyList<Vector3Int> StreamingOffsets => RequiredOffsets;
+
+        public void SetTreasureSpawnTable(TreasureSpawnTable value)
+        {
+            treasureSpawnTable = value;
+        }
 
         private void OnEnable()
         {
+            ApplyPunctualLightFalloffParameters();
             if (Application.isPlaying)
             {
                 InitializeWorld();
             }
+        }
+
+        private void OnValidate()
+        {
+            punctualLightFalloffPower =
+                Mathf.Clamp(punctualLightFalloffPower, 0.25f, 1f);
+            punctualLightAttenuationLimit =
+                Mathf.Max(0.01f, punctualLightAttenuationLimit);
+            punctualLightMultiplier =
+                Mathf.Max(0.01f, punctualLightMultiplier);
+            treasureSpawnExclusionRadius =
+                Mathf.Max(0f, treasureSpawnExclusionRadius);
+            ApplyPunctualLightFalloffParameters();
         }
 
         private void Update()
@@ -331,28 +398,9 @@ namespace Supernova.MinecraftCaves
                         world.SetDensity(x, y, z, isoLevel - 1f);
                         miningProgress.Reset(new Vector3Int(x, y, z));
                         removed++;
-                        Vector3Int chunk = InfiniteVoxelWorld.WorldToChunk(x, y, z);
-                        Vector3Int local = InfiniteVoxelWorld.WorldToLocal(x, y, z, chunk);
-
-                        // BuildChunk owns cells from local 0..31 and samples the +1 border.
-                        // A sample at local zero is therefore also consumed by the negative neighbour.
-                        int minOffsetX = local.x == 0 ? -1 : 0;
-                        int minOffsetY = local.y == 0 ? -1 : 0;
-                        int minOffsetZ = local.z == 0 ? -1 : 0;
-                        for (int oz = minOffsetZ; oz <= 0; oz++)
-                        {
-                            for (int oy = minOffsetY; oy <= 0; oy++)
-                            {
-                                for (int ox = minOffsetX; ox <= 0; ox++)
-                                {
-                                    Vector3Int affected = chunk + new Vector3Int(ox, oy, oz);
-                                    if (world.TryGetChunk(affected, out _))
-                                    {
-                                        destructionDirtyMeshes.Add(affected);
-                                    }
-                                }
-                            }
-                        }
+                        CollectMeshesAffectedByVoxel(
+                            new Vector3Int(x, y, z),
+                            destructionDirtyMeshes);
                     }
                 }
             }
@@ -394,12 +442,35 @@ namespace Supernova.MinecraftCaves
 
             if (result.Destroyed)
             {
-                TrySetVoxelAndRebuild(
-                    coordinate.x,
-                    coordinate.y,
-                    coordinate.z,
-                    isoLevel - 1f,
-                    VoxelTypeId.Air);
+                if (IsOreType(result.Type))
+                {
+                    destructionDirtyMeshes.Clear();
+                    if (HarvestConnectedOreVein(
+                            coordinate,
+                            result.Type,
+                            destructionDirtyMeshes) > 0)
+                    {
+                        EnqueuePriorityMeshes(destructionDirtyMeshes);
+                    }
+                    else
+                    {
+                        TrySetVoxelAndRebuild(
+                            coordinate.x,
+                            coordinate.y,
+                            coordinate.z,
+                            isoLevel - 1f,
+                            VoxelTypeId.Air);
+                    }
+                }
+                else
+                {
+                    TrySetVoxelAndRebuild(
+                        coordinate.x,
+                        coordinate.y,
+                        coordinate.z,
+                        isoLevel - 1f,
+                        VoxelTypeId.Air);
+                }
             }
             return true;
         }
@@ -411,23 +482,7 @@ namespace Supernova.MinecraftCaves
             out VoxelMiningBrushResult result)
         {
             result = default;
-            if (settings.IsSingleVoxel)
-            {
-                if (!TryMineVoxel(primaryCoordinate, out VoxelMiningResult singleResult))
-                {
-                    return false;
-                }
-
-                result = new VoxelMiningBrushResult(
-                    primaryCoordinate,
-                    singleResult.Type,
-                    1,
-                    1,
-                    singleResult.Destroyed ? 1 : 0,
-                    singleResult);
-                return true;
-            }
-
+            _ = worldDirection;
             if (world == null
                 || !world.TryGetSample(
                     primaryCoordinate.x,
@@ -439,115 +494,46 @@ namespace Supernova.MinecraftCaves
                 return false;
             }
 
-            Vector3 localDirection = transform.InverseTransformDirection(
-                worldDirection);
-            if (localDirection.sqrMagnitude <= 0.0001f)
-            {
-                return false;
-            }
-            localDirection.Normalize();
+            var pending = new Queue<MiningPropagationNode>();
+            var visited = new HashSet<Vector3Int>();
+            pending.Enqueue(
+                new MiningPropagationNode(primaryCoordinate, settings.Power));
+            visited.Add(primaryCoordinate);
 
-            float radiusInVoxels = settings.Radius / voxelSize;
-            float depthInVoxels = settings.Depth / voxelSize;
-            int searchRadius = Mathf.CeilToInt(
-                Mathf.Max(radiusInVoxels, depthInVoxels) + 0.25f);
-            var candidates = new List<MiningBrushCandidate>();
-
-            for (int z = -searchRadius; z <= searchRadius; z++)
-            {
-                for (int y = -searchRadius; y <= searchRadius; y++)
-                {
-                    for (int x = -searchRadius; x <= searchRadius; x++)
-                    {
-                        Vector3Int coordinate =
-                            primaryCoordinate + new Vector3Int(x, y, z);
-                        if (!world.TryGetSample(
-                                coordinate.x,
-                                coordinate.y,
-                                coordinate.z,
-                                out VoxelSample sample)
-                            || !sample.IsSolid(isoLevel)
-                            || sample.Type != primarySample.Type)
-                        {
-                            continue;
-                        }
-
-                        Vector3 offset = new Vector3(x, y, z);
-                        float axialDistance = Vector3.Dot(
-                            offset,
-                            localDirection);
-                        if (axialDistance < -0.25f
-                            || axialDistance > depthInVoxels)
-                        {
-                            continue;
-                        }
-
-                        float forwardDistance = Mathf.Max(0f, axialDistance);
-                        Vector3 radialOffset =
-                            offset - localDirection * axialDistance;
-                        float normalizedSquared =
-                            radialOffset.sqrMagnitude
-                                / (radiusInVoxels * radiusInVoxels)
-                            + forwardDistance * forwardDistance
-                                / (depthInVoxels * depthInVoxels);
-                        if (normalizedSquared >= 1f
-                            && coordinate != primaryCoordinate)
-                        {
-                            continue;
-                        }
-
-                        float normalizedDistance = coordinate == primaryCoordinate
-                            ? 0f
-                            : Mathf.Sqrt(Mathf.Max(0f, normalizedSquared));
-                        float coreWeight = Mathf.Pow(
-                            1f - Mathf.Clamp01(normalizedDistance),
-                            settings.FalloffExponent);
-                        float powerFraction = Mathf.Lerp(
-                            settings.MinimumPowerFraction,
-                            1f,
-                            coreWeight);
-                        candidates.Add(
-                            new MiningBrushCandidate(
-                                coordinate,
-                                sample,
-                                settings.Power * powerFraction,
-                                offset.sqrMagnitude));
-                    }
-                }
-            }
-
-            candidates.Sort((left, right) =>
-            {
-                int powerOrder = right.Damage.CompareTo(left.Damage);
-                return powerOrder != 0
-                    ? powerOrder
-                    : left.DistanceSquared.CompareTo(right.DistanceSquared);
-            });
-            int candidateCount = Mathf.Min(
-                candidates.Count,
-                settings.MaxAffectedSamples);
-            if (candidateCount == 0)
-            {
-                return false;
-            }
-
-            int durability = VoxelTypeUtility.ResolveDurability(
-                primarySample.Type,
-                voxelTypeCatalog != null ? voxelTypeCatalog.Definitions : null);
             destructionDirtyMeshes.Clear();
+            int candidateCount = 0;
             int damagedCount = 0;
             int destroyedCount = 0;
             VoxelMiningResult primaryResult = default;
             bool hasPrimaryResult = false;
 
-            for (int i = 0; i < candidateCount; i++)
+            while (pending.Count > 0
+                && candidateCount < settings.MaxAffectedSamples)
             {
-                MiningBrushCandidate candidate = candidates[i];
+                MiningPropagationNode node = pending.Dequeue();
+                Vector3Int coordinate = node.Coordinate;
+                if (!world.TryGetSample(
+                        coordinate.x,
+                        coordinate.y,
+                        coordinate.z,
+                        out VoxelSample sample)
+                    || !sample.IsSolid(isoLevel)
+                    || sample.Type != primarySample.Type)
+                {
+                    continue;
+                }
+
+                candidateCount++;
+                int durability = VoxelTypeUtility.ResolveDurability(
+                    sample.Type,
+                    voxelTypeCatalog != null
+                        ? voxelTypeCatalog.Definitions
+                        : null);
                 if (!miningProgress.TryApplyDamage(
-                        candidate.Coordinate,
-                        candidate.Sample,
+                        coordinate,
+                        sample,
                         durability,
-                        candidate.Damage,
+                        node.Damage,
                         false,
                         out VoxelMiningResult damageResult))
                 {
@@ -555,7 +541,7 @@ namespace Supernova.MinecraftCaves
                 }
 
                 damagedCount++;
-                if (candidate.Coordinate == primaryCoordinate)
+                if (coordinate == primaryCoordinate)
                 {
                     primaryResult = damageResult;
                     hasPrimaryResult = true;
@@ -565,17 +551,76 @@ namespace Supernova.MinecraftCaves
                     continue;
                 }
 
-                world.SetVoxel(
-                    candidate.Coordinate.x,
-                    candidate.Coordinate.y,
-                    candidate.Coordinate.z,
-                    isoLevel - 1f,
-                    VoxelTypeId.Air);
-                miningProgress.Reset(candidate.Coordinate);
-                CollectMeshesAffectedByVoxel(
-                    candidate.Coordinate,
-                    destructionDirtyMeshes);
-                destroyedCount++;
+                if (IsOreType(sample.Type))
+                {
+                    int harvestedCount = HarvestConnectedOreVein(
+                        coordinate,
+                        sample.Type,
+                        destructionDirtyMeshes);
+                    if (harvestedCount > 0)
+                    {
+                        destroyedCount += harvestedCount;
+                    }
+                    else
+                    {
+                        world.SetVoxel(
+                            coordinate.x,
+                            coordinate.y,
+                            coordinate.z,
+                            isoLevel - 1f,
+                            VoxelTypeId.Air);
+                        miningProgress.Reset(coordinate);
+                        CollectMeshesAffectedByVoxel(
+                            coordinate,
+                            destructionDirtyMeshes);
+                        destroyedCount++;
+                    }
+                }
+                else
+                {
+                    world.SetVoxel(
+                        coordinate.x,
+                        coordinate.y,
+                        coordinate.z,
+                        isoLevel - 1f,
+                        VoxelTypeId.Air);
+                    miningProgress.Reset(coordinate);
+                    CollectMeshesAffectedByVoxel(
+                        coordinate,
+                        destructionDirtyMeshes);
+                    destroyedCount++;
+                }
+
+                float propagatedDamage =
+                    damageResult.ExcessDamage / settings.PropagationDivisor;
+                if (propagatedDamage <= 0f)
+                {
+                    continue;
+                }
+
+                for (int z = -1; z <= 1; z++)
+                {
+                    for (int y = -1; y <= 1; y++)
+                    {
+                        for (int x = -1; x <= 1; x++)
+                        {
+                            if (x == 0 && y == 0 && z == 0)
+                            {
+                                continue;
+                            }
+
+                            Vector3Int neighbour = coordinate
+                                + new Vector3Int(x, y, z);
+                            if (visited.Add(neighbour))
+                            {
+                                pending.Enqueue(
+                                    new MiningPropagationNode(
+                                        neighbour,
+                                        propagatedDamage));
+                            }
+                        }
+                    }
+                }
             }
 
             if (destructionDirtyMeshes.Count > 0)
@@ -590,6 +635,287 @@ namespace Supernova.MinecraftCaves
                 destroyedCount,
                 hasPrimaryResult ? primaryResult : default);
             return damagedCount > 0;
+        }
+
+        private int HarvestConnectedOreVein(
+            Vector3Int start,
+            VoxelTypeId type,
+            HashSet<Vector3Int> affectedMeshes)
+        {
+            HashSet<Vector3Int> component = FindConnectedOreVein(start, type);
+            if (component.Count == 0)
+            {
+                return 0;
+            }
+
+            VoxelMeshData meshData = MarchingCubesMesher.BuildTypeComponent(
+                world,
+                component,
+                type,
+                isoLevel,
+                voxelSize,
+                vertexPlacement);
+            if (meshData.Vertices.Count == 0)
+            {
+                return 0;
+            }
+
+            CreateOreVeinBody(component, type, meshData);
+            foreach (Vector3Int coordinate in component)
+            {
+                world.SetVoxel(
+                    coordinate.x,
+                    coordinate.y,
+                    coordinate.z,
+                    isoLevel - 1f,
+                    VoxelTypeId.Air);
+                miningProgress.Reset(coordinate);
+                CollectMeshesAffectedByVoxel(coordinate, affectedMeshes);
+            }
+            return component.Count;
+        }
+
+        private HashSet<Vector3Int> FindConnectedOreVein(
+            Vector3Int start,
+            VoxelTypeId type)
+        {
+            var component = new HashSet<Vector3Int>();
+            var pending = new Queue<Vector3Int>();
+            pending.Enqueue(start);
+            component.Add(start);
+
+            while (pending.Count > 0)
+            {
+                Vector3Int coordinate = pending.Dequeue();
+                for (int z = -1; z <= 1; z++)
+                {
+                    for (int y = -1; y <= 1; y++)
+                    {
+                        for (int x = -1; x <= 1; x++)
+                        {
+                            if (x == 0 && y == 0 && z == 0)
+                            {
+                                continue;
+                            }
+
+                            Vector3Int neighbour = coordinate
+                                + new Vector3Int(x, y, z);
+                            if (component.Contains(neighbour)
+                                || !world.TryGetSample(
+                                    neighbour.x,
+                                    neighbour.y,
+                                    neighbour.z,
+                                    out VoxelSample sample)
+                                || !sample.IsSolid(isoLevel)
+                                || sample.Type != type)
+                            {
+                                continue;
+                            }
+
+                            component.Add(neighbour);
+                            pending.Enqueue(neighbour);
+                        }
+                    }
+                }
+            }
+            return component;
+        }
+
+        private void CreateOreVeinBody(
+            HashSet<Vector3Int> component,
+            VoxelTypeId type,
+            VoxelMeshData meshData)
+        {
+            VoxelTypeDefinition definition = voxelTypeCatalog != null
+                ? voxelTypeCatalog.Find(type)
+                : null;
+            string displayName = definition != null
+                ? definition.DisplayName
+                : type.ToString();
+            Vector3 minimum = meshData.Vertices[0];
+            Vector3 maximum = minimum;
+            for (int i = 1; i < meshData.Vertices.Count; i++)
+            {
+                minimum = Vector3.Min(minimum, meshData.Vertices[i]);
+                maximum = Vector3.Max(maximum, meshData.Vertices[i]);
+            }
+            Vector3 meshCentre = (minimum + maximum) * 0.5f;
+            for (int i = 0; i < meshData.Vertices.Count; i++)
+            {
+                meshData.Vertices[i] -= meshCentre;
+            }
+
+            Mesh mesh = meshData.CreateMesh($"Mined {displayName} Vein");
+            mesh.hideFlags = HideFlags.DontSave;
+            var dropObject = new GameObject($"Recovered {displayName} Chunk");
+            dropObject.hideFlags = HideFlags.DontSave;
+            Vector3 escapeDirection = ResolveOreEscapeDirection(component);
+            Vector3 recoveryOffset = (escapeDirection + Vector3.up * 0.35f)
+                .normalized * (voxelSize * 1.15f);
+            dropObject.transform.SetPositionAndRotation(
+                transform.TransformPoint(meshCentre) + transform.TransformVector(recoveryOffset),
+                transform.rotation * Quaternion.Euler(12f, 24f, 8f));
+            // A recovered ore is a compact, readable loot chunk rather than an
+            // exact duplicate of the in-rock vein. The smaller collision envelope
+            // plus the cavity-facing offset prevents it being born wedged in stone.
+            dropObject.transform.localScale = Vector3.Scale(
+                transform.lossyScale,
+                Vector3.one * 0.68f);
+
+            MeshFilter filter = dropObject.AddComponent<MeshFilter>();
+            Renderer renderer = dropObject.GetComponent<Renderer>();
+            if (renderer == null)
+            {
+                renderer = dropObject.AddComponent<MeshRenderer>();
+            }
+            filter.sharedMesh = mesh;
+            Material sourceMaterial = definition != null
+                && definition.Material != null
+                    ? definition.Material
+                    : EnsureMaterial();
+            Material recoveredMaterial = CreateRecoveredOreMaterial(
+                sourceMaterial,
+                type,
+                displayName);
+            renderer.sharedMaterial = recoveredMaterial;
+            renderer.shadowCastingMode =
+                UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            if (meshData.TriangleCount <= 255)
+            {
+                MeshCollider meshCollider =
+                    dropObject.AddComponent<MeshCollider>();
+                meshCollider.convex = true;
+                meshCollider.sharedMesh = mesh;
+            }
+            else
+            {
+                foreach (Vector3Int coordinate in component)
+                {
+                    BoxCollider box = dropObject.AddComponent<BoxCollider>();
+                    box.center = (Vector3)coordinate * voxelSize - meshCentre;
+                    box.size = Vector3.one * (voxelSize * 0.9f);
+                }
+            }
+
+            Rigidbody body = dropObject.AddComponent<Rigidbody>();
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            body.interpolation = RigidbodyInterpolation.Interpolate;
+            body.velocity = transform.TransformDirection(
+                escapeDirection * (0.45f + Mathf.Min(component.Count, 8) * 0.04f));
+            var drop = dropObject.AddComponent<MinedOreDrop>();
+            drop.Configure(
+                type,
+                component.Count,
+                mesh,
+                ResolveOreMassDensity(type),
+                recoveredMaterial);
+            activeOreDrops.Add(drop);
+        }
+
+        private static Material CreateRecoveredOreMaterial(
+            Material source,
+            VoxelTypeId type,
+            string displayName)
+        {
+            Material material = new Material(source)
+            {
+                name = $"Recovered {displayName} Material",
+                hideFlags = HideFlags.DontSave,
+            };
+            Color baseColor = source != null && source.HasProperty("_BaseColor")
+                ? source.GetColor("_BaseColor")
+                : new Color(0.82f, 0.47f, 0.12f, 1f);
+            var texture = new Texture2D(32, 32, TextureFormat.RGBA32, false)
+            {
+                name = $"Recovered {displayName} Strata",
+                hideFlags = HideFlags.DontSave,
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Repeat,
+            };
+            var pixels = new Color32[32 * 32];
+            int seed = type.Value * 1103515245 + 12345;
+            for (int y = 0; y < 32; y++)
+            {
+                for (int x = 0; x < 32; x++)
+                {
+                    float seam = Mathf.Abs(Mathf.Sin(
+                        x * 0.55f + y * 0.21f + seed * 0.0001f));
+                    float chip = Mathf.PerlinNoise(
+                        (x + seed % 17) * 0.19f,
+                        (y + seed % 29) * 0.19f);
+                    float brightness = seam > 0.82f
+                        ? 1.35f
+                        : Mathf.Lerp(0.42f, 0.82f, chip);
+                    pixels[y * 32 + x] = baseColor * brightness;
+                }
+            }
+            texture.SetPixels32(pixels);
+            texture.Apply(false, true);
+            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
+            if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0.72f);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.62f);
+            if (material.HasProperty("_EmissionColor"))
+            {
+                material.EnableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", baseColor * 0.28f);
+            }
+            return material;
+        }
+
+        private static Vector3 ResolveOreEscapeDirection(
+            HashSet<Vector3Int> component)
+        {
+            Vector3 direction = Vector3.zero;
+            Vector3Int[] neighbours =
+            {
+                Vector3Int.right, Vector3Int.left, Vector3Int.up,
+                Vector3Int.down, Vector3Int.forward, Vector3Int.back,
+            };
+            foreach (Vector3Int coordinate in component)
+            {
+                for (int i = 0; i < neighbours.Length; i++)
+                {
+                    if (!component.Contains(coordinate + neighbours[i]))
+                    {
+                        direction += (Vector3)neighbours[i];
+                    }
+                }
+            }
+            if (direction.sqrMagnitude < 0.001f) direction = Vector3.up;
+            return direction.normalized;
+        }
+
+        private float ResolveOreMassDensity(VoxelTypeId type)
+        {
+            if (oreFeatures != null)
+            {
+                for (int i = 0; i < oreFeatures.Count; i++)
+                {
+                    VoxelOreFeatureDefinition feature = oreFeatures[i];
+                    if (feature != null
+                        && feature.ResultVoxelType != null
+                        && feature.ResultVoxelType.TypeId == type)
+                    {
+                        return feature.MassDensity;
+                    }
+                }
+            }
+
+            return MinedOreDrop.DefaultMassDensity;
+        }
+
+        private bool IsOreType(VoxelTypeId type)
+        {
+            for (int i = 0; i < oreFeatureSettings.Length; i++)
+            {
+                if (oreFeatureSettings[i].ResultType == type)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public bool TrySetVoxelAndRebuild(
@@ -641,18 +967,31 @@ namespace Supernova.MinecraftCaves
                 coordinate.z,
                 chunk);
             int minOffsetX = local.x == 0 ? -1 : 0;
-            int minOffsetY = local.y == 0 ? -1 : 0;
             int minOffsetZ = local.z == 0 ? -1 : 0;
-            for (int z = minOffsetZ; z <= 0; z++)
+            int section = Mathf.Clamp(
+                coordinate.y / MeshSectionHeight,
+                0,
+                MeshSectionsPerColumn - 1);
+            int minimumSection = coordinate.y > 0
+                && coordinate.y % MeshSectionHeight == 0
+                    ? section - 1
+                    : section;
+            for (int meshSection = minimumSection;
+                meshSection <= section;
+                meshSection++)
             {
-                for (int y = minOffsetY; y <= 0; y++)
+                for (int z = minOffsetZ; z <= 0; z++)
                 {
                     for (int x = minOffsetX; x <= 0; x++)
                     {
-                        Vector3Int affected = chunk + new Vector3Int(x, y, z);
-                        if (world.TryGetChunk(affected, out _))
+                        Vector3Int affectedColumn =
+                            chunk + new Vector3Int(x, 0, z);
+                        if (world.TryGetChunk(affectedColumn, out _))
                         {
-                            affectedMeshes.Add(affected);
+                            affectedMeshes.Add(new Vector3Int(
+                                affectedColumn.x,
+                                meshSection,
+                                affectedColumn.z));
                         }
                     }
                 }
@@ -678,7 +1017,9 @@ namespace Supernova.MinecraftCaves
 
         public bool IsWithinGenerationRadius(Vector3Int coordinate)
         {
-            return (coordinate - viewerChunk).sqrMagnitude
+            int deltaX = coordinate.x - viewerChunk.x;
+            int deltaZ = coordinate.z - viewerChunk.z;
+            return deltaX * deltaX + deltaZ * deltaZ
                 <= GenerationRadiusInChunks * GenerationRadiusInChunks;
         }
 
@@ -726,7 +1067,6 @@ namespace Supernova.MinecraftCaves
             {
                 if (initialSpawnAreaOnly
                     && (Mathf.Abs(offset.x) > InitialSpawnRadiusInChunks
-                        || Mathf.Abs(offset.y) > InitialSpawnRadiusInChunks
                         || Mathf.Abs(offset.z) > InitialSpawnRadiusInChunks))
                 {
                     continue;
@@ -741,15 +1081,34 @@ namespace Supernova.MinecraftCaves
 
             foreach (Vector3Int coordinate in requiredChunks)
             {
-                if (!world.TryGetChunk(coordinate, out _)
-                    && !generationTasks.ContainsKey(coordinate)
+                if (world.TryGetChunk(coordinate, out _))
+                {
+                    if (structurePassApplied)
+                    {
+                        QueueColumnMeshes(coordinate);
+                    }
+                }
+                else if (!generationTasks.ContainsKey(coordinate)
                     && queuedChunks.Add(coordinate))
                 {
                     generationQueue.Enqueue(coordinate);
                 }
             }
 
+            CancelGenerationTasksOutsideRequiredSet();
             CullMeshesOutsideRequiredSet();
+        }
+
+        private void CancelGenerationTasksOutsideRequiredSet()
+        {
+            foreach (KeyValuePair<Vector3Int, GenerationTaskHandle> pair
+                in generationTasks)
+            {
+                if (!requiredChunks.Contains(pair.Key))
+                {
+                    pair.Value.Cancel();
+                }
+            }
         }
 
         private void DispatchGenerationTasks()
@@ -766,20 +1125,26 @@ namespace Supernova.MinecraftCaves
                     continue;
                 }
 
-                CancellationToken token = generationCancellation.Token;
+                var cancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                    generationCancellation.Token);
+                CancellationToken token = cancellation.Token;
                 MinecraftCaveDensityField field = densityField;
                 VoxelTypeId solidType = baseSolidType;
+                VoxelTypeId boundaryType = bedrockType;
                 MinecraftOreFeatureSettings[] features = oreFeatureSettings;
                 generationTasks.Add(
                     coordinate,
-                    Task.Run(
-                        () => GenerateChunkData(
-                            coordinate,
-                            field,
-                            solidType,
-                            features,
+                    new GenerationTaskHandle(
+                        Task.Run(
+                            () => GenerateChunkData(
+                                coordinate,
+                                field,
+                                solidType,
+                                boundaryType,
+                                features,
+                                token),
                             token),
-                        token));
+                        cancellation));
             }
         }
 
@@ -791,30 +1156,31 @@ namespace Supernova.MinecraftCaves
             }
 
             var completedCoordinates = new List<Vector3Int>();
-            foreach (KeyValuePair<Vector3Int, Task<ChunkGenerationResult>> pair
+            foreach (KeyValuePair<Vector3Int, GenerationTaskHandle> pair
                 in generationTasks)
             {
-                if (!pair.Value.IsCompleted)
+                Task<ChunkGenerationResult> task = pair.Value.Task;
+                if (!task.IsCompleted)
                 {
                     continue;
                 }
 
                 completedCoordinates.Add(pair.Key);
-                if (pair.Value.IsCanceled)
+                if (task.IsCanceled)
                 {
                     continue;
                 }
 
-                if (pair.Value.IsFaulted)
+                if (task.IsFaulted)
                 {
                     Debug.LogException(
-                        pair.Value.Exception?.GetBaseException()
+                        task.Exception?.GetBaseException()
                             ?? new InvalidOperationException("Chunk generation task failed."),
                         this);
                     continue;
                 }
 
-                ChunkGenerationResult result = pair.Value.Result;
+                ChunkGenerationResult result = task.Result;
                 if (!requiredChunks.Contains(result.Coordinate)
                     || world.TryGetChunk(result.Coordinate, out _))
                 {
@@ -822,43 +1188,117 @@ namespace Supernova.MinecraftCaves
                 }
 
                 CommitChunk(result);
+                if (structurePassApplied)
+                {
+                    QueueMeshesAffectedByGeneratedColumn(result.Coordinate);
+                }
             }
 
             foreach (Vector3Int coordinate in completedCoordinates)
             {
+                generationTasks[coordinate].Dispose();
                 generationTasks.Remove(coordinate);
+                if (requiredChunks.Contains(coordinate)
+                    && !world.TryGetChunk(coordinate, out _)
+                    && queuedChunks.Add(coordinate))
+                {
+                    generationQueue.Enqueue(coordinate);
+                }
             }
         }
 
         private void CommitChunk(ChunkGenerationResult result)
         {
-            InfiniteVoxelChunk chunk = world.EnsureChunk(result.Coordinate);
-            int index = 0;
-            for (int z = 0; z < VoxelVolume.Size; z++)
-            {
-                for (int y = 0; y < VoxelVolume.Size; y++)
-                {
-                    for (int x = 0; x < VoxelVolume.Size; x++)
-                    {
-                        chunk.Data.SetSample(
-                            x,
-                            y,
-                            z,
-                            result.Densities[index],
-                            result.Types[index]);
-                        index++;
-                    }
-                }
-            }
+            world.AddChunkTakingOwnership(
+                result.Coordinate,
+                result.Densities,
+                result.Types);
         }
 
 
 
-        private void QueueMesh(Vector3Int coordinate)
+        private void QueueMesh(Vector3Int coordinate, bool forceRebuild = false)
         {
+            if (!forceRebuild && builtMeshes.Contains(coordinate))
+            {
+                return;
+            }
             if (dirtyMeshes.Add(coordinate))
             {
                 meshQueue.Enqueue(coordinate);
+            }
+        }
+
+        private void QueueColumnMeshes(
+            Vector3Int columnCoordinate,
+            bool forceRebuild = false)
+        {
+            int preferredSection = GetPreferredMeshSection();
+            QueueMesh(
+                new Vector3Int(
+                    columnCoordinate.x,
+                    preferredSection,
+                    columnCoordinate.z),
+                forceRebuild);
+            for (int distance = 1;
+                distance < MeshSectionsPerColumn;
+                distance++)
+            {
+                int lower = preferredSection - distance;
+                if (lower >= 0)
+                {
+                    QueueMesh(
+                        new Vector3Int(
+                            columnCoordinate.x,
+                            lower,
+                            columnCoordinate.z),
+                        forceRebuild);
+                }
+
+                int upper = preferredSection + distance;
+                if (upper < MeshSectionsPerColumn)
+                {
+                    QueueMesh(
+                        new Vector3Int(
+                            columnCoordinate.x,
+                            upper,
+                            columnCoordinate.z),
+                        forceRebuild);
+                }
+            }
+        }
+
+        private int GetPreferredMeshSection()
+        {
+            int voxelY = spawnVoxel.y;
+            if (viewer != null)
+            {
+                Vector3 localVoxel =
+                    transform.InverseTransformPoint(viewer.position) / voxelSize;
+                voxelY = Mathf.FloorToInt(localVoxel.y);
+            }
+
+            return Mathf.Clamp(
+                voxelY / MeshSectionHeight,
+                0,
+                MeshSectionsPerColumn - 1);
+        }
+
+        private void QueueMeshesAffectedByGeneratedColumn(
+            Vector3Int generatedColumn)
+        {
+            for (int zOffset = -1; zOffset <= 0; zOffset++)
+            {
+                for (int xOffset = -1; xOffset <= 0; xOffset++)
+                {
+                    Vector3Int affectedColumn = generatedColumn
+                        + new Vector3Int(xOffset, 0, zOffset);
+                    if (requiredChunks.Contains(affectedColumn)
+                        && world.TryGetChunk(affectedColumn, out _))
+                    {
+                        QueueColumnMeshes(affectedColumn, true);
+                    }
+                }
             }
         }
 
@@ -914,7 +1354,8 @@ namespace Supernova.MinecraftCaves
         private void ProcessMeshes(int budget)
         {
             if (generationStage != MinecraftCaveGenerationStage.Meshes
-                && generationStage != MinecraftCaveGenerationStage.Ready)
+                && generationStage != MinecraftCaveGenerationStage.Ready
+                && !structurePassApplied)
             {
                 return;
             }
@@ -922,9 +1363,13 @@ namespace Supernova.MinecraftCaves
             for (int i = 0; i < budget && meshQueue.Count > 0; i++)
             {
                 Vector3Int coordinate = meshQueue.Dequeue();
-                dirtyMeshes.Remove(coordinate);
-                if (!requiredChunks.Contains(coordinate)
-                    || !world.TryGetChunk(coordinate, out _))
+                if (!dirtyMeshes.Remove(coordinate))
+                {
+                    continue;
+                }
+                Vector3Int columnCoordinate = ToColumnCoordinate(coordinate);
+                if (!requiredChunks.Contains(columnCoordinate)
+                    || !world.TryGetChunk(columnCoordinate, out _))
                 {
                     continue;
                 }
@@ -936,27 +1381,46 @@ namespace Supernova.MinecraftCaves
         private void RebuildChunk(Vector3Int coordinate)
         {
             DestroyChunkObject(coordinate, false);
-            VoxelMeshData data = MarchingCubesMesher.BuildChunk(
+            Vector3Int columnCoordinate = ToColumnCoordinate(coordinate);
+            int section = Mathf.Clamp(
+                coordinate.y,
+                0,
+                MeshSectionsPerColumn - 1);
+            int startY = section * MeshSectionHeight;
+            VoxelMeshData data = MarchingCubesMesher.BuildColumnSection(
                 world,
-                coordinate,
+                columnCoordinate,
+                startY,
+                MeshSectionHeight,
                 isoLevel,
-                voxelSize);
+                voxelSize,
+                vertexPlacement,
+                baseSolidType,
+                bedrockType);
             builtMeshes.Add(coordinate);
+            if (section == 0)
+            {
+                pendingTreasureColumns.Add(columnCoordinate);
+            }
             if (data.Vertices.Count == 0)
             {
+                FinalizeColumnPhysicsIfReady(columnCoordinate);
                 return;
             }
 
             Mesh mesh = data.CreateMesh(
-                $"Minecraft Cave Chunk {coordinate.x},{coordinate.y},{coordinate.z}");
+                $"Minecraft Cave Column {coordinate.x},{coordinate.z} "
+                + $"Section {section}");
             mesh.hideFlags = HideFlags.DontSave;
 
             var chunkObject = new GameObject(
-                $"CaveChunk_{coordinate.x}_{coordinate.y}_{coordinate.z}");
+                $"CaveColumn_{coordinate.x}_{coordinate.z}_Section_{section}");
             chunkObject.hideFlags = HideFlags.DontSave;
             chunkObject.transform.SetParent(transform, false);
-            chunkObject.transform.localPosition =
-                (Vector3)(coordinate * VoxelVolume.Size) * voxelSize;
+            chunkObject.transform.localPosition = new Vector3(
+                coordinate.x * VoxelColumnChunkData.Width,
+                startY,
+                coordinate.z * VoxelColumnChunkData.Depth) * voxelSize;
 
             MeshFilter filter = chunkObject.AddComponent<MeshFilter>();
             MeshRenderer renderer = chunkObject.AddComponent<MeshRenderer>();
@@ -975,6 +1439,202 @@ namespace Supernova.MinecraftCaves
 
             chunkObjects[coordinate] = chunkObject;
             chunkMeshes[coordinate] = mesh;
+            FinalizeColumnPhysicsIfReady(columnCoordinate);
+        }
+
+        private void FinalizeColumnPhysicsIfReady(Vector3Int column)
+        {
+            if (generationStage != MinecraftCaveGenerationStage.Ready
+                || !HasBuiltAllColumnSections(column))
+            {
+                return;
+            }
+
+            // Called after the final section's collider is assigned (or after
+            // confirming that section has no surface).
+            Physics.SyncTransforms();
+            SpawnPendingTreasures(column);
+            ResumeBodiesInColumn(column);
+        }
+
+        private bool HasBuiltAllColumnSections(Vector3Int column)
+        {
+            for (int section = 0; section < MeshSectionsPerColumn; section++)
+            {
+                if (!builtMeshes.Contains(
+                    new Vector3Int(column.x, section, column.z)))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void SpawnPendingTreasures(Vector3Int column)
+        {
+            if (!pendingTreasureColumns.Remove(column)) return;
+            Physics.SyncTransforms();
+            TrySpawnNaturalTreasures(column);
+        }
+
+        private void SpawnAllPendingTreasures()
+        {
+            Physics.SyncTransforms();
+            var columns = new List<Vector3Int>(pendingTreasureColumns);
+            for (int i = 0; i < columns.Count; i++)
+            {
+                if (HasBuiltAllColumnSections(columns[i]))
+                {
+                    SpawnPendingTreasures(columns[i]);
+                }
+            }
+        }
+
+        private void TrySpawnNaturalTreasures(Vector3Int column)
+        {
+            if (!treasureSpawnedColumns.Add(column)) return;
+            if (treasureSpawnTable == null)
+            {
+                Debug.LogError(
+                    "Natural treasure generation has no TreasureSpawnTable. "
+                    + "Assign one directly on MinecraftCaveInfiniteWorld; assets "
+                    + "outside a Resources folder cannot be loaded by Resources.Load.",
+                    this);
+                return;
+            }
+
+            IReadOnlyList<TreasureDefinition> definitions =
+                treasureSpawnTable.Treasures;
+            for (int definitionIndex = 0;
+                definitionIndex < definitions.Count;
+                definitionIndex++)
+            {
+                TreasureDefinition definition = definitions[definitionIndex];
+                if (definition == null || definition.Prefab == null) continue;
+
+                int seed = worldSeed;
+                seed = unchecked(seed * 397) ^ column.x;
+                seed = unchecked(seed * 397) ^ column.z;
+                seed = unchecked(seed * 397) ^ definitionIndex;
+                var random = new System.Random(seed);
+                for (int attempt = 0;
+                    attempt < definition.AttemptsPerChunk;
+                    attempt++)
+                {
+                    if (random.NextDouble() > definition.SpawnChance) continue;
+
+                    int x = column.x * VoxelColumnChunkData.Width
+                        + random.Next(1, VoxelColumnChunkData.Width - 1);
+                    int z = column.z * VoxelColumnChunkData.Depth
+                        + random.Next(1, VoxelColumnChunkData.Depth - 1);
+                    Vector3 candidateWorldPosition = transform.TransformPoint(
+                        new Vector3(x, spawnVoxel.y, z) * voxelSize);
+                    if (IsInsideTreasureSpawnExclusion(candidateWorldPosition))
+                    {
+                        continue;
+                    }
+                    int startY = random.Next(
+                        2,
+                        VoxelColumnChunkData.Height - 3);
+                    if (!TryFindFlatTreasureSurface(
+                        x,
+                        startY,
+                        z,
+                        definition,
+                        out Vector3 localPosition))
+                    {
+                        continue;
+                    }
+
+                    SpawnTreasure(definition, localPosition,
+                        (float)random.NextDouble() * 360f);
+                    break;
+                }
+            }
+        }
+
+        private bool IsInsideTreasureSpawnExclusion(Vector3 worldPosition)
+        {
+            Vector3 delta = worldPosition - targetSpawnWorldPosition;
+            delta.y = 0f;
+            float radius = Mathf.Max(0f, treasureSpawnExclusionRadius);
+            return delta.sqrMagnitude < radius * radius;
+        }
+
+        private bool TryFindFlatTreasureSurface(
+            int x,
+            int startY,
+            int z,
+            TreasureDefinition definition,
+            out Vector3 localPosition)
+        {
+            for (int offset = 0; offset < VoxelColumnChunkData.Height; offset++)
+            {
+                int y = (startY + offset) % (VoxelColumnChunkData.Height - 2);
+                if (y < 1) continue;
+                if (!IsSolid(x, y, z) || IsSolid(x, y + 1, z)) continue;
+
+                bool flat = IsSolid(x - 1, y, z)
+                    && IsSolid(x + 1, y, z)
+                    && IsSolid(x, y, z - 1)
+                    && IsSolid(x, y, z + 1)
+                    && !IsSolid(x - 1, y + 1, z)
+                    && !IsSolid(x + 1, y + 1, z)
+                    && !IsSolid(x, y + 1, z - 1)
+                    && !IsSolid(x, y + 1, z + 1);
+                int headroomSamples = Mathf.CeilToInt(
+                    definition.RequiredHeadroom / voxelSize);
+                for (int h = 1; flat && h <= headroomSamples; h++)
+                {
+                    flat = !IsSolid(x, y + h, z);
+                }
+                if (!flat) continue;
+
+                localPosition = new Vector3(x, y + 0.6f, z) * voxelSize;
+                return true;
+            }
+
+            localPosition = default;
+            return false;
+        }
+
+        private bool IsSolid(int x, int y, int z)
+        {
+            return world != null
+                && world.TryGetSample(x, y, z, out VoxelSample sample)
+                && sample.Density >= isoLevel;
+        }
+
+        private void SpawnTreasure(
+            TreasureDefinition definition,
+            Vector3 localPosition,
+            float yaw)
+        {
+            GameObject treasureObject = Instantiate(
+                definition.Prefab,
+                transform.TransformPoint(localPosition),
+                transform.rotation * Quaternion.Euler(0f, yaw, 0f));
+            treasureObject.name = "Natural Treasure - " + definition.name;
+            MeshCollider[] meshColliders =
+                treasureObject.GetComponentsInChildren<MeshCollider>(true);
+            for (int i = 0; i < meshColliders.Length; i++)
+            {
+                // Unity ignores non-convex MeshColliders attached to dynamic
+                // rigidbodies. Enforce the valid pairing here as a safety net for
+                // newly-authored treasure prefabs.
+                meshColliders[i].convex = true;
+            }
+            Rigidbody body = treasureObject.GetComponent<Rigidbody>();
+            if (body == null) body = treasureObject.AddComponent<Rigidbody>();
+            body.mass = definition.Weight;
+            if (treasureObject.GetComponentInChildren<Collider>() == null)
+            {
+                treasureObject.AddComponent<BoxCollider>();
+            }
+            TreasurePickup pickup = treasureObject.GetComponent<TreasurePickup>();
+            if (pickup == null) pickup = treasureObject.AddComponent<TreasurePickup>();
+            pickup.Configure(definition);
+            activeTreasures.Add(pickup);
         }
 
         private Material EnsureMaterial()
@@ -984,7 +1644,13 @@ namespace Supernova.MinecraftCaves
                 return runtimeMaterial;
             }
 
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            ApplyPunctualLightFalloffParameters();
+
+            Shader shader = Shader.Find(SoftFalloffLitShaderName);
+            if (shader == null)
+            {
+                shader = Shader.Find("Universal Render Pipeline/Lit");
+            }
             if (shader == null)
             {
                 shader = Shader.Find("Standard");
@@ -1015,18 +1681,122 @@ namespace Supernova.MinecraftCaves
             return runtimeMaterial;
         }
 
+        private void ApplyPunctualLightFalloffParameters()
+        {
+            Shader.SetGlobalVector(
+                SoftFalloffParametersId,
+                new Vector4(
+                    punctualLightFalloffPower,
+                    punctualLightAttenuationLimit,
+                    punctualLightMultiplier,
+                    0f));
+        }
+
         private void CullMeshesOutsideRequiredSet()
         {
             var coordinates = new List<Vector3Int>(chunkObjects.Keys);
+            var departingColumns = new HashSet<Vector3Int>();
             foreach (Vector3Int coordinate in coordinates)
             {
-                if (!requiredChunks.Contains(coordinate))
+                Vector3Int column = ToColumnCoordinate(coordinate);
+                if (!requiredChunks.Contains(column))
+                {
+                    departingColumns.Add(column);
+                }
+            }
+            foreach (Vector3Int column in departingColumns)
+            {
+                SuspendBodiesInColumn(column);
+            }
+            foreach (Vector3Int coordinate in coordinates)
+            {
+                if (!requiredChunks.Contains(ToColumnCoordinate(coordinate)))
                 {
                     DestroyChunkObject(coordinate, true);
                 }
             }
 
-            builtMeshes.RemoveWhere(coordinate => !requiredChunks.Contains(coordinate));
+            builtMeshes.RemoveWhere(
+                coordinate => !requiredChunks.Contains(
+                    ToColumnCoordinate(coordinate)));
+        }
+
+        private void SuspendBodiesInColumn(Vector3Int column)
+        {
+            if (!initialLoadComplete
+                || suspendedBodiesByColumn.ContainsKey(column))
+            {
+                return;
+            }
+
+            Rigidbody[] bodies = FindObjectsOfType<Rigidbody>();
+            var suspended = new List<SuspendedBodyState>();
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                Rigidbody body = bodies[i];
+                if (body == null
+                    || body.isKinematic
+                    || !body.gameObject.activeInHierarchy
+                    || IsViewerOwnedBody(body))
+                {
+                    continue;
+                }
+
+                Vector3 local = transform.InverseTransformPoint(
+                    body.worldCenterOfMass) / voxelSize;
+                Vector3Int bodyColumn = InfiniteVoxelWorld.WorldToChunk(
+                    Mathf.FloorToInt(local.x),
+                    Mathf.FloorToInt(local.y),
+                    Mathf.FloorToInt(local.z));
+                if (bodyColumn != column) continue;
+
+                suspended.Add(new SuspendedBodyState(
+                    body,
+                    body.velocity,
+                    body.angularVelocity));
+                body.gameObject.SetActive(false);
+            }
+
+            if (suspended.Count > 0)
+            {
+                suspendedBodiesByColumn[column] = suspended;
+            }
+        }
+
+        private bool IsViewerOwnedBody(Rigidbody body)
+        {
+            if (viewer == null) return false;
+            Transform candidate = body.transform;
+            return candidate == viewer
+                || candidate.IsChildOf(viewer)
+                || viewer.IsChildOf(candidate);
+        }
+
+        private void ResumeBodiesInColumn(Vector3Int column)
+        {
+            if (!suspendedBodiesByColumn.TryGetValue(
+                column,
+                out List<SuspendedBodyState> suspended))
+            {
+                return;
+            }
+
+            suspendedBodiesByColumn.Remove(column);
+            Physics.SyncTransforms();
+            for (int i = 0; i < suspended.Count; i++)
+            {
+                SuspendedBodyState state = suspended[i];
+                if (state.Body == null) continue;
+                state.Body.gameObject.SetActive(true);
+                state.Body.velocity = state.Velocity;
+                state.Body.angularVelocity = state.AngularVelocity;
+                state.Body.WakeUp();
+            }
+        }
+
+        private static Vector3Int ToColumnCoordinate(Vector3Int coordinate)
+        {
+            return new Vector3Int(coordinate.x, 0, coordinate.z);
         }
 
         private void DestroyChunkObject(Vector3Int coordinate, bool forgetBuildState)
@@ -1066,6 +1836,7 @@ namespace Supernova.MinecraftCaves
                 initialLoadComplete = true;
                 initialLoadCompletedAtUnscaledTime = Time.unscaledTime;
                 RestoreGlobalGravityAfterInitialLoad();
+                SpawnAllPendingTreasures();
                 Debug.Log(
                     $"Minecraft infinite cave rendering ready: {readyChunkCount} "
                     + $"chunk meshes evaluated, {chunkObjects.Count} non-empty meshes.",
@@ -1104,10 +1875,24 @@ namespace Supernova.MinecraftCaves
 
         private void AdvanceGenerationPipeline()
         {
-            if (generationStage != MinecraftCaveGenerationStage.Terrain
-                || generationQueue.Count != 0
-                || generationTasks.Count != 0
-                || CountGeneratedRequiredChunks() != requiredChunks.Count)
+            if (generationStage != MinecraftCaveGenerationStage.Terrain)
+            {
+                return;
+            }
+
+            bool allRequiredTerrainReady = generationQueue.Count == 0
+                && generationTasks.Count == 0
+                && CountGeneratedRequiredChunks() == requiredChunks.Count;
+            if (structurePassApplied)
+            {
+                if (allRequiredTerrainReady)
+                {
+                    generationStage = MinecraftCaveGenerationStage.Meshes;
+                }
+                return;
+            }
+
+            if (!allRequiredTerrainReady)
             {
                 return;
             }
@@ -1115,10 +1900,14 @@ namespace Supernova.MinecraftCaves
             generationStage = MinecraftCaveGenerationStage.Structures;
             int writtenSamples = 0;
             int clearedSamples = 0;
+            int supportedGroundSamples = 0;
+            int clearedGroundHeadroomSamples = 0;
+            int restoredBedrockSamples = 0;
             if (!structurePassApplied)
             {
                 PrepareSpawnPointSceneStructure();
                 writtenSamples = spawnPointStructureRule.Apply(world, spawnVoxel);
+                restoredBedrockSamples = RestoreBoundaryBedrock();
                 if (spawnPointSceneStructure != null)
                 {
                     clearedSamples = spawnPointSceneStructure.CarveTerrainClearance(
@@ -1126,22 +1915,75 @@ namespace Supernova.MinecraftCaves
                         transform,
                         voxelSize,
                         isoLevel - 1f);
+                    supportedGroundSamples =
+                        spawnPointSceneStructure.StabilizeLandingGround(
+                            world,
+                            transform,
+                            voxelSize,
+                            isoLevel + 1f,
+                            baseSolidType,
+                            isoLevel - 1f,
+                            out clearedGroundHeadroomSamples);
                 }
                 structurePassApplied = true;
             }
 
             generationStage = MinecraftCaveGenerationStage.Meshes;
-            builtMeshes.RemoveWhere(coordinate => requiredChunks.Contains(coordinate));
+            builtMeshes.RemoveWhere(
+                coordinate => requiredChunks.Contains(
+                    ToColumnCoordinate(coordinate)));
             foreach (Vector3Int coordinate in requiredChunks)
             {
-                QueueMesh(coordinate);
+                QueueColumnMeshes(coordinate, true);
             }
 
             Debug.Log(
                 $"Minecraft infinite cave data passes ready: {requiredChunks.Count} terrain chunks, "
-                + $"{writtenSamples} structure samples, {clearedSamples} Cell clearance samples. "
+                + $"{writtenSamples} structure samples, "
+                + $"{restoredBedrockSamples} boundary bedrock samples restored, "
+                + $"{supportedGroundSamples} landing-ground samples supported, "
+                + $"{clearedGroundHeadroomSamples} landing headroom samples cleared, "
+                + $"{clearedSamples} Cell and landing-shaft clearance samples. "
                 + "Marching Cubes may now begin.",
                 this);
+        }
+
+        private int RestoreBoundaryBedrock()
+        {
+            if (world == null)
+            {
+                return 0;
+            }
+
+            int restored = 0;
+            foreach (Vector3Int coordinate in requiredChunks)
+            {
+                if (!world.TryGetChunk(coordinate, out InfiniteVoxelChunk chunk))
+                {
+                    continue;
+                }
+
+                for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
+                {
+                    for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                    {
+                        chunk.Data.SetSample(
+                            x,
+                            0,
+                            z,
+                            BoundaryBedrockDensity,
+                            bedrockType);
+                        chunk.Data.SetSample(
+                            x,
+                            VoxelColumnChunkData.Height - 1,
+                            z,
+                            BoundaryBedrockDensity,
+                            bedrockType);
+                        restored += 2;
+                    }
+                }
+            }
+            return restored;
         }
 
         private void PrepareSpawnPointSceneStructure()
@@ -1149,11 +1991,6 @@ namespace Supernova.MinecraftCaves
             if (spawnPointSceneStructure == null || !initialSpawnPlacementPending)
             {
                 return;
-            }
-
-            if (TryFindGroundedSpawnPosition(out Vector3 groundedSpawnPosition))
-            {
-                targetSpawnWorldPosition = groundedSpawnPosition;
             }
 
             spawnPointSceneStructure.ClearExitTarget();
@@ -1215,12 +2052,6 @@ namespace Supernova.MinecraftCaves
             if (!initialSpawnPlacementPending || viewer == null)
             {
                 return;
-            }
-
-            if (spawnPointSceneStructure == null
-                && TryFindGroundedSpawnPosition(out Vector3 groundedSpawnPosition))
-            {
-                targetSpawnWorldPosition = groundedSpawnPosition;
             }
 
             PlaceSpawnPointSceneStructure();
@@ -1331,8 +2162,7 @@ namespace Supernova.MinecraftCaves
             Vector3 up = transform.up;
             float clearance = GetGroundClearance();
             float rayStartOffset = Mathf.Max(voxelSize * 0.25f, clearance);
-            float rayDistance = voxelSize * VoxelVolume.Size
-                * (InitialSpawnRadiusInChunks * 2 + 1);
+            float rayDistance = voxelSize * VoxelColumnChunkData.Height;
 
             Physics.SyncTransforms();
             RaycastHit[] hits = Physics.RaycastAll(
@@ -1366,8 +2196,7 @@ namespace Supernova.MinecraftCaves
             int sampleX = Mathf.RoundToInt(localSpawn.x);
             int sampleY = Mathf.FloorToInt(localSpawn.y);
             int sampleZ = Mathf.RoundToInt(localSpawn.z);
-            int maximumSamples = VoxelVolume.Size
-                * (InitialSpawnRadiusInChunks * 2 + 1);
+            int maximumSamples = VoxelColumnChunkData.Height;
             for (int offset = 0; offset < maximumSamples; offset++)
             {
                 int airY = sampleY - offset;
@@ -1416,7 +2245,21 @@ namespace Supernova.MinecraftCaves
             int count = 0;
             foreach (Vector3Int coordinate in requiredChunks)
             {
-                if (builtMeshes.Contains(coordinate))
+                bool complete = true;
+                for (int section = 0;
+                    section < MeshSectionsPerColumn;
+                    section++)
+                {
+                    if (!builtMeshes.Contains(new Vector3Int(
+                            coordinate.x,
+                            section,
+                            coordinate.z)))
+                    {
+                        complete = false;
+                        break;
+                    }
+                }
+                if (complete)
                 {
                     count++;
                 }
@@ -1427,15 +2270,16 @@ namespace Supernova.MinecraftCaves
         private Vector3Int FindCaveSpawnVoxel()
         {
             var random = new System.Random(worldSeed ^ 0x51F15EED);
-            Vector3Int best = Vector3Int.zero;
+            int middleSpawnY = (LowestSpawnY + HighestSpawnY) / 2;
+            var best = new Vector3Int(0, middleSpawnY, 0);
             float bestDensity = float.PositiveInfinity;
             for (int attempt = 0; attempt < 2400; attempt++)
             {
                 Vector3Int point = attempt == 0
-                    ? Vector3Int.zero
+                    ? best
                     : new Vector3Int(
                         random.Next(-72, 73),
-                        random.Next(-48, 49),
+                        random.Next(LowestSpawnY, HighestSpawnY + 1),
                         random.Next(-72, 73));
                 float density = densityField.SampleFeatureDensity(
                     point,
@@ -1491,45 +2335,67 @@ namespace Supernova.MinecraftCaves
             Vector3Int coordinate,
             MinecraftCaveDensityField field,
             VoxelTypeId solidType,
+            VoxelTypeId boundaryType,
             MinecraftOreFeatureSettings[] features,
             CancellationToken token)
         {
-            var densities = new float[VoxelVolume.VoxelCount];
-            var types = new VoxelTypeId[VoxelVolume.VoxelCount];
-            Vector3Int origin = coordinate * VoxelVolume.Size;
-            int index = 0;
-            for (int z = 0; z < VoxelVolume.Size; z++)
+            float[] densities = MinecraftCaveDensityInterpolator.SampleColumn(
+                coordinate,
+                field,
+                token);
+            var types = new VoxelTypeId[VoxelColumnChunkData.VoxelCount];
+            for (int index = 0; index < densities.Length; index++)
             {
-                token.ThrowIfCancellationRequested();
-                for (int y = 0; y < VoxelVolume.Size; y++)
-                {
-                    for (int x = 0; x < VoxelVolume.Size; x++)
-                    {
-                        Vector3 worldPosition = (Vector3)(
-                            origin + new Vector3Int(x, y, z));
-                        float density = field.SampleFeatureDensity(
-                            worldPosition,
-                            MinecraftCaveType.Combined);
-                        densities[index] = density;
-                        types[index] = density >= 0f
-                            ? solidType
-                            : VoxelTypeId.Air;
-                        index++;
-                    }
-                }
+                types[index] = densities[index] >= 0f
+                    ? solidType
+                    : VoxelTypeId.Air;
             }
 
-            MinecraftOreFeatureGenerator.GenerateChunk(
+            ApplyBoundaryBedrock(densities, types, boundaryType);
+            MinecraftOreFeatureGenerator.GenerateColumn(
                 coordinate,
                 densities,
                 types,
                 field.Seed,
                 features,
-                (x, y, z) => field.SampleFeatureDensity(
-                    new Vector3(x, y, z),
-                    MinecraftCaveType.Combined),
+                (x, y, z) => IsBoundaryBedrockY(y)
+                    || !InfiniteVoxelWorld.IsWorldYInBounds(y)
+                        ? BoundaryBedrockDensity
+                        : field.SampleFeatureDensity(
+                            new Vector3(x, y, z),
+                            MinecraftCaveType.Combined),
                 token);
             return new ChunkGenerationResult(coordinate, densities, types);
+        }
+
+        private static int ApplyBoundaryBedrock(
+            float[] densities,
+            VoxelTypeId[] types,
+            VoxelTypeId boundaryType)
+        {
+            int written = 0;
+            for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
+            {
+                for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                {
+                    int bottom = VoxelColumnChunkData.ToIndex(x, 0, z);
+                    int top = VoxelColumnChunkData.ToIndex(
+                        x,
+                        VoxelColumnChunkData.Height - 1,
+                        z);
+                    densities[bottom] = BoundaryBedrockDensity;
+                    types[bottom] = boundaryType;
+                    densities[top] = BoundaryBedrockDensity;
+                    types[top] = boundaryType;
+                    written += 2;
+                }
+            }
+            return written;
+        }
+
+        private static bool IsBoundaryBedrockY(int y)
+        {
+            return y == 0 || y == VoxelColumnChunkData.Height - 1;
         }
 
         private void SnapshotVoxelGenerationSettings()
@@ -1537,6 +2403,9 @@ namespace Supernova.MinecraftCaves
             baseSolidType = baseSolidVoxelType != null
                 ? baseSolidVoxelType.TypeId
                 : VoxelTypeId.Default;
+            bedrockType = bedrockVoxelType != null
+                ? bedrockVoxelType.TypeId
+                : baseSolidType;
 
             var snapshots = new List<MinecraftOreFeatureSettings>();
             if (oreFeatures != null)
@@ -1572,15 +2441,12 @@ namespace Supernova.MinecraftCaves
             var offsets = new List<Vector3Int>();
             for (int z = -GenerationRadiusInChunks; z <= GenerationRadiusInChunks; z++)
             {
-                for (int y = -GenerationRadiusInChunks; y <= GenerationRadiusInChunks; y++)
+                for (int x = -GenerationRadiusInChunks; x <= GenerationRadiusInChunks; x++)
                 {
-                    for (int x = -GenerationRadiusInChunks; x <= GenerationRadiusInChunks; x++)
+                    var offset = new Vector3Int(x, 0, z);
+                    if (x * x + z * z <= radiusSquared)
                     {
-                        var offset = new Vector3Int(x, y, z);
-                        if (offset.sqrMagnitude <= radiusSquared)
-                        {
-                            offsets.Add(offset);
-                        }
+                        offsets.Add(offset);
                     }
                 }
             }
@@ -1602,8 +2468,9 @@ namespace Supernova.MinecraftCaves
             GUI.Label(new Rect(22f, 17f, 520f, 32f), "INFINITE CAVES", headingStyle);
             GUI.Label(
                 new Rect(24f, 48f, 620f, 24f),
-                $"CHUNK  {VoxelVolume.Size}^3    RADIUS  {GenerationRadiusInChunks}    "
-                + $"POSITION  {viewerChunk.x}, {viewerChunk.y}, {viewerChunk.z}",
+                $"CHUNK  {VoxelColumnChunkData.Width}x{VoxelColumnChunkData.Depth}"
+                + $"x{VoxelColumnChunkData.Height}    RADIUS  {GenerationRadiusInChunks}    "
+                + $"POSITION  {viewerChunk.x}, {viewerChunk.z}",
                 statusStyle);
             GUI.Label(
                 new Rect(24f, 70f, 700f, 24f),
@@ -1652,6 +2519,11 @@ namespace Supernova.MinecraftCaves
         {
             RestoreGlobalGravityAfterInitialLoad();
             generationCancellation?.Cancel();
+            foreach (GenerationTaskHandle handle in generationTasks.Values)
+            {
+                handle.Cancel();
+                handle.Dispose();
+            }
             generationCancellation?.Dispose();
             generationCancellation = null;
             generationTasks.Clear();
@@ -1664,6 +2536,35 @@ namespace Supernova.MinecraftCaves
             builtMeshes.Clear();
             requiredChunks.Clear();
             miningProgress.Clear();
+            for (int i = activeOreDrops.Count - 1; i >= 0; i--)
+            {
+                MinedOreDrop drop = activeOreDrops[i];
+                if (drop != null)
+                {
+                    DestroyGeneratedObject(drop.gameObject);
+                }
+            }
+            activeOreDrops.Clear();
+            for (int i = activeTreasures.Count - 1; i >= 0; i--)
+            {
+                TreasurePickup treasure = activeTreasures[i];
+                if (treasure != null) DestroyGeneratedObject(treasure.gameObject);
+            }
+            activeTreasures.Clear();
+            treasureSpawnedColumns.Clear();
+            pendingTreasureColumns.Clear();
+            foreach (List<SuspendedBodyState> suspended
+                in suspendedBodiesByColumn.Values)
+            {
+                for (int i = 0; i < suspended.Count; i++)
+                {
+                    if (suspended[i].Body != null)
+                    {
+                        suspended[i].Body.gameObject.SetActive(true);
+                    }
+                }
+            }
+            suspendedBodiesByColumn.Clear();
 
             var coordinates = new List<Vector3Int>(chunkObjects.Keys);
             foreach (Vector3Int coordinate in coordinates)
@@ -1691,6 +2592,7 @@ namespace Supernova.MinecraftCaves
             world = null;
             densityField = null;
             baseSolidType = VoxelTypeId.Default;
+            bedrockType = VoxelTypeId.Default;
             oreFeatureSettings = Array.Empty<MinecraftOreFeatureSettings>();
             hasViewerChunk = false;
 
@@ -1718,6 +2620,23 @@ namespace Supernova.MinecraftCaves
             }
         }
 
+        private readonly struct SuspendedBodyState
+        {
+            public SuspendedBodyState(
+                Rigidbody body,
+                Vector3 velocity,
+                Vector3 angularVelocity)
+            {
+                Body = body;
+                Velocity = velocity;
+                AngularVelocity = angularVelocity;
+            }
+
+            public Rigidbody Body { get; }
+            public Vector3 Velocity { get; }
+            public Vector3 AngularVelocity { get; }
+        }
+
         private sealed class ChunkGenerationResult
         {
             public ChunkGenerationResult(
@@ -1735,24 +2654,44 @@ namespace Supernova.MinecraftCaves
             public VoxelTypeId[] Types { get; }
         }
 
-        private readonly struct MiningBrushCandidate
+        private sealed class GenerationTaskHandle : IDisposable
         {
-            public MiningBrushCandidate(
+            private readonly CancellationTokenSource cancellation;
+
+            public GenerationTaskHandle(
+                Task<ChunkGenerationResult> task,
+                CancellationTokenSource cancellation)
+            {
+                Task = task ?? throw new ArgumentNullException(nameof(task));
+                this.cancellation = cancellation
+                    ?? throw new ArgumentNullException(nameof(cancellation));
+            }
+
+            public Task<ChunkGenerationResult> Task { get; }
+
+            public void Cancel()
+            {
+                cancellation.Cancel();
+            }
+
+            public void Dispose()
+            {
+                cancellation.Dispose();
+            }
+        }
+
+        private readonly struct MiningPropagationNode
+        {
+            public MiningPropagationNode(
                 Vector3Int coordinate,
-                VoxelSample sample,
-                float damage,
-                float distanceSquared)
+                float damage)
             {
                 Coordinate = coordinate;
-                Sample = sample;
                 Damage = damage;
-                DistanceSquared = distanceSquared;
             }
 
             public Vector3Int Coordinate { get; }
-            public VoxelSample Sample { get; }
             public float Damage { get; }
-            public float DistanceSquared { get; }
         }
     }
 }

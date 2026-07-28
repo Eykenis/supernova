@@ -302,7 +302,22 @@ MonoBehaviour:
   meshesBuiltPerFrame: 2
   voxelSize: 0.42
   isoLevel: 0
+  vertexPlacement: 1
   generateColliders: 0
+  voxelTypeCatalog: {fileID: 0}
+  punctualLightFalloffPower: 0.55
+  punctualLightAttenuationLimit: 1.5
+  punctualLightMultiplier: 1
+  baseSolidVoxelType: {fileID: 0}
+  bedrockVoxelType: {fileID: 0}
+  oreFeatures: []
+  treasureSpawnTable: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
+  treasureSpawnExclusionRadius: 12
+  spawnPointStructureRule:
+    enabled: 1
+    structure: {fileID: 0}
+    offset: {x: 0, y: 0, z: 0}
+  spawnPointSceneStructure: {fileID: 0}
 --- !u!4 &952038241
 Transform:
   m_ObjectHideFlags: 0

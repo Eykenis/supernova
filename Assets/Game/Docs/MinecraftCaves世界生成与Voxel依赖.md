@@ -15,13 +15,13 @@ MinecraftCaveNoise：确定性三维梯度噪声
         ↓
 MinecraftCaveDensityField：Cheese / Spaghetti / Noodle / Pillar / Combined 密度
         ↓
-后台任务生成单个 chunk 的 float[32³]
+全局对齐的 2×4×2 噪声格求值 + 三线性展开
         ↓
-主线程提交到 InfiniteVoxelWorld / VoxelChunkData
+后台任务生成单根柱的 float[32×256×32]
         ↓
-MarchingCubesMesher.BuildChunk
+数组所有权直接提交到 InfiniteVoxelWorld / VoxelColumnChunkData
         ↓
-VoxelMeshData.CreateMesh
+MarchingCubesMesher.BuildColumnSection（每柱 8 个 32 高分段）
         ↓
 GameObject + MeshFilter + MeshRenderer + 可选 MeshCollider
 ```
@@ -168,20 +168,24 @@ combined = max(voids, Pillar)
 
 `MinecraftCaveVolumeGenerator` 是密度场到 Voxel 容器的适配层。
 
-### 4.1 世界 chunk
+### 4.1 世界柱区块
 
-`FillChunk` 从 `VoxelChunkData.OriginX/Y/Z` 取得绝对原点，再遍历局部 `0..31`：
+Gallery/工具中的 `FillColumn` 仍可逐体素精确采样。正式无限世界改由
+`MinecraftCaveDensityInterpolator` 从 `VoxelColumnChunkData.OriginX/Z` 取得绝对
+原点，在 X/Z 间隔 2、Y 间隔 4 的全局格点求值完整 `Combined`，再三线性展开：
 
 ```text
-worldPosition = chunkOrigin + localPosition
-density[x,y,z] = SampleFeatureDensity(worldPosition, type)
+coarse samples = 17 × 65 × 17 = 18,785
+expanded samples = 32 × 256 × 32 = 262,144
 ```
 
-绝对坐标采样保证相邻 chunk 不会因为各自局部坐标归零而产生噪声接缝，也保证负 chunk 坐标得到同一连续密度场。
+绝对坐标采样保证相邻柱不会因为各自局部坐标归零而产生噪声接缝，也保证负区块坐标
+得到同一连续密度场。
 
 无限世界的后台生成函数执行相同逻辑，同时写入独立的
-`float[32768]` 和 `VoxelTypeId[32768]`。实心样本先分配为配置的基岩类型，再由
-普通矿团阶段替换类型；工作线程不会访问世界字典和 Unity 资产。
+`float[262144]` 和 `VoxelTypeId[262144]`。普通实心样本先分配为 Stone，顶部
+`y=255` 与底部 `y=0` 写为 Bedrock，再由普通矿团阶段替换允许替换的类型；工作线程
+不会访问世界字典和 Unity 资产。
 
 ### 4.2 展示体积与正式世界的区别
 
@@ -189,15 +193,17 @@ density[x,y,z] = SampleFeatureDensity(worldPosition, type)
 
 正式无限世界使用 `SampleFeatureDensity(..., Combined)`，没有展示盒和剖切面。
 
-## 5. 无限三维 Chunk 流送
+## 5. 二维柱区块流送
 
-`MinecraftCaveInfiniteWorld` 固定维护玩家周围欧氏半径为 4 的三维 chunk 球：
+`MinecraftCaveInfiniteWorld` 固定维护玩家周围 XZ 欧氏半径为 4 的二维区块圆盘：
 
 ```text
-dx² + dy² + dz² <= 4²
+dx² + dz² <= 4²
 ```
 
-满足条件的偏移共 257 个，并在初始化时按距离平方由近到远排序。这里 Y 轴与 X/Z 完全同等参与加载，世界不是二维柱状流送。
+满足条件的偏移共 49 个，并在初始化时按距离平方由近到远排序。Y 不参与区块寻址；
+每个条目都覆盖完整 `0..255` 高度。初次出生阶段先加载 `3×3` 的 9 根柱，玩家释放后
+扩展到完整半径。
 
 玩家跨越 chunk 边界时，系统重新建立 required set：
 
@@ -215,38 +221,46 @@ dx² + dy² + dz² <= 4²
 
 每个任务：
 
-1. 分配一个 `float[VoxelVolume.VoxelCount]` 和一个
-   `VoxelTypeId[VoxelVolume.VoxelCount]`；
-2. 根据 chunk 坐标计算绝对原点；
-3. 遍历 `32³` 个采样点并计算 `Combined` 密度；
-4. 为实心样本分配基岩类型，并用确定性
-   `MinecraftOreFeatureGenerator` 写入普通矿团类型；
+1. 分配一个 `float[VoxelColumnChunkData.VoxelCount]` 和一个
+   `VoxelTypeId[VoxelColumnChunkData.VoxelCount]`；
+2. 根据 XZ 柱坐标计算绝对原点，Y 原点恒为 `0`；
+3. 在全局对齐的 `17×65×17` 格点计算 `Combined`，三线性展开完整密度数组；
+4. 为普通实心样本分配 Stone，并把 `y=0/255` 写为 Bedrock；随后用确定性
+   `MinecraftOreFeatureGenerator` 写入普通矿团类型，Bedrock 不属于可替换类型；
 5. 每完成一个 Z 切片以及每次矿团尝试时检查取消令牌；
 6. 返回坐标、密度和类型数组，不访问 `GameObject`、`Mesh`、世界字典或
    `ScriptableObject`。
 
 主线程在 `Update` 中轮询已完成任务。只有结果对应的 chunk 仍在 required set 且尚未生成时才提交：
 
-1. 调用 `InfiniteVoxelWorld.EnsureChunk`；
-2. 通过 `SetSample` 把密度和类型逐项复制到 `chunk.Data`；
-3. 标记受该新密度影响的网格。
+1. 调用 `InfiniteVoxelWorld.AddChunkTakingOwnership`（内部键为 `Vector2Int`）；
+2. 直接把任务生成的密度与类型数组交给 `VoxelColumnChunkData`，不再逐项复制；
+3. 标记受该新密度影响的网格；结构阶段完成后，新柱无需等待其余 required set，
+   会立即进入渐进网格队列。
 
-离开加载范围的在途任务不会立即单独取消；它完成后若已不在 required set，结果会被丢弃。组件禁用、销毁或应用退出时会取消整个生成令牌并清理运行时状态。
+每个生成任务有独立的链接取消令牌。玩家跨柱后，离开 required set 的在途任务会被
+取消；若坐标很快重新进入 required set，则旧任务清理后重新排队。组件禁用、销毁或
+应用退出时仍会取消整个生成令牌并清理运行时状态。
 
 ## 7. Chunk 边界与网格更新
 
-MinecraftCaves 调用 `MarchingCubesMesher.BuildChunk(world, coordinate, isoLevel, voxelSize)`。一个 chunk 保存 `32³` 个采样点，但该重载负责 `32³` 个 cell，因此还会读取正方向边界上的相邻采样点，合计预取 `33³` 个密度值。
+MinecraftCaves 调用 `MarchingCubesMesher.BuildColumnSection`。一根数据柱保存
+`32×256×32` 个采样点，但分成 8 个 32 高网格段；每段处理 `32³` 个 cell，并预取
+`33³` 个样本。分段共享 Y 边界采样，合计覆盖的 cell 与原整柱完全一致。
 
-未生成邻居按实体密度 `isoLevel + 1` 处理。这样加载边界暂时封闭，不会把未知区域当空气并生成虚假的开放边界。
+未生成的水平邻柱按 Stone 与实体密度 `isoLevel + 1` 处理；世界高度之外按 Bedrock
+处理。这样加载边界与顶部/底部都会封闭。
 
-新 chunk 从“未知且按实体处理”变为真实密度后，可能改变它自己以及负方向八分体中的 7 个相邻网格：
+新柱从“未知且按实体处理”变为真实密度后，可能改变它自己以及 X/Z 负方向的相邻网格：
 
 ```text
-affected = generatedChunk - (dx, dy, dz)
-dx, dy, dz ∈ {0, 1}
+affected = generatedColumn - (dx, 0, dz)
+dx, dz ∈ {0, 1}
 ```
 
-系统只把 required set 内且已有体素数据的这些 chunk 加入 dirty set。`dirtyMeshes` 去重，`meshesBuiltPerFrame` 限制主线程每帧最多重建多少个网格。
+系统只把 required set 内且已有体素数据的这些分段加入 dirty set。队列优先从玩家
+所在高度向上下展开；`dirtyMeshes` 去重，`meshesBuiltPerFrame` 限制主线程每帧最多
+重建多少个分段。高优先级编辑重建完成后，普通队列中的旧条目会被跳过。
 
 重建时先销毁该坐标的旧运行时对象，然后：
 
@@ -254,16 +268,17 @@ dx, dy, dz ∈ {0, 1}
 2. 空网格只记录为已构建，不创建 GameObject；
 3. 非空网格创建 Mesh、MeshFilter 和 MeshRenderer；
 4. 根据设置选择是否创建 MeshCollider；
-5. chunk 对象放到 `coordinate * 32 * voxelSize` 的局部位置。
+5. 柱对象放到 `(coordinate.x * 32, 0, coordinate.z * 32) * voxelSize`
+   的局部位置。
 
 ## 8. 出生点选择
 
 启用 `placeViewerInCave` 时，系统用世界种子派生一个确定性 `System.Random`：
 
-- 第一次检查体素原点 `(0,0,0)`；
-- 随后最多在 X/Z `[-72,72]`、Y `[-48,48]` 中尝试随机点，总尝试数为 2400；
+- 第一次检查合法高度带中央的 `(0,159,0)`；
+- 随后最多在 X/Z `[-72,72]`、Y `95..223` 中尝试确定性随机点，总尝试数为 2400；
 - 候选点密度必须小于 `-0.035`；
-- 候选中心及六个轴向、距离为 2 的采样点必须全部为空。
+- 候选中心及六个轴向、距离为 2 的采样点必须为空。
 
 找到合格点立即作为出生体素；若没有找到，则使用所有候选中密度最低的位置。
 
@@ -271,41 +286,38 @@ dx, dy, dz ∈ {0, 1}
 
 MinecraftCaves 世界生成只使用以下 `Supernova.Voxels` 能力。
 
-### 9.1 `VoxelVolume`
+### 9.1 `VoxelColumnChunkData`
 
-- 固定尺寸 `32 × 32 × 32`；
-- 连续 `float[32768]` 密度和 `VoxelTypeId[32768]` 类型存储；
+- 固定尺寸 `32 × 256 × 32`；
+- 连续 `float[262144]` 密度和 `VoxelTypeId[262144]` 类型存储；
 - 提供局部 `(x,y,z)` 索引；
-- Gallery 直接创建该类型，无限世界通过 `VoxelChunkData` 间接持有。
+- X/Z 决定柱坐标，Y 是柱内的绝对世界高度。
 
-### 9.2 `VoxelChunkData`
+旧 `VoxelVolume` / `VoxelChunkData` 仍服务 Gallery 和结构编辑器，不属于正式世界
+的流送数据。
 
-- 保存三维 chunk 坐标；
-- 提供 `OriginX/Y/Z = ChunkCoordinate * 32`；
-- 保存对应的 `VoxelVolume`；
-- 用于把局部采样坐标准确映射到绝对世界坐标。
+### 9.2 `InfiniteVoxelChunk` 与 `InfiniteVoxelWorld`
 
-### 9.3 `InfiniteVoxelChunk` 与 `InfiniteVoxelWorld`
-
-- `InfiniteVoxelWorld` 用 `Dictionary<Vector3Int, InfiniteVoxelChunk>` 缓存已提交的 chunk；
-- `EnsureChunk` 创建或返回指定 chunk；
+- `InfiniteVoxelWorld` 用 `Dictionary<Vector2Int, InfiniteVoxelChunk>` 缓存已提交的柱；
+- `EnsureChunk` 创建或返回指定柱；
 - `TryGetChunk` 用于流送状态和网格构建判断；
-- `GetDensityOrDefault` 为跨 chunk 网格采样提供世界密度；
-- `WorldToChunk` 使用 floor division 处理负坐标。
+- `GetDensityOrDefault` 为跨柱网格采样提供世界密度；
+- `WorldToChunk` 使用 floor division 处理负 X/Z，兼容返回值的 Y 恒为 0；
+- 世界 Y 仅允许 `0..255`。
 
 `InfiniteVoxelChunk` 创建时默认填充正密度 `1`，但 MinecraftCaves 在提交后台
 结果时会用生成的完整密度和类型数组覆盖它。
 
-### 9.4 `MarchingCubesMesher`
+### 9.3 `MarchingCubesMesher`
 
 - 使用固定 `256 × 16` case 表；
 - 每个 cell 读取 8 个角点并形成 8-bit case；
 - case `0` 和 `255` 跳过；
-- 12 条边使用固定中点，不做动态密度插值；
-- `BuildChunk` 预取并复用 `33³` 密度缓存；
+- 正式场景使用密度边插值定位零交点；
+- `BuildChunk` 预取并复用 `33×257×33` 样本缓存；
 - 当前静态密度缓存不支持多个线程并发调用，因此网格构建保留在主线程串行执行。
 
-### 9.5 `VoxelMeshData`
+### 9.4 `VoxelMeshData`
 
 - 保存顶点和三角形索引；
 - 创建 Unity Mesh 时自动选择 16/32 位索引；
@@ -320,7 +332,8 @@ MinecraftCaves 的内容生成入口是 `MinecraftCaveInfiniteWorld`。它与其
 编辑器提供两个与世界生成有关的验证入口：
 
 - `Tools > Minecraft Caves > Validate Generation`：检查五种密度场均跨越零等值面、能够生成网格、相邻 chunk 使用绝对坐标，并检查 Combined 的空体积和连通性上限；
-- `Tools > Minecraft Caves > Validate Infinite World`：检查 `32³` chunk、半径 4、257 个唯一且近到远排序的偏移，以及负坐标 chunk 的绝对坐标采样。
+- `Tools > Minecraft Caves > Validate Infinite World`：检查 `32×256×32` 柱区块、
+  XZ 半径 4、49 个唯一且近到远排序的偏移，以及负坐标柱的绝对坐标采样。
 
 ## 12. 相关源码
 
@@ -339,6 +352,7 @@ MinecraftCaves 生成代码：
 
 - `Assets/Game/Runtime/Voxels/VoxelVolume.cs`
 - `Assets/Game/Runtime/Voxels/VoxelChunkData.cs`
+- `Assets/Game/Runtime/Voxels/VoxelColumnChunkData.cs`
 - `Assets/Game/Runtime/Voxels/InfiniteVoxelWorld.cs`
 - `Assets/Game/Runtime/Voxels/MarchingCubesMesher.cs`
 - `Assets/Game/Runtime/Voxels/VoxelMeshData.cs`

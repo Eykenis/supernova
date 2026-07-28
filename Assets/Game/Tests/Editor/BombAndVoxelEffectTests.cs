@@ -39,6 +39,55 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void MagnetBeam_FadesSmoothlyFromTransparentAtTheSource()
+        {
+            GameObject host = Create("Magnet Beam");
+            MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
+
+            InvokePrivate(beam, "EnsureLine");
+            InvokePrivate(beam, "UpdateFlowColor");
+
+            LineRenderer line = host.GetComponent<LineRenderer>();
+            Assert.That(line, Is.Not.Null);
+            Gradient colors = line.colorGradient;
+            float sourceAlpha = colors.Evaluate(0f).a;
+            float nearSourceAlpha = colors.Evaluate(0.05f).a;
+            float fadedInAlpha = colors.Evaluate(0.25f).a;
+
+            Assert.That(sourceAlpha, Is.Zero.Within(0.0001f));
+            Assert.That(nearSourceAlpha, Is.GreaterThan(sourceAlpha));
+            Assert.That(fadedInAlpha, Is.GreaterThan(nearSourceAlpha));
+        }
+
+        [Test]
+        public void MagnetBeam_StartsHalfwayBetweenBothHands()
+        {
+            GameObject host = Create("Magnet Beam");
+            MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
+            Transform leftHand = Create("Left Hand").transform;
+            Transform rightHand = Create("Right Hand").transform;
+            leftHand.position = new Vector3(-1.5f, 2f, 4f);
+            rightHand.position = new Vector3(0.5f, 4f, 8f);
+            SetPrivateField(beam, "leftHand", leftHand);
+            SetPrivateField(beam, "rightHand", rightHand);
+
+            Vector3 start = InvokePrivate<Vector3>(beam, "ResolveBeamStart");
+
+            Assert.That(start, Is.EqualTo(new Vector3(-0.5f, 3f, 6f)));
+        }
+
+        [Test]
+        public void MagnetBeam_ArcBendsUpward()
+        {
+            GameObject host = Create("Magnet Beam");
+            MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
+
+            float midpointHeight = InvokePrivate<float>(beam, "CalculateArcHeight", 0.5f);
+
+            Assert.That(midpointHeight, Is.GreaterThan(0f));
+        }
+
+        [Test]
         public void CarveSphere_BatchesVoxelChangesIntoOneDirtyChunk()
         {
             GameObject terrainObject = Create("Terrain");
@@ -72,6 +121,7 @@ namespace Supernova.Tests
             SetPrivateField(terrain, "viewer", viewer.transform);
             SetPrivateField(terrain, "hasViewerChunk", true);
             SetPrivateField(terrain, "viewerChunk", Vector3Int.zero);
+            SetPrivateField(terrain, "initialSpawnPlacementPending", false);
             SetPrivateField(
                 terrain,
                 "generationStage",
@@ -99,13 +149,29 @@ namespace Supernova.Tests
 
             terrain.InitializeWorld();
 
-            Assert.That(terrain.RequiredChunkCount, Is.EqualTo(27),
-                "Initial loading should be limited to the 3x3x3 spawn area.");
+            Assert.That(
+                terrain.SpawnVoxel.y,
+                Is.InRange(
+                    MinecraftCaveInfiniteWorld.LowestSpawnY,
+                    MinecraftCaveInfiniteWorld.HighestSpawnY));
+            Assert.That(terrain.RequiredChunkCount, Is.EqualTo(9),
+                "Initial loading should be limited to the 3x3 spawn columns.");
             HashSet<Vector3Int> requiredChunks = GetPrivateField<HashSet<Vector3Int>>(
                 terrain, "requiredChunks");
             HashSet<Vector3Int> builtMeshes = GetPrivateField<HashSet<Vector3Int>>(
                 terrain, "builtMeshes");
-            builtMeshes.UnionWith(requiredChunks);
+            foreach (Vector3Int column in requiredChunks)
+            {
+                for (int section = 0;
+                    section < MinecraftCaveInfiniteWorld.MeshSectionsPerColumn;
+                    section++)
+                {
+                    builtMeshes.Add(new Vector3Int(
+                        column.x,
+                        section,
+                        column.z));
+                }
+            }
             SetPrivateField(
                 terrain,
                 "generationStage",
@@ -216,6 +282,14 @@ namespace Supernova.Tests
                 name, BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null, $"Missing method {target.GetType().Name}.{name}");
             method.Invoke(target, null);
+        }
+
+        private static T InvokePrivate<T>(object target, string name, params object[] arguments)
+        {
+            MethodInfo method = target.GetType().GetMethod(
+                name, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null, $"Missing method {target.GetType().Name}.{name}");
+            return (T)method.Invoke(target, arguments);
         }
 
         private GameObject Create(string name)

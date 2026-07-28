@@ -58,6 +58,56 @@ public sealed class VoxelTypeMarchingCubesTests
         Assert.Greater(data.GetTriangles(stone).Count, 0);
     }
 
+    [Test]
+    public void MarchingCubes_DensityInterpolationUsesIsoSurfaceCrossing()
+    {
+        var volume = new VoxelVolume(-0.75f);
+        volume.SetSample(10, 10, 10, 0.25f, VoxelTypeId.Default);
+
+        VoxelMeshData midpoint = MarchingCubesMesher.Build(
+            volume,
+            0f,
+            1f,
+            MarchingCubesVertexPlacement.EdgeMidpoint);
+        VoxelMeshData interpolated = MarchingCubesMesher.Build(
+            volume,
+            0f,
+            1f,
+            MarchingCubesVertexPlacement.DensityInterpolated);
+
+        Assert.IsTrue(ContainsReferencedVertexAtX(
+            midpoint,
+            VoxelTypeId.Default,
+            10.5f));
+        Assert.IsTrue(ContainsReferencedVertexAtX(
+            interpolated,
+            VoxelTypeId.Default,
+            10.25f));
+        Assert.IsFalse(ContainsReferencedVertexAtX(
+            interpolated,
+            VoxelTypeId.Default,
+            10.5f));
+    }
+
+    [Test]
+    public void MarchingCubes_DensityInterpolationPreservesMaterialInset()
+    {
+        var volume = new VoxelVolume(-1f);
+        var stone = new VoxelTypeId(2);
+        var ore = new VoxelTypeId(3);
+        volume.SetSample(10, 10, 10, 0.1f, stone);
+        volume.SetSample(11, 10, 10, 0.9f, ore);
+
+        VoxelMeshData data = MarchingCubesMesher.Build(
+            volume,
+            0f,
+            1f,
+            MarchingCubesVertexPlacement.DensityInterpolated);
+
+        Assert.IsTrue(ContainsReferencedVertexAtX(data, stone, 10.45f));
+        Assert.IsTrue(ContainsReferencedVertexAtX(data, ore, 10.55f));
+    }
+
     private static bool ContainsReferencedVertexAtX(
         VoxelMeshData data,
         VoxelTypeId type,

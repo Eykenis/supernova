@@ -29,6 +29,58 @@ namespace Supernova.MinecraftCaves
             DensitySampler densitySampler = null,
             CancellationToken cancellationToken = default)
         {
+            Vector3Int targetOrigin = chunkCoordinate * VoxelVolume.Size;
+            return GenerateRegion(
+                targetOrigin,
+                VoxelVolume.Size,
+                VoxelVolume.Size,
+                VoxelVolume.Size,
+                densities,
+                types,
+                worldSeed,
+                features,
+                densitySampler,
+                cancellationToken);
+        }
+
+        public static int GenerateColumn(
+            Vector3Int columnCoordinate,
+            float[] densities,
+            VoxelTypeId[] types,
+            int worldSeed,
+            IReadOnlyList<MinecraftOreFeatureSettings> features,
+            DensitySampler densitySampler = null,
+            CancellationToken cancellationToken = default)
+        {
+            var targetOrigin = new Vector3Int(
+                columnCoordinate.x * VoxelColumnChunkData.Width,
+                0,
+                columnCoordinate.z * VoxelColumnChunkData.Depth);
+            return GenerateRegion(
+                targetOrigin,
+                VoxelColumnChunkData.Width,
+                VoxelColumnChunkData.Height,
+                VoxelColumnChunkData.Depth,
+                densities,
+                types,
+                worldSeed,
+                features,
+                densitySampler,
+                cancellationToken);
+        }
+
+        private static int GenerateRegion(
+            Vector3Int targetOrigin,
+            int sizeX,
+            int sizeY,
+            int sizeZ,
+            float[] densities,
+            VoxelTypeId[] types,
+            int worldSeed,
+            IReadOnlyList<MinecraftOreFeatureSettings> features,
+            DensitySampler densitySampler,
+            CancellationToken cancellationToken)
+        {
             if (densities == null)
             {
                 throw new ArgumentNullException(nameof(densities));
@@ -37,16 +89,17 @@ namespace Supernova.MinecraftCaves
             {
                 throw new ArgumentNullException(nameof(types));
             }
-            if (densities.Length != VoxelVolume.VoxelCount)
+            int sampleCount = sizeX * sizeY * sizeZ;
+            if (densities.Length != sampleCount)
             {
                 throw new ArgumentException(
-                    $"Density array must contain {VoxelVolume.VoxelCount} samples.",
+                    $"Density array must contain {sampleCount} samples.",
                     nameof(densities));
             }
-            if (types.Length != VoxelVolume.VoxelCount)
+            if (types.Length != sampleCount)
             {
                 throw new ArgumentException(
-                    $"Type array must contain {VoxelVolume.VoxelCount} samples.",
+                    $"Type array must contain {sampleCount} samples.",
                     nameof(types));
             }
             if (features == null || features.Count == 0)
@@ -54,11 +107,10 @@ namespace Supernova.MinecraftCaves
                 return 0;
             }
 
-            Vector3Int targetOrigin = chunkCoordinate * VoxelVolume.Size;
-            int targetMaxX = targetOrigin.x + VoxelVolume.Size - 1;
-            int targetMaxY = targetOrigin.y + VoxelVolume.Size - 1;
-            int targetMaxZ = targetOrigin.z + VoxelVolume.Size - 1;
-            var visited = new int[VoxelVolume.VoxelCount];
+            int targetMaxX = targetOrigin.x + sizeX - 1;
+            int targetMaxY = targetOrigin.y + sizeY - 1;
+            int targetMaxZ = targetOrigin.z + sizeZ - 1;
+            var visited = new int[sampleCount];
             int visitStamp = 0;
             int changed = 0;
 
@@ -145,7 +197,10 @@ namespace Supernova.MinecraftCaves
                                 types,
                                 visited,
                                 visitStamp,
-                                densitySampler);
+                                densitySampler,
+                                sizeX,
+                                sizeY,
+                                sizeZ);
                         }
                     }
                 }
@@ -239,7 +294,10 @@ namespace Supernova.MinecraftCaves
             VoxelTypeId[] types,
             int[] visited,
             int visitStamp,
-            DensitySampler densitySampler)
+            DensitySampler densitySampler,
+            int sizeX,
+            int sizeY,
+            int sizeZ)
         {
             int changed = 0;
             for (int sphereIndex = 0; sphereIndex < spheres.Count; sphereIndex++)
@@ -297,7 +355,12 @@ namespace Supernova.MinecraftCaves
                             int localX = worldX - targetOrigin.x;
                             int localY = worldY - targetOrigin.y;
                             int localZ = worldZ - targetOrigin.z;
-                            int index = ToIndex(localX, localY, localZ);
+                            int index = ToIndex(
+                                localX,
+                                localY,
+                                localZ,
+                                sizeX,
+                                sizeY);
                             if (visited[index] == visitStamp)
                             {
                                 continue;
@@ -319,7 +382,10 @@ namespace Supernova.MinecraftCaves
                                     worldZ,
                                     targetOrigin,
                                     densities,
-                                    densitySampler)
+                                    densitySampler,
+                                    sizeX,
+                                    sizeY,
+                                    sizeZ)
                                 && CoordinateRandom(
                                     attemptSeed,
                                     worldX,
@@ -344,14 +410,17 @@ namespace Supernova.MinecraftCaves
             int worldZ,
             Vector3Int targetOrigin,
             float[] densities,
-            DensitySampler densitySampler)
+            DensitySampler densitySampler,
+            int sizeX,
+            int sizeY,
+            int sizeZ)
         {
-            return IsAir(worldX - 1, worldY, worldZ, targetOrigin, densities, densitySampler)
-                || IsAir(worldX + 1, worldY, worldZ, targetOrigin, densities, densitySampler)
-                || IsAir(worldX, worldY - 1, worldZ, targetOrigin, densities, densitySampler)
-                || IsAir(worldX, worldY + 1, worldZ, targetOrigin, densities, densitySampler)
-                || IsAir(worldX, worldY, worldZ - 1, targetOrigin, densities, densitySampler)
-                || IsAir(worldX, worldY, worldZ + 1, targetOrigin, densities, densitySampler);
+            return IsAir(worldX - 1, worldY, worldZ, targetOrigin, densities, densitySampler, sizeX, sizeY, sizeZ)
+                || IsAir(worldX + 1, worldY, worldZ, targetOrigin, densities, densitySampler, sizeX, sizeY, sizeZ)
+                || IsAir(worldX, worldY - 1, worldZ, targetOrigin, densities, densitySampler, sizeX, sizeY, sizeZ)
+                || IsAir(worldX, worldY + 1, worldZ, targetOrigin, densities, densitySampler, sizeX, sizeY, sizeZ)
+                || IsAir(worldX, worldY, worldZ - 1, targetOrigin, densities, densitySampler, sizeX, sizeY, sizeZ)
+                || IsAir(worldX, worldY, worldZ + 1, targetOrigin, densities, densitySampler, sizeX, sizeY, sizeZ);
         }
 
         private static bool IsAir(
@@ -360,16 +429,24 @@ namespace Supernova.MinecraftCaves
             int worldZ,
             Vector3Int targetOrigin,
             float[] densities,
-            DensitySampler densitySampler)
+            DensitySampler densitySampler,
+            int sizeX,
+            int sizeY,
+            int sizeZ)
         {
             int localX = worldX - targetOrigin.x;
             int localY = worldY - targetOrigin.y;
             int localZ = worldZ - targetOrigin.z;
-            if ((uint)localX < VoxelVolume.Size
-                && (uint)localY < VoxelVolume.Size
-                && (uint)localZ < VoxelVolume.Size)
+            if ((uint)localX < sizeX
+                && (uint)localY < sizeY
+                && (uint)localZ < sizeZ)
             {
-                return densities[ToIndex(localX, localY, localZ)] < 0f;
+                return densities[ToIndex(
+                    localX,
+                    localY,
+                    localZ,
+                    sizeX,
+                    sizeY)] < 0f;
             }
             if (densitySampler == null)
             {
@@ -426,9 +503,14 @@ namespace Supernova.MinecraftCaves
             return (int)Math.Ceiling(size * 3.0 / 16.0 + 1.5);
         }
 
-        private static int ToIndex(int x, int y, int z)
+        private static int ToIndex(
+            int x,
+            int y,
+            int z,
+            int sizeX,
+            int sizeY)
         {
-            return x + VoxelVolume.Size * (y + VoxelVolume.Size * z);
+            return x + sizeX * (y + sizeY * z);
         }
 
         private static int FloorDiv(int value, int divisor)

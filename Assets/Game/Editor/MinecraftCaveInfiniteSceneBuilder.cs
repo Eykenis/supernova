@@ -14,6 +14,8 @@ namespace Supernova.MinecraftCaves.Editor
     {
         public const string ScenePath =
             "Assets/Game/Scenes/MinecraftCaveInfiniteWorld.scene";
+        public const string TreasureSpawnTablePath =
+            "Assets/Game/Config/TreasureSpawnTable.asset";
 
         [MenuItem("Tools/Minecraft Caves/Rebuild Infinite World Scene")]
         public static void RebuildInfiniteWorldScene()
@@ -27,7 +29,11 @@ namespace Supernova.MinecraftCaves.Editor
             SceneManager.SetActiveScene(scene);
 
             var worldObject = new GameObject("Minecraft Infinite Cave World");
-            worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            MinecraftCaveInfiniteWorld world =
+                worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            world.SetTreasureSpawnTable(
+                AssetDatabase.LoadAssetAtPath<Supernova.Gameplay.TreasureSpawnTable>(
+                    TreasureSpawnTablePath));
             CreateViewer();
             CreateDirectionalLight(
                 "Warm Directional Light",
@@ -77,9 +83,13 @@ namespace Supernova.MinecraftCaves.Editor
         [MenuItem("Tools/Minecraft Caves/Validate Infinite World")]
         public static void ValidateInfiniteWorld()
         {
-            if (VoxelVolume.Size != 32 || VoxelVolume.VoxelCount != 32 * 32 * 32)
+            if (VoxelColumnChunkData.Width != 32
+                || VoxelColumnChunkData.Depth != 32
+                || VoxelColumnChunkData.Height != 256
+                || VoxelColumnChunkData.VoxelCount != 32 * 32 * 256)
             {
-                throw new InvalidOperationException("Voxel chunks are not exactly 32^3 samples.");
+                throw new InvalidOperationException(
+                    "World columns are not exactly 32x32x256 samples.");
             }
             if (MinecraftCaveInfiniteWorld.GenerationRadiusInChunks != 4)
             {
@@ -90,7 +100,7 @@ namespace Supernova.MinecraftCaves.Editor
             if (offsets.Count != MinecraftCaveInfiniteWorld.RequiredChunkCountAtRadius)
             {
                 throw new InvalidOperationException(
-                    $"Radius-4 sphere contains {offsets.Count} chunks instead of "
+                    $"Radius-4 XZ disk contains {offsets.Count} columns instead of "
                     + $"{MinecraftCaveInfiniteWorld.RequiredChunkCountAtRadius}.");
             }
 
@@ -103,6 +113,11 @@ namespace Supernova.MinecraftCaves.Editor
                 if (!unique.Add(offset))
                 {
                     throw new InvalidOperationException($"Duplicate streaming offset: {offset}.");
+                }
+                if (offset.y != 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Streaming offset contains a vertical layer: {offset}.");
                 }
                 if (offset.sqrMagnitude > radiusSquared)
                 {
@@ -117,16 +132,16 @@ namespace Supernova.MinecraftCaves.Editor
 
             var settings = new MinecraftCaveSettings();
             var field = new MinecraftCaveDensityField(18731, settings);
-            var negativeChunk = new VoxelChunkData(-3, 2, -1, 1f);
-            MinecraftCaveVolumeGenerator.FillChunk(negativeChunk, field);
+            var negativeChunk = new VoxelColumnChunkData(-3, -1, 1f);
+            MinecraftCaveVolumeGenerator.FillColumn(negativeChunk, field);
             Vector3Int sampleWorld = new Vector3Int(
                 negativeChunk.OriginX + 31,
-                negativeChunk.OriginY + 17,
+                217,
                 negativeChunk.OriginZ + 5);
             float expected = field.SampleFeatureDensity(
                 sampleWorld,
                 MinecraftCaveType.Combined);
-            float actual = negativeChunk[31, 17, 5];
+            float actual = negativeChunk[31, 217, 5];
             if (BitConverter.SingleToInt32Bits(expected) != BitConverter.SingleToInt32Bits(actual))
             {
                 throw new InvalidOperationException(
@@ -134,8 +149,8 @@ namespace Supernova.MinecraftCaves.Editor
             }
 
             Debug.Log(
-                "Minecraft infinite world validation passed: chunk size 32^3, "
-                + "Euclidean radius 4, 257 unique near-to-far offsets, "
+                "Minecraft infinite world validation passed: column size 32x32x256, "
+                + "XZ radius 4, 49 unique near-to-far offsets, "
                 + "negative-coordinate absolute sampling.");
         }
 

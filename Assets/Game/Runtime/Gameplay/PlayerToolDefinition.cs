@@ -8,6 +8,7 @@ namespace Supernova.Gameplay
         None = 0,
         MineVoxel = 1,
         AttractCart = 2,
+        ThrowPersistentLight = 3,
     }
 
     public enum PlayerToolAnimationTriggerMode
@@ -36,8 +37,22 @@ namespace Supernova.Gameplay
         [SerializeField] private GameObject heldModelPrefab;
         [SerializeField] private bool allowMovementWhileUsing;
 
+        [Header("Thrown Projectile")]
+        [Tooltip("Persistent projectile spawned by a throwing tool.")]
+        [SerializeField] private PersistentLightProjectile projectilePrefab;
+        [SerializeField, Min(0f)] private float throwSpeed = 8f;
+        [SerializeField, Min(0f)] private float upwardThrowSpeed = 1.5f;
+        [SerializeField, Min(0f)] private float throwSpinSpeed = 8f;
+        [SerializeField, Min(0f)] private float throwForwardOffset = 0.75f;
+        [SerializeField, Min(0f)] private float throwCooldown = 0.35f;
+
         [Header("Mining Brush")]
-        [SerializeField, Min(0.01f)] private float miningPower = 2f;
+        [Tooltip("Upgradeable base damage dealt by an odd-numbered mining strike.")]
+        [SerializeField, Min(0.01f)] private float miningPower = 1f;
+        [Tooltip("Damage multiplier applied to every even-numbered mining strike.")]
+        [SerializeField, Min(1f)] private float miningEvenHitMultiplier = 4f;
+        [Tooltip("A destroyed voxel passes excess damage divided by this value to each of its 26 neighbours.")]
+        [SerializeField, Min(1f)] private float miningPropagationDivisor = 2f;
         [SerializeField, Min(0f)] private float miningRadius = 0.55f;
         [SerializeField, Min(0f)] private float miningDepth = 0.75f;
         [SerializeField, Min(0.01f)] private float miningFalloffExponent = 1.5f;
@@ -52,6 +67,12 @@ namespace Supernova.Gameplay
         public GameObject HeldModelPrefab => heldModelPrefab;
         public bool AllowMovementWhileUsing => allowMovementWhileUsing;
         public bool HasPrimaryAction => primaryAction != PlayerToolPrimaryAction.None;
+        public PersistentLightProjectile ProjectilePrefab => projectilePrefab;
+        public float ThrowSpeed => Mathf.Max(0f, throwSpeed);
+        public float UpwardThrowSpeed => Mathf.Max(0f, upwardThrowSpeed);
+        public float ThrowSpinSpeed => Mathf.Max(0f, throwSpinSpeed);
+        public float ThrowForwardOffset => Mathf.Max(0f, throwForwardOffset);
+        public float ThrowCooldown => Mathf.Max(0f, throwCooldown);
         public VoxelMiningBrushSettings MiningBrush =>
             new VoxelMiningBrushSettings(
                 miningPower,
@@ -59,6 +80,17 @@ namespace Supernova.Gameplay
                 miningDepth,
                 miningFalloffExponent,
                 miningMinimumPowerFraction,
-                miningMaxAffectedSamples);
+                miningMaxAffectedSamples,
+                miningPropagationDivisor);
+        public float MiningEvenHitMultiplier =>
+            Mathf.Max(1f, miningEvenHitMultiplier);
+
+        public VoxelMiningBrushSettings GetMiningBrushForStrike(int strikeNumber)
+        {
+            float multiplier = strikeNumber > 0 && strikeNumber % 2 == 0
+                ? MiningEvenHitMultiplier
+                : 1f;
+            return MiningBrush.WithPower(MiningBrush.Power * multiplier);
+        }
     }
 }

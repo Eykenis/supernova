@@ -1,0 +1,121 @@
+using System.Collections.Generic;
+using Supernova.Voxels;
+using Supernova.Gameplay;
+using UnityEngine;
+
+namespace Supernova.Missions
+{
+    [DisallowMultipleComponent]
+    public sealed class OreExtractionZone : MonoBehaviour
+    {
+        private readonly Dictionary<int, StoredResource> storedResources =
+            new Dictionary<int, StoredResource>();
+        private MissionGameLoop owner;
+        private int oreUnitValue;
+        public int CurrentStoredValue
+        {
+            get
+            {
+                RemoveDestroyedResources();
+                int total = 0;
+                foreach (StoredResource resource in storedResources.Values)
+                {
+                    total += resource.Value;
+                }
+                return total;
+            }
+        }
+
+        public void Configure(MissionGameLoop missionOwner, int unitValue)
+        {
+            owner = missionOwner;
+            oreUnitValue = Mathf.Max(1, unitValue);
+        }
+
+        private void OnTriggerEnter(Collider other)
+        {
+            TreasurePickup treasure = other.GetComponentInParent<TreasurePickup>();
+            if (treasure != null)
+            {
+                StoreOverlap(
+                    treasure.GetInstanceID(),
+                    treasure.gameObject,
+                    treasure.Value,
+                    other);
+                return;
+            }
+
+            MinedOreDrop drop = other.GetComponentInParent<MinedOreDrop>();
+            if (drop == null) return;
+            StoreOverlap(
+                drop.GetInstanceID(),
+                drop.gameObject,
+                drop.VoxelCount * oreUnitValue,
+                other);
+        }
+
+        private void OnTriggerExit(Collider other)
+        {
+            TreasurePickup treasure = other.GetComponentInParent<TreasurePickup>();
+            if (treasure != null)
+            {
+                RemoveOverlap(treasure.GetInstanceID(), other);
+                return;
+            }
+
+            MinedOreDrop drop = other.GetComponentInParent<MinedOreDrop>();
+            if (drop != null) RemoveOverlap(drop.GetInstanceID(), other);
+        }
+
+        private void StoreOverlap(
+            int id,
+            GameObject resourceObject,
+            int value,
+            Collider overlap)
+        {
+            if (!storedResources.TryGetValue(id, out StoredResource resource))
+            {
+                resource = new StoredResource(resourceObject, Mathf.Max(0, value));
+                storedResources.Add(id, resource);
+            }
+            if (resource.Overlaps.Add(overlap))
+            {
+                owner?.NotifyStoredValueChanged(CurrentStoredValue);
+            }
+        }
+
+        private void RemoveOverlap(int id, Collider overlap)
+        {
+            if (!storedResources.TryGetValue(id, out StoredResource resource)) return;
+            resource.Overlaps.Remove(overlap);
+            if (resource.Overlaps.Count == 0) storedResources.Remove(id);
+            owner?.NotifyStoredValueChanged(CurrentStoredValue);
+        }
+
+        private void RemoveDestroyedResources()
+        {
+            var removed = new List<int>();
+            foreach (KeyValuePair<int, StoredResource> pair in storedResources)
+            {
+                if (pair.Value.ResourceObject == null) removed.Add(pair.Key);
+            }
+            for (int i = 0; i < removed.Count; i++)
+            {
+                storedResources.Remove(removed[i]);
+            }
+        }
+
+        private sealed class StoredResource
+        {
+            public StoredResource(GameObject resourceObject, int value)
+            {
+                ResourceObject = resourceObject;
+                Value = value;
+            }
+
+            public GameObject ResourceObject { get; }
+            public int Value { get; }
+            public HashSet<Collider> Overlaps { get; } = new HashSet<Collider>();
+        }
+    }
+}

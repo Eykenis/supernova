@@ -16,19 +16,19 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 9
-  m_Fog: 0
-  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-  m_FogMode: 3
+  m_Fog: 1
+  m_FogColor: {r: 0.25882354, g: 0.19215688, b: 0.09411766, a: 1}
+  m_FogMode: 1
   m_FogDensity: 0.01
-  m_LinearFogStart: 0
-  m_LinearFogEnd: 300
+  m_LinearFogStart: 16
+  m_LinearFogEnd: 48
   m_AmbientSkyColor: {r: 0.16, g: 0.18, b: 0.19, a: 1}
   m_AmbientEquatorColor: {r: 0.075, g: 0.083, b: 0.086, a: 1}
   m_AmbientGroundColor: {r: 0.025, g: 0.028, b: 0.03, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: 372ee51cc643cf14bb9aac4f8351db0d, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -98,7 +98,8 @@ LightmapSettings:
     m_ExportTrainingData: 0
     m_TrainingDataDestination: TrainingData
     m_LightProbeSampleCountMultiplier: 4
-  m_LightingDataAsset: {fileID: 0}
+  m_LightingDataAsset: {fileID: 112000000, guid: b9c3e3503f722924ca81b6cfc3f62483,
+    type: 2}
   m_LightingSettings: {fileID: 0}
 --- !u!196 &4
 NavMeshSettings:
@@ -200,6 +201,56 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0.5}
+--- !u!1 &153617566
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 7
+  m_Component:
+  - component: {fileID: 153617568}
+  - component: {fileID: 153617567}
+  m_Layer: 0
+  m_HasEditorInfo: 1
+  m_Name: GlobalVolume
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &153617567
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 153617566}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 172515602e62fb746b5d573b38a5fe58, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_IsGlobal: 1
+  priority: 0
+  blendDistance: 0
+  weight: 1
+  sharedProfile: {fileID: 11400000, guid: a6560a915ef98420e9faacc1c7438823, type: 2}
+--- !u!4 &153617568
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 153617566}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -30.816145, y: 49.53553, z: 14.357864}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &313516509
 GameObject:
   m_ObjectHideFlags: 0
@@ -320,17 +371,17 @@ PrefabInstance:
     - target: {fileID: 1156779058064623506, guid: e9580e3d2a1e5e740af0bc4ce32df85f,
         type: 3}
       propertyPath: m_LocalPosition.x
-      value: -35
+      value: -30
       objectReference: {fileID: 0}
     - target: {fileID: 1156779058064623506, guid: e9580e3d2a1e5e740af0bc4ce32df85f,
         type: 3}
       propertyPath: m_LocalPosition.y
-      value: 48
+      value: 49
       objectReference: {fileID: 0}
     - target: {fileID: 1156779058064623506, guid: e9580e3d2a1e5e740af0bc4ce32df85f,
         type: 3}
       propertyPath: m_LocalPosition.z
-      value: 29
+      value: 14
       objectReference: {fileID: 0}
     - target: {fileID: 1156779058064623506, guid: e9580e3d2a1e5e740af0bc4ce32df85f,
         type: 3}
@@ -1335,7 +1386,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   viewer: {fileID: 729396773}
   placeViewerInCave: 1
-  worldSeed: 2345
+  worldSeed: 114514
   settings:
     cheeseFrequency: 0.001
     cheeseThreshold: 0.02
@@ -1357,17 +1408,24 @@ MonoBehaviour:
     shortcutInset: 0.08
     containerHalfExtent: 0.91
     cutawayPlane: -0.24
-  maxConcurrentGenerationJobs: 6
+  maxConcurrentGenerationJobs: 4
   meshesBuiltPerFrame: 1
   voxelSize: 0.42
   isoLevel: 0
+  vertexPlacement: 1
   generateColliders: 1
   voxelTypeCatalog: {fileID: 11400000, guid: 2edfe535d7218ed4795d6c3a36fedea1, type: 2}
+  punctualLightFalloffPower: 0.55
+  punctualLightAttenuationLimit: 1.5
+  punctualLightMultiplier: 1
   baseSolidVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
+  bedrockVoxelType: {fileID: 11400000, guid: 2c50f434192e90a4fbd10cd5d9a7b8fb, type: 2}
   oreFeatures:
   - {fileID: 11400000, guid: c9849f1b483ab07428f176c33113c20f, type: 2}
+  treasureSpawnTable: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
+  treasureSpawnExclusionRadius: 12
   spawnPointStructureRule:
-    enabled: 0
+    enabled: 1
     structure: {fileID: 11400000, guid: 2dd6e02553075e844a374e1bb4c19dff, type: 2}
     offset: {x: 0, y: 0, z: 0}
   spawnPointSceneStructure: {fileID: 1913240833}
@@ -2453,7 +2511,7 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
+  m_RenderPostProcessing: 1
   m_Antialiasing: 0
   m_FXAAQualityMode: 0
   m_FXAAContrastThreshold: 0.125
@@ -3698,6 +3756,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4724487542240598141, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
+      propertyPath: far clip plane
+      value: 70
+      objectReference: {fileID: 0}
+    - target: {fileID: 4724487542240598141, guid: aa379a2dda0db0c40b2135fad34d45f3,
+        type: 3}
       propertyPath: m_BackGroundColor.a
       value: 1
       objectReference: {fileID: 0}
@@ -4013,3 +4076,4 @@ SceneRoots:
   - {fileID: 7383138097368275202}
   - {fileID: 1111352211}
   - {fileID: 327061938}
+  - {fileID: 153617568}

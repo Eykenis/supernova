@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Supernova.UI;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -82,6 +83,30 @@ namespace Supernova.Gameplay
         private float smoothedUpperBodyYaw;
         private bool cursorLockRequested;
         private bool hasApplicationFocus = true;
+        private readonly List<ShadowBoneProxy> shadowBoneProxies =
+            new List<ShadowBoneProxy>();
+        private readonly List<ShadowRendererProxy> shadowRendererProxies =
+            new List<ShadowRendererProxy>();
+        private readonly Dictionary<Transform, Transform> shadowBoneMap =
+            new Dictionary<Transform, Transform>();
+        private Transform shadowProxySourceHead;
+        private GameObject shadowProxyHeadRoot;
+
+        private sealed class ShadowBoneProxy
+        {
+            public Transform Source;
+            public Transform Proxy;
+            public bool UsesHeadRestScale;
+        }
+
+        private sealed class ShadowRendererProxy
+        {
+            public SkinnedMeshRenderer Source;
+            public SkinnedMeshRenderer Proxy;
+            public ShadowCastingMode OriginalShadowCastingMode;
+            public bool OriginalEnabled;
+            public bool HiddenInFirstPerson;
+        }
 
         public PlayerViewMode CurrentMode => currentMode;
         public Camera ControlledCamera => controlledCamera;
@@ -145,6 +170,7 @@ namespace Supernova.Gameplay
 
             SetFirstPersonRendererState(currentMode == PlayerViewMode.FirstPerson);
             UpdateUpperBodyPose();
+            SyncFirstPersonShadowProxies();
             if (currentMode == PlayerViewMode.FirstPerson)
             {
                 UpdateFirstPersonPose();
@@ -168,6 +194,12 @@ namespace Supernova.Gameplay
 
         private void UpdateLook()
         {
+            FirstPersonCartAttractor attractor =
+                GetComponentInParent<FirstPersonCartAttractor>();
+            if (attractor != null && attractor.IsRotatingHeldObject)
+            {
+                return;
+            }
             float mouseX = Input.GetAxis("Mouse X") * Mathf.Max(0.01f, mouseSensitivity);
             float mouseY = Input.GetAxis("Mouse Y") * Mathf.Max(0.01f, mouseSensitivity);
             if (currentMode == PlayerViewMode.ThirdPerson)
@@ -344,6 +376,11 @@ namespace Supernova.Gameplay
 
         private void SetFirstPersonRendererState(bool firstPerson)
         {
+            if (firstPerson && collapseHeadBoneInFirstPerson)
+            {
+                EnsureFirstPersonShadowProxies();
+            }
+
             if (firstPersonHiddenRenderers != null)
             {
                 for (int i = 0; i < firstPersonHiddenRenderers.Length; i++)
@@ -357,9 +394,13 @@ namespace Supernova.Gameplay
                 }
             }
 
-            if (animatedHead == null || !collapseHeadBoneInFirstPerson) return;
+            bool useShadowProxy = firstPerson
+                && collapseHeadBoneInFirstPerson
+                && animatedHead != null;
+            SetFirstPersonShadowProxyState(useShadowProxy);
+            if (animatedHead == null) return;
             CacheAnimatedHeadScale();
-            animatedHead.localScale = firstPerson
+            animatedHead.localScale = useShadowProxy
                 ? animatedHeadRestLocalScale * Mathf.Clamp(firstPersonHeadScale, 0.0001f, 0.1f)
                 : animatedHeadRestLocalScale;
         }
@@ -369,6 +410,242 @@ namespace Supernova.Gameplay
             if (animatedHead == null || hasAnimatedHeadRestScale) return;
             animatedHeadRestLocalScale = animatedHead.localScale;
             hasAnimatedHeadRestScale = true;
+        }
+
+        private void EnsureFirstPersonShadowProxies()
+        {
+            if (!Application.isPlaying || animatedHead == null || animatedHead.parent == null)
+            {
+                return;
+            }
+            if (shadowProxyHeadRoot != null && shadowProxySourceHead == animatedHead)
+            {
+                return;
+            }
+
+            DestroyFirstPersonShadowProxies();
+            CacheAnimatedHeadScale();
+            shadowProxySourceHead = animatedHead;
+            Transform proxyHead = CloneShadowBoneHierarchy(
+                animatedHead,
+                animatedHead.parent,
+                true);
+            shadowProxyHeadRoot = proxyHead.gameObject;
+
+            SkinnedMeshRenderer[] renderers =
+                playerRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                SkinnedMeshRenderer source = renderers[i];
+                if (source == null
+                    || source.sharedMesh == null
+                    || !source.gameObject.activeInHierarchy
+                    || !UsesHeadBone(source))
+                {
+                    continue;
+                }
+
+                GameObject proxyObject = new GameObject(source.name + " Shadow Proxy");
+                proxyObject.hideFlags = HideFlags.HideAndDontSave;
+                proxyObject.layer = source.gameObject.layer;
+                Transform proxyTransform = proxyObject.transform;
+                proxyTransform.SetParent(source.transform.parent, false);
+                proxyTransform.localPosition = source.transform.localPosition;
+                proxyTransform.localRotation = source.transform.localRotation;
+                proxyTransform.localScale = source.transform.localScale;
+
+                SkinnedMeshRenderer proxy = proxyObject.AddComponent<SkinnedMeshRenderer>();
+                proxy.sharedMesh = source.sharedMesh;
+                proxy.sharedMaterials = source.sharedMaterials;
+                proxy.bones = RemapShadowBones(source.bones);
+                proxy.rootBone = RemapShadowBone(source.rootBone);
+                proxy.quality = source.quality;
+                proxy.updateWhenOffscreen = source.updateWhenOffscreen;
+                proxy.skinnedMotionVectors = false;
+                proxy.localBounds = source.localBounds;
+                proxy.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+                proxy.receiveShadows = false;
+                proxy.enabled = false;
+
+                shadowRendererProxies.Add(new ShadowRendererProxy
+                {
+                    Source = source,
+                    Proxy = proxy,
+                    OriginalShadowCastingMode = source.shadowCastingMode,
+                    OriginalEnabled = source.enabled,
+                    HiddenInFirstPerson = IsHiddenInFirstPerson(source),
+                });
+            }
+        }
+
+        private Transform CloneShadowBoneHierarchy(
+            Transform source,
+            Transform parent,
+            bool usesHeadRestScale)
+        {
+            GameObject proxyObject = new GameObject(source.name + " Shadow Proxy");
+            proxyObject.hideFlags = HideFlags.HideAndDontSave;
+            Transform proxy = proxyObject.transform;
+            proxy.SetParent(parent, false);
+            proxy.localPosition = source.localPosition;
+            proxy.localRotation = source.localRotation;
+            proxy.localScale = usesHeadRestScale
+                ? animatedHeadRestLocalScale
+                : source.localScale;
+            shadowBoneMap[source] = proxy;
+            shadowBoneProxies.Add(new ShadowBoneProxy
+            {
+                Source = source,
+                Proxy = proxy,
+                UsesHeadRestScale = usesHeadRestScale,
+            });
+
+            for (int i = 0; i < source.childCount; i++)
+            {
+                CloneShadowBoneHierarchy(source.GetChild(i), proxy, false);
+            }
+            return proxy;
+        }
+
+        private bool UsesHeadBone(SkinnedMeshRenderer renderer)
+        {
+            Transform[] bones = renderer.bones;
+            for (int i = 0; i < bones.Length; i++)
+            {
+                Transform bone = bones[i];
+                if (bone == animatedHead
+                    || (bone != null && bone.IsChildOf(animatedHead)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private Transform[] RemapShadowBones(Transform[] bones)
+        {
+            Transform[] remappedBones = new Transform[bones.Length];
+            for (int i = 0; i < bones.Length; i++)
+            {
+                remappedBones[i] = RemapShadowBone(bones[i]);
+            }
+            return remappedBones;
+        }
+
+        private Transform RemapShadowBone(Transform bone)
+        {
+            if (bone != null && shadowBoneMap.TryGetValue(bone, out Transform proxy))
+            {
+                return proxy;
+            }
+            return bone;
+        }
+
+        private bool IsHiddenInFirstPerson(Renderer candidate)
+        {
+            if (firstPersonHiddenRenderers == null) return false;
+            for (int i = 0; i < firstPersonHiddenRenderers.Length; i++)
+            {
+                if (firstPersonHiddenRenderers[i] == candidate) return true;
+            }
+            return false;
+        }
+
+        private void SetFirstPersonShadowProxyState(bool firstPerson)
+        {
+            if (shadowProxyHeadRoot != null)
+            {
+                shadowProxyHeadRoot.SetActive(firstPerson);
+            }
+            for (int i = 0; i < shadowRendererProxies.Count; i++)
+            {
+                ShadowRendererProxy entry = shadowRendererProxies[i];
+                if (entry.Source == null || entry.Proxy == null) continue;
+                entry.Proxy.enabled = firstPerson;
+                if (firstPerson)
+                {
+                    if (entry.HiddenInFirstPerson)
+                    {
+                        entry.Source.enabled = false;
+                    }
+                    else
+                    {
+                        entry.Source.shadowCastingMode = ShadowCastingMode.Off;
+                    }
+                }
+                else
+                {
+                    entry.Source.enabled = entry.OriginalEnabled;
+                    entry.Source.shadowCastingMode = entry.OriginalShadowCastingMode;
+                }
+            }
+        }
+
+        private void SyncFirstPersonShadowProxies()
+        {
+            if (currentMode != PlayerViewMode.FirstPerson
+                || !collapseHeadBoneInFirstPerson
+                || shadowProxyHeadRoot == null
+                || !shadowProxyHeadRoot.activeSelf)
+            {
+                return;
+            }
+
+            for (int i = 0; i < shadowBoneProxies.Count; i++)
+            {
+                ShadowBoneProxy entry = shadowBoneProxies[i];
+                if (entry.Source == null || entry.Proxy == null) continue;
+                entry.Proxy.localPosition = entry.Source.localPosition;
+                entry.Proxy.localRotation = entry.Source.localRotation;
+                entry.Proxy.localScale = entry.UsesHeadRestScale
+                    ? animatedHeadRestLocalScale
+                    : entry.Source.localScale;
+            }
+
+            for (int i = 0; i < shadowRendererProxies.Count; i++)
+            {
+                ShadowRendererProxy entry = shadowRendererProxies[i];
+                if (entry.Source == null || entry.Proxy == null) continue;
+                entry.Proxy.transform.localPosition = entry.Source.transform.localPosition;
+                entry.Proxy.transform.localRotation = entry.Source.transform.localRotation;
+                entry.Proxy.transform.localScale = entry.Source.transform.localScale;
+                Mesh mesh = entry.Source.sharedMesh;
+                if (mesh == null) continue;
+                for (int blendShape = 0; blendShape < mesh.blendShapeCount; blendShape++)
+                {
+                    entry.Proxy.SetBlendShapeWeight(
+                        blendShape,
+                        entry.Source.GetBlendShapeWeight(blendShape));
+                }
+            }
+        }
+
+        private void DestroyFirstPersonShadowProxies()
+        {
+            for (int i = 0; i < shadowRendererProxies.Count; i++)
+            {
+                ShadowRendererProxy entry = shadowRendererProxies[i];
+                if (entry.Source != null)
+                {
+                    entry.Source.enabled = entry.OriginalEnabled;
+                    entry.Source.shadowCastingMode = entry.OriginalShadowCastingMode;
+                }
+                DestroyRuntimeObject(entry.Proxy != null ? entry.Proxy.gameObject : null);
+            }
+            shadowRendererProxies.Clear();
+
+            DestroyRuntimeObject(shadowProxyHeadRoot);
+            shadowProxyHeadRoot = null;
+            shadowProxySourceHead = null;
+            shadowBoneProxies.Clear();
+            shadowBoneMap.Clear();
+        }
+
+        private static void DestroyRuntimeObject(Object target)
+        {
+            if (target == null) return;
+            if (Application.isPlaying) Destroy(target);
+            else DestroyImmediate(target);
         }
 
         private void UpdateUpperBodyPose()
@@ -457,6 +734,7 @@ namespace Supernova.Gameplay
         private void OnDisable()
         {
             SetFirstPersonRendererState(false);
+            DestroyFirstPersonShadowProxies();
             cursorLockRequested = false;
             hasApplicationFocus = false;
             if (Application.isPlaying) SetCursorLocked(false);

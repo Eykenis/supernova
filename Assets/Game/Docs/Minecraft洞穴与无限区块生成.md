@@ -3,7 +3,8 @@
 ## 1. 范围与约定
 
 本文描述 `Assets/Game` 中实现的四类 Minecraft 风格密度结构：Cheese、
-Spaghetti、Noodle 和 Pillar，并说明它们如何组合成一个按三维 Chunk 流送的无限体素世界。
+Spaghetti、Noodle 和 Pillar，并说明它们如何组合成一个按 XZ 二维柱区块流送的
+无限体素世界。
 
 这套实现参考 Minecraft Java 版 1.18 之后的密度函数思想，但不是 Mojang 源代码的逐行复刻。
 当前目标是复现四类空间的几何构造与组合语义；Aquifer、洞穴生物群系、传统路径 Carver、
@@ -181,22 +182,19 @@ combined = max(voids, Pillar)
 默认种子在 `128^3` 世界范围、每 2 格粗采样一次的拓扑验证中，空体积约为 10%，最大连通
 空间小于全部空体积的 50%。这代表地下仍有可探索的房间群，但不再由一个网络占据绝大多数空间。
 
-## 8. 32^3 Chunk 数据布局
+## 8. 32×32×256 柱区块数据布局
 
-本实现直接引用 `Scripts/Voxel` 的既有类型，不修改它们：
+正式世界使用独立的 `VoxelColumnChunkData`：
 
-- `VoxelVolume.Size == 32`
-- `VoxelVolume.VoxelCount == 32 * 32 * 32`
-- `VoxelChunkData.OriginX/Y/Z == ChunkCoordinate * 32`
-- `InfiniteVoxelWorld.WorldToChunk` 使用 floor division，负世界坐标同样正确。
+- 水平尺寸为 `32 × 32`，完整高度为 `256`；
+- 区块键为 `(chunkX, chunkZ)`，不存在垂直区块层；
+- `OriginX = chunkX * 32`、`OriginY = 0`、`OriginZ = chunkZ * 32`；
+- `InfiniteVoxelWorld.WorldToChunk` 对 X/Z 使用 floor division，负世界坐标同样正确。
 
-生产入口为：
+旧 `VoxelVolume` / `VoxelChunkData` 的 `32³` 布局仍保留给 Gallery 和编辑器工具，
+但不再承载正式世界。
 
-```csharp
-MinecraftCaveVolumeGenerator.FillChunk(chunk.Data, densityField, MinecraftCaveType.Combined);
-```
-
-它把 local `(x,y,z)` 转换为绝对坐标：
+生成器把 local `(x,y,z)` 转换为绝对坐标：
 
 ```text
 world = chunkOrigin + local
@@ -206,41 +204,82 @@ world = chunkOrigin + local
 
 ## 9. 无限世界流送
 
-`MinecraftCaveInfiniteWorld` 固定使用三维欧氏半径 4：
+`MinecraftCaveInfiniteWorld` 固定使用 XZ 平面的欧氏半径 4：
 
 ```text
-dx^2 + dy^2 + dz^2 <= 4^2
+dx^2 + dz^2 <= 4^2
 ```
 
-边长为 9 的候选立方体经过球形筛选后，玩家附近的 Required Set 一共有 257 个 Chunk。
-当玩家跨越 Chunk 边界时，系统重新计算 Required Set：
+Required Set 一共有 49 根柱区块。初次出生只加载 `3×3` 的 9 根柱，碰撞网格完成并
+释放玩家后再扩展到完整半径。当玩家跨越水平区块边界时，系统重新计算 Required Set：
 
 1. 已存在的 Chunk 保留并直接复用。
 2. 缺失的 Chunk 按到玩家的平方距离从近到远排队。
 3. 密度数组在线程池中计算，不访问 GameObject、Mesh 或 World 字典。
-4. 完成结果回到主线程后写入 `InfiniteVoxelChunk.Data`。
-5. 主线程按每帧预算调用现有 `MarchingCubesMesher.BuildChunk`。
-6. 离开半径的 Mesh 被卸载；已生成的密度 Chunk 保留，返回时无需重新计算。
+4. 完成结果回到主线程后把数组所有权直接交给
+   `InfiniteVoxelWorld`，不再逐体素复制 262,144 次。
+5. 出生结构完成后，每根新柱提交时立刻进入网格队列，不等待半径内全部 49 根柱完成。
+6. 一根数据柱拆成 8 个 `32×32×32` 网格分段，优先构建玩家所在高度附近的分段；
+   每帧只构建一个分段。
+7. 玩家离开加载半径的后台任务会收到取消信号，不再长期占用生成槽。
+8. 离开半径的 Mesh 被卸载；已生成的密度 Chunk 保留，返回时无需重新计算。
 
 这使世界坐标在理论上没有边界，而同时存在的渲染对象数量受半径 4 限制。
 
-## 10. Chunk 网格边界
+## 10. 柱区块网格边界
 
-现有 `MarchingCubesMesher.BuildChunk` 对一个 32 样本 Chunk 构建 32 个 cell，并额外请求
-`+X/+Y/+Z` 的邻接样本。尚未生成的邻区块按实体处理，因此流送边缘会暂时封闭，不会出现
-只在正方向产生的假开口。
+正式世界调用 `MarchingCubesMesher.BuildColumnSection`。一根数据柱仍覆盖完整
+`32×256×32` 个 cell，但渲染上拆为 8 个 32 高分段。每个分段只缓存
+`33×33×33` 个样本，因此 Marching Cubes、Mesh 创建和 MeshCollider cooking 的单次
+主线程峰值约为原整柱工作的八分之一。相邻垂直分段共享边界采样，不遗漏跨分段 cell。
 
-当新 Chunk 从“默认实体”变为真实密度后，它可能影响自身，以及坐标分别减去 0 或 1 的
-八个 Chunk 网格：
+尚未生成的水平邻柱按普通实体处理，世界顶部之外按 Bedrock 处理，因此流送边缘和
+垂直边界保持封闭。
+
+当新柱从“默认实体”变为真实密度后，它只可能影响自身及 X/Z 负方向相邻网格：
 
 ```text
-newChunk - (dx, dy, dz),  dx/dy/dz in {0, 1}
+newColumn - (dx, 0, dz),  dx/dz in {0, 1}
 ```
 
-流送器只把这些已生成且在视距内的 Mesh 标记为 dirty，避免每生成一个 Chunk 就重建完整
-`3 * 3 * 3` 邻域。
+流送器只把这些已生成且在视距内的 Mesh 标记为 dirty。
 
-## 11. 生命周期与隔离边界
+单个体素恰好位于 `y % 32 == 0` 时，同时重建上下两个分段；位于 X/Z 柱边界时仍会
+重建负方向相邻柱的对应分段。玩家编辑使用独立高优先级队列，完成后会使普通队列中的
+同坐标旧条目失效，避免重复重建。
+
+## 11. Minecraft 式噪声格与本项目取舍
+
+Minecraft 1.18 之后把 cave density 接入 noise router，并以分阶段 chunk generation
+和圆柱形视距组织生成。本项目迁移其中适合连续等值面的两项思想：
+
+- 昂贵密度函数只在全局对齐的粗格点求值，再在 cell 内插值；
+- 数据生成、结构、网格、碰撞分阶段并渐进提交。
+
+当前粗格为 X/Z 每 2 格、Y 每 4 格。单柱只执行 `17×65×17 = 18,785` 次完整
+`Combined` 求值，再三线性展开为 262,144 个密度样本。相邻柱使用绝对世界坐标格点，
+所以粗格相位连续。
+
+在代表性的 `32×64×32` 密度体积上，与逐体素精确求值对比：
+
+- 精确采样：约 `1025.7 ms`；
+- XZ=2、Y=4 插值：约 `84.8 ms`；
+- 加速约 `12.1×`，符号不一致约 `6.75%`，平均绝对误差约 `0.0096`。
+
+这是项目当前噪声参数上的工程基准，不是跨硬件保证。它仍比 Minecraft 常见的更粗
+噪声 cell 保守，以保留本项目较高频的 Noodle/Spaghetti 结构。没有切换到 16×16
+数据柱：在相同世界半径下，单柱工作缩小四倍但柱数约增至四倍，不能解决完整密度函数
+逐体素执行和整高网格主线程峰值这两个根因。
+
+## 12. 固定高度与边界基岩
+
+- 世界有效 Y 为 `0..255`；
+- 出生点距顶部必须为 `32..160` 格，对应合法高度 `y=95..223`；
+- `y=0` 和 `y=255` 强制写入 `Bedrock`（ID 4）；
+- Bedrock 使用纯黑材质，耐久度为 `9999`；
+- 矿物阶段不能替换 Bedrock，结构与出生点清理结束后还会再恢复两层边界。
+
+## 13. 生命周期与隔离边界
 
 - 所有新增源码、场景和文档都位于 `Assets/Game`。
 - 只引用 `Supernova.Voxels` 的 public API，不编辑 `Assets/Game/Runtime/Voxels`。
@@ -249,10 +288,11 @@ newChunk - (dx, dy, dz),  dx/dy/dz in {0, 1}
 - `MinecraftCaveGallery.scene` 用于比较五种密度结果。
 - `MinecraftCaveInfiniteWorld.scene` 用于验证半径 4 的无限 Chunk 流送。
 
-## 12. 相关文件
+## 14. 相关文件
 
 - `../Runtime/MinecraftCaveNoise.cs`
 - `../Runtime/MinecraftCaveDensity.cs`
+- `../Runtime/MinecraftCaveDensityInterpolator.cs`
 - `../Runtime/MinecraftCaveVolumeGenerator.cs`
 - `../Runtime/MinecraftCaveInfiniteWorld.cs`
 - `../Runtime/MinecraftCaveFlyController.cs`

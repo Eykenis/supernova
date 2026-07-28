@@ -16,11 +16,12 @@ MonoBehaviour:
   replaceableVoxelTypes:
   - {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
   seedSalt: 3109
-  attemptsPerRegion: 8
+  attemptsPerRegion: 32
   placementChance: 1
   heightDistribution: 1
-  minHeight: -64
-  maxHeight: 64
+  minHeight: 1
+  maxHeight: 254
   plateau: 0
   size: 8
-  discardChanceOnAirExposure: 0.5
+  discardChanceOnAirExposure: 0.3
+  massDensity: 10

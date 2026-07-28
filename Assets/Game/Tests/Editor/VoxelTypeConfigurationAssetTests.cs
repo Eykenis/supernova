@@ -20,7 +20,7 @@ namespace Supernova.Tests
                 AssetDatabase.LoadAssetAtPath<VoxelTypeCatalog>(CatalogPath);
 
             Assert.That(catalog, Is.Not.Null);
-            Assert.That(catalog.Definitions, Has.Count.EqualTo(3));
+            Assert.That(catalog.Definitions, Has.Count.EqualTo(4));
             Assert.That(catalog.Definitions, Has.All.Not.Null);
 
             string[] paths = catalog.Definitions
@@ -34,8 +34,9 @@ namespace Supernova.Tests
             var expected = new Dictionary<ushort, (string Name, int Durability)>
             {
                 { 1, ("Default", 1) },
-                { 2, ("Stone", 4) },
+                { 2, ("Stone", 1) },
                 { 3, ("Ore", 8) },
+                { 4, ("Bedrock", 9999) },
             };
             foreach (VoxelTypeDefinition definition in catalog.Definitions)
             {
@@ -45,6 +46,13 @@ namespace Supernova.Tests
                 Assert.That(definition.Durability, Is.EqualTo(durability));
                 Assert.That(catalog.Find(definition.TypeId), Is.SameAs(definition));
             }
+
+            VoxelTypeDefinition bedrock = catalog.Definitions.Single(
+                definition => definition.TypeId.Value == 4);
+            Assert.That(bedrock.Material, Is.Not.Null);
+            Assert.That(
+                bedrock.Material.GetColor("_BaseColor"),
+                Is.EqualTo(UnityEngine.Color.black));
         }
     }
 }
