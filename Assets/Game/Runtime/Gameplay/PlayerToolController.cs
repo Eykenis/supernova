@@ -1,4 +1,5 @@
 using System;
+using Supernova.Shop;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -25,7 +26,7 @@ namespace Supernova.Gameplay
     {
         public const int SlotCount = 10;
 
-        private static readonly PlayerInventoryItem[] Items =
+        private static readonly PlayerInventoryItem[] DefaultItems =
         {
             PlayerInventoryItem.Pickaxe,
             PlayerInventoryItem.Magnet,
@@ -39,23 +40,62 @@ namespace Supernova.Gameplay
             PlayerInventoryItem.Empty,
         };
 
+        private readonly PlayerInventoryItem[] items;
         private int selectedSlotIndex;
 
-        public PlayerInventory(int initialSlotIndex = 0)
+        public PlayerInventory(
+            int initialSlotIndex = 0,
+            Predicate<PlayerInventoryItem> ownsItem = null)
         {
+            items = (PlayerInventoryItem[])DefaultItems.Clone();
+            if (ownsItem != null)
+            {
+                for (int i = 0; i < items.Length; i++)
+                {
+                    PlayerInventoryItem item = items[i];
+                    if (item != PlayerInventoryItem.Empty && !ownsItem(item))
+                        items[i] = PlayerInventoryItem.Empty;
+                }
+            }
+
             selectedSlotIndex = Mathf.Clamp(initialSlotIndex, 0, SlotCount - 1);
         }
 
         public event Action<int, PlayerInventoryItem> SelectionChanged;
 
         public int SelectedSlotIndex => selectedSlotIndex;
-        public PlayerInventoryItem SelectedItem => Items[selectedSlotIndex];
+        public PlayerInventoryItem SelectedItem => items[selectedSlotIndex];
 
         public PlayerInventoryItem GetItemAtSlot(int slotIndex)
         {
             if (slotIndex < 0 || slotIndex >= SlotCount)
                 throw new ArgumentOutOfRangeException(nameof(slotIndex));
-            return Items[slotIndex];
+            return items[slotIndex];
+        }
+
+        public static PlayerInventoryItem GetDefaultItemAtSlot(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= SlotCount)
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
+            return DefaultItems[slotIndex];
+        }
+
+        public bool SetItemOwned(PlayerInventoryItem item, bool owned)
+        {
+            int slotIndex = Array.IndexOf(DefaultItems, item);
+            if (slotIndex < 0 || item == PlayerInventoryItem.Empty)
+                return false;
+
+            PlayerInventoryItem nextItem = owned
+                ? item
+                : PlayerInventoryItem.Empty;
+            if (items[slotIndex] == nextItem)
+                return false;
+
+            items[slotIndex] = nextItem;
+            if (slotIndex == selectedSlotIndex)
+                SelectionChanged?.Invoke(selectedSlotIndex, SelectedItem);
+            return true;
         }
 
         public bool SelectSlot(int slotIndex)
@@ -122,13 +162,16 @@ namespace Supernova.Gameplay
 
         private void OnEnable()
         {
+            PlayerEconomy.ItemOwnershipChanged += HandleItemOwnershipChanged;
             ResolveReferences();
             EnsureInventory();
+            RefreshPurchasableItemOwnership();
             ApplySelectedItem();
         }
 
         private void OnDisable()
         {
+            PlayerEconomy.ItemOwnershipChanged -= HandleItemOwnershipChanged;
             if (cartAttractor != null) cartAttractor.SetDeviceEnabled(false);
             ClearEquippedToolModel();
         }
@@ -199,8 +242,56 @@ namespace Supernova.Gameplay
         {
             if (inventory != null) return;
             int slot = Application.isPlaying ? initialSelectedSlot : selectedSlotIndex;
-            inventory = new PlayerInventory(slot);
+            inventory = new PlayerInventory(slot, PlayerEconomy.IsItemOwned);
             selectedSlotIndex = inventory.SelectedSlotIndex;
+        }
+
+        public void RefreshPurchasableItemOwnership()
+        {
+            EnsureInventory();
+            bool selectedItemChanged = false;
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                PlayerInventoryItem item =
+                    PlayerInventory.GetDefaultItemAtSlot(i);
+                if (item == PlayerInventoryItem.Empty)
+                    continue;
+
+                bool changed = inventory.SetItemOwned(
+                    item,
+                    PlayerEconomy.IsItemOwned(item));
+                selectedItemChanged |= changed
+                    && i == inventory.SelectedSlotIndex;
+            }
+
+            if (!selectedItemChanged)
+                return;
+
+            ApplySelectedItem();
+            SelectionChanged?.Invoke(
+                inventory.SelectedSlotIndex,
+                inventory.SelectedItem);
+        }
+
+        private void HandleItemOwnershipChanged(
+            PlayerInventoryItem item,
+            bool isOwned)
+        {
+            EnsureInventory();
+            int selectedSlot = inventory.SelectedSlotIndex;
+            bool selectedItemChanged =
+                inventory.GetItemAtSlot(selectedSlot) == item
+                || PlayerInventory.GetDefaultItemAtSlot(selectedSlot) == item;
+            if (!inventory.SetItemOwned(item, isOwned))
+                return;
+
+            if (selectedItemChanged)
+            {
+                ApplySelectedItem();
+                SelectionChanged?.Invoke(
+                    inventory.SelectedSlotIndex,
+                    inventory.SelectedItem);
+            }
         }
 
         private void ApplySelectedItem()

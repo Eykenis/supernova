@@ -36,6 +36,7 @@ public sealed class GameAssetCatalogTests
         ProjectAssetPaths.Config.WorldGeneration,
         ProjectAssetPaths.Config.MonsterSpawnTable,
         ProjectAssetPaths.Config.TreasureSpawnTable,
+        ProjectAssetPaths.Config.FlashlightProduct,
         ProjectAssetPaths.Animations.PlayerController,
         ProjectAssetPaths.Animations.Mining,
         ProjectAssetPaths.Animations.Hover,

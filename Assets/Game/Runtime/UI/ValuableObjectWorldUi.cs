@@ -13,11 +13,7 @@ namespace Supernova.UI
     [DisallowMultipleComponent]
     public sealed class ValuableObjectWorldUi : MonoBehaviour
     {
-        private const float CanvasScale = 0.005f;
         private const float VerticalPadding = 0.25f;
-
-        private static readonly Color ValueColor =
-            new Color(0.24f, 1f, 0.38f, 1f);
 
         private ValuableObject valuable;
         private RectTransform canvasRect;
@@ -156,7 +152,8 @@ namespace Supernova.UI
             canvasObject.layer = gameObject.layer;
             canvasRect = canvasObject.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(180f, 44f);
-            canvasRect.localScale = Vector3.one * CanvasScale;
+            canvasRect.localScale =
+                Vector3.one * WorldValueTextStyle.CanvasScale;
 
             WorldCanvas = canvasObject.GetComponent<Canvas>();
             WorldCanvas.renderMode = RenderMode.WorldSpace;
@@ -179,20 +176,10 @@ namespace Supernova.UI
 
             TextMeshProUGUI label =
                 labelObject.GetComponent<TextMeshProUGUI>();
-            label.alignment = TextAlignmentOptions.Center;
-            label.fontSize = 28f;
-            label.fontStyle = FontStyles.Bold;
-            label.color = ValueColor;
-            label.raycastTarget = false;
-            label.enableWordWrapping = false;
-            label.outlineColor = new Color32(0, 0, 0, 230);
-            label.outlineWidth = 0.22f;
+            WorldValueTextStyle.ApplyValueLabel(
+                label,
+                WorldValueTextStyle.ValueColor);
             ValueLabel = label;
-
-            Outline outline = labelObject.GetComponent<Outline>();
-            outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
-            outline.effectDistance = new Vector2(1f, -1f);
-            outline.useGraphicAlpha = false;
         }
 
         private void UpdateWorldPose()

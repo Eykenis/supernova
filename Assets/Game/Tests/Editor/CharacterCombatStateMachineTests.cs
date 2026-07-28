@@ -3,6 +3,7 @@ using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using Supernova.MinecraftCaves.Creatures;
+using Supernova.Shop;
 using Supernova.Voxels;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -333,7 +334,11 @@ namespace Supernova.Tests
             Assert.That(attractor.DeviceEnabled, Is.False);
             Assert.That(
                 inventory.SelectedItem,
-                Is.EqualTo(PlayerInventoryItem.Flashlight));
+                Is.EqualTo(
+                    PlayerEconomy.IsItemOwned(
+                        PlayerInventoryItem.Flashlight)
+                        ? PlayerInventoryItem.Flashlight
+                        : PlayerInventoryItem.Empty));
         }
 
         [Test]

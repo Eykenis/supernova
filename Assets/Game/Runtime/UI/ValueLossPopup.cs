@@ -63,7 +63,7 @@ namespace Supernova.UI
             label.alignment = TextAlignmentOptions.Center;
             label.fontSize = 30f;
             label.fontStyle = FontStyles.Bold;
-            label.color = new Color(1f, 0.2f, 0.16f, 1f);
+            label.color = WorldValueTextStyle.LossColor;
             label.raycastTarget = false;
             label.enableWordWrapping = false;
             popupObject.GetComponent<ValueLossPopup>()

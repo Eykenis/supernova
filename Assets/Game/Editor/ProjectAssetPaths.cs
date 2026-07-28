@@ -15,6 +15,7 @@ public static class ProjectAssetPaths
         public const string Levels = Config + "/Levels";
         public const string Equipment = Config + "/Equipment";
         public const string Tools = Config + "/Tools";
+        public const string Shop = Config + "/Shop";
         public const string VoxelTypes = Config + "/VoxelTypes";
         public const string OreFeatures = Config + "/OreFeatures";
         public const string Worlds = Config + "/Worlds";
@@ -67,6 +68,8 @@ public static class ProjectAssetPaths
         public const string MagnetTool = Folders.Tools + "/MagnetTool.asset";
         public const string FlashlightTool =
             Folders.Tools + "/FlashlightTool.asset";
+        public const string FlashlightProduct =
+            Folders.Shop + "/FlashlightProduct.asset";
         public const string Jetpack = Folders.Equipment + "/Jetpack.asset";
         public const string JetpackInteraction =
             Folders.Equipment + "/JetpackInteraction.asset";
@@ -140,6 +143,8 @@ public static class ProjectAssetPaths
     {
         public const string Ore = Folders.Materials + "/Voxels/Ore.mat";
         public const string Bedrock = Folders.Materials + "/Voxels/Bedrock.mat";
+        public const string FlashlightGlow =
+            Folders.Materials + "/Tools/FlashlightGlow.mat";
     }
 
     public static class Structures
@@ -222,6 +227,6 @@ public static class ProjectAssetPaths
         public const string JetpackMount = "P05_BackPack";
         public const string JetpackMain = "BackPack_Main";
         public const string JetpackVfx = "BackPuck_VFX";
-
+        public const string HomeShopRoot = "Home Shop - Lighting Test";
     }
 }

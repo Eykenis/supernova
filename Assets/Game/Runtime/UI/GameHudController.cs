@@ -325,6 +325,7 @@ namespace Supernova.UI
         {
             if (hotbarPresenter == null) return;
             int slotIndex = inventorySource != null ? inventorySource.SelectedSlotIndex : 0;
+            hotbarPresenter.SetInventory(inventorySource);
             if (slotIndex == displayedSlotIndex) return;
 
             displayedSlotIndex = slotIndex;
@@ -1145,20 +1146,42 @@ namespace Supernova.UI
             }
         }
 
-        private void SetItemLabels()
+        public void SetInventory(PlayerToolController source)
         {
-            if (itemLabels == null) return;
+            if (itemLabels == null)
+                return;
+
             for (int i = 0; i < itemLabels.Length; i++)
             {
-                if (itemLabels[i] == null) continue;
-                itemLabels[i].text = i == 0
-                    ? "PICKAXE"
-                    : i == 1
-                        ? "MAGNET"
-                        : i == 2
-                            ? "FLASHLIGHT"
-                            : string.Empty;
-                itemLabels[i].fontSize = i == 2 ? 7f : 9f;
+                if (itemLabels[i] == null)
+                    continue;
+
+                PlayerInventoryItem item = source != null
+                    ? source.GetItemAtSlot(i)
+                    : PlayerInventory.GetDefaultItemAtSlot(i);
+                itemLabels[i].text = GetItemLabel(item);
+                itemLabels[i].fontSize =
+                    item == PlayerInventoryItem.Flashlight ? 7f : 9f;
+            }
+        }
+
+        private void SetItemLabels()
+        {
+            SetInventory(null);
+        }
+
+        private static string GetItemLabel(PlayerInventoryItem item)
+        {
+            switch (item)
+            {
+                case PlayerInventoryItem.Pickaxe:
+                    return "PICKAXE";
+                case PlayerInventoryItem.Magnet:
+                    return "MAGNET";
+                case PlayerInventoryItem.Flashlight:
+                    return "FLASHLIGHT";
+                default:
+                    return string.Empty;
             }
         }
     }

@@ -1,6 +1,7 @@
 using System.Collections;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
+using Supernova.Shop;
 using Supernova.Voxels;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -12,7 +13,6 @@ namespace Supernova.Missions
     [DisallowMultipleComponent]
     public sealed class MissionGameLoop : MonoBehaviour
     {
-        private const string CreditsKey = "Supernova.Credits";
         private const float SceneFadeOutSeconds = 0.65f;
         private const float SceneFadeInSeconds = 0.55f;
         private static MissionGameLoop instance;
@@ -32,7 +32,7 @@ namespace Supernova.Missions
         private OreExtractionZone extractionZone;
 
         public MissionRun CurrentRun => run;
-        public int Credits => PlayerPrefs.GetInt(CreditsKey, 0);
+        public int Credits => PlayerEconomy.Credits;
         public static bool IsSceneTransitioning =>
             instance != null && instance.transitioning;
         public static LevelConfiguration CurrentLevelConfiguration
@@ -187,7 +187,7 @@ namespace Supernova.Missions
         {
             CreateCellTrigger(FindCell(), true);
             objectiveText.text = "HOME · 飞船基地\n进入 CELL 降落舱开始第一关";
-            promptText.text = "商店（即将开放）    余额  $" + Credits;
+            promptText.text = "商店已开放    余额  $" + Credits;
         }
 
         private void TrySetupCave()
@@ -295,8 +295,7 @@ namespace Supernova.Missions
             {
                 case MissionOutcome.Success:
                     int reward = run.ExcessValue;
-                    PlayerPrefs.SetInt(CreditsKey, Credits + reward);
-                    PlayerPrefs.Save();
+                    PlayerEconomy.AddCredits(reward);
                     resultText.text = "任务完成\n\n已带回 $" + run.DeliveredValue
                         + "\n超额资源归你所有  +$" + reward
                         + "\n\n按 ENTER 返回 HOME";
