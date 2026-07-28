@@ -25,3 +25,7 @@ Tests use Unity Test Framework `1.1.33` and NUnit. Name fixtures `*Tests.cs` and
 ## Assets, Commits, and Pull Requests
 
 Move or rename Unity assets with their `.meta` files intact, preferably inside the editor. The history currently contains only `Initial Commit`, so no detailed commit convention is established; use short, imperative subjects such as `Fix voxel streaming refresh`. PRs should describe scope and player impact, link relevant issues, list test results, and include screenshots or clips for scene, UI, animation, or rendering changes. Call out package, project-setting, prefab, scene, and `.meta` changes explicitly.
+
+## 要求
+
+禁止使用硬编码路径，应查找全局路径表，并更新该表以适配路径加载.

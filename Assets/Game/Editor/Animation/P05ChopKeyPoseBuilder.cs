@@ -18,13 +18,13 @@ namespace Supernova.EditorTools.Animation
     /// </summary>
     public static class P05ChopKeyPoseBuilder
     {
-        private const string SourcePath = "Assets/3rd/Sketchfab/Arms_Animation_a.fbx";
-        private const string PlayerPrefabPath = "Assets/Game/Prefabs/Player.prefab";
-        private const string P05PrefabPath = "Assets/3rd/P05_Aki & Mika/Model_DATA/Prefab/Physics_MagicaCloth2/P05_ASTRO_Aki Variant.prefab";
-        private const string ControllerPath = "Assets/Game/Animations/P05Player.controller";
-        private const string OutputPath = "Assets/Game/Animations/P05Custom/P05_Chop_Reauthored.anim";
-        private const string PreviewPath = "Assets/Screenshots/P05_Chop_Reauthored_KeyPoses.png";
-        private const string IdleClipPath = "Assets/3rd/P05_Aki & Mika/Anim_demo/movetest_WAIT01.anim";
+        private const string SourcePath = ProjectAssetPaths.ThirdParty.ArmsAnimation;
+        private const string PlayerPrefabPath = ProjectAssetPaths.Prefabs.Player;
+        private const string P05PrefabPath = ProjectAssetPaths.ThirdParty.PhysicsP05Prefab;
+        private const string ControllerPath = ProjectAssetPaths.Animations.PlayerController;
+        private const string OutputPath = ProjectAssetPaths.Animations.Chopping;
+        private const string PreviewPath = ProjectAssetPaths.Screenshots.ChoppingKeyPoses;
+        private const string IdleClipPath = ProjectAssetPaths.ThirdParty.WaitAnimation;
 
         private static readonly int[] SourceFrames = { 0, 5, 10, 15, 20, 24, 29 };
 
@@ -291,14 +291,14 @@ namespace Supernova.EditorTools.Animation
                     sourcePrefab,
                     sourceClip,
                     keyTimes,
-                    "Assets/Screenshots/ChopCompare_Source_" + view.Name + ".png",
+                    ProjectAssetPaths.Screenshots.ChoppingSourcePrefix + view.Name + ".png",
                     view.Direction,
                     view.Up);
                 RenderPoseStrip(
                     targetPrefab,
                     targetClip,
                     keyTimes,
-                    "Assets/Screenshots/ChopCompare_P05_" + view.Name + ".png",
+                    ProjectAssetPaths.Screenshots.ChoppingPlayerPrefix + view.Name + ".png",
                     view.Direction,
                     view.Up);
             }
@@ -330,7 +330,7 @@ namespace Supernova.EditorTools.Animation
                     instance.transform.SetParent(wrapper.transform, false);
                     instance.transform.localPosition = Vector3.zero;
                     instance.transform.localRotation = Quaternion.identity;
-                    Transform cameraRig = instance.transform.Find("CameraRig");
+                    Transform cameraRig = instance.transform.Find(ProjectAssetPaths.LookupNames.PlayerCameraRig);
                     if (cameraRig != null) cameraRig.gameObject.SetActive(false);
                     SetLayerRecursively(wrapper, 31);
                     Animator animator = instance.GetComponentInChildren<Animator>(true);
@@ -371,7 +371,9 @@ namespace Supernova.EditorTools.Animation
                 texture = new Texture2D(1800, 520, TextureFormat.RGBA32, false);
                 texture.ReadPixels(new Rect(0f, 0f, 1800f, 520f), 0, 0);
                 texture.Apply();
-                File.WriteAllBytes(outputPath, texture.EncodeToPNG());
+                File.WriteAllBytes(
+                    ProjectAssetPaths.ToAbsoluteFileSystemPath(outputPath),
+                    texture.EncodeToPNG());
             }
             finally
             {
@@ -404,7 +406,7 @@ namespace Supernova.EditorTools.Animation
                     instance.transform.SetParent(wrapper.transform, false);
                     instance.transform.localPosition = Vector3.zero;
                     instance.transform.localRotation = Quaternion.identity;
-                    Transform cameraRig = instance.transform.Find("CameraRig");
+                    Transform cameraRig = instance.transform.Find(ProjectAssetPaths.LookupNames.PlayerCameraRig);
                     if (cameraRig != null) cameraRig.gameObject.SetActive(false);
                     SetLayerRecursively(wrapper, 31);
                     Animator animator = instance.GetComponentInChildren<Animator>(true);
@@ -445,7 +447,9 @@ namespace Supernova.EditorTools.Animation
                 texture = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGBA32, false);
                 texture.ReadPixels(new Rect(0, 0, renderTexture.width, renderTexture.height), 0, 0);
                 texture.Apply();
-                File.WriteAllBytes(PreviewPath, texture.EncodeToPNG());
+                File.WriteAllBytes(
+                    ProjectAssetPaths.ToAbsoluteFileSystemPath(PreviewPath),
+                    texture.EncodeToPNG());
             }
             finally
             {

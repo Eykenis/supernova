@@ -17,10 +17,10 @@ namespace Supernova.EditorTools.Animation
     /// </summary>
     public static class ChoppingAnimationRetargeter
     {
-        private const string SourcePath = "Assets/3rd/Sketchfab/Arms_Animation_a.fbx";
-        private const string PlayerPrefabPath = "Assets/Game/Prefabs/Player.prefab";
-        private const string ControllerPath = "Assets/Game/Animations/P05Player.controller";
-        private const string OutputFolder = "Assets/Game/Animations/External/Chopping";
+        private const string SourcePath = ProjectAssetPaths.ThirdParty.ArmsAnimation;
+        private const string PlayerPrefabPath = ProjectAssetPaths.Prefabs.Player;
+        private const string ControllerPath = ProjectAssetPaths.Animations.PlayerController;
+        private const string OutputFolder = ProjectAssetPaths.Folders.ChoppingAnimations;
 
         private sealed class BoneMap
         {

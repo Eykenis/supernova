@@ -25,3 +25,4 @@ MonoBehaviour:
   size: 8
   discardChanceOnAirExposure: 0.3
   massDensity: 10
+  fragility: 0.25

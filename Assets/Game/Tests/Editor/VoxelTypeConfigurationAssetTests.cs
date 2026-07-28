@@ -9,9 +9,9 @@ namespace Supernova.Tests
     public sealed class VoxelTypeConfigurationAssetTests
     {
         private const string CatalogPath =
-            "Assets/Game/Config/MinecraftVoxelTypes.asset";
+            ProjectAssetPaths.Config.VoxelCatalog;
         private const string DefinitionFolder =
-            "Assets/Game/Config/VoxelTypes/";
+            ProjectAssetPaths.Folders.VoxelTypes + "/";
 
         [Test]
         public void MinecraftCatalog_ReferencesOneIndependentAssetPerVoxelType()

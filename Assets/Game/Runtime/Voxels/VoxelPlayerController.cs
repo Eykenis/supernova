@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Supernova.Gameplay;
 using UnityEngine;
 
@@ -77,7 +78,8 @@ namespace Supernova.Voxels
         private float stateSeconds;
         private float nextAttackTime;
         private float nextProjectileThrowTime;
-        private bool attackApplied;
+        private readonly Queue<float> pendingMiningAttackTimes =
+            new Queue<float>();
         private bool debugFlyMode;
         private bool hasWalkFlag;
         private bool hasJumpFlag;
@@ -147,6 +149,7 @@ namespace Supernova.Voxels
         private void OnDisable()
         {
             debugFlyMode = false;
+            pendingMiningAttackTimes.Clear();
             equipmentController?.CancelActiveLocomotionOverride();
             StopEquipmentLocomotionAnimation(false);
             idleSeconds = 0f;
@@ -164,6 +167,7 @@ namespace Supernova.Voxels
             ResolveReferences();
             EnsureMotor();
             EnsureStateMachine();
+            ApplyPendingMiningAttacksIfReady();
             if (characterController == null) return;
 
             if (Input.GetKeyDown(Profile.DebugToggleKey)) SetDebugFlyMode(!debugFlyMode);
@@ -391,6 +395,23 @@ namespace Supernova.Voxels
                 Profile.AttackDamage,
                 Profile.AttackImpulse,
                 Profile.AttackLayers.value);
+        }
+
+        private void ScheduleMiningAttack(float delay)
+        {
+            pendingMiningAttackTimes.Enqueue(
+                Time.time + Mathf.Max(0f, delay));
+        }
+
+        private void ApplyPendingMiningAttacksIfReady()
+        {
+            while (pendingMiningAttackTimes.Count > 0
+                && Time.time >= pendingMiningAttackTimes.Peek())
+            {
+                pendingMiningAttackTimes.Dequeue();
+                voxelInteractor?.ApplyPendingMineIfReady();
+                PerformAttack();
+            }
         }
 
         private void UpdateDebugFlyMovement(Vector2 moveInput)
@@ -979,7 +1000,6 @@ namespace Supernova.Voxels
         {
             EnsureMotor();
             stateSeconds = 0f;
-            attackApplied = false;
             activeToolDefinition = toolController != null
                 ? toolController.SelectedDefinition
                 : null;
@@ -1022,6 +1042,7 @@ namespace Supernova.Voxels
         {
             periodicToolAnimationObserved = false;
             TriggerPeriodicToolActionAnimation();
+            ScheduleMiningAttack(Profile.VoxelDestructionDelay);
             bool isPickaxe = activeToolDefinition != null
                 && activeToolDefinition.Item == PlayerInventoryItem.Pickaxe;
             int strikeNumber = isPickaxe ? pickaxeStrikeParity + 1 : 1;
@@ -1085,12 +1106,6 @@ namespace Supernova.Voxels
 
         private void TickMiningToolAction(bool actionHeld)
         {
-            if (!attackApplied && stateSeconds >= Profile.AttackWindup)
-            {
-                attackApplied = true;
-                PerformAttack();
-            }
-
             if (actionHeld && IsPeriodicToolActionCycleComplete()) TriggerMineSwing();
         }
 

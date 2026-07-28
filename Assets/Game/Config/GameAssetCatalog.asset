@@ -1,0 +1,42 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d95b8c2c13cace439c542596f201334, type: 3}
+  m_Name: GameAssetCatalog
+  m_EditorClassIdentifier: 
+  missions:
+    defaultLevel: {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f, type: 2}
+    uiFont: {fileID: 12800000, guid: e3265ab4bf004d28a9537516768c1c75, type: 3}
+  ui:
+    mainMenuPrefab: {fileID: 6511628367817102686, guid: d725abd71f6ceb24b8a0f1cd750651c6,
+      type: 3}
+    pausePortraitSettings: {fileID: 11400000, guid: 710d17134a320164fa6a2b6bc9d5c195,
+      type: 2}
+    pauseBodyMaterial: {fileID: 2100000, guid: 64fdf5e060ce1a64da8714edd5c7a4ff, type: 2}
+    pauseBackgroundMaterial: {fileID: 2100000, guid: f2310bdcc96b16242aa6bc3ce31ba94e,
+      type: 2}
+    primaryFrame: {fileID: 21300000, guid: 523926507cf0c3e48bc662f1034c1570, type: 3}
+    wideFrame: {fileID: 21300000, guid: 3ffb3d5b519518c4c8cf424c5332d7c0, type: 3}
+    slotFrame: {fileID: 21300000, guid: d879e88e811a91940bd7f2f3ff2b377c, type: 3}
+    thinFrame: {fileID: 21300000, guid: 48e47f9821355fc40814c0aa5f810461, type: 3}
+    hudPanelFrame: {fileID: 21300000, guid: f17abc985b193a24da59596c276835b6, type: 3}
+    slotCleanFrame: {fileID: 21300000, guid: c6c6d175d30c12f4ca4e221989390544, type: 3}
+    buttonCleanFrame: {fileID: 21300000, guid: f129636f167c15c48bb9f5dcb442b573, type: 3}
+    progressCleanFrame: {fileID: 21300000, guid: c30644bcde6003e4192696510ceb75f5,
+      type: 3}
+    pauseCardFrame: {fileID: 21300000, guid: bce7a8d64e0dc0a4a9431f0b12f2b530, type: 3}
+    loadingDial: {fileID: 21300000, guid: 7185e66f1d3909a4485d4aaa2908de78, type: 3}
+    telemetryBackdrop: {fileID: 2800000, guid: c63f17988bae64f4381588439d4a6692, type: 3}
+  sceneLookups:
+    mainMenuSceneName: MainMenu
+    missionCellObjectName: Cell
+    authoredCartObjectName: EmptyCart
+    pausePoseStateName: Base Layer.PausePose

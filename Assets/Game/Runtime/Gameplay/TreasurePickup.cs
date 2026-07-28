@@ -5,15 +5,33 @@ namespace Supernova.Gameplay
 {
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody))]
-    public sealed class TreasurePickup : MonoBehaviour
+    [RequireComponent(typeof(ValuableObject))]
+    public sealed class TreasurePickup :
+        MonoBehaviour,
+        ValuableObject.IBreakEffect
     {
         [SerializeField] private TreasureDefinition definition;
+        private ValuableObject cachedValuable;
+
         public TreasureDefinition Definition => definition;
-        public int Value => definition != null ? definition.Value : 0;
+        public BreakFragmentEffect LastBreakEffect { get; private set; }
+        public ValuableObject Valuable
+        {
+            get
+            {
+                if (cachedValuable == null)
+                    cachedValuable = GetComponent<ValuableObject>();
+                return cachedValuable;
+            }
+        }
+        public int Value => Valuable != null ? Valuable.CurrentValue : 0;
 
         public void Configure(TreasureDefinition value)
         {
             definition = value;
+            Valuable.Configure(
+                definition != null ? definition.Value : 0,
+                definition != null ? definition.Fragility : 0f);
             Rigidbody body = GetComponent<Rigidbody>();
             if (definition != null) body.mass = definition.Weight;
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
@@ -29,6 +47,21 @@ namespace Supernova.Gameplay
             {
                 StartCoroutine(ArmPhysicsAfterTerrainSettles(body));
             }
+        }
+
+        public bool TrySpawnBreakEffect(
+            ValuableObject.BreakContext context)
+        {
+            if (definition == null)
+            {
+                return false;
+            }
+
+            GameObject variant = definition.GetFractureVariant(
+                context.RandomSeed);
+            LastBreakEffect =
+                BreakFragmentEffect.SpawnPrefab(variant, context);
+            return LastBreakEffect != null;
         }
 
         private static IEnumerator ArmPhysicsAfterTerrainSettles(Rigidbody body)

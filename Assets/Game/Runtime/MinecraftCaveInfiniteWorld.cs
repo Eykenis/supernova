@@ -4,6 +4,9 @@ using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Supernova.Gameplay;
+using Supernova.MinecraftCaves.Creatures;
+using Supernova.Missions;
+using Supernova.UI;
 using Supernova.Voxels;
 using UnityEngine;
 
@@ -16,6 +19,12 @@ namespace Supernova.MinecraftCaves
         Structures,
         Meshes,
         Ready,
+    }
+
+    public enum MinecraftWorldGenerationMode
+    {
+        InfiniteCaves,
+        Superflat,
     }
 
     [DisallowMultipleComponent]
@@ -50,49 +59,51 @@ namespace Supernova.MinecraftCaves
 
         [Header("Viewer")]
         [SerializeField] private Transform viewer;
-        [SerializeField] private bool placeViewerInCave = true;
 
-        [Header("Density")]
-        [SerializeField] private int worldSeed = 18731;
-        [SerializeField] private MinecraftCaveSettings settings = new MinecraftCaveSettings();
+        [Header("Level")]
+        [Tooltip(
+            "Optional level used by isolated test/demo scenes. Product scenes "
+            + "use the level selected by MissionGameLoop.")]
+        [SerializeField] private LevelConfiguration levelConfigurationOverride;
 
-        [Header("Streaming")]
-        [SerializeField, Range(1, 8)] private int maxConcurrentGenerationJobs = 4;
-        [SerializeField, Range(1, 8)] private int meshesBuiltPerFrame = 1;
-
-        [Header("Rendering")]
-        [SerializeField, Min(0.01f)] private float voxelSize = 0.42f;
-        [SerializeField] private float isoLevel;
-        [SerializeField]
-        private MarchingCubesVertexPlacement vertexPlacement =
-            MarchingCubesVertexPlacement.DensityInterpolated;
-        [SerializeField] private bool generateColliders;
-        [SerializeField] private VoxelTypeCatalog voxelTypeCatalog;
-
-        [Header("Punctual Lighting")]
-        [SerializeField, Range(0.25f, 1f)]
-        private float punctualLightFalloffPower = 0.55f;
-        [SerializeField, Min(0.01f)]
-        private float punctualLightAttenuationLimit = 1.5f;
-        [SerializeField, Min(0.01f)]
-        private float punctualLightMultiplier = 1f;
-
-        [Header("Voxel Generation")]
-        [SerializeField] private VoxelTypeDefinition baseSolidVoxelType;
-        [SerializeField] private VoxelTypeDefinition bedrockVoxelType;
-        [SerializeField] private List<VoxelOreFeatureDefinition> oreFeatures =
-            new List<VoxelOreFeatureDefinition>();
-
-        [Header("Natural Treasures")]
-        [SerializeField] private TreasureSpawnTable treasureSpawnTable;
-        [Tooltip("No natural treasure may spawn this close to the initial player/CELL area.")]
-        [SerializeField, Min(0f)] private float treasureSpawnExclusionRadius = 12f;
+        [Header("Diagnostics")]
+        [SerializeField] private bool showRuntimeDiagnostics;
 
         [Header("Structures")]
-        [SerializeField]
+        [SerializeField] private SpawnPointSceneStructure spawnPointSceneStructure;
+
+        private LevelConfiguration levelConfiguration;
+        private MinecraftWorldGenerationConfiguration worldGenerationConfiguration;
+        private bool placeViewerInCave = true;
+        private int maxConcurrentGenerationJobs = 4;
+        private int meshesBuiltPerFrame = 1;
+        private DepthProbabilityProfile oreDepthProbability =
+            new DepthProbabilityProfile();
+        private DepthProbabilityProfile treasureDepthProbability =
+            new DepthProbabilityProfile();
+        private DepthProbabilityProfile monsterDepthProbability =
+            new DepthProbabilityProfile();
+        private MinecraftWorldGenerationMode generationMode;
+        private int superflatStoneHeight = 10;
+        private int worldSeed = 18731;
+        private MinecraftCaveSettings settings = new MinecraftCaveSettings();
+        private float voxelSize = 0.42f;
+        private float isoLevel;
+        private MarchingCubesVertexPlacement vertexPlacement =
+            MarchingCubesVertexPlacement.DensityInterpolated;
+        private bool generateColliders;
+        private VoxelTypeCatalog voxelTypeCatalog;
+        private float punctualLightFalloffPower = 0.55f;
+        private float punctualLightAttenuationLimit = 1.5f;
+        private float punctualLightMultiplier = 1f;
+        private VoxelTypeDefinition baseSolidVoxelType;
+        private VoxelTypeDefinition bedrockVoxelType;
+        private List<VoxelOreFeatureDefinition> oreFeatures =
+            new List<VoxelOreFeatureDefinition>();
+        private TreasureSpawnTable treasureSpawnTable;
+        private MonsterSpawnTable monsterSpawnTable;
         private SpawnPointStructureRule spawnPointStructureRule =
             new SpawnPointStructureRule();
-        [SerializeField] private SpawnPointSceneStructure spawnPointSceneStructure;
 
         private readonly HashSet<Vector3Int> requiredChunks = new HashSet<Vector3Int>();
         private readonly Queue<Vector3Int> generationQueue = new Queue<Vector3Int>();
@@ -124,6 +135,12 @@ namespace Supernova.MinecraftCaves
         private readonly HashSet<Vector3Int> treasureSpawnedColumns =
             new HashSet<Vector3Int>();
         private readonly HashSet<Vector3Int> pendingTreasureColumns =
+            new HashSet<Vector3Int>();
+        private readonly List<CreatureBehaviorAgent> activeMonsters =
+            new List<CreatureBehaviorAgent>();
+        private readonly HashSet<Vector3Int> monsterSpawnedColumns =
+            new HashSet<Vector3Int>();
+        private readonly HashSet<Vector3Int> pendingMonsterColumns =
             new HashSet<Vector3Int>();
         private readonly Dictionary<Vector3Int, List<SuspendedBodyState>>
             suspendedBodiesByColumn =
@@ -160,6 +177,11 @@ namespace Supernova.MinecraftCaves
 
         public InfiniteVoxelWorld World => world;
         public int WorldSeed => worldSeed;
+        public MinecraftWorldGenerationMode GenerationMode => generationMode;
+        public int SuperflatStoneHeight => Mathf.Clamp(
+            superflatStoneHeight,
+            1,
+            VoxelColumnChunkData.Height - 1);
         public float VoxelSize => voxelSize;
         public float IsoLevel => isoLevel;
         public Transform TerrainTransform => transform;
@@ -203,35 +225,100 @@ namespace Supernova.MinecraftCaves
         public VoxelTypeDefinition BaseSolidVoxelType => baseSolidVoxelType;
         public VoxelTypeDefinition BedrockVoxelType => bedrockVoxelType;
         public IReadOnlyList<VoxelOreFeatureDefinition> OreFeatures => oreFeatures;
+        public LevelConfiguration LevelConfiguration => levelConfiguration;
+        public MinecraftWorldGenerationConfiguration WorldGenerationConfiguration =>
+            worldGenerationConfiguration;
         public IReadOnlyList<MinedOreDrop> ActiveOreDrops => activeOreDrops;
         public IReadOnlyList<TreasurePickup> ActiveTreasures => activeTreasures;
+        public IReadOnlyList<CreatureBehaviorAgent> ActiveMonsters => activeMonsters;
         public static IReadOnlyList<Vector3Int> StreamingOffsets => RequiredOffsets;
 
-        public void SetTreasureSpawnTable(TreasureSpawnTable value)
+        public bool ApplyLevelConfiguration(LevelConfiguration value)
         {
-            treasureSpawnTable = value;
+            if (value == null || value.WorldGeneration == null)
+            {
+                return false;
+            }
+            if (world != null)
+            {
+                Debug.LogError(
+                    "A level configuration cannot be changed after world "
+                    + "initialization has started.",
+                    this);
+                return false;
+            }
+
+            levelConfiguration = value;
+            worldGenerationConfiguration = value.WorldGeneration;
+            treasureSpawnTable = value.TreasureGeneration;
+            monsterSpawnTable = value.MonsterGeneration;
+
+            generationMode = worldGenerationConfiguration.GenerationMode;
+            superflatStoneHeight =
+                worldGenerationConfiguration.SuperflatStoneHeight;
+            worldSeed = worldGenerationConfiguration.WorldSeed;
+            settings = worldGenerationConfiguration.Settings;
+            placeViewerInCave =
+                worldGenerationConfiguration.PlaceViewerInCave;
+            maxConcurrentGenerationJobs =
+                worldGenerationConfiguration.MaxConcurrentGenerationJobs;
+            meshesBuiltPerFrame =
+                worldGenerationConfiguration.MeshesBuiltPerFrame;
+            oreDepthProbability =
+                worldGenerationConfiguration.OreDepthProbability
+                ?? new DepthProbabilityProfile();
+            treasureDepthProbability =
+                worldGenerationConfiguration.TreasureDepthProbability
+                ?? new DepthProbabilityProfile();
+            monsterDepthProbability =
+                worldGenerationConfiguration.MonsterDepthProbability
+                ?? new DepthProbabilityProfile();
+            voxelSize = worldGenerationConfiguration.VoxelSize;
+            isoLevel = worldGenerationConfiguration.IsoLevel;
+            vertexPlacement = worldGenerationConfiguration.VertexPlacement;
+            generateColliders =
+                worldGenerationConfiguration.GenerateColliders;
+            voxelTypeCatalog =
+                worldGenerationConfiguration.VoxelTypeCatalog;
+            punctualLightFalloffPower =
+                worldGenerationConfiguration.PunctualLightFalloffPower;
+            punctualLightAttenuationLimit =
+                worldGenerationConfiguration.PunctualLightAttenuationLimit;
+            punctualLightMultiplier =
+                worldGenerationConfiguration.PunctualLightMultiplier;
+            baseSolidVoxelType =
+                worldGenerationConfiguration.BaseSolidVoxelType;
+            bedrockVoxelType =
+                worldGenerationConfiguration.BedrockVoxelType;
+            oreFeatures = new List<VoxelOreFeatureDefinition>(
+                worldGenerationConfiguration.OreFeatures);
+            spawnPointStructureRule =
+                worldGenerationConfiguration.SpawnPointStructureRule
+                ?? new SpawnPointStructureRule();
+            return true;
         }
 
         private void OnEnable()
         {
-            ApplyPunctualLightFalloffParameters();
             if (Application.isPlaying)
             {
+                LevelConfiguration activeLevel =
+                    levelConfigurationOverride != null
+                        ? levelConfigurationOverride
+                        : MissionGameLoop.CurrentLevelConfiguration;
+                if (!ApplyLevelConfiguration(
+                    activeLevel))
+                {
+                    Debug.LogError(
+                        "MinecraftCaveInfiniteWorld requires the active "
+                        + "LevelConfiguration before it can initialize.",
+                        this);
+                    enabled = false;
+                    return;
+                }
+                ApplyPunctualLightFalloffParameters();
                 InitializeWorld();
             }
-        }
-
-        private void OnValidate()
-        {
-            punctualLightFalloffPower =
-                Mathf.Clamp(punctualLightFalloffPower, 0.25f, 1f);
-            punctualLightAttenuationLimit =
-                Mathf.Max(0.01f, punctualLightAttenuationLimit);
-            punctualLightMultiplier =
-                Mathf.Max(0.01f, punctualLightMultiplier);
-            treasureSpawnExclusionRadius =
-                Mathf.Max(0f, treasureSpawnExclusionRadius);
-            ApplyPunctualLightFalloffParameters();
         }
 
         private void Update()
@@ -292,9 +379,14 @@ namespace Supernova.MinecraftCaves
             generationCancellation = new CancellationTokenSource();
             ResolveViewer();
 
-            spawnVoxel = FindCaveSpawnVoxel();
-            Vector3 spawnVoxelPosition =
-                spawnPointStructureRule.GetPlayerSpawnVoxel(spawnVoxel);
+            bool isSuperflat =
+                generationMode == MinecraftWorldGenerationMode.Superflat;
+            spawnVoxel = isSuperflat
+                ? new Vector3Int(0, SuperflatStoneHeight, 0)
+                : FindCaveSpawnVoxel();
+            Vector3 spawnVoxelPosition = isSuperflat
+                ? (Vector3)spawnVoxel
+                : spawnPointStructureRule.GetPlayerSpawnVoxel(spawnVoxel);
             targetSpawnWorldPosition =
                 transform.TransformPoint(spawnVoxelPosition * voxelSize);
             targetSpawnWorldRotation = viewer != null
@@ -304,7 +396,10 @@ namespace Supernova.MinecraftCaves
             {
                 spawnPointSceneStructure.ClearExitTarget();
             }
-            PlaceSpawnPointSceneStructure();
+            if (!isSuperflat)
+            {
+                PlaceSpawnPointSceneStructure();
+            }
             generationStage = MinecraftCaveGenerationStage.Terrain;
             structurePassApplied = false;
             initialSpawnPlacementPending = placeViewerInCave && viewer != null;
@@ -334,84 +429,7 @@ namespace Supernova.MinecraftCaves
         /// Voxel edits are batched; mesh and collider rebuilds remain frame-budgeted by
         /// meshesBuiltPerFrame, avoiding the per-voxel rebuild path.
         /// </summary>
-        public int CarveSphere(
-            Vector3 worldPosition,
-            float worldRadius,
-            float randomness,
-            int seed)
-        {
-            if (world == null || worldRadius <= 0f)
-            {
-                return 0;
-            }
 
-            Vector3 centre = transform.InverseTransformPoint(worldPosition) / voxelSize;
-            float radius = worldRadius / voxelSize;
-            float clampedRandomness = Mathf.Clamp01(randomness);
-            float minimumRadius = radius * (1f - clampedRandomness * 0.35f);
-            float maximumRadius = radius * (1f + clampedRandomness * 0.35f);
-            float minimumRadiusSquared = minimumRadius * minimumRadius;
-            float maximumRadiusSquared = maximumRadius * maximumRadius;
-            int minX = Mathf.FloorToInt(centre.x - maximumRadius);
-            int minY = Mathf.FloorToInt(centre.y - maximumRadius);
-            int minZ = Mathf.FloorToInt(centre.z - maximumRadius);
-            int maxX = Mathf.CeilToInt(centre.x + maximumRadius);
-            int maxY = Mathf.CeilToInt(centre.y + maximumRadius);
-            int maxZ = Mathf.CeilToInt(centre.z + maximumRadius);
-            destructionDirtyMeshes.Clear();
-            int removed = 0;
-
-            for (int z = minZ; z <= maxZ; z++)
-            {
-                float dz = z - centre.z;
-                for (int y = minY; y <= maxY; y++)
-                {
-                    float dy = y - centre.y;
-                    for (int x = minX; x <= maxX; x++)
-                    {
-                        float dx = x - centre.x;
-                        float distanceSquared = dx * dx + dy * dy + dz * dz;
-                        if (distanceSquared > maximumRadiusSquared)
-                        {
-                            continue;
-                        }
-
-                        if (distanceSquared > minimumRadiusSquared)
-                        {
-                            float unitNoise = HashToUnitFloat(x, y, z, seed);
-                            float noisyRadius = Mathf.Lerp(
-                                minimumRadius,
-                                maximumRadius,
-                                unitNoise);
-                            if (distanceSquared > noisyRadius * noisyRadius)
-                            {
-                                continue;
-                            }
-                        }
-
-                        if (!world.TryGetDensity(x, y, z, out float density)
-                            || density < isoLevel)
-                        {
-                            continue;
-                        }
-
-                        world.SetDensity(x, y, z, isoLevel - 1f);
-                        miningProgress.Reset(new Vector3Int(x, y, z));
-                        removed++;
-                        CollectMeshesAffectedByVoxel(
-                            new Vector3Int(x, y, z),
-                            destructionDirtyMeshes);
-                    }
-                }
-            }
-
-            foreach (Vector3Int coordinate in destructionDirtyMeshes)
-            {
-                QueueMesh(coordinate);
-            }
-
-            return removed;
-        }
 
         public Vector3Int WorldPositionToVoxel(Vector3 worldPosition)
         {
@@ -809,7 +827,11 @@ namespace Supernova.MinecraftCaves
                 component.Count,
                 mesh,
                 ResolveOreMassDensity(type),
-                recoveredMaterial);
+                recoveredMaterial,
+                levelConfiguration != null
+                    ? levelConfiguration.OreUnitValue
+                    : 1,
+                ResolveOreFragility(type));
             activeOreDrops.Add(drop);
         }
 
@@ -906,6 +928,25 @@ namespace Supernova.MinecraftCaves
             return MinedOreDrop.DefaultMassDensity;
         }
 
+        private float ResolveOreFragility(VoxelTypeId type)
+        {
+            if (oreFeatures != null)
+            {
+                for (int i = 0; i < oreFeatures.Count; i++)
+                {
+                    VoxelOreFeatureDefinition feature = oreFeatures[i];
+                    if (feature != null
+                        && feature.ResultVoxelType != null
+                        && feature.ResultVoxelType.TypeId == type)
+                    {
+                        return feature.Fragility;
+                    }
+                }
+            }
+
+            return 0.25f;
+        }
+
         private bool IsOreType(VoxelTypeId type)
         {
             for (int i = 0; i < oreFeatureSettings.Length; i++)
@@ -998,22 +1039,7 @@ namespace Supernova.MinecraftCaves
             }
         }
 
-        private static float HashToUnitFloat(int x, int y, int z, int seed)
-        {
-            unchecked
-            {
-                uint hash = (uint)seed;
-                hash ^= (uint)x * 0x9E3779B9u;
-                hash = (hash << 13) | (hash >> 19);
-                hash ^= (uint)y * 0x85EBCA6Bu;
-                hash = (hash << 11) | (hash >> 21);
-                hash ^= (uint)z * 0xC2B2AE35u;
-                hash ^= hash >> 16;
-                hash *= 0x7FEB352Du;
-                hash ^= hash >> 15;
-                return (hash & 0x00FFFFFFu) / 16777215f;
-            }
-        }
+
 
         public bool IsWithinGenerationRadius(Vector3Int coordinate)
         {
@@ -1132,6 +1158,9 @@ namespace Supernova.MinecraftCaves
                 VoxelTypeId solidType = baseSolidType;
                 VoxelTypeId boundaryType = bedrockType;
                 MinecraftOreFeatureSettings[] features = oreFeatureSettings;
+                DepthProbabilityProfile oreDepth = oreDepthProbability;
+                MinecraftWorldGenerationMode mode = generationMode;
+                int flatHeight = SuperflatStoneHeight;
                 generationTasks.Add(
                     coordinate,
                     new GenerationTaskHandle(
@@ -1142,6 +1171,9 @@ namespace Supernova.MinecraftCaves
                                 solidType,
                                 boundaryType,
                                 features,
+                                oreDepth,
+                                mode,
+                                flatHeight,
                                 token),
                             token),
                         cancellation));
@@ -1401,6 +1433,7 @@ namespace Supernova.MinecraftCaves
             if (section == 0)
             {
                 pendingTreasureColumns.Add(columnCoordinate);
+                pendingMonsterColumns.Add(columnCoordinate);
             }
             if (data.Vertices.Count == 0)
             {
@@ -1454,6 +1487,7 @@ namespace Supernova.MinecraftCaves
             // confirming that section has no surface).
             Physics.SyncTransforms();
             SpawnPendingTreasures(column);
+            SpawnPendingMonsters(column);
             ResumeBodiesInColumn(column);
         }
 
@@ -1490,16 +1524,31 @@ namespace Supernova.MinecraftCaves
             }
         }
 
+        private void SpawnPendingMonsters(Vector3Int column)
+        {
+            if (!pendingMonsterColumns.Remove(column)) return;
+            Physics.SyncTransforms();
+            TrySpawnNaturalMonsters(column);
+        }
+
+        private void SpawnAllPendingMonsters()
+        {
+            Physics.SyncTransforms();
+            var columns = new List<Vector3Int>(pendingMonsterColumns);
+            for (int i = 0; i < columns.Count; i++)
+            {
+                if (HasBuiltAllColumnSections(columns[i]))
+                {
+                    SpawnPendingMonsters(columns[i]);
+                }
+            }
+        }
+
         private void TrySpawnNaturalTreasures(Vector3Int column)
         {
             if (!treasureSpawnedColumns.Add(column)) return;
             if (treasureSpawnTable == null)
             {
-                Debug.LogError(
-                    "Natural treasure generation has no TreasureSpawnTable. "
-                    + "Assign one directly on MinecraftCaveInfiniteWorld; assets "
-                    + "outside a Resources folder cannot be loaded by Resources.Load.",
-                    this);
                 return;
             }
 
@@ -1521,7 +1570,7 @@ namespace Supernova.MinecraftCaves
                     attempt < definition.AttemptsPerChunk;
                     attempt++)
                 {
-                    if (random.NextDouble() > definition.SpawnChance) continue;
+                    double spawnRoll = random.NextDouble();
 
                     int x = column.x * VoxelColumnChunkData.Width
                         + random.Next(1, VoxelColumnChunkData.Width - 1);
@@ -1541,7 +1590,16 @@ namespace Supernova.MinecraftCaves
                         startY,
                         z,
                         definition,
-                        out Vector3 localPosition))
+                        out Vector3 localPosition,
+                        out int surfaceY))
+                    {
+                        continue;
+                    }
+                    float effectiveChance =
+                        EvaluateTreasureSpawnProbability(
+                            definition,
+                            surfaceY);
+                    if (spawnRoll > effectiveChance)
                     {
                         continue;
                     }
@@ -1553,11 +1611,201 @@ namespace Supernova.MinecraftCaves
             }
         }
 
+        private void TrySpawnNaturalMonsters(Vector3Int column)
+        {
+            if (monsterSpawnTable == null || !monsterSpawnedColumns.Add(column))
+            {
+                return;
+            }
+
+            int maximumActive = monsterSpawnTable.MaximumActiveMonsters;
+            if (maximumActive == 0 || CountLivingMonsters() >= maximumActive)
+            {
+                return;
+            }
+
+            IReadOnlyList<MonsterSpawnDefinition> definitions =
+                monsterSpawnTable.Monsters;
+            int spawnCellSize = monsterSpawnTable.SpawnCellSizeInChunks;
+            int spawnCellX = FloorDivide(column.x, spawnCellSize);
+            int spawnCellZ = FloorDivide(column.z, spawnCellSize);
+            for (int definitionIndex = 0;
+                definitionIndex < definitions.Count;
+                definitionIndex++)
+            {
+                if (CountLivingMonsters() >= maximumActive)
+                {
+                    return;
+                }
+
+                MonsterSpawnDefinition definition = definitions[definitionIndex];
+                if (definition == null || definition.Prefab == null) continue;
+
+                int seed = unchecked(worldSeed ^ (int)0xA511E9B3);
+                seed = unchecked(seed * 397) ^ spawnCellX;
+                seed = unchecked(seed * 397) ^ spawnCellZ;
+                seed = unchecked(seed * 397) ^ definitionIndex;
+                var random = new System.Random(seed);
+
+                int anchorOffsetX = random.Next(1, spawnCellSize - 1);
+                int anchorOffsetZ = random.Next(1, spawnCellSize - 1);
+                int anchorColumnX = spawnCellX * spawnCellSize + anchorOffsetX;
+                int anchorColumnZ = spawnCellZ * spawnCellSize + anchorOffsetZ;
+                if (column.x != anchorColumnX || column.z != anchorColumnZ)
+                {
+                    continue;
+                }
+
+                double spawnRoll = random.NextDouble();
+
+                int centerX = anchorColumnX * VoxelColumnChunkData.Width
+                    + random.Next(1, VoxelColumnChunkData.Width - 1);
+                int centerZ = anchorColumnZ * VoxelColumnChunkData.Depth
+                    + random.Next(1, VoxelColumnChunkData.Depth - 1);
+                int desiredGroupSize = random.Next(
+                    definition.MinimumGroupSize,
+                    definition.MaximumGroupSize + 1);
+                int availableSlots = maximumActive - CountLivingMonsters();
+                int groupSize = Mathf.Min(desiredGroupSize, availableSlots);
+                int groupSurfaceY = -1;
+                bool groupRejectedByDepth = false;
+                int verticalSearchRadius = Mathf.Max(
+                    1,
+                    Mathf.CeilToInt(definition.GroupRadiusInVoxels * 0.5f));
+
+                for (int memberIndex = 0;
+                    memberIndex < groupSize;
+                    memberIndex++)
+                {
+                    for (int attempt = 0;
+                        attempt < definition.AttemptsPerChunk;
+                        attempt++)
+                    {
+                        int x = centerX;
+                        int z = centerZ;
+                        if (memberIndex > 0 || attempt > 0)
+                        {
+                            double angle = random.NextDouble() * Math.PI * 2.0;
+                            double distance = Math.Sqrt(random.NextDouble())
+                                * definition.GroupRadiusInVoxels;
+                            x += Mathf.RoundToInt(
+                                (float)(Math.Cos(angle) * distance));
+                            z += Mathf.RoundToInt(
+                                (float)(Math.Sin(angle) * distance));
+                        }
+
+                        Vector3 candidateWorldPosition = transform.TransformPoint(
+                            new Vector3(x, spawnVoxel.y, z) * voxelSize);
+                        if (IsInsideMonsterSpawnExclusion(candidateWorldPosition))
+                        {
+                            continue;
+                        }
+
+                        int startY = random.Next(
+                            2,
+                            VoxelColumnChunkData.Height - 3);
+                        bool foundSurface = groupSurfaceY < 0
+                            ? TryFindFlatMonsterSurface(
+                                x,
+                                startY,
+                                z,
+                                definition,
+                                out Vector3 localPosition,
+                                out int surfaceY)
+                            : TryFindFlatMonsterSurfaceNearHeight(
+                                x,
+                                groupSurfaceY,
+                                z,
+                                verticalSearchRadius,
+                                definition,
+                                out localPosition,
+                                out surfaceY);
+                        if (!foundSurface)
+                        {
+                            continue;
+                        }
+
+                        if (groupSurfaceY < 0)
+                        {
+                            float effectiveChance =
+                                EvaluateMonsterSpawnProbability(
+                                    definition,
+                                    surfaceY);
+                            if (spawnRoll > effectiveChance)
+                            {
+                                groupRejectedByDepth = true;
+                                break;
+                            }
+                            groupSurfaceY = surfaceY;
+                        }
+                        SpawnMonster(
+                            definition,
+                            localPosition,
+                            (float)random.NextDouble() * 360f);
+                        break;
+                    }
+                    if (groupRejectedByDepth)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static int FloorDivide(int value, int divisor)
+        {
+            int quotient = value / divisor;
+            if (value % divisor < 0)
+            {
+                quotient--;
+            }
+
+            return quotient;
+        }
+
+        private float EvaluateTreasureSpawnProbability(
+            TreasureDefinition definition,
+            int surfaceY)
+        {
+            return treasureDepthProbability.EvaluateProbability(
+                definition != null ? definition.SpawnChance : 0f,
+                surfaceY,
+                VoxelColumnChunkData.Height);
+        }
+
+        private float EvaluateMonsterSpawnProbability(
+            MonsterSpawnDefinition definition,
+            int surfaceY)
+        {
+            return monsterDepthProbability.EvaluateProbability(
+                definition != null ? definition.SpawnChance : 0f,
+                surfaceY,
+                VoxelColumnChunkData.Height);
+        }
+
         private bool IsInsideTreasureSpawnExclusion(Vector3 worldPosition)
         {
+            if (treasureSpawnTable == null)
+            {
+                return true;
+            }
+
             Vector3 delta = worldPosition - targetSpawnWorldPosition;
             delta.y = 0f;
-            float radius = Mathf.Max(0f, treasureSpawnExclusionRadius);
+            float radius = treasureSpawnTable.SpawnExclusionRadius;
+            return delta.sqrMagnitude < radius * radius;
+        }
+
+        private bool IsInsideMonsterSpawnExclusion(Vector3 worldPosition)
+        {
+            if (monsterSpawnTable == null)
+            {
+                return true;
+            }
+
+            Vector3 delta = worldPosition - targetSpawnWorldPosition;
+            delta.y = 0f;
+            float radius = monsterSpawnTable.SpawnExclusionRadius;
             return delta.sqrMagnitude < radius * radius;
         }
 
@@ -1566,7 +1814,8 @@ namespace Supernova.MinecraftCaves
             int startY,
             int z,
             TreasureDefinition definition,
-            out Vector3 localPosition)
+            out Vector3 localPosition,
+            out int surfaceY)
         {
             for (int offset = 0; offset < VoxelColumnChunkData.Height; offset++)
             {
@@ -1591,11 +1840,123 @@ namespace Supernova.MinecraftCaves
                 if (!flat) continue;
 
                 localPosition = new Vector3(x, y + 0.6f, z) * voxelSize;
+                surfaceY = y;
                 return true;
             }
 
             localPosition = default;
+            surfaceY = -1;
             return false;
+        }
+
+        private bool TryFindFlatMonsterSurface(
+            int x,
+            int startY,
+            int z,
+            MonsterSpawnDefinition definition,
+            out Vector3 localPosition,
+            out int surfaceY)
+        {
+            for (int offset = 0; offset < VoxelColumnChunkData.Height; offset++)
+            {
+                int y = (startY + offset) % (VoxelColumnChunkData.Height - 2);
+                if (TryGetFlatMonsterSurfaceAtY(
+                    x,
+                    y,
+                    z,
+                    definition,
+                    out localPosition))
+                {
+                    surfaceY = y;
+                    return true;
+                }
+            }
+
+            localPosition = default;
+            surfaceY = -1;
+            return false;
+        }
+
+        private bool TryFindFlatMonsterSurfaceNearHeight(
+            int x,
+            int centerY,
+            int z,
+            int verticalRadius,
+            MonsterSpawnDefinition definition,
+            out Vector3 localPosition,
+            out int surfaceY)
+        {
+            for (int offset = 0; offset <= verticalRadius; offset++)
+            {
+                int lowerY = centerY - offset;
+                if (TryGetFlatMonsterSurfaceAtY(
+                    x,
+                    lowerY,
+                    z,
+                    definition,
+                    out localPosition))
+                {
+                    surfaceY = lowerY;
+                    return true;
+                }
+
+                int upperY = centerY + offset;
+                if (offset > 0 && TryGetFlatMonsterSurfaceAtY(
+                    x,
+                    upperY,
+                    z,
+                    definition,
+                    out localPosition))
+                {
+                    surfaceY = upperY;
+                    return true;
+                }
+            }
+
+            localPosition = default;
+            surfaceY = -1;
+            return false;
+        }
+
+        private bool TryGetFlatMonsterSurfaceAtY(
+            int x,
+            int y,
+            int z,
+            MonsterSpawnDefinition definition,
+            out Vector3 localPosition)
+        {
+            if (y < 1
+                || y >= VoxelColumnChunkData.Height - 1
+                || !IsSolid(x, y, z)
+                || IsSolid(x, y + 1, z))
+            {
+                localPosition = default;
+                return false;
+            }
+
+            bool flat = IsSolid(x - 1, y, z)
+                && IsSolid(x + 1, y, z)
+                && IsSolid(x, y, z - 1)
+                && IsSolid(x, y, z + 1)
+                && !IsSolid(x - 1, y + 1, z)
+                && !IsSolid(x + 1, y + 1, z)
+                && !IsSolid(x, y + 1, z - 1)
+                && !IsSolid(x, y + 1, z + 1);
+            int headroomSamples = Mathf.CeilToInt(
+                definition.RequiredHeadroom / voxelSize);
+            for (int h = 1; flat && h <= headroomSamples; h++)
+            {
+                flat = !IsSolid(x, y + h, z);
+            }
+            if (!flat)
+            {
+                localPosition = default;
+                return false;
+            }
+
+            localPosition = new Vector3(x, y + 1f, z) * voxelSize
+                + Vector3.up * definition.SpawnHeightOffset;
+            return true;
         }
 
         private bool IsSolid(int x, int y, int z)
@@ -1635,6 +1996,50 @@ namespace Supernova.MinecraftCaves
             if (pickup == null) pickup = treasureObject.AddComponent<TreasurePickup>();
             pickup.Configure(definition);
             activeTreasures.Add(pickup);
+        }
+
+        private void SpawnMonster(
+            MonsterSpawnDefinition definition,
+            Vector3 localPosition,
+            float yaw)
+        {
+            GameObject monsterObject = Instantiate(
+                definition.Prefab,
+                transform.TransformPoint(localPosition),
+                transform.rotation * Quaternion.Euler(0f, yaw, 0f));
+            monsterObject.name = "Natural Monster - " + definition.name;
+            CreatureBehaviorAgent agent =
+                monsterObject.GetComponent<CreatureBehaviorAgent>();
+            if (agent == null)
+            {
+                Debug.LogError(
+                    $"Monster prefab '{definition.Prefab.name}' has no "
+                    + $"{nameof(CreatureBehaviorAgent)} on its root.",
+                    definition.Prefab);
+                DestroyGeneratedObject(monsterObject);
+                return;
+            }
+
+            agent.BindWorldContext(this, viewer);
+            activeMonsters.Add(agent);
+        }
+
+        private int CountLivingMonsters()
+        {
+            int count = 0;
+            for (int i = activeMonsters.Count - 1; i >= 0; i--)
+            {
+                CreatureBehaviorAgent monster = activeMonsters[i];
+                if (monster == null)
+                {
+                    activeMonsters.RemoveAt(i);
+                }
+                else if (monster.IsAlive)
+                {
+                    count++;
+                }
+            }
+            return count;
         }
 
         private Material EnsureMaterial()
@@ -1837,6 +2242,7 @@ namespace Supernova.MinecraftCaves
                 initialLoadCompletedAtUnscaledTime = Time.unscaledTime;
                 RestoreGlobalGravityAfterInitialLoad();
                 SpawnAllPendingTreasures();
+                SpawnAllPendingMonsters();
                 Debug.Log(
                     $"Minecraft infinite cave rendering ready: {readyChunkCount} "
                     + $"chunk meshes evaluated, {chunkObjects.Count} non-empty meshes.",
@@ -1905,25 +2311,30 @@ namespace Supernova.MinecraftCaves
             int restoredBedrockSamples = 0;
             if (!structurePassApplied)
             {
-                PrepareSpawnPointSceneStructure();
-                writtenSamples = spawnPointStructureRule.Apply(world, spawnVoxel);
-                restoredBedrockSamples = RestoreBoundaryBedrock();
-                if (spawnPointSceneStructure != null)
+                bool isSuperflat =
+                    generationMode == MinecraftWorldGenerationMode.Superflat;
+                if (!isSuperflat)
                 {
-                    clearedSamples = spawnPointSceneStructure.CarveTerrainClearance(
-                        world,
-                        transform,
-                        voxelSize,
-                        isoLevel - 1f);
-                    supportedGroundSamples =
-                        spawnPointSceneStructure.StabilizeLandingGround(
+                    PrepareSpawnPointSceneStructure();
+                    writtenSamples = spawnPointStructureRule.Apply(world, spawnVoxel);
+                    restoredBedrockSamples = RestoreBoundaryBedrock();
+                    if (spawnPointSceneStructure != null)
+                    {
+                        clearedSamples = spawnPointSceneStructure.CarveTerrainClearance(
                             world,
                             transform,
                             voxelSize,
-                            isoLevel + 1f,
-                            baseSolidType,
-                            isoLevel - 1f,
-                            out clearedGroundHeadroomSamples);
+                            isoLevel - 1f);
+                        supportedGroundSamples =
+                            spawnPointSceneStructure.StabilizeLandingGround(
+                                world,
+                                transform,
+                                voxelSize,
+                                isoLevel + 1f,
+                                baseSolidType,
+                                isoLevel - 1f,
+                                out clearedGroundHeadroomSamples);
+                    }
                 }
                 structurePassApplied = true;
             }
@@ -2066,7 +2477,8 @@ namespace Supernova.MinecraftCaves
 
         private void PlaceSpawnPointSceneStructure()
         {
-            if (spawnPointSceneStructure == null)
+            if (generationMode == MinecraftWorldGenerationMode.Superflat
+                || spawnPointSceneStructure == null)
             {
                 return;
             }
@@ -2337,8 +2749,20 @@ namespace Supernova.MinecraftCaves
             VoxelTypeId solidType,
             VoxelTypeId boundaryType,
             MinecraftOreFeatureSettings[] features,
+            DepthProbabilityProfile oreDepthProbability,
+            MinecraftWorldGenerationMode mode,
+            int superflatHeight,
             CancellationToken token)
         {
+            if (mode == MinecraftWorldGenerationMode.Superflat)
+            {
+                return GenerateSuperflatChunkData(
+                    coordinate,
+                    solidType,
+                    superflatHeight,
+                    token);
+            }
+
             float[] densities = MinecraftCaveDensityInterpolator.SampleColumn(
                 coordinate,
                 field,
@@ -2364,7 +2788,39 @@ namespace Supernova.MinecraftCaves
                         : field.SampleFeatureDensity(
                             new Vector3(x, y, z),
                             MinecraftCaveType.Combined),
-                token);
+                token,
+                oreDepthProbability);
+            return new ChunkGenerationResult(coordinate, densities, types);
+        }
+
+        private static ChunkGenerationResult GenerateSuperflatChunkData(
+            Vector3Int coordinate,
+            VoxelTypeId solidType,
+            int height,
+            CancellationToken token)
+        {
+            var densities = new float[VoxelColumnChunkData.VoxelCount];
+            var types = new VoxelTypeId[VoxelColumnChunkData.VoxelCount];
+            int clampedHeight = Mathf.Clamp(
+                height,
+                1,
+                VoxelColumnChunkData.Height - 1);
+            for (int y = 0; y < VoxelColumnChunkData.Height; y++)
+            {
+                token.ThrowIfCancellationRequested();
+                bool isStone = y < clampedHeight;
+                float density = isStone ? 1f : -1f;
+                VoxelTypeId type = isStone ? solidType : VoxelTypeId.Air;
+                for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
+                {
+                    for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                    {
+                        int index = VoxelColumnChunkData.ToIndex(x, y, z);
+                        densities[index] = density;
+                        types[index] = type;
+                    }
+                }
+            }
             return new ChunkGenerationResult(coordinate, densities, types);
         }
 
@@ -2457,6 +2913,8 @@ namespace Supernova.MinecraftCaves
         private void OnGUI()
         {
             if (!Application.isPlaying
+                || !showRuntimeDiagnostics
+                || GameHudController.IsPauseMenuOpen
                 || !initialLoadComplete
                 || Time.unscaledTime - initialLoadCompletedAtUnscaledTime
                     < InitialLoadPresentationFadeSeconds)
@@ -2553,6 +3011,14 @@ namespace Supernova.MinecraftCaves
             activeTreasures.Clear();
             treasureSpawnedColumns.Clear();
             pendingTreasureColumns.Clear();
+            for (int i = activeMonsters.Count - 1; i >= 0; i--)
+            {
+                CreatureBehaviorAgent monster = activeMonsters[i];
+                if (monster != null) DestroyGeneratedObject(monster.gameObject);
+            }
+            activeMonsters.Clear();
+            monsterSpawnedColumns.Clear();
+            pendingMonsterColumns.Clear();
             foreach (List<SuspendedBodyState> suspended
                 in suspendedBodiesByColumn.Values)
             {

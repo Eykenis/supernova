@@ -1,6 +1,8 @@
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.MinecraftCaves;
+using Supernova.Missions;
+using UnityEditor;
 using UnityEngine;
 
 namespace Supernova.Tests
@@ -21,8 +23,12 @@ namespace Supernova.Tests
             worldObject = new GameObject("World");
             MinecraftCaveInfiniteWorld world =
                 worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            LevelConfiguration level =
+                AssetDatabase.LoadAssetAtPath<LevelConfiguration>(
+                    ProjectAssetPaths.Config.FirstLevel);
+            Assert.That(level, Is.Not.Null);
+            Assert.That(world.ApplyLevelConfiguration(level), Is.True);
             SetField(world, "targetSpawnWorldPosition", new Vector3(10f, 4f, 10f));
-            SetField(world, "treasureSpawnExclusionRadius", 12f);
 
             Assert.That(IsExcluded(world, new Vector3(15f, 100f, 10f)), Is.True);
             Assert.That(IsExcluded(world, new Vector3(30f, 4f, 10f)), Is.False);

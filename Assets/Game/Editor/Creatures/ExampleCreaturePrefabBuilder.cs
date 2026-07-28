@@ -9,7 +9,7 @@ namespace Supernova.MinecraftCaves.Editor.Creatures
     public static class ExampleCreaturePrefabBuilder
     {
         private const float VoxelSize = 0.42f;
-        private const string AssetFolder = "Assets/Game/CreatureAssets";
+        private const string AssetFolder = ProjectAssetPaths.Folders.ExampleCreatureAssets;
         private const string PrefabPath = AssetFolder + "/ExampleCaveCreature.prefab";
         private const string ShapePath = AssetFolder + "/ExampleCaveCreatureVoxelShape.asset";
         private const string BodyMaterialPath = AssetFolder + "/ExampleCreatureBody.mat";
@@ -198,7 +198,7 @@ namespace Supernova.MinecraftCaves.Editor.Creatures
                 new Vector3(0.16f, 0.035f, 0.03f), dark, false);
         }
 
-        private static void CreateCube(
+private static void CreateCube(
             Transform parent,
             string name,
             Vector3 localPosition,
@@ -206,20 +206,17 @@ namespace Supernova.MinecraftCaves.Editor.Creatures
             Material material,
             bool castShadows = true)
         {
-            var cube = new GameObject(name);
+            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = name;
             cube.transform.SetParent(parent, false);
             cube.transform.localPosition = localPosition;
             cube.transform.localScale = localScale;
 
-            Mesh cubeMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
-            if (cubeMesh == null)
-            {
-                throw new InvalidOperationException("Unity built-in Cube mesh is unavailable.");
-            }
+            Collider collider = cube.GetComponent<Collider>();
+            if (collider != null)
+                UnityEngine.Object.DestroyImmediate(collider);
 
-            MeshFilter filter = cube.AddComponent<MeshFilter>();
-            filter.sharedMesh = cubeMesh;
-            MeshRenderer renderer = cube.AddComponent<MeshRenderer>();
+            MeshRenderer renderer = cube.GetComponent<MeshRenderer>();
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = castShadows
                 ? ShadowCastingMode.On
@@ -268,12 +265,23 @@ namespace Supernova.MinecraftCaves.Editor.Creatures
             return material;
         }
 
-        private static void EnsureAssetFolder()
+private static void EnsureAssetFolder()
         {
-            if (!AssetDatabase.IsValidFolder(AssetFolder))
-            {
-                AssetDatabase.CreateFolder("Assets/Game", "CreatureAssets");
-            }
+            EnsureFolder(AssetFolder);
         }
+
+private static void EnsureFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path))
+                return;
+
+            string parent = System.IO.Path.GetDirectoryName(path)?.Replace('\\', '/');
+            string name = System.IO.Path.GetFileName(path);
+            if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(name))
+                throw new UnityException("Invalid asset folder: " + path);
+            EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, name);
+        }
+
     }
 }

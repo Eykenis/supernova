@@ -12,12 +12,15 @@ namespace Supernova.MinecraftCaves.Editor
     public static class MinecraftCaveDemoSceneBuilder
     {
         public const string ScenePath =
-            "Assets/Game/Scenes/MinecraftCaveGallery.scene";
+            ProjectAssetPaths.Scenes.CaveGallery;
 
         [MenuItem("Tools/Minecraft Caves/Rebuild Demo Scene")]
         public static void RebuildDemoScene()
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(ScenePath) ?? string.Empty);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(
+                    ProjectAssetPaths.ToAbsoluteFileSystemPath(ScenePath))
+                ?? string.Empty);
             NewSceneMode mode = HasDirtyLoadedScene()
                 ? NewSceneMode.Additive
                 : NewSceneMode.Single;

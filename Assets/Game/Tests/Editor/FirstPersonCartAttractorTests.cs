@@ -21,7 +21,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void BeginAttraction_AcquiresOnlyCartHandleUnderCrosshair()
+        public void BeginHandleTow_AcquiresOnlyCartHandleWithinShortRange()
         {
             GameObject player = Create("Player");
             Camera camera = Create("View Camera").AddComponent<Camera>();
@@ -38,18 +38,70 @@ namespace Supernova.Tests
                 player.AddComponent<FirstPersonCartAttractor>();
             Rigidbody nearbyBody = CreateBody(
                 "Nearby Body",
-                new Vector3(0.3f, 0f, 1.5f));
+                new Vector3(0.3f, 0f, 1.25f));
             Rigidbody focusedBody = CreateBody(
                 "Focused Body",
-                new Vector3(0f, 0f, 2.5f));
+                new Vector3(0f, 0f, 1.5f));
             focusedBody.gameObject.AddComponent<CartHandle>().Configure(focusedBody);
             focusedBody.mass = 1000f;
             Physics.SyncTransforms();
 
+            Assert.That(attractor.CartHandleAcquisitionDistance, Is.EqualTo(2f));
             Assert.That(attractor.BeginHandleTow(), Is.True);
             Assert.That(attractor.HeldBody, Is.SameAs(focusedBody));
             Assert.That(attractor.HeldBody, Is.Not.SameAs(nearbyBody));
         }
+
+        [Test]
+        public void BeginHandleTow_RejectsCartHandleBeyondShortRange()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody cart = CreateBody("Distant Cart", new Vector3(0f, 0f, 2.5f));
+            cart.gameObject.AddComponent<CartHandle>().Configure(cart);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginHandleTow(), Is.False);
+            Assert.That(attractor.HeldBody, Is.Null);
+        }
+
+        [Test]
+        public void CartTowTarget_PreservesCapturedWorldOffsetWhenPlayerTurns()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody cart = CreateBody("Cart", new Vector3(0f, 0f, 1.5f));
+            cart.gameObject.AddComponent<CartHandle>().Configure(cart);
+            Physics.SyncTransforms();
+
+            Vector3 originalTarget = cart.position;
+            Assert.That(attractor.BeginHandleTow(), Is.True);
+            Vector3 translation = new Vector3(3f, 1f, -2f);
+            player.transform.position += translation;
+            player.transform.rotation = Quaternion.Euler(0f, 135f, 0f);
+
+            Vector3 desired = InvokePrivate<Vector3>(
+                attractor,
+                "CalculateDesiredHoldPosition");
+
+            Assert.That(desired, Is.EqualTo(originalTarget + translation));
+        }
+
+
 
         [Test]
         public void AttractionForce_IsCappedToConfiguredNewtonStrength()

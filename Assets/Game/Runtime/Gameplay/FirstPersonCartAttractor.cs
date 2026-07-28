@@ -3,8 +3,9 @@ using UnityEngine;
 namespace Supernova.Gameplay
 {
     /// <summary>
-    /// Toggles cart towing when the player clicks a CartHandle. The handle, rather
-    /// than the cart centre, is pulled to a socket beside the player.
+    /// Toggles cart towing when the player clicks a CartHandle. Cart towing is
+    /// available independently of the selected tool and preserves the cart's
+    /// world-space offset and orientation relative to the moving player.
     /// </summary>
     [DefaultExecutionOrder(-300)]
     [DisallowMultipleComponent]
@@ -17,11 +18,11 @@ namespace Supernova.Gameplay
         [SerializeField] private Transform playerRoot;
 
         [Header("Acquisition")]
+        [SerializeField, Min(0.1f)] private float cartHandleAcquisitionDistance = 2f;
         [SerializeField, Min(0.1f)] private float acquisitionDistance = 3.5f;
         [SerializeField] private LayerMask targetLayers = ~0;
 
         [Header("Physical hold")]
-        [SerializeField] private Vector3 playerSocketOffset = new Vector3(0.85f, 0.75f, 0.35f);
         [SerializeField, Min(0.2f)] private float minimumHoldDistance = 0.5f;
         [SerializeField, Min(0.2f)] private float holdDistance = 2f;
         [SerializeField, Min(0.2f)] private float maximumHoldDistance = 6f;
@@ -34,8 +35,6 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0f)] private float positionSpring = 300f;
         [Tooltip("Velocity damping in newtons per metre/second. Total force remains capped.")]
         [SerializeField, Min(0f)] private float forceDamping = 90f;
-        [SerializeField, Min(0f)] private float yawTorque = 120f;
-        [SerializeField, Min(0f)] private float yawDamping = 20f;
         [Header("Magnet orientation")]
         [SerializeField, Min(0f)] private float orientationSpring = 55f;
         [SerializeField, Min(0f)] private float orientationDamping = 14f;
@@ -46,10 +45,12 @@ namespace Supernova.Gameplay
         private readonly RaycastHit[] acquisitionHits = new RaycastHit[32];
         private Rigidbody heldBody;
         private CartHandle heldHandle;
+        private ValuableObject heldValuableObject;
         private CharacterController playerController;
         private bool actionActive;
         private Quaternion heldTargetRotation;
         private bool hasHeldTargetRotation;
+        private Vector3 cartTowWorldOffset;
 
         public bool DeviceEnabled => deviceEnabled;
         public bool IsHolding => heldBody != null;
@@ -58,9 +59,11 @@ namespace Supernova.Gameplay
             && !IsTowingCart
             && Input.GetMouseButton(2);
         public Rigidbody HeldBody => heldBody;
+        public ValuableObject HeldValuableObject => heldValuableObject;
         public bool IsActionActive => actionActive;
         public float HoldDistance => holdDistance;
         public float AttractionForce => attractionForce;
+        public float CartHandleAcquisitionDistance => cartHandleAcquisitionDistance;
         public bool CanOperate => deviceEnabled && CanOperateInFirstPerson;
         public bool ConsumesPrimaryAction => isActiveAndEnabled
             && CanOperate;
@@ -174,12 +177,7 @@ namespace Supernova.Gameplay
                 return;
             }
 
-            Vector3 forward = GetPlanarForward();
-            Vector3 desiredPosition = IsTowingCart
-                ? playerRoot.TransformPoint(playerSocketOffset)
-                : viewCamera.transform.position
-                    + viewCamera.transform.forward.normalized
-                    * Mathf.Max(0.2f, holdDistance);
+            Vector3 desiredPosition = CalculateDesiredHoldPosition();
             Vector3 handlePosition = heldHandle != null
                 ? heldHandle.AttachmentPoint.position
                 : heldBody.worldCenterOfMass;
@@ -206,22 +204,7 @@ namespace Supernova.Gameplay
             }
             heldBody.AddForceAtPosition(force, handlePosition, ForceMode.Force);
 
-            if (IsTowingCart)
-            {
-                float yawError = Vector3.SignedAngle(
-                    heldBody.transform.forward,
-                    forward,
-                    Vector3.up) * Mathf.Deg2Rad;
-                float yawVelocity = Vector3.Dot(heldBody.angularVelocity, Vector3.up);
-                float torque = yawError * Mathf.Max(0f, yawTorque)
-                    - yawVelocity * Mathf.Max(0f, yawDamping);
-                torque = Mathf.Clamp(
-                    torque,
-                    -Mathf.Max(0f, yawTorque),
-                    Mathf.Max(0f, yawTorque));
-                heldBody.AddTorque(Vector3.up * torque, ForceMode.Force);
-            }
-            else if (hasHeldTargetRotation)
+            if (hasHeldTargetRotation)
             {
                 heldBody.AddTorque(
                     CalculateOrientationTorque(
@@ -299,6 +282,8 @@ namespace Supernova.Gameplay
         public void Release()
         {
             heldBody = null;
+            heldValuableObject = null;
+            cartTowWorldOffset = Vector3.zero;
         }
 
         private bool TryAcquireTarget(bool requireCartHandle)
@@ -306,11 +291,14 @@ namespace Supernova.Gameplay
             if (viewCamera == null) return false;
 
             Transform cameraTransform = viewCamera.transform;
+            float maximumDistance = requireCartHandle
+                ? cartHandleAcquisitionDistance
+                : acquisitionDistance;
             int count = Physics.RaycastNonAlloc(
                 cameraTransform.position,
                 cameraTransform.forward,
                 acquisitionHits,
-                Mathf.Max(0.1f, acquisitionDistance),
+                Mathf.Max(0.1f, maximumDistance),
                 targetLayers,
                 QueryTriggerInteraction.Ignore);
 
@@ -340,8 +328,19 @@ namespace Supernova.Gameplay
 
             heldHandle = requireCartHandle ? handle : null;
             heldBody = body;
+            heldValuableObject = body.GetComponent<ValuableObject>();
+            if (heldValuableObject == null)
+            {
+                heldValuableObject =
+                    body.GetComponentInChildren<ValuableObject>(true);
+            }
             heldTargetRotation = body.rotation;
-            hasHeldTargetRotation = !requireCartHandle;
+            hasHeldTargetRotation = true;
+            if (requireCartHandle)
+            {
+                cartTowWorldOffset =
+                    handle.AttachmentPoint.position - playerRoot.position;
+            }
             heldBody.WakeUp();
             return true;
         }
@@ -351,15 +350,6 @@ namespace Supernova.Gameplay
             && viewCamera != null
             && playerRoot != null;
 
-        private Vector3 GetPlanarForward()
-        {
-            Vector3 forward = viewCamera != null
-                ? Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up)
-                : Vector3.zero;
-            if (forward.sqrMagnitude < 0.0001f && playerRoot != null)
-                forward = Vector3.ProjectOnPlane(playerRoot.forward, Vector3.up);
-            return forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
-        }
 
         private bool IsOwnedByPlayer(Transform candidate)
         {
@@ -387,6 +377,8 @@ namespace Supernova.Gameplay
 
         private void OnValidate()
         {
+            cartHandleAcquisitionDistance =
+                Mathf.Max(0.1f, cartHandleAcquisitionDistance);
             minimumHoldDistance = Mathf.Max(0.2f, minimumHoldDistance);
             maximumHoldDistance = Mathf.Max(minimumHoldDistance, maximumHoldDistance);
             holdDistance = Mathf.Clamp(holdDistance, minimumHoldDistance, maximumHoldDistance);
@@ -396,14 +388,24 @@ namespace Supernova.Gameplay
                 Mathf.Max(0f, maximumAttractionAcceleration);
             positionSpring = Mathf.Max(0f, positionSpring);
             forceDamping = Mathf.Max(0f, forceDamping);
-            yawTorque = Mathf.Max(0f, yawTorque);
-            yawDamping = Mathf.Max(0f, yawDamping);
             orientationSpring = Mathf.Max(0f, orientationSpring);
             orientationDamping = Mathf.Max(0f, orientationDamping);
             maximumOrientationTorque = Mathf.Max(0f, maximumOrientationTorque);
             rotationDegreesPerMouseUnit =
                 Mathf.Max(0f, rotationDegreesPerMouseUnit);
             breakDistance = Mathf.Max(0.5f, breakDistance);
+        }
+
+        private Vector3 CalculateDesiredHoldPosition()
+        {
+            if (IsTowingCart)
+            {
+                return playerRoot.position + cartTowWorldOffset;
+            }
+
+            return viewCamera.transform.position
+                + viewCamera.transform.forward.normalized
+                * Mathf.Max(0.2f, holdDistance);
         }
     }
 }

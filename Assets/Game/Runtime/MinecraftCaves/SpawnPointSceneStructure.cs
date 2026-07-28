@@ -12,6 +12,14 @@ namespace Supernova.MinecraftCaves
     public sealed class SpawnPointSceneStructure : MonoBehaviour
     {
         [SerializeField] private Transform playerSpawnPoint;
+        [Header("Mission Cart")]
+        [Tooltip(
+            "Local pose used to place the scene cart after this structure has "
+            + "been aligned with the generated cave.")]
+        [SerializeField] private Vector3 cartSpawnLocalPosition =
+            new Vector3(-2.2f, 0.55f, -1.5f);
+        [SerializeField] private Vector3 cartSpawnLocalEulerAngles =
+            Vector3.zero;
         [SerializeField, Min(0f)] private float terrainClearancePadding = 0.75f;
         [SerializeField, Min(1f)] private float exitPassageLength = 12f;
         [SerializeField, Min(1f)] private float exitPassageWidth = 6f;
@@ -41,6 +49,15 @@ namespace Supernova.MinecraftCaves
         public Transform PlayerSpawnPoint => ResolvePlayerSpawnPoint();
         public bool HasExitTarget => hasExitTarget;
         public Vector3 ExitTargetWorldPosition => exitTargetWorldPosition;
+
+        public void GetMissionCartSpawnPose(
+            out Vector3 worldPosition,
+            out Quaternion worldRotation)
+        {
+            worldPosition = transform.TransformPoint(cartSpawnLocalPosition);
+            worldRotation = transform.rotation
+                * Quaternion.Euler(cartSpawnLocalEulerAngles);
+        }
 
         public void Configure(Transform spawnPoint)
         {

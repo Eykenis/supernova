@@ -79,7 +79,7 @@ Assets/Scenes/InfiniteCaves.scene
 
 ### 玩家与工具
 
-玩家支持第一/第二/第三人称视角、CharacterController 移动、跳跃、蹲伏、近战、挖矿、磁力工具和炸弹。`PlayerToolController` 管理工具栏选择，HUD 展示生命值和当前工具。
+玩家支持第一/第二/第三人称视角、CharacterController 移动、跳跃、蹲伏、近战、挖矿、磁力工具、矿车把手牵引和炸弹。矿车把手可在任意工具状态下通过近距离左键交互，牵引时保持开始时的世界方向和相对位移，不跟随准星。`PlayerToolController` 管理工具栏选择，HUD 展示生命值和当前工具。
 
 ### 生物
 

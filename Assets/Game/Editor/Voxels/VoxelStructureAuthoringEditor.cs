@@ -246,9 +246,9 @@ namespace Supernova.Voxels.Editor
     public static class VoxelStructureWorkflowBuilder
     {
         private const string CatalogPath =
-            "Assets/Game/Config/MinecraftVoxelTypes.asset";
+            ProjectAssetPaths.Config.VoxelCatalog;
         private const string VoxelTypeFolder =
-            "Assets/Game/Config/VoxelTypes";
+            ProjectAssetPaths.Folders.VoxelTypes;
         private const string DefaultVoxelTypePath =
             VoxelTypeFolder + "/Default.asset";
         private const string StoneVoxelTypePath =
@@ -256,23 +256,26 @@ namespace Supernova.Voxels.Editor
         private const string OreVoxelTypePath =
             VoxelTypeFolder + "/Ore.asset";
         private const string OreFeatureFolder =
-            "Assets/Game/Config/OreFeatures";
+            ProjectAssetPaths.Folders.OreFeatures;
         private const string OreFeaturePath =
             OreFeatureFolder + "/Ore.asset";
         private const string StructurePath =
-            "Assets/Game/Structures/SpawnShelter.asset";
+            ProjectAssetPaths.Structures.SpawnShelter;
+        private const string WorldGenerationPath =
+            ProjectAssetPaths.Config.WorldGeneration;
         private const string AuthoringScenePath =
-            "Assets/Game/Scenes/VoxelStructureEditor.scene";
+            ProjectAssetPaths.Scenes.VoxelStructureEditor;
         private const string InfiniteScenePath =
-            "Assets/Scenes/InfiniteCaves.scene";
+            ProjectAssetPaths.Scenes.InfiniteCaves;
 
         [MenuItem("Tools/Supernova/Voxels/Build Fixed Structure Workflow")]
         public static void Build()
         {
-            EnsureFolder("Assets/Game", "Config");
-            EnsureFolder("Assets/Game/Config", "VoxelTypes");
-            EnsureFolder("Assets/Game/Config", "OreFeatures");
-            EnsureFolder("Assets/Game", "Structures");
+            EnsureFolder(ProjectAssetPaths.Folders.Game, "Config");
+            EnsureFolder(ProjectAssetPaths.Folders.Config, "VoxelTypes");
+            EnsureFolder(ProjectAssetPaths.Folders.Config, "OreFeatures");
+            EnsureFolder(ProjectAssetPaths.Folders.Config, "Worlds");
+            EnsureFolder(ProjectAssetPaths.Folders.Game, "Structures");
 
             VoxelTypeDefinition[] definitions =
             {
@@ -497,22 +500,40 @@ namespace Supernova.Voxels.Editor
 
             var serializedWorld = new SerializedObject(world);
             serializedWorld.FindProperty("viewer").objectReferenceValue = player.transform;
-            serializedWorld.FindProperty("placeViewerInCave").boolValue = true;
-            serializedWorld.FindProperty("voxelTypeCatalog").objectReferenceValue = catalog;
-            serializedWorld.FindProperty("baseSolidVoxelType").objectReferenceValue =
-                catalog.Find(new VoxelTypeId(2));
-            SerializedProperty oreFeatures =
-                serializedWorld.FindProperty("oreFeatures");
-            oreFeatures.arraySize = 1;
-            oreFeatures.GetArrayElementAtIndex(0).objectReferenceValue = oreFeature;
-            SerializedProperty rule =
-                serializedWorld.FindProperty("spawnPointStructureRule");
-            rule.FindPropertyRelative("enabled").boolValue = true;
-            rule.FindPropertyRelative("structure").objectReferenceValue = structure;
-            rule.FindPropertyRelative("offset").vector3IntValue = Vector3Int.zero;
             serializedWorld.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(world);
             EditorSceneManager.SaveScene(scene);
+
+            MinecraftCaves.MinecraftWorldGenerationConfiguration configuration =
+                AssetDatabase.LoadAssetAtPath<
+                    MinecraftCaves.MinecraftWorldGenerationConfiguration>(
+                    WorldGenerationPath);
+            if (configuration == null)
+            {
+                configuration = ScriptableObject.CreateInstance<
+                    MinecraftCaves.MinecraftWorldGenerationConfiguration>();
+                AssetDatabase.CreateAsset(configuration, WorldGenerationPath);
+            }
+
+            var serializedConfiguration = new SerializedObject(configuration);
+            serializedConfiguration.FindProperty("placeViewerInCave")
+                .boolValue = true;
+            serializedConfiguration.FindProperty("voxelTypeCatalog")
+                .objectReferenceValue = catalog;
+            serializedConfiguration.FindProperty("baseSolidVoxelType")
+                .objectReferenceValue =
+                catalog.Find(new VoxelTypeId(2));
+            SerializedProperty oreFeatures =
+                serializedConfiguration.FindProperty("oreFeatures");
+            oreFeatures.arraySize = 1;
+            oreFeatures.GetArrayElementAtIndex(0).objectReferenceValue = oreFeature;
+            SerializedProperty rule =
+                serializedConfiguration.FindProperty("spawnPointStructureRule");
+            rule.FindPropertyRelative("enabled").boolValue = true;
+            rule.FindPropertyRelative("structure").objectReferenceValue = structure;
+            rule.FindPropertyRelative("offset").vector3IntValue = Vector3Int.zero;
+            serializedConfiguration.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(configuration);
         }
 
         private static void EnsureFolder(string parent, string name)

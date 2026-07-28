@@ -8,14 +8,14 @@ namespace Supernova.EditorTools
     public static class JetpackEquipmentPrefabBuilder
     {
         private const string SourcePrefabPath =
-            "Assets/3rd/P05_Aki & Mika/Model_DATA/Prefab/Physics_MagicaCloth2/"
+            ProjectAssetPaths.ThirdParty.PhysicsP05Folder + "/"
             + "P05_ASTRO_PlusBP_Mika Variant.prefab";
         private const string VfxPrefabPath =
-            "Assets/3rd/P05_Aki & Mika/Model_DATA/Prefab/VFX/BackPuck_VFX.prefab";
+            ProjectAssetPaths.ThirdParty.BackPuckVfx;
         private const string OutputPrefabPath =
-            "Assets/Game/Prefabs/Equipment/Jetpack.prefab";
+            ProjectAssetPaths.Prefabs.Jetpack;
         private const string DefinitionPath =
-            "Assets/Game/Config/Equipment/Jetpack.asset";
+            ProjectAssetPaths.Config.Jetpack;
 
         [InitializeOnLoadMethod]
         private static void BuildMissingUpgradedPrefab()
@@ -26,7 +26,7 @@ namespace Supernova.EditorTools
                     AssetDatabase.LoadAssetAtPath<GameObject>(OutputPrefabPath);
                 if (output == null
                     || output.GetComponent<PlayerEquipmentVisual>() == null
-                    || output.transform.Find("BackPack_Main") == null)
+                    || output.transform.Find(ProjectAssetPaths.LookupNames.JetpackMain) == null)
                 {
                     Build();
                 }
@@ -48,9 +48,9 @@ namespace Supernova.EditorTools
             {
                 List<PlayerEquipmentVisual.SkinnedRendererBinding> bindings =
                     new List<PlayerEquipmentVisual.SkinnedRendererBinding>();
-                CopyBackpackRenderer(source, outputRoot, "P05_BackPack", bindings);
+                CopyBackpackRenderer(source, outputRoot, ProjectAssetPaths.LookupNames.JetpackMount, bindings);
                 Transform sourceBoneRoot =
-                    FindDescendant(source.transform, "BackPack_Main");
+                    FindDescendant(source.transform, ProjectAssetPaths.LookupNames.JetpackMain);
                 if (sourceBoneRoot == null)
                     throw new UnityException("Could not find backpack bone root 'BackPack_Main'.");
                 Transform equipmentBoneRoot =
@@ -132,10 +132,10 @@ namespace Supernova.EditorTools
                 throw new UnityException($"Jetpack VFX prefab is missing: {VfxPrefabPath}");
 
             GameObject vfx = (GameObject)PrefabUtility.InstantiatePrefab(vfxPrefab);
-            vfx.name = "BackPuck_VFX";
+            vfx.name = ProjectAssetPaths.LookupNames.JetpackVfx;
             vfx.transform.SetParent(outputRoot.transform, false);
 
-            Transform sourceVfx = FindDescendant(sourceRoot.transform, "BackPuck_VFX");
+            Transform sourceVfx = FindDescendant(sourceRoot.transform, ProjectAssetPaths.LookupNames.JetpackVfx);
             if (sourceVfx != null)
                 CopyTransformRelativeToRoot(
                     sourceRoot.transform,

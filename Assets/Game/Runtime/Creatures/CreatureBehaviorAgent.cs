@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Supernova.Gameplay;
+using Supernova.Voxels;
 using UnityEngine;
 
 namespace Supernova.MinecraftCaves.Creatures
@@ -22,6 +23,7 @@ namespace Supernova.MinecraftCaves.Creatures
         public const float DefaultSimulationDistance = 160f;
         public const float DefaultPursuitDistance = 32f;
         public const float DefaultWanderRadius = 32f;
+        public const float DeadDespawnDelay = 5f;
 
         [Header("References")]
         [SerializeField] private MinecraftCaveInfiniteWorld caveWorld;
@@ -78,6 +80,7 @@ namespace Supernova.MinecraftCaves.Creatures
         private float stateSeconds;
         private float nextAttackTime;
         private bool attackApplied;
+        private bool deathCleanupScheduled;
 
         public CreatureBehaviorState CurrentState => currentState;
         public IReadOnlyList<Vector3Int> CurrentPath => path;
@@ -90,6 +93,23 @@ namespace Supernova.MinecraftCaves.Creatures
         public float CurrentHealth => vitals != null ? vitals.CurrentHealth : 0f;
         public float MaximumHealth => vitals != null ? vitals.MaximumHealth : maximumHealth;
         public bool IsAlive => vitals != null && vitals.IsAlive;
+        public MinecraftCaveInfiniteWorld CaveWorld => caveWorld;
+        public Transform PlayerFoot => playerFoot;
+
+        public void BindWorldContext(
+            MinecraftCaveInfiniteWorld world,
+            Transform targetPlayerFoot)
+        {
+            caveWorld = world;
+            playerFoot = targetPlayerFoot;
+            query = null;
+            configurationErrorLogged = false;
+            ResolveReferences();
+            if (caveWorld != null)
+            {
+                SynchronizeLogicalPosition();
+            }
+        }
 
         private void Awake()
         {
@@ -301,11 +321,62 @@ namespace Supernova.MinecraftCaves.Creatures
         private void EnterDead()
         {
             ClearNavigation();
+            if (deathCleanupScheduled)
+            {
+                return;
+            }
+
+            deathCleanupScheduled = true;
+            RemoveDeadBodyPhysics();
+            if (Application.isPlaying)
+            {
+                Destroy(gameObject, DeadDespawnDelay);
+            }
         }
 
         private void TickDead(float deltaTime)
         {
             motor?.Stop();
+        }
+
+        private void RemoveDeadBodyPhysics()
+        {
+            Collider[] colliders = GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider deadCollider = colliders[i];
+                deadCollider.enabled = false;
+                DestroyPhysicsComponent(deadCollider);
+            }
+
+            Rigidbody[] bodies = GetComponentsInChildren<Rigidbody>(true);
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                Rigidbody deadBody = bodies[i];
+                deadBody.detectCollisions = false;
+                deadBody.useGravity = false;
+                deadBody.velocity = Vector3.zero;
+                deadBody.angularVelocity = Vector3.zero;
+                deadBody.isKinematic = true;
+                DestroyPhysicsComponent(deadBody);
+            }
+
+            if (motor != null)
+            {
+                motor.enabled = false;
+            }
+        }
+
+        private static void DestroyPhysicsComponent(Component component)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(component);
+            }
+            else
+            {
+                DestroyImmediate(component);
+            }
         }
 
         private void UpdateWander()
@@ -485,6 +556,22 @@ namespace Supernova.MinecraftCaves.Creatures
 
         private void ResolveReferences()
         {
+            if (caveWorld == null)
+            {
+                caveWorld = FindObjectOfType<MinecraftCaveInfiniteWorld>();
+                query = null;
+            }
+
+            if (playerFoot == null)
+            {
+                VoxelPlayerController player =
+                    FindObjectOfType<VoxelPlayerController>();
+                if (player != null)
+                {
+                    playerFoot = player.transform;
+                }
+            }
+
             if (motor == null)
             {
                 motor = GetComponent<CreaturePhysicsMotor>();

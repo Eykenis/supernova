@@ -224,7 +224,7 @@ namespace Supernova.Voxels
             return mined;
         }
 
-        private void ApplyPendingMineIfReady()
+        internal void ApplyPendingMineIfReady()
         {
             if (!hasPendingMine || Time.time < pendingMineTime) return;
             hasPendingMine = false;

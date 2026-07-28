@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Supernova.Gameplay;
+using Supernova.Infrastructure;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -14,12 +15,6 @@ namespace Supernova.UI
     [DisallowMultipleComponent]
     public sealed class PauseMenuPresentation : MonoBehaviour
     {
-        private const string PortraitPrefabResource = "Pause/PausePortrait";
-        private const string PortraitControllerResource = "Pause/PausePortrait";
-        private const string PortraitSettingsResource = "Pause/PausePortraitSettings";
-        private const string BodyMaterialResource = "Pause/PauseSilhouetteBody";
-        private const string BackgroundMaterialResource = "Pause/PauseSilhouetteBackground";
-        private const string PoseStateName = "Base Layer.PausePose";
         private const float IntroDuration = 0.9f;
 
         private static readonly Color PortraitFieldColor = new Color32(22, 0, 13, 255);
@@ -191,7 +186,7 @@ namespace Supernova.UI
             portraitGroup.interactable = false;
             portraitGroup.blocksRaycasts = false;
 
-            menuRect = transform.Find("Menu") as RectTransform;
+            menuRect = transform.Find(UiHierarchyPaths.Pause.Menu) as RectTransform;
             if (menuRect != null)
             {
                 SetRect(menuRect, new Vector2(0.78f, 0.52f), new Vector2(0.78f, 0.52f),
@@ -212,8 +207,8 @@ namespace Supernova.UI
                     menuOutline.effectDistance = new Vector2(1f, -1f);
                 }
 
-                title = menuRect.Find("Title") != null
-                    ? menuRect.Find("Title").GetComponent<TMP_Text>()
+                title = menuRect.Find(UiHierarchyPaths.Pause.Title) != null
+                    ? menuRect.Find(UiHierarchyPaths.Pause.Title).GetComponent<TMP_Text>()
                     : null;
                 if (title != null)
                 {
@@ -227,7 +222,7 @@ namespace Supernova.UI
                         new Vector2(0f, 1f), new Vector2(30f, -28f), new Vector2(500f, 44f));
                 }
 
-                RectTransform resume = menuRect.Find("Resume") as RectTransform;
+                RectTransform resume = menuRect.Find(UiHierarchyPaths.Pause.Resume) as RectTransform;
                 if (resume != null)
                 {
                     SetRect(resume, new Vector2(1f, 0f), new Vector2(1f, 0f),
@@ -236,8 +231,8 @@ namespace Supernova.UI
                     if (resumeImage != null)
                         resumeImage.color = new Color(0.04f, 0.23f, 0.3f, 1f);
 
-                    TMP_Text resumeLabel = resume.Find("Label") != null
-                        ? resume.Find("Label").GetComponent<TMP_Text>()
+                    TMP_Text resumeLabel = resume.Find(UiHierarchyPaths.Pause.Label) != null
+                        ? resume.Find(UiHierarchyPaths.Pause.Label).GetComponent<TMP_Text>()
                         : null;
                     if (resumeLabel != null)
                     {
@@ -247,16 +242,16 @@ namespace Supernova.UI
                     }
                 }
 
-                backSlotButton = menuRect.Find("Back Slot") != null
-                    ? menuRect.Find("Back Slot").GetComponent<Button>()
+                backSlotButton = menuRect.Find(UiHierarchyPaths.Pause.BackSlot) != null
+                    ? menuRect.Find(UiHierarchyPaths.Pause.BackSlot).GetComponent<Button>()
                     : null;
                 if (backSlotButton != null)
                 {
-                    backEquipmentName = backSlotButton.transform.Find("Equipment Name")
+                    backEquipmentName = backSlotButton.transform.Find(UiHierarchyPaths.Pause.EquipmentName)
                         ?.GetComponent<TMP_Text>();
-                    backEquipmentState = backSlotButton.transform.Find("State")
+                    backEquipmentState = backSlotButton.transform.Find(UiHierarchyPaths.Pause.State)
                         ?.GetComponent<TMP_Text>();
-                    backEquipmentHint = backSlotButton.transform.Find("Hint")
+                    backEquipmentHint = backSlotButton.transform.Find(UiHierarchyPaths.Pause.Hint)
                         ?.GetComponent<TMP_Text>();
                     BindEquipmentButton();
                     RefreshEquipmentView();
@@ -279,6 +274,7 @@ namespace Supernova.UI
             if (menuRect != null)
                 menuRect.SetAsLastSibling();
             kicker.transform.SetAsLastSibling();
+            SciFiUiSkin.ApplyPauseMenu(transform);
         }
 
         private void BindEquipmentButton()
@@ -335,21 +331,29 @@ namespace Supernova.UI
             if (portraitInstance != null || portraitImage == null)
                 return;
 
-            portraitSettings = Resources.Load<PausePortraitSettings>(PortraitSettingsResource);
-            GameObject prefab = portraitSettings != null && portraitSettings.PortraitPrefab != null
+            UiAssetReferences assets = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.UI
+                : null;
+            portraitSettings = assets != null
+                ? assets.PausePortraitSettings
+                : null;
+            GameObject prefab = portraitSettings != null
                 ? portraitSettings.PortraitPrefab
-                : Resources.Load<GameObject>(PortraitPrefabResource);
+                : null;
             portraitController = portraitSettings != null
-                && portraitSettings.PoseController != null
-                    ? portraitSettings.PoseController
-                    : Resources.Load<RuntimeAnimatorController>(PortraitControllerResource);
-            Material bodyTemplate = Resources.Load<Material>(BodyMaterialResource);
-            Material backgroundTemplate = Resources.Load<Material>(BackgroundMaterialResource);
+                ? portraitSettings.PoseController
+                : null;
+            Material bodyTemplate = assets != null
+                ? assets.PauseBodyMaterial
+                : null;
+            Material backgroundTemplate = assets != null
+                ? assets.PauseBackgroundMaterial
+                : null;
             if (prefab == null || portraitController == null || bodyTemplate == null
                 || backgroundTemplate == null)
             {
                 Debug.LogWarning(
-                    "Pause portrait resources are missing. Run Tools/Supernova/UI/Rebuild Pause Portrait Assets.");
+                    "Pause portrait assets are missing from the preloaded game asset catalog.");
                 return;
             }
 
@@ -567,7 +571,7 @@ namespace Supernova.UI
             portraitAnimator.speed =
                 GetPoseClipLength() * GetHoldNormalizedTime() / IntroDuration;
             portraitAnimator.Rebind();
-            portraitAnimator.Play(PoseStateName, 0, 0f);
+            portraitAnimator.Play(GetPoseStateName(), 0, 0f);
             portraitAnimator.Update(0f);
             portraitCamera.enabled = true;
         }
@@ -608,12 +612,22 @@ namespace Supernova.UI
             return portraitHoldNormalizedTime;
         }
 
+        private static string GetPoseStateName()
+        {
+            return GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.SceneLookups.PausePoseStateName
+                : string.Empty;
+        }
+
         private void FreezePortraitAtFinalPose()
         {
             if (portraitAnimator != null)
             {
                 portraitAnimator.speed = 0f;
-                portraitAnimator.Play(PoseStateName, 0, GetHoldNormalizedTime());
+                portraitAnimator.Play(
+                    GetPoseStateName(),
+                    0,
+                    GetHoldNormalizedTime());
                 portraitAnimator.Update(0f);
                 portraitAnimator.enabled = false;
             }

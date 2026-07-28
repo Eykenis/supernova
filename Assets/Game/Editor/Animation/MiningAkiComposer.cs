@@ -15,13 +15,13 @@ namespace Supernova.EditorTools.Animation
     /// </summary>
     public static class MiningAkiComposer
     {
-        private const string MiningPath = "Assets/Game/Animations/mining_aki.anim";
-        private const string BackupPath = "Assets/Game/Animations/mining_aki_before_lowerbody_hands.anim";
-        private const string HandFixBackupPath = "Assets/Game/Animations/mining_aki_before_IdleA_handfix.anim";
-        private const string TwistFixBackupPath = "Assets/Game/Animations/mining_aki_before_forearm_twist_fix.anim";
-        private const string FistEyeBackupPath = "Assets/Game/Animations/mining_aki_before_right_fist_eye_up.anim";
-        private const string IdleSourcePath = "Assets/3rd/Suriyun/Animations/Anim@Idle_A.fbx";
-        private const string ControllerPath = "Assets/Game/Animations/P05Player.controller";
+        private const string MiningPath = ProjectAssetPaths.Animations.Mining;
+        private const string BackupPath = ProjectAssetPaths.Animations.MiningBackup;
+        private const string HandFixBackupPath = ProjectAssetPaths.Animations.MiningHandFixBackup;
+        private const string TwistFixBackupPath = ProjectAssetPaths.Animations.MiningTwistFixBackup;
+        private const string FistEyeBackupPath = ProjectAssetPaths.Animations.MiningFistEyeBackup;
+        private const string IdleSourcePath = ProjectAssetPaths.ThirdParty.SuriyunIdle;
+        private const string ControllerPath = ProjectAssetPaths.Animations.PlayerController;
 
         private static readonly string[] LowerBodyMuscles =
         {
@@ -94,17 +94,17 @@ namespace Supernova.EditorTools.Animation
             EditorUtility.SetDirty(controller);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Game/Prefabs/Player.prefab");
+            GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ProjectAssetPaths.Prefabs.Player);
             float[] previewTimes = Enumerable.Range(0, 7)
                 .Select(index => mining.length * index / 6f)
                 .ToArray();
             P05ChopKeyPoseBuilder.RenderPoseStrip(
                 playerPrefab, mining, previewTimes,
-                "Assets/Screenshots/mining_aki_composed_front.png",
+                ProjectAssetPaths.Screenshots.MiningFront,
                 Vector3.forward, Vector3.up);
             P05ChopKeyPoseBuilder.RenderPoseStrip(
                 playerPrefab, mining, previewTimes,
-                "Assets/Screenshots/mining_aki_composed_45.png",
+                ProjectAssetPaths.Screenshots.MiningAngle,
                 new Vector3(1f, 0.28f, 1f).normalized, Vector3.up);
             AssetDatabase.Refresh();
             Debug.Log($"Composed mining_aki: copied {copied} Suriyun IdleA lower-body/root curves, added inward wrists and fist curves, and bound Mine.");

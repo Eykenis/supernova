@@ -1,5 +1,7 @@
 using Supernova.Gameplay;
+using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
+using Supernova.Missions;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -80,8 +82,13 @@ namespace Supernova.UI
         public IDamageable HealthSource => healthSource;
         public PlayerToolController InventorySource => inventorySource;
         public static bool IsPauseMenuOpen => pauseOwner != null && pauseOwner.pauseMenuOpen;
+        public bool CanPauseGame =>
+            isActiveAndEnabled
+            && !IsMainMenuActive()
+            && !MissionGameLoop.IsSceneTransitioning
+            && !IsLoadingBlockingPause();
 
-[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateRuntimeHud()
         {
             SceneManager.sceneLoaded -= HandleSceneLoaded;
@@ -89,10 +96,11 @@ namespace Supernova.UI
             HandleSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
         }
 
-private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
+        private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             GameHudController existing = null;
-            foreach (GameHudController candidate in Resources.FindObjectsOfTypeAll<GameHudController>())
+            foreach (GameHudController candidate in
+                FindObjectsOfType<GameHudController>(true))
             {
                 if (candidate != null && candidate.gameObject.scene.IsValid())
                 {
@@ -101,7 +109,10 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
                 }
             }
 
-            if (scene.name == "MainMenu")
+            string mainMenuSceneName = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.SceneLookups.MainMenuSceneName
+                : string.Empty;
+            if (scene.name == mainMenuSceneName)
             {
                 if (existing != null) existing.gameObject.SetActive(false);
                 return;
@@ -149,6 +160,9 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
 
         private void Update()
         {
+            if (pauseMenuOpen && !CanPauseGame)
+                ResumeGame();
+
             if (Input.GetKeyDown(KeyCode.Escape))
             {
                 TogglePauseMenu();
@@ -186,12 +200,12 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         public void TogglePauseMenu()
         {
             if (pauseMenuOpen) ResumeGame();
-            else PauseGame();
+            else if (CanPauseGame) PauseGame();
         }
 
         public void PauseGame()
         {
-            if (pauseMenuOpen) return;
+            if (pauseMenuOpen || !CanPauseGame) return;
             if (pausePanel == null || resumeButton == null)
             {
                 CacheViewReferences();
@@ -232,6 +246,28 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             if (!Application.isPlaying) return;
             Time.timeScale = timeScaleBeforePause;
             SetCursorState(cursorLockBeforePause, cursorVisibleBeforePause);
+        }
+
+        private bool IsLoadingBlockingPause()
+        {
+            if (loadingSource != null && !loadingSource.IsInitialLoadComplete)
+                return true;
+            if (loadingRequestedVisible)
+                return true;
+            return loadingPanel != null
+                && loadingPanel.activeInHierarchy
+                && (loadingFadeGroup == null || loadingFadeGroup.alpha > 0.001f);
+        }
+
+        private static bool IsMainMenuActive()
+        {
+            Scene scene = SceneManager.GetActiveScene();
+            string mainMenuSceneName = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.SceneLookups.MainMenuSceneName
+                : string.Empty;
+            if (scene.IsValid() && scene.name == mainMenuSceneName)
+                return true;
+            return FindObjectOfType<MainMenuController>(true) != null;
         }
 
         public void BindLoadingSource(MinecraftCaveInfiniteWorld source)
@@ -420,6 +456,7 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             BuildDefaultView();
             BuildLoadingView();
             BuildPauseView();
+            SciFiUiSkin.ApplyGameHud(transform);
             CreatePresenter();
             RefreshNow();
         }
@@ -436,7 +473,6 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             {
                 BuildHotbarView((RectTransform)rootCanvas.transform);
             }
-
             if (loadingCanvas == null || loadingFadeGroup == null || loadingContentGroup == null
                 || loadingPanel == null || loadingSpinner == null
                 || loadingFill == null || loadingStatusLabel == null
@@ -446,86 +482,86 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             }
 
             bool pauseViewNeedsUpgrade =
-                transform.Find("Pause Canvas/Pause Panel/Menu/Back Slot") == null;
+                transform.Find(UiHierarchyPaths.Pause.FullBackSlot) == null;
             if (pauseCanvas == null || pausePanel == null || resumeButton == null
                 || pauseViewNeedsUpgrade)
             {
                 BuildPauseView();
             }
 
+            SciFiUiSkin.ApplyGameHud(transform);
             CreatePresenter();
             RefreshLoadingView();
         }
 
         private void CacheViewReferences()
         {
-            Transform hudCanvasTransform = transform.Find("HUD Canvas");
+            Transform hudCanvasTransform = transform.Find(UiHierarchyPaths.Hud.RootCanvas);
             if (rootCanvas == null && hudCanvasTransform != null)
                 rootCanvas = hudCanvasTransform.GetComponent<Canvas>();
 
-            Transform crosshairCanvasTransform = transform.Find("Crosshair Canvas");
+            Transform crosshairCanvasTransform = transform.Find(UiHierarchyPaths.Hud.CrosshairCanvas);
             if (crosshairCanvas == null && crosshairCanvasTransform != null)
                 crosshairCanvas = crosshairCanvasTransform.GetComponent<Canvas>();
-
-            Transform panel = transform.Find("HUD Canvas/Health Panel");
+            Transform panel = transform.Find(UiHierarchyPaths.Hud.HealthPanel);
             if (healthPanel == null && panel != null) healthPanel = panel.gameObject;
 
-            Transform fill = transform.Find("HUD Canvas/Health Panel/Track/Fill");
+            Transform fill = transform.Find(UiHierarchyPaths.Hud.HealthFill);
             if (healthFill == null && fill != null) healthFill = fill as RectTransform;
             if (healthFillImage == null && fill != null) healthFillImage = fill.GetComponent<Image>();
 
-            Transform value = transform.Find("HUD Canvas/Health Panel/Header/Value");
+            Transform value = transform.Find(UiHierarchyPaths.Hud.HealthValue);
             if (healthValueLabel == null && value != null)
                 healthValueLabel = value.GetComponent<TMP_Text>();
 
-            Transform pauseCanvasTransform = transform.Find("Pause Canvas");
+            Transform pauseCanvasTransform = transform.Find(UiHierarchyPaths.Pause.Canvas);
             if (pauseCanvas == null && pauseCanvasTransform != null)
                 pauseCanvas = pauseCanvasTransform.GetComponent<Canvas>();
 
-            Transform pausePanelTransform = transform.Find("Pause Canvas/Pause Panel");
+            Transform pausePanelTransform = transform.Find(UiHierarchyPaths.Pause.Panel);
             if (pausePanel == null && pausePanelTransform != null)
                 pausePanel = pausePanelTransform.gameObject;
             if (pausePresentation == null && pausePanel != null)
                 pausePresentation = pausePanel.GetComponent<PauseMenuPresentation>();
 
-            Transform resume = transform.Find("Pause Canvas/Pause Panel/Menu/Resume");
+            Transform resume = transform.Find(UiHierarchyPaths.Pause.FullResume);
             if (resumeButton == null && resume != null)
                 resumeButton = resume.GetComponent<Button>();
 
-            Transform loadingCanvasTransform = transform.Find("Loading Canvas");
+            Transform loadingCanvasTransform = transform.Find(UiHierarchyPaths.Loading.Canvas);
             if (loadingCanvas == null && loadingCanvasTransform != null)
                 loadingCanvas = loadingCanvasTransform.GetComponent<Canvas>();
 
-            Transform loadingPanelTransform = transform.Find("Loading Canvas/Loading Panel");
+            Transform loadingPanelTransform = transform.Find(UiHierarchyPaths.Loading.Panel);
             if (loadingPanel == null && loadingPanelTransform != null)
                 loadingPanel = loadingPanelTransform.gameObject;
 
-            Transform loadingContent = transform.Find("Loading Canvas/Loading Panel/Content");
+            Transform loadingContent = transform.Find(UiHierarchyPaths.Loading.Content);
             if (loadingContentGroup == null && loadingContent != null)
                 loadingContentGroup = loadingContent.GetComponent<CanvasGroup>();
             if (loadingFadeGroup == null && loadingPanelTransform != null)
                 loadingFadeGroup = loadingPanelTransform.GetComponent<CanvasGroup>();
 
-            Transform spinner = transform.Find("Loading Canvas/Loading Panel/Content/Spinner");
+            Transform spinner = transform.Find(UiHierarchyPaths.Loading.Spinner);
             if (loadingSpinner == null && spinner != null)
                 loadingSpinner = spinner as RectTransform;
 
             Transform loadingFillTransform = transform.Find(
-                "Loading Canvas/Loading Panel/Content/Progress Track/Fill");
+                UiHierarchyPaths.Loading.ProgressFill);
             if (loadingFill == null && loadingFillTransform != null)
                 loadingFill = loadingFillTransform as RectTransform;
 
             Transform loadingStatus = transform.Find(
-                "Loading Canvas/Loading Panel/Content/Status");
+                UiHierarchyPaths.Loading.Status);
             if (loadingStatusLabel == null && loadingStatus != null)
                 loadingStatusLabel = loadingStatus.GetComponent<TMP_Text>();
 
             Transform loadingProgress = transform.Find(
-                "Loading Canvas/Loading Panel/Content/Progress");
+                UiHierarchyPaths.Loading.Progress);
             if (loadingProgressLabel == null && loadingProgress != null)
                 loadingProgressLabel = loadingProgress.GetComponent<TMP_Text>();
 
-            Transform hotbar = transform.Find("HUD Canvas/Hotbar");
+            Transform hotbar = transform.Find(UiHierarchyPaths.Hud.Hotbar);
             if (hotbarRoot == null && hotbar != null) hotbarRoot = hotbar.gameObject;
             if (hotbar == null) return;
 
@@ -535,7 +571,7 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
                 if (slot == null) continue;
                 hotbarSlotBackgrounds[i] = slot.GetComponent<Image>();
                 hotbarSlotOutlines[i] = slot.GetComponent<Outline>();
-                Transform itemLabel = slot.Find("Item");
+                Transform itemLabel = slot.Find(UiHierarchyPaths.Hud.Item);
                 if (itemLabel != null) hotbarItemLabels[i] = itemLabel.GetComponent<TMP_Text>();
             }
         }
@@ -551,7 +587,7 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
 
         private void BuildDefaultView()
         {
-            RectTransform rootRect = CreateRect("HUD Canvas", transform);
+            RectTransform rootRect = CreateRect(UiHierarchyPaths.Hud.RootCanvas, transform);
             rootCanvas = rootRect.gameObject.AddComponent<Canvas>();
             rootCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
             rootCanvas.sortingOrder = 100;
@@ -562,7 +598,7 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
 
-            RectTransform crosshairRoot = CreateRect("Crosshair Canvas", transform);
+            RectTransform crosshairRoot = CreateRect(UiHierarchyPaths.Hud.CrosshairCanvas, transform);
             crosshairCanvas = crosshairRoot.gameObject.AddComponent<Canvas>();
             crosshairCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
             crosshairCanvas.sortingOrder = 101;
@@ -627,14 +663,14 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
 
         private void BuildLoadingView()
         {
-            Transform existing = transform.Find("Loading Canvas");
+            Transform existing = transform.Find(UiHierarchyPaths.Loading.Canvas);
             if (existing != null)
             {
                 if (Application.isPlaying) Destroy(existing.gameObject);
                 else DestroyImmediate(existing.gameObject);
             }
 
-            RectTransform loadingRoot = CreateRect("Loading Canvas", transform);
+            RectTransform loadingRoot = CreateRect(UiHierarchyPaths.Loading.Canvas, transform);
             loadingCanvas = loadingRoot.gameObject.AddComponent<Canvas>();
             loadingCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
             loadingCanvas.sortingOrder = 1000;
@@ -748,18 +784,19 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         public void RebuildPauseMenuView()
         {
             BuildPauseView();
+            SciFiUiSkin.ApplyGameHud(transform);
         }
 
         private void BuildPauseView()
         {
-            Transform existing = transform.Find("Pause Canvas");
+            Transform existing = transform.Find(UiHierarchyPaths.Pause.Canvas);
             if (existing != null)
             {
                 if (Application.isPlaying) Destroy(existing.gameObject);
                 else DestroyImmediate(existing.gameObject);
             }
 
-            RectTransform pauseRoot = CreateRect("Pause Canvas", transform);
+            RectTransform pauseRoot = CreateRect(UiHierarchyPaths.Pause.Canvas, transform);
             pauseCanvas = pauseRoot.gameObject.AddComponent<Canvas>();
             pauseCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
             pauseCanvas.sortingOrder = 1100;
@@ -1063,13 +1100,14 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
     /// <summary>Presentation-only adapter for the ten hotbar slots.</summary>
     public sealed class HotbarPresenter
     {
-        private static readonly Color IdleColor = new Color(0.045f, 0.055f, 0.065f, 0.9f);
-        private static readonly Color SelectedColor = new Color(0.17f, 0.2f, 0.18f, 0.96f);
-        private static readonly Color IdleOutline = new Color(0.7f, 0.75f, 0.8f, 0.45f);
-        private static readonly Color SelectedOutline = new Color(0.95f, 0.78f, 0.22f, 1f);
+        private static readonly Color IdleFrame =
+            new Color(0.36f, 0.89f, 0.98f, 0.46f);
+        private static readonly Color SelectedFrame =
+            new Color(0.95f, 0.78f, 0.22f, 1f);
 
         private readonly Image[] backgrounds;
         private readonly Outline[] outlines;
+        private readonly Image[] frames;
         private readonly TMP_Text[] itemLabels;
 
         public HotbarPresenter(Image[] backgrounds, Outline[] outlines, TMP_Text[] itemLabels)
@@ -1077,6 +1115,15 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             this.backgrounds = backgrounds;
             this.outlines = outlines;
             this.itemLabels = itemLabels;
+            frames = new Image[PlayerInventory.SlotCount];
+            for (int i = 0; i < frames.Length; i++)
+            {
+                if (backgrounds == null || i >= backgrounds.Length || backgrounds[i] == null)
+                    continue;
+                Transform frame = backgrounds[i].transform.Find(UiHierarchyPaths.Decoration.Frame);
+                if (frame != null)
+                    frames[i] = frame.GetComponent<Image>();
+            }
             SetItemLabels();
         }
 
@@ -1086,11 +1133,14 @@ private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
             {
                 bool selected = i == selectedSlotIndex;
                 if (backgrounds != null && i < backgrounds.Length && backgrounds[i] != null)
-                    backgrounds[i].color = selected ? SelectedColor : IdleColor;
+                    backgrounds[i].color = Color.clear;
                 if (outlines != null && i < outlines.Length && outlines[i] != null)
                 {
-                    outlines[i].effectColor = selected ? SelectedOutline : IdleOutline;
-                    outlines[i].effectDistance = selected ? new Vector2(2f, -2f) : new Vector2(1f, -1f);
+                    outlines[i].effectColor = Color.clear;
+                }
+                if (frames[i] != null)
+                {
+                    frames[i].color = selected ? SelectedFrame : IdleFrame;
                 }
             }
         }

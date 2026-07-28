@@ -1,399 +1,117 @@
-# 矿车物理、第一人称吸附器与玩家工具系统工作总结
+# 矿车牵引、磁力工具与玩家输入
 
-## 1. 工作目标
+本文档描述当前实现。矿车把手牵引和 Magnet 普通刚体吸附是两套独立行为，共用 `FirstPersonCartAttractor` 的目标状态与物理辅助函数，但不共享交互语义或视觉表现。
 
-本次对话围绕以下功能进行了实现和调整：
+## 1. 行为边界
 
-1. 为 `EmptyCart` 矿车模型添加完整的动态物理配置。
-2. 矿车能够被玩家或其他物理对象推动并滑动。
-3. 矿车车轮根据实际刚体运动播放对应的滚动效果。
-4. 为第一人称玩家添加软物理吸附器，可拖拽矿车且不破坏矿车碰撞。
-5. 修正吸附器最初只在水平面作用、无法改变矿车 Y 轴位置的问题。
-6. 添加玩家工具模式：
-   - 数字键 `1`：镐子，左键维持原有挖掘功能。
-   - 数字键 `2`：磁铁，按住左键吸附准星下的动态刚体，松开左键释放。
+### 1.1 矿车把手牵引
 
----
+- 第一人称下，玩家可以在任意工具选择状态点击 `CartHandle` 开始牵引。
+- 矿车牵引不要求装备 Magnet，也不检查 `deviceEnabled`。
+- 再次点击左键会解除当前矿车牵引。
+- 开始交互时必须由准星射线直接命中把手，默认最大距离为 `2m`。
+- 矿车牵引期间不能切换快捷栏工具。
+- 矿车牵引不显示 `MagnetAttractionBeam`。
 
-## 2. 矿车物理系统
+### 1.2 Magnet 普通刚体吸附
 
-### 2.1 修改的预制体
+- Magnet 工具按住左键吸附准星下的普通动态 `Rigidbody`，松开后释放。
+- 普通吸附默认取得距离为 `3.5m`，保持距离可在 `0.5m` 到 `6m` 之间通过滚轮调整。
+- 带有 `CartHandle` 的刚体会被普通 Magnet 取得逻辑明确排除；矿车必须通过把手牵引。
+- 普通吸附显示磁力光束，并允许中键配合鼠标调整物体朝向。
 
-- `Assets/3rd/EmptyCart.prefab`
+`PlayerToolDefinition.animationTriggerMode` 是每个工具资产自己的表现配置，不在本文档中规定 Magnet 必须使用哪一种动画触发模式。开发者可按动画内容选择 `Single`、`Periodic` 或 `Continuous`。
 
-### 2.2 刚体配置
+## 2. 输入调用链
 
-矿车根节点添加并配置了动态 `Rigidbody`：
+当前暂时保留两个左键读取入口：
 
-- Mass：`65`
-- Drag：`0.08`
-- Angular Drag：`2.5`
-- Use Gravity：启用
-- Is Kinematic：关闭
-- Interpolation：`Interpolate`
-- Collision Detection：`Continuous Dynamic`
-- 冻结 X、Z 旋转，避免矿车在一般推动过程中轻易侧翻。
-- Y 轴旋转保持开放，使矿车能够通过碰撞或吸附扭矩转向。
-- 重心被适当降低，以提高稳定性。
+1. `FirstPersonCartAttractor.Update()` 以 `DefaultExecutionOrder(-300)` 优先读取左键按下，处理矿车把手的开始/解除牵引。
+2. `VoxelPlayerController` 生成 `PlayerInputSnapshot`，处理工具动作、角色状态机、移动和动画。
+3. 如果前一步已经开始矿车牵引，`VoxelPlayerController` 会通过 `IsTowingCart` 抑制本帧工具主操作，避免同时进入挖矿或 Magnet 普通吸附。
+4. 未牵引矿车且当前工具允许主操作时，`VoxelPlayerController` 进入统一的 `ToolAction` 状态；Magnet 对应调用 `BeginAttraction()`、`TickAttraction()` 和 `EndAttraction()`。
 
-矿车的位移没有使用 Transform 驱动，仍然完全由刚体、碰撞和外部物理力产生。
+这两个入口尚未统一。本轮只记录职责和互斥关系，不调整输入架构。
 
-### 2.3 碰撞体
+## 3. 矿车跟随模型
 
-矿车使用复合碰撞结构：
+开始牵引时记录两项世界空间状态：
 
-- 车体和把手使用多个 `BoxCollider`。
-- 四个轮子使用模型原始网格生成的凸面 `MeshCollider`。
-- 当前矿车预制体总计包含 `7` 个碰撞体。
+- 把手相对玩家根节点的位置差；
+- 矿车刚体当时的世界旋转。
 
-矿车保持为普通动态刚体，因此可以：
-
-- 被玩家推动。
-- 与地形、墙壁和其他刚体碰撞。
-- 在碰撞阻挡下停止或改变运动。
-- 在吸附时继续参与碰撞，而不是穿过障碍物强制跟随玩家。
-
-### 2.4 低摩擦材质
-
-新增物理材质：
-
-- `Assets/3rd/CartPhysics/CartLowFriction.physicMaterial`
-
-主要配置：
-
-- Dynamic Friction：`0.18`
-- Static Friction：`0.22`
-- Bounciness：`0`
-- Friction Combine：`Minimum`
-- Bounce Combine：`Minimum`
-
-该材质用于保证矿车可以被推动并产生较自然的滑动，同时不会明显弹跳。
-
----
-
-## 3. 车轮滚动表现
-
-### 3.1 新增脚本
-
-- `Assets/Game/Runtime/Physics/PhysicalCartWheelAnimator.cs`
-
-### 3.2 工作方式
-
-原模型的轮子网格顶点使用了偏移坐标，直接旋转原节点会绕错误的中心旋转。因此为四个车轮分别创建了独立旋转中心：
-
-- `CartWheelVisuals/Group47111_Pivot`
-- `CartWheelVisuals/Group47126_Pivot`
-- `CartWheelVisuals/Group47141_Pivot`
-- `CartWheelVisuals/Group47156_Pivot`
-
-原始轮子 Renderer 被关闭，轮子网格被复制到对应的旋转中心下显示。
-
-滚动脚本使用：
+牵引期间的目标位置为：
 
 ```csharp
-Rigidbody.GetPointVelocity(wheelPivot.position)
-```
-
-读取每个车轮所在位置的实际刚体速度，再按照轮子半径换算旋转角度。因此：
-
-- 前进和后退时轮子会反向滚动。
-- 转弯时各车轮会根据所在位置的速度产生滚动。
-- 脚本只更新轮子视觉，不向矿车施加位移或驱动力。
-- 矿车的真实运动仍全部来自物理系统。
-
----
-
-## 4. 可吸附物体标记
-
-### 4.1 新增脚本
-
-- `Assets/Game/Runtime/Physics/PhysicsAttractable.cs`
-
-### 4.2 用途
-
-该组件仍保留在 `EmptyCart` 根节点，供旧内容记录“可吸附”元数据。磁铁现在直接
-接受准星命中的任意动态 `Rigidbody`，不再要求目标必须带此标记。
-
-主要接口：
-
-```csharp
-bool CanBeAttracted
-Rigidbody Body
-void SetCanBeAttracted(bool value)
-```
-
-磁铁目标只需满足：
-
-- 准星射线首先命中其碰撞体；
-- 碰撞体关联到 `Rigidbody`；
-- Rigidbody 不是 Kinematic；
-- 目标不属于玩家自身层级。
-
----
-
-## 5. 第一人称刚体吸附器
-
-### 5.1 新增脚本
-
-- `Assets/Game/Runtime/Gameplay/FirstPersonCartAttractor.cs`
-
-该组件被添加到：
-
-- `Assets/Game/Prefabs/Player.prefab`
-
-### 5.2 目标取得
-
-吸附器仅在以下条件下工作：
-
-- 装置已启用。
-- 玩家处于第一人称模式。
-- 鼠标光标处于锁定状态。
-- 玩家按住鼠标左键。
-
-目标检测使用从相机准星发出的非分配式射线：
-
-```csharp
-Physics.RaycastNonAlloc(...)
-```
-
-默认参数：
-
-- 最大取得距离：`3.5m`
-- 检测层：`targetLayers`
-
-如果玩家与目标之间存在更近的静态碰撞体，则不会隔着障碍物取得刚体。矿车与
-采出的矿石刚体走同一条取得和软物理吸附链路。
-
-### 5.3 固定力物理吸附
-
-吸附器不会执行以下操作：
-
-- 不修改矿车 Transform 位置。
-- 不把矿车设为 Kinematic。
-- 不把矿车设置为玩家子节点。
-- 不使用瞬移方式强制跟随。
-
-磁铁向目标点施加有上限的真实物理力：
-
-```csharp
-force = normalize(positionError) * attractionForce
-    + relativeVelocity * forceDamping;
-force = ClampMagnitude(force, attractionForce);
-
-rigidbody.AddForce(force, ForceMode.Force);
-```
-
-默认参数：
-
-- Attraction Force：`800N`
-- Force Damping：`90N/(m/s)`
-- Hold Distance：`2m`
-- Hold Distance 范围：`0.5m`–`6m`
-- 每格滚轮距离：`0.35m`
-- Break Distance：`8m`
-
-`ForceMode.Force` 不会绕过质量：同样的 800N 对轻物体产生较大加速度，对重物体
-产生较小加速度。如果向上的力不足以抵消 `mass * gravity`，物体就无法离地。磁铁
-不会读取质量后用代码判断“允许/禁止抬起”，取得逻辑仍只检查是否为动态刚体。
-
-吸附期间滚轮向上会把目标点推远，滚轮向下会把目标点拉近。目标点始终位于准星
-方向，并限制在配置的最小、最大距离内。
-
-矿车朝向通过 `ForceMode.Force` 的 Y 轴扭矩逐渐对齐玩家前方：
-
-```csharp
-rigidbody.AddTorque(yawTorque, ForceMode.Force);
-```
-
-### 5.4 Y 轴吸附修正
-
-最初的吸附实现主动将目标点 Y 坐标设为矿车当前重心高度，并将速度投影到水平面，因此矿车无法发生垂直运动。
-
-现已修改为完整三维吸附目标：
-
-```csharp
-Vector3 desiredPosition = viewCamera.transform.position
-    + viewCamera.transform.forward.normalized * holdDistance;
-```
-
-同时取消了速度的水平面投影：
-
-```csharp
-Vector3 targetVelocity = playerController.velocity;
-Vector3 bodyVelocity = heldBody.velocity;
-```
-
-现在矿车会沿 X、Y、Z 三个轴受到软弹簧力：
-
-- 平视时会被吸到相机正前方。
-- 向上或向下看时，矿车目标高度会对应改变。
-- 重力仍然生效。
-- 矿车仍会和天花板、地面、墙壁等发生正常碰撞。
-
-运行验证中，矿车 Y 坐标从 `0.05` 上升到约 `1.28`，垂直位移约 `1.23m`，同时仍保持动态刚体及全部 7 个碰撞体。
-
-### 5.5 释放条件
-
-以下任意情况会释放矿车：
-
-- 松开鼠标左键。
-- 吸附器工具被关闭。
-- 切换到第三人称。
-- 矿车超过最大断开距离。
-- 目标被设为不可吸附。
-- 玩家组件或吸附器组件被禁用。
-
----
-
-## 6. 玩家工具切换系统
-
-### 6.1 新增脚本
-
-- `Assets/Game/Runtime/Gameplay/PlayerToolController.cs`
-
-新增工具枚举：
-
-```csharp
-public enum PlayerToolMode
-{
-    Pickaxe = 1,
-    CartAttractor = 2,
-}
-```
-
-该组件已添加到：
-
-- `Assets/Game/Prefabs/Player.prefab`
-
-### 6.2 操作
-
-同时支持主键盘数字键和数字小键盘：
-
-| 按键 | 工具 | 左键功能 |
-|---|---|---|
-| `1` / `Keypad 1` | Pickaxe | 保留原有攻击/挖掘流程，执行 mining |
-| `2` / `Keypad 2` | Magnet | 按住吸附准星下的动态刚体，松开释放 |
-
-默认工具为：
-
-```text
-Pickaxe
-```
-
-### 6.3 输入互斥
-
-修改文件：
-
-- `Assets/Game/Runtime/Voxels/VoxelPlayerController.cs`
-
-玩家控制器在读取左键攻击时会检查吸附器是否正在占用主操作：
-
-```csharp
-cartAttractor == null || !cartAttractor.ConsumesPrimaryAction
+desiredPosition = playerRoot.position + capturedWorldOffset;
 ```
 
 因此：
 
-- 选择镐子时，吸附器关闭，左键继续进入原来的 `Attack`/`Mine` 状态流程。
-- 选择吸附器时，吸附器启用，左键不会同时触发挖掘动画和 mining。
-- 从吸附器切换回镐子时，会立即调用吸附器释放逻辑。
+- 玩家平移时，矿车保持开始牵引时的相对位移；
+- 玩家转动视角或准星时，目标位置不会绕玩家旋转；
+- 矿车不会主动朝向玩家或准星；
+- 朝向弹簧只用于抵消碰撞和把手受力产生的旋转，维持开始牵引时记录的世界方向。
 
-### 6.4 代码控制接口
+矿车保持动态刚体，不会被设为 Kinematic、不会挂到玩家层级，也不会直接修改 Transform。位置跟随仍由弹簧力、速度阻尼和真实碰撞完成。
 
-工具可以通过代码切换：
+默认相关参数：
 
-```csharp
-playerToolController.SelectTool(PlayerToolMode.Pickaxe);
-playerToolController.SelectTool(PlayerToolMode.CartAttractor);
-```
+| 参数 | 默认值 | 作用 |
+|---|---:|---|
+| `cartHandleAcquisitionDistance` | `2m` | 点击把手的最大交互距离 |
+| `attractionForce` | `800N` | 最大位置跟随力 |
+| `positionSpring` | `300` | 相对位置恢复强度 |
+| `forceDamping` | `90` | 相对速度阻尼 |
+| `orientationSpring` | `55` | 固定世界朝向的恢复强度 |
+| `orientationDamping` | `14` | 角速度阻尼 |
+| `maximumOrientationTorque` | `180` | 最大朝向修正加速度扭矩 |
+| `breakDistance` | `8m` | 物理跟随失控时的安全断开距离 |
 
-也可以独立控制吸附器：
+矿车位置力施加在 `CartHandle.AttachmentPoint`，目标速度取玩家 `CharacterController.velocity`。普通 Magnet 物体仍使用相机前方保持点，并额外受到最大吸附加速度限制。
 
-```csharp
-cartAttractor.SetDeviceEnabled(true);
-cartAttractor.SetDeviceEnabled(false);
-```
+## 4. 释放条件
 
-通常应优先通过 `PlayerToolController` 切换，避免工具状态不一致。
+矿车在以下情况下解除牵引：
 
----
+- 牵引中再次按下左键；
+- 离开第一人称；
+- 矿车刚体变为 Kinematic；
+- 把手相对目标位置超过 `breakDistance`；
+- 玩家或吸附器组件被禁用。
 
-## 7. 本次新增和修改的文件
+切换 Magnet 装置开关不会终止已经开始的矿车牵引，因为矿车牵引与 Magnet 工具选择无关。
 
-### 新增
+## 5. 视觉表现
 
-- `Assets/Game/Runtime/Physics/PhysicalCartWheelAnimator.cs`
-- `Assets/Game/Runtime/Physics/PhysicsAttractable.cs`
+`MagnetAttractionBeam` 只在普通 Magnet 吸附持有目标时显示。`IsTowingCart` 为真时，光束会立即关闭。矿车车轮仍由 `PhysicalCartWheelAnimator` 根据刚体真实速度独立更新。
+
+## 6. 任务矿车装配
+
+`MissionGameLoop` 通过 `GameAssetCatalog.SceneLookups.AuthoredCartObjectName` 找到场景中的 `EmptyCart`，再调用 `MissionCart.ConfigureExisting()` 将其移动到任务出生结构指定位置。
+
+当前 `Assets/3rd/EmptyCart.prefab` 包含：
+
+- 一个质量为 `65` 的动态 `Rigidbody`；
+- 复合碰撞体；
+- `Tow Handle Interaction` 节点及 `CartHandle`；
+- `PhysicalCartWheelAnimator`。
+
+`MissionCart` 还会保证货舱存在 `CartCargoValueZone`。矿石处于该触发区期间，不会因车内碰撞损失价值。
+
+## 7. 相关代码
+
 - `Assets/Game/Runtime/Gameplay/FirstPersonCartAttractor.cs`
+- `Assets/Game/Runtime/Gameplay/CartHandle.cs`
+- `Assets/Game/Runtime/Effects/MagnetAttractionBeam.cs`
 - `Assets/Game/Runtime/Gameplay/PlayerToolController.cs`
-- `Assets/3rd/CartPhysics/CartLowFriction.physicMaterial`
-
-### 修改
-
-- `Assets/3rd/EmptyCart.prefab`
-- `Assets/Game/Prefabs/Player.prefab`
 - `Assets/Game/Runtime/Voxels/VoxelPlayerController.cs`
+- `Assets/Game/Runtime/Missions/MissionCart.cs`
+- `Assets/Game/Runtime/Missions/MissionGameLoop.cs`
+- `Assets/Game/Runtime/Missions/CartCargoValueZone.cs`
 
----
+对应 EditMode 测试位于：
 
-## 8. 验证记录
-
-已完成的针对性验证包括：
-
-- 矿车存在动态 Rigidbody，且不是 Kinematic。
-- 矿车包含 7 个复合碰撞体。
-- 矿车在物理冲量下能够滑动。
-- 车轮会根据实际刚体运动旋转。
-- 吸附目标能够通过球形投射取得。
-- 关闭吸附器会立即释放目标。
-- 吸附过程中矿车没有被设置为玩家子节点。
-- 吸附过程中矿车保持动态刚体。
-- 吸附力能够同时改变 X、Y、Z 位置。
-- 工具 `1` 默认选择镐子，并关闭吸附器。
-- 工具 `2` 会启用吸附器并占用左键主操作。
-
-在较早阶段，项目原有 EditMode 测试曾达到 `26/26` 全部通过。
-
-在生成本文档前的最新一次完整 EditMode 测试中，共发现 `34` 个测试，其中 `32` 个通过、`2` 个失败：
-
-1. `BombAndVoxelEffectTests.ViewerMovement_RefreshesStreamingWhileMeshesAreStillQueued`
-   - 期望 `(1, 0, 0)`，实际 `(0, 0, 0)`。
-2. `FirstPersonAnimationControllerTests.UnifiedController_DrivesMuryotaisuAnimatorContract`
-   - `TargetParameterCountException`。
-
-这两个失败未直接指向本次新增的矿车、吸附器或工具切换脚本，但在宣称项目完整测试通过前仍应单独调查。
-
----
-
-## 9. 可调参数建议
-
-如果吸附感觉太硬：
-
-- 降低 `positionSpring`。
-- 降低 `maximumAcceleration`。
-- 适当提高 `positionDamping`，减少振荡。
-
-如果矿车跟随过慢：
-
-- 提高 `positionSpring`。
-- 提高 `maximumAcceleration`。
-
-如果矿车上下跳动明显：
-
-- 提高 `positionDamping`。
-- 适当降低 `positionSpring`。
-- 检查目标点是否因相机动画产生快速上下抖动。
-
-如果矿车转向过快：
-
-- 降低 `yawSpring` 或 `maximumAngularAcceleration`。
-
-如果希望吸附位置低于准星，可在 `FirstPersonCartAttractor` 中增加相机局部空间偏移，例如：
-
-```csharp
-Vector3 desiredPosition = viewCamera.transform.position
-    + viewCamera.transform.forward * holdDistance
-    + viewCamera.transform.up * verticalOffset;
-```
-
-其中 `verticalOffset` 可以使用负值，让矿车保持在准星下方。
+- `Assets/Game/Tests/Editor/FirstPersonCartAttractorTests.cs`
+- `Assets/Game/Tests/Editor/WorldAndEffectTests.cs`
+- `Assets/Game/Tests/Editor/CharacterCombatStateMachineTests.cs`

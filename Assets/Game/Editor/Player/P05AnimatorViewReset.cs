@@ -9,7 +9,7 @@ namespace Supernova.EditorTools.PlayerSetup
 {
     public static class P05AnimatorViewReset
     {
-        private const string ControllerPath = "Assets/Game/Animations/P05Player.controller";
+        private const string ControllerPath = ProjectAssetPaths.Animations.PlayerController;
         private const string SessionKey = "Supernova.P05AnimatorViewReset.v4";
 
         [InitializeOnLoadMethod]
@@ -41,7 +41,7 @@ namespace Supernova.EditorTools.PlayerSetup
 
         private static void SendFrameAll()
         {
-            EditorWindow animatorWindow = Resources.FindObjectsOfTypeAll<EditorWindow>()
+            EditorWindow animatorWindow = UnityEngine.Object.FindObjectsOfType<EditorWindow>()
                 .FirstOrDefault(window => window.GetType().FullName == "UnityEditor.Graphs.AnimatorControllerTool");
             if (animatorWindow == null) return;
             animatorWindow.Focus();

@@ -16,9 +16,9 @@ namespace Supernova.EditorTools.Animation
     /// </summary>
     public static class SparsePlayerAnimationGenerator
     {
-        public const string PlayerPrefabPath = "Assets/Game/Prefabs/Player.prefab";
-        public const string ControllerPath = "Assets/3rd/Mryotaisu/Animators/Muryotaisu.controller";
-        public const string OutputFolder = "Assets/Game/Animations/Generated";
+        public const string PlayerPrefabPath = ProjectAssetPaths.Prefabs.Player;
+        public const string ControllerPath = ProjectAssetPaths.ThirdParty.MuryotaisuController;
+        public const string OutputFolder = ProjectAssetPaths.Folders.GeneratedPlayerAnimations;
         public const string RunClipPath = OutputFolder + "/SparseRun.anim";
         public const string MineClipPath = OutputFolder + "/SparseMine.anim";
         public const string KnockdownClipPath = OutputFolder + "/SparseKnockdown.anim";

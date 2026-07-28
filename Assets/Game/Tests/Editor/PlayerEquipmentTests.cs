@@ -84,11 +84,11 @@ namespace Supernova.Tests
         {
             PlayerEquipmentDefinition asset =
                 AssetDatabase.LoadAssetAtPath<PlayerEquipmentDefinition>(
-                    "Assets/Game/Config/Equipment/Jetpack.asset");
+                    ProjectAssetPaths.Config.Jetpack);
             GameObject visual = AssetDatabase.LoadAssetAtPath<GameObject>(
-                "Assets/Game/Prefabs/Equipment/Jetpack.prefab");
+                ProjectAssetPaths.Prefabs.Jetpack);
             GameObject player = AssetDatabase.LoadAssetAtPath<GameObject>(
-                "Assets/Game/Prefabs/Player.prefab");
+                ProjectAssetPaths.Prefabs.Player);
 
             Assert.That(asset, Is.Not.Null);
             Assert.That(asset.Slot, Is.EqualTo(PlayerEquipmentSlot.Back));
@@ -114,12 +114,12 @@ namespace Supernova.Tests
             Assert.That(equipmentVisual, Is.Not.Null);
             Assert.That(equipmentVisual.MountAtCharacterRoot, Is.True);
             Assert.That(
-                visual.transform.Find("P05_BackPack")
+                visual.transform.Find(ProjectAssetPaths.LookupNames.JetpackMount)
                     ?.GetComponent<SkinnedMeshRenderer>(),
                 Is.Not.Null);
-            Assert.That(visual.transform.Find("BackPack_Main"), Is.Not.Null);
-            Assert.That(visual.transform.Find("BackPuck_VFX"), Is.Not.Null);
-            Assert.That(visual.transform.Find("BackPuck_VFX").gameObject.activeSelf, Is.False);
+            Assert.That(visual.transform.Find(ProjectAssetPaths.LookupNames.JetpackMain), Is.Not.Null);
+            Assert.That(visual.transform.Find(ProjectAssetPaths.LookupNames.JetpackVfx), Is.Not.Null);
+            Assert.That(visual.transform.Find(ProjectAssetPaths.LookupNames.JetpackVfx).gameObject.activeSelf, Is.False);
             Assert.That(player.GetComponent<PlayerEquipmentController>(), Is.Not.Null);
             Assert.That(
                 player.GetComponent<PlayerEquipmentController>().AvailableBack,
@@ -131,13 +131,13 @@ namespace Supernova.Tests
         {
             GameObject playerPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
-                    "Assets/Game/Prefabs/Player.prefab");
+                    ProjectAssetPaths.Prefabs.Player);
             AnimationClip hoverAnimation =
                 AssetDatabase.LoadAssetAtPath<AnimationClip>(
-                    "Assets/3rd/P05_Aki & Mika/Anim_demo/HoverDemo.anim");
+                    ProjectAssetPaths.ThirdParty.HoverDemo);
             AnimationClip hoverLoop =
                 AssetDatabase.LoadAssetAtPath<AnimationClip>(
-                    "Assets/Game/Animations/HoverLoop.anim");
+                    ProjectAssetPaths.Animations.Hover);
             playerObject = PrefabUtility.InstantiatePrefab(playerPrefab)
                 as GameObject;
             VoxelPlayerController player =

@@ -15,16 +15,16 @@ namespace Supernova.UI
         [SerializeField, Min(1f)] private float referencePixelsPerUnit = 100f;
 
         [Header("Palette")]
-        [SerializeField] private Color backdrop = new Color(0.012f, 0.02f, 0.032f, 1f);
-        [SerializeField] private Color surface = new Color(0.035f, 0.055f, 0.075f, 0.97f);
-        [SerializeField] private Color surfaceRaised = new Color(0.06f, 0.09f, 0.115f, 1f);
-        [SerializeField] private Color textPrimary = new Color(0.93f, 0.95f, 0.95f, 1f);
-        [SerializeField] private Color textSecondary = new Color(0.58f, 0.68f, 0.7f, 1f);
-        [SerializeField] private Color accent = new Color(0.94f, 0.35f, 0.12f, 1f);
-        [SerializeField] private Color accentHover = new Color(1f, 0.46f, 0.2f, 1f);
-        [SerializeField] private Color focus = new Color(0.31f, 0.82f, 0.86f, 1f);
+        [SerializeField] private Color backdrop = new Color(0.012f, 0.035f, 0.05f, 1f);
+        [SerializeField] private Color surface = new Color(0.024f, 0.078f, 0.11f, 0.97f);
+        [SerializeField] private Color surfaceRaised = new Color(0.04f, 0.14f, 0.18f, 1f);
+        [SerializeField] private Color textPrimary = new Color(0.88f, 0.96f, 0.98f, 1f);
+        [SerializeField] private Color textSecondary = new Color(0.49f, 0.64f, 0.68f, 1f);
+        [SerializeField] private Color accent = new Color(0.36f, 0.89f, 0.98f, 1f);
+        [SerializeField] private Color accentHover = new Color(0.58f, 0.96f, 1f, 1f);
+        [SerializeField] private Color focus = new Color(0.36f, 0.89f, 0.98f, 1f);
         [SerializeField] private Color success = new Color(0.28f, 0.74f, 0.5f, 1f);
-        [SerializeField] private Color divider = new Color(0.31f, 0.48f, 0.5f, 0.38f);
+        [SerializeField] private Color divider = new Color(0.32f, 0.75f, 0.82f, 0.42f);
 
         [Header("Typography")]
         [SerializeField, Min(12)] private int bodySize = 18;

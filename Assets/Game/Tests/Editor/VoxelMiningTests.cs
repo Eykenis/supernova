@@ -778,10 +778,10 @@ namespace Supernova.Tests
         {
             PlayerToolDefinition pickaxe =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    "Assets/Game/Config/Tools/PickaxeTool.asset");
+                    ProjectAssetPaths.Config.PickaxeTool);
             VoxelTypeDefinition stone =
                 AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
-                    "Assets/Game/Config/VoxelTypes/Stone.asset");
+                    ProjectAssetPaths.Config.StoneVoxel);
 
             Assert.That(pickaxe, Is.Not.Null);
             Assert.That(stone, Is.Not.Null);
@@ -872,7 +872,7 @@ namespace Supernova.Tests
         public void PlayerPrefab_WiresMiningImpactParticleMaterial()
         {
             GameObject player = AssetDatabase.LoadAssetAtPath<GameObject>(
-                "Assets/Game/Prefabs/Player.prefab");
+                ProjectAssetPaths.Prefabs.Player);
             Assert.That(player, Is.Not.Null);
 
             VoxelMiningImpactEffect effect =

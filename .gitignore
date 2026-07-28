@@ -6,6 +6,10 @@
 [Bb]uilds/
 [Ll]ogs/
 [Uu]ser[Ss]ettings/
+
+# Adobe Illustrator source files are local design sources, not Unity runtime assets.
+*.ai
+*.ai.meta
 [Mm]emoryCaptures/
 [Rr]ecordings/
 

@@ -1,3 +1,4 @@
+using Supernova.Infrastructure;
 using Supernova.UI;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -12,12 +13,8 @@ using ToolkitVisualElement = UnityEngine.UIElements.VisualElement;
 [DisallowMultipleComponent]
 public sealed class MainMenuController : MonoBehaviour
 {
-    private const string DefaultViewResourcePath = "UI/MainMenuCanvas";
     private const string FullscreenPreferenceKey = "ui.fullscreen";
     private const string VolumePreferenceKey = "ui.master-volume";
-
-    [SerializeField] private string gameplaySceneName = "InfiniteCaves";
-    [SerializeField] private GameObject uguiViewPrefab;
 
     private MainMenuView uguiView;
     private UIDocument legacyDocument;
@@ -62,9 +59,9 @@ public sealed class MainMenuController : MonoBehaviour
         uguiView = GetComponentInChildren<MainMenuView>(true);
         if (uguiView == null)
         {
-            GameObject prefab = uguiViewPrefab != null
-                ? uguiViewPrefab
-                : Resources.Load<GameObject>(DefaultViewResourcePath);
+            GameObject prefab = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.UI.MainMenuPrefab
+                : null;
             if (prefab == null) return false;
 
             GameObject instance = Instantiate(prefab, transform);
@@ -180,6 +177,11 @@ public sealed class MainMenuController : MonoBehaviour
 
     private void StartGame()
     {
+        string gameplaySceneName = GameAssetCatalog.Current != null
+            && GameAssetCatalog.Current.Missions.DefaultLevel != null
+                ? GameAssetCatalog.Current.Missions.DefaultLevel.CaveSceneName
+                : string.Empty;
+
         if (!Application.CanStreamedLevelBeLoaded(gameplaySceneName))
         {
             SetStatus("GAMEPLAY SCENE NOT IN BUILD");

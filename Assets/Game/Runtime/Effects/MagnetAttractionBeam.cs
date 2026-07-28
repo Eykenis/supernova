@@ -64,7 +64,10 @@ namespace Supernova.Effects
             ResolveReferences();
             EnsureLine();
 
-            if (attractor == null || !attractor.IsHolding || attractor.HeldBody == null)
+            if (attractor == null
+                || !attractor.IsHolding
+                || attractor.HeldBody == null
+                || attractor.IsTowingCart)
             {
                 line.enabled = false;
                 return;

@@ -7,8 +7,15 @@ namespace Supernova.Missions
     {
         public static MissionCart Create(Vector3 position)
         {
+            return Create(position, Quaternion.identity);
+        }
+
+        public static MissionCart Create(
+            Vector3 position,
+            Quaternion rotation)
+        {
             GameObject root = new GameObject("Mission Cart");
-            root.transform.position = position;
+            root.transform.SetPositionAndRotation(position, rotation);
             Rigidbody body = root.AddComponent<Rigidbody>();
             body.mass = 35f;
             body.drag = 1.2f;
@@ -36,7 +43,106 @@ namespace Supernova.Missions
             BoxCollider handleCollider = handle.AddComponent<BoxCollider>();
             handleCollider.size = new Vector3(1.35f, 2f, 2f);
             handle.AddComponent<Supernova.Gameplay.CartHandle>().Configure(body);
-            return root.AddComponent<MissionCart>();
+            MissionCart cart = root.AddComponent<MissionCart>();
+            CreateCargoZone(
+                root.transform,
+                new Vector3(0f, 0.9f, 0f),
+                new Vector3(1.55f, 1.2f, 2f));
+            return cart;
+        }
+
+        public static MissionCart ConfigureExisting(
+            GameObject root,
+            Vector3 position,
+            Quaternion rotation)
+        {
+            if (root == null)
+            {
+                return Create(position, rotation);
+            }
+
+            MissionCart cart = root.GetComponent<MissionCart>();
+            if (cart == null)
+            {
+                cart = root.AddComponent<MissionCart>();
+            }
+
+            Rigidbody body = root.GetComponent<Rigidbody>();
+            if (body == null)
+            {
+                body = root.AddComponent<Rigidbody>();
+            }
+
+            root.transform.SetPositionAndRotation(position, rotation);
+            body.position = position;
+            body.rotation = rotation;
+            body.velocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+            Physics.SyncTransforms();
+            body.WakeUp();
+            cart.EnsureCargoZone();
+            return cart;
+        }
+
+        private void EnsureCargoZone()
+        {
+            if (GetComponentInChildren<CartCargoValueZone>(true) != null)
+            {
+                return;
+            }
+
+            BoxCollider[] boxes = GetComponentsInChildren<BoxCollider>(true);
+            BoxCollider cargoReference = null;
+            float largestVolume = 0f;
+            for (int i = 0; i < boxes.Length; i++)
+            {
+                BoxCollider candidate = boxes[i];
+                if (candidate.isTrigger)
+                {
+                    continue;
+                }
+
+                Vector3 size = candidate.size;
+                float volume = size.x * size.y * size.z;
+                if (volume > largestVolume)
+                {
+                    largestVolume = volume;
+                    cargoReference = candidate;
+                }
+            }
+
+            if (cargoReference == null)
+            {
+                CreateCargoZone(
+                    transform,
+                    new Vector3(0f, 0.9f, 0f),
+                    new Vector3(1.5f, 1.2f, 2f));
+                return;
+            }
+
+            Vector3 referenceSize = cargoReference.size;
+            Vector3 centre = cargoReference.center
+                + Vector3.up * referenceSize.y * 0.65f;
+            Vector3 zoneSize = new Vector3(
+                referenceSize.x * 0.82f,
+                Mathf.Max(0.5f, referenceSize.y * 0.85f),
+                referenceSize.z * 0.82f);
+            CreateCargoZone(cargoReference.transform, centre, zoneSize);
+        }
+
+        private static void CreateCargoZone(
+            Transform parent,
+            Vector3 localCentre,
+            Vector3 localSize)
+        {
+            GameObject zoneObject = new GameObject(
+                "Cargo Value Protection Zone");
+            zoneObject.transform.SetParent(parent, false);
+            BoxCollider trigger = zoneObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.center = localCentre;
+            trigger.size = localSize;
+            zoneObject.AddComponent<CartCargoValueZone>();
         }
 
         private static void CreateWall(Transform parent, string name, Vector3 position, Vector3 scale)

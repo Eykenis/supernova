@@ -34,12 +34,26 @@ namespace Supernova.Missions
 
         private void OnTriggerEnter(Collider other)
         {
+            ValuableObject valuable =
+                other.GetComponentInParent<ValuableObject>();
+            if (valuable != null)
+            {
+                StoreOverlap(
+                    valuable.GetInstanceID(),
+                    valuable.gameObject,
+                    valuable,
+                    valuable.CurrentValue,
+                    other);
+                return;
+            }
+
             TreasurePickup treasure = other.GetComponentInParent<TreasurePickup>();
             if (treasure != null)
             {
                 StoreOverlap(
                     treasure.GetInstanceID(),
                     treasure.gameObject,
+                    null,
                     treasure.Value,
                     other);
                 return;
@@ -50,12 +64,21 @@ namespace Supernova.Missions
             StoreOverlap(
                 drop.GetInstanceID(),
                 drop.gameObject,
+                null,
                 drop.VoxelCount * oreUnitValue,
                 other);
         }
 
         private void OnTriggerExit(Collider other)
         {
+            ValuableObject valuable =
+                other.GetComponentInParent<ValuableObject>();
+            if (valuable != null)
+            {
+                RemoveOverlap(valuable.GetInstanceID(), other);
+                return;
+            }
+
             TreasurePickup treasure = other.GetComponentInParent<TreasurePickup>();
             if (treasure != null)
             {
@@ -70,12 +93,16 @@ namespace Supernova.Missions
         private void StoreOverlap(
             int id,
             GameObject resourceObject,
+            ValuableObject valuable,
             int value,
             Collider overlap)
         {
             if (!storedResources.TryGetValue(id, out StoredResource resource))
             {
-                resource = new StoredResource(resourceObject, Mathf.Max(0, value));
+                resource = new StoredResource(
+                    resourceObject,
+                    valuable,
+                    Mathf.Max(0, value));
                 storedResources.Add(id, resource);
             }
             if (resource.Overlaps.Add(overlap))
@@ -107,15 +134,24 @@ namespace Supernova.Missions
 
         private sealed class StoredResource
         {
-            public StoredResource(GameObject resourceObject, int value)
+            public StoredResource(
+                GameObject resourceObject,
+                ValuableObject valuable,
+                int value)
             {
                 ResourceObject = resourceObject;
-                Value = value;
+                Valuable = valuable;
+                fallbackValue = value;
             }
 
             public GameObject ResourceObject { get; }
-            public int Value { get; }
+            public ValuableObject Valuable { get; }
+            public int Value => Valuable != null
+                ? Valuable.CurrentValue
+                : fallbackValue;
             public HashSet<Collider> Overlaps { get; } = new HashSet<Collider>();
+
+            private readonly int fallbackValue;
         }
     }
 }

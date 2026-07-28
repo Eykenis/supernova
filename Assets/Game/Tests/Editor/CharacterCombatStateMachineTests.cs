@@ -85,10 +85,10 @@ namespace Supernova.Tests
         {
             PlayerToolDefinition flashlight =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    "Assets/Game/Config/Tools/FlashlightTool.asset");
+                    ProjectAssetPaths.Config.FlashlightTool);
             GameObject playerPrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
-                    "Assets/Game/Prefabs/Player.prefab");
+                    ProjectAssetPaths.Prefabs.Player);
 
             Assert.That(flashlight, Is.Not.Null);
             Assert.That(flashlight.Item, Is.EqualTo(PlayerInventoryItem.Flashlight));
@@ -111,7 +111,6 @@ namespace Supernova.Tests
             Assert.That(projectile.LightSource.intensity, Is.EqualTo(0.55f));
             Assert.That(projectile.LightSource.range, Is.EqualTo(14f));
             Assert.That(projectile.LightSource.shadows, Is.EqualTo(LightShadows.None));
-            Assert.That(projectile.GetComponent<TimedBomb>(), Is.Null);
         }
 
         [Test]
@@ -119,7 +118,7 @@ namespace Supernova.Tests
         {
             GameObject projectilePrefab =
                 AssetDatabase.LoadAssetAtPath<GameObject>(
-                    "Assets/Game/Prefabs/Tools/FlashlightProjectile.prefab");
+                    ProjectAssetPaths.Prefabs.FlashlightProjectile);
             GameObject instance = Object.Instantiate(projectilePrefab);
             objects.Add(instance);
             PersistentLightProjectile projectile =
@@ -134,7 +133,6 @@ namespace Supernova.Tests
                 projectile.Body.angularVelocity,
                 Is.EqualTo(angularVelocity));
             Assert.That(projectile.LightSource.enabled, Is.True);
-            Assert.That(instance.GetComponent<TimedBomb>(), Is.Null);
         }
 
         [Test]
@@ -236,12 +234,12 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void ToolAssets_ConfigurePickaxeAsPeriodicAndMagnetAsSingle()
+        public void ToolAssets_ConfigurePickaxeCadenceAndMagnetGameplayAction()
         {
             PlayerToolDefinition pickaxe = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                "Assets/Game/Config/Tools/PickaxeTool.asset");
+                ProjectAssetPaths.Config.PickaxeTool);
             PlayerToolDefinition magnet = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                "Assets/Game/Config/Tools/MagnetTool.asset");
+                ProjectAssetPaths.Config.MagnetTool);
 
             Assert.That(pickaxe, Is.Not.Null);
             Assert.That(magnet, Is.Not.Null);
@@ -249,8 +247,8 @@ namespace Supernova.Tests
                 pickaxe.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
             Assert.That(
-                magnet.AnimationTriggerMode,
-                Is.EqualTo(PlayerToolAnimationTriggerMode.Single));
+                magnet.PrimaryAction,
+                Is.EqualTo(PlayerToolPrimaryAction.AttractCart));
         }
 
         [Test]
@@ -258,10 +256,10 @@ namespace Supernova.Tests
         {
             PlayerToolDefinition pickaxe =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    "Assets/Game/Config/Tools/PickaxeTool.asset");
+                    ProjectAssetPaths.Config.PickaxeTool);
             PlayerToolDefinition magnet =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    "Assets/Game/Config/Tools/MagnetTool.asset");
+                    ProjectAssetPaths.Config.MagnetTool);
 
             Assert.That(pickaxe, Is.Not.Null);
             Assert.That(pickaxe.HeldModelPrefab, Is.Not.Null);
@@ -422,7 +420,7 @@ namespace Supernova.Tests
         public void PlayerAnimator_CrouchUsesMaskedLowerBodyLayerSoUpperBodyStaysFree()
         {
             UnityAnimatorController controller = AssetDatabase.LoadAssetAtPath<UnityAnimatorController>(
-                "Assets/Game/Animations/P05Player.controller");
+                ProjectAssetPaths.Animations.PlayerController);
             Assert.That(controller, Is.Not.Null);
 
             Assert.That(
@@ -464,7 +462,7 @@ namespace Supernova.Tests
         public void PlayerAnimator_ToolActionUsesGenericStateAndConfiguredClipPlaceholder()
         {
             UnityAnimatorController controller = AssetDatabase.LoadAssetAtPath<UnityAnimatorController>(
-                "Assets/Game/Animations/P05Player.controller");
+                ProjectAssetPaths.Animations.PlayerController);
             Assert.That(controller, Is.Not.Null);
             Assert.That(
                 controller.parameters,
@@ -528,7 +526,7 @@ namespace Supernova.Tests
         {
             RuntimeAnimatorController runtimeController =
                 AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
-                    "Assets/Game/Animations/P05Player.controller");
+                    ProjectAssetPaths.Animations.PlayerController);
             Assert.That(runtimeController, Is.Not.Null);
 
             GameObject playerObject = Create("Player");
@@ -607,6 +605,53 @@ namespace Supernova.Tests
 
             Assert.That(creature.CurrentHealth, Is.LessThan(creature.MaximumHealth));
             Assert.That(creature.CurrentState, Is.EqualTo(CreatureBehaviorState.Hurt));
+        }
+
+        [Test]
+        public void MiningAttack_WaitsForSharedVoxelImpactTime()
+        {
+            GameObject playerObject = Create("Player");
+            playerObject.AddComponent<CharacterController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+
+            GameObject creatureObject = Create("Creature");
+            creatureObject.transform.position = Vector3.forward;
+            creatureObject.AddComponent<CapsuleCollider>();
+            CreatureBehaviorAgent creature =
+                creatureObject.AddComponent<CreatureBehaviorAgent>();
+            Physics.SyncTransforms();
+
+            MethodInfo scheduleAttack = typeof(VoxelPlayerController).GetMethod(
+                "ScheduleMiningAttack",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo applyAttacks = typeof(VoxelPlayerController).GetMethod(
+                "ApplyPendingMiningAttacksIfReady",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo pendingAttacksField =
+                typeof(VoxelPlayerController).GetField(
+                    "pendingMiningAttackTimes",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(scheduleAttack, Is.Not.Null);
+            Assert.That(applyAttacks, Is.Not.Null);
+            Assert.That(pendingAttacksField, Is.Not.Null);
+
+            float healthBeforeImpact = creature.CurrentHealth;
+            float scheduledAt = Time.time;
+            scheduleAttack.Invoke(player, new object[] { 0.42f });
+            var pendingAttacks =
+                (Queue<float>)pendingAttacksField.GetValue(player);
+            Assert.That(
+                pendingAttacks.Peek() - scheduledAt,
+                Is.EqualTo(0.42f).Within(0.001f));
+
+            applyAttacks.Invoke(player, null);
+            Assert.That(creature.CurrentHealth, Is.EqualTo(healthBeforeImpact));
+
+            pendingAttacks.Clear();
+            pendingAttacks.Enqueue(Time.time - 0.01f);
+            applyAttacks.Invoke(player, null);
+            Assert.That(creature.CurrentHealth, Is.LessThan(healthBeforeImpact));
         }
 
         [Test]

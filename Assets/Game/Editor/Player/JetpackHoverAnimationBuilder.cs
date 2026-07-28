@@ -9,11 +9,11 @@ namespace Supernova.EditorTools.PlayerSetup
     public static class JetpackHoverAnimationBuilder
     {
         private const string SourceClipPath =
-            "Assets/3rd/P05_Aki & Mika/Anim_demo/HoverDemo.anim";
+            ProjectAssetPaths.ThirdParty.HoverDemo;
         private const string OutputClipPath =
-            "Assets/Game/Animations/HoverLoop.anim";
+            ProjectAssetPaths.Animations.Hover;
         private const string InteractionPath =
-            "Assets/Game/Config/Equipment/JetpackInteraction.asset";
+            ProjectAssetPaths.Config.JetpackInteraction;
         private const float LoopStartTime = 1.5f;
         private const float LoopEndTime = 6.5f;
         private const float TimeEpsilon = 0.0001f;

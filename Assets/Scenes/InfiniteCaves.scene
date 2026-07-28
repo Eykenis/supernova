@@ -22,13 +22,13 @@ RenderSettings:
   m_FogDensity: 0.01
   m_LinearFogStart: 16
   m_LinearFogEnd: 48
-  m_AmbientSkyColor: {r: 0.16, g: 0.18, b: 0.19, a: 1}
+  m_AmbientSkyColor: {r: 0.10786753, g: 0.10916636, b: 0.11320752, a: 1}
   m_AmbientEquatorColor: {r: 0.075, g: 0.083, b: 0.086, a: 1}
-  m_AmbientGroundColor: {r: 0.025, g: 0.028, b: 0.03, a: 1}
+  m_AmbientGroundColor: {r: 0.011764706, g: 0.011764706, b: 0.011764706, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 2100000, guid: 372ee51cc643cf14bb9aac4f8351db0d, type: 2}
+  m_SkyboxMaterial: {fileID: 2100000, guid: b3a514ca52265814095c9d32c4ad64a1, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -1385,49 +1385,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   viewer: {fileID: 729396773}
-  placeViewerInCave: 1
-  worldSeed: 114514
-  settings:
-    cheeseFrequency: 0.001
-    cheeseThreshold: 0.02
-    cheeseLayerStrength: 0.1
-    spaghettiFrequency: 0.025
-    spaghettiThickness: 0.13
-    spaghettiWarp: 0.38
-    spaghettiRoughness: 0.035
-    noodleFrequency: 0.025
-    noodleThickness: 0.075
-    noodleRarity: -0.18
-    pillarHorizontalFrequency: 0.02
-    pillarVerticalFrequency: 0.05
-    pillarRarity: 0.01
-    pillarStrength: 1
-    layoutFrequency: 0.012
-    layoutThreshold: 0
-    corridorInset: 0.04
-    shortcutInset: 0.08
-    containerHalfExtent: 0.91
-    cutawayPlane: -0.24
-  maxConcurrentGenerationJobs: 4
-  meshesBuiltPerFrame: 1
-  voxelSize: 0.42
-  isoLevel: 0
-  vertexPlacement: 1
-  generateColliders: 1
-  voxelTypeCatalog: {fileID: 11400000, guid: 2edfe535d7218ed4795d6c3a36fedea1, type: 2}
-  punctualLightFalloffPower: 0.55
-  punctualLightAttenuationLimit: 1.5
-  punctualLightMultiplier: 1
-  baseSolidVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
-  bedrockVoxelType: {fileID: 11400000, guid: 2c50f434192e90a4fbd10cd5d9a7b8fb, type: 2}
-  oreFeatures:
-  - {fileID: 11400000, guid: c9849f1b483ab07428f176c33113c20f, type: 2}
-  treasureSpawnTable: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
-  treasureSpawnExclusionRadius: 12
-  spawnPointStructureRule:
-    enabled: 1
-    structure: {fileID: 11400000, guid: 2dd6e02553075e844a374e1bb4c19dff, type: 2}
-    offset: {x: 0, y: 0, z: 0}
+  levelConfigurationOverride: {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f,
+    type: 2}
+  showRuntimeDiagnostics: 0
   spawnPointSceneStructure: {fileID: 1913240833}
 --- !u!4 &1110579180
 Transform:
@@ -2894,25 +2854,10 @@ PrefabInstance:
       propertyPath: m_Material
       value: 
       objectReference: {fileID: 804371019}
-    - target: {fileID: 1283867152521971897, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_Enabled
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 1616966789136392089, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: throwOrigin
-      value: 
-      objectReference: {fileID: 0}
     - target: {fileID: 1868027582647821248, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
       propertyPath: firstPersonRootSpaceOffset.z
       value: 0.06
-      objectReference: {fileID: 0}
-    - target: {fileID: 2797800795305812122, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_StaticShadowCaster
-      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2817757230026618491, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
@@ -2933,31 +2878,6 @@ PrefabInstance:
         type: 3}
       propertyPath: m_LocalScale.z
       value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 3895727648358293035, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 3895727648358293035, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 3895727648358293035, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 3895727648358293035, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 3895727648358293035, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3931047401879343333, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
@@ -3749,11 +3669,6 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 4604323222803638180, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_IsActive
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 4724487542240598141, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
       propertyPath: far clip plane
@@ -3779,80 +3694,15 @@ PrefabInstance:
       propertyPath: m_BackGroundColor.r
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 5542010085355450081, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: firstPersonHeadRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 5542010085355450081, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: firstPersonHeadRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 5542010085355450081, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: firstPersonHeadRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 5542010085355450081, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: firstPersonHeadRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 6007271664186611230, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: speed
-      value: 2
-      objectReference: {fileID: 0}
-    - target: {fileID: 6007271664186611230, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: gravity
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 6007271664186611230, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: jumpSpeed
-      value: 2
-      objectReference: {fileID: 0}
     - target: {fileID: 6191435648502811240, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
       propertyPath: m_Name
       value: Player
       objectReference: {fileID: 0}
-    - target: {fileID: 6684228108189804565, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_IsActive
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 6841236989114517666, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
       propertyPath: m_ApplyRootMotion
       value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7292167217954330279, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: near clip plane
-      value: 0.1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7292167217954330279, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_BackGroundColor.a
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7292167217954330279, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_BackGroundColor.b
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7292167217954330279, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_BackGroundColor.g
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 7292167217954330279, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: m_BackGroundColor.r
-      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7446013692719600695, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
@@ -3884,16 +3734,6 @@ PrefabInstance:
       propertyPath: m_Enabled
       value: 1
       objectReference: {fileID: 0}
-    - target: {fileID: 8119574883523734044, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: thirdPersonOffset.z
-      value: -2
-      objectReference: {fileID: 0}
-    - target: {fileID: 8119574883523734044, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: secondPersonRotation.y
-      value: 180
-      objectReference: {fileID: 0}
     - target: {fileID: 8363300534232029083, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}
       propertyPath: baseColor.a
@@ -3918,11 +3758,6 @@ PrefabInstance:
         type: 3}
       propertyPath: flowColor.r
       value: 0.47318143
-      objectReference: {fileID: 0}
-    - target: {fileID: 8439900403955276425, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: viewCamera
-      value: 
       objectReference: {fileID: 0}
     m_RemovedComponents:
     - {fileID: 0}

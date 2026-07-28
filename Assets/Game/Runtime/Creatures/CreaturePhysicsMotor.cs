@@ -26,7 +26,6 @@ namespace Supernova.MinecraftCaves.Creatures
     }
 
     [DisallowMultipleComponent]
-    [RequireComponent(typeof(Rigidbody))]
     public sealed class CreaturePhysicsMotor : MonoBehaviour
     {
         [SerializeField] private Rigidbody body;

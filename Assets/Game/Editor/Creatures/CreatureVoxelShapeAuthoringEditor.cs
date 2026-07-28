@@ -60,7 +60,7 @@ namespace Supernova.MinecraftCaves.Editor.Creatures
                         authoring.name + "VoxelShape",
                         "asset",
                         "Choose where to save the prebaked voxel occupancy asset.",
-                        "Assets/Game");
+                        ProjectAssetPaths.Folders.Game);
                     if (string.IsNullOrEmpty(path))
                     {
                         return;

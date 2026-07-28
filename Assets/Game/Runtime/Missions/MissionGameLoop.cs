@@ -1,4 +1,5 @@
 using System.Collections;
+using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
 using Supernova.Voxels;
 using UnityEngine;
@@ -12,11 +13,12 @@ namespace Supernova.Missions
     public sealed class MissionGameLoop : MonoBehaviour
     {
         private const string CreditsKey = "Supernova.Credits";
-        private const string MissionResourcePath = "Missions/FirstMission";
+        private const float SceneFadeOutSeconds = 0.65f;
+        private const float SceneFadeInSeconds = 0.55f;
         private static MissionGameLoop instance;
         private static Font missionFont;
 
-        private MissionDefinition definition;
+        private LevelConfiguration definition;
         private MissionRun run;
         private Canvas canvas;
         private CanvasGroup fade;
@@ -31,6 +33,21 @@ namespace Supernova.Missions
 
         public MissionRun CurrentRun => run;
         public int Credits => PlayerPrefs.GetInt(CreditsKey, 0);
+        public static bool IsSceneTransitioning =>
+            instance != null && instance.transitioning;
+        public static LevelConfiguration CurrentLevelConfiguration
+        {
+            get
+            {
+                if (instance != null && instance.definition != null)
+                {
+                    return instance.definition;
+                }
+                return GameAssetCatalog.Current != null
+                    ? GameAssetCatalog.Current.Missions.DefaultLevel
+                    : null;
+            }
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Bootstrap()
@@ -51,7 +68,22 @@ namespace Supernova.Missions
             instance = this;
             DontDestroyOnLoad(gameObject);
             Application.runInBackground = true;
-            definition = Resources.Load<MissionDefinition>(MissionResourcePath);
+            definition = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.Missions.DefaultLevel
+                : null;
+            if (definition == null)
+            {
+                Debug.LogError(
+                    "The preloaded game asset catalog does not provide a default level. "
+                    + "The game loop cannot start without a level.");
+            }
+            else if (!definition.HasCompleteGenerationConfiguration)
+            {
+                Debug.LogError(
+                    "The active level must combine world, monster, and treasure "
+                    + "generation configurations.",
+                    definition);
+            }
             SceneManager.sceneLoaded += HandleSceneLoaded;
             EnsureUi();
         }
@@ -87,9 +119,23 @@ namespace Supernova.Missions
 
         public void BeginFirstMission()
         {
-            if (transitioning) return;
-            run = new MissionRun(TimeLimit, RequiredValue);
+            BeginLevel(definition);
+        }
+
+        public bool BeginLevel(LevelConfiguration level)
+        {
+            if (transitioning || level == null
+                || !level.HasCompleteGenerationConfiguration)
+            {
+                return false;
+            }
+
+            definition = level;
+            run = new MissionRun(
+                definition.TimeLimitSeconds,
+                definition.RequiredFunds);
             StartCoroutine(LoadWithFade(CaveSceneName));
+            return true;
         }
 
         public void DeliverOre(int value)
@@ -151,11 +197,35 @@ namespace Supernova.Missions
             if (player == null || world == null || !world.IsInitialLoadComplete) return;
 
             CreateCellTrigger(FindCell(), false);
-            Vector3 cartPosition = player.transform.position
-                + player.transform.right * 2.2f
-                + player.transform.forward * 1.5f
-                + Vector3.up * 0.5f;
-            MissionCart.Create(cartPosition);
+            Vector3 cartPosition;
+            Quaternion cartRotation;
+            SpawnPointSceneStructure spawnStructure =
+                FindObjectOfType<SpawnPointSceneStructure>();
+            if (spawnStructure != null)
+            {
+                spawnStructure.GetMissionCartSpawnPose(
+                    out cartPosition,
+                    out cartRotation);
+            }
+            else
+            {
+                cartPosition = player.transform.position
+                    + player.transform.right * 2.2f
+                    + player.transform.forward * 1.5f
+                    + Vector3.up * 0.5f;
+                cartRotation = player.transform.rotation;
+            }
+
+            string authoredCartName = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.SceneLookups.AuthoredCartObjectName
+                : string.Empty;
+            GameObject authoredCart = string.IsNullOrWhiteSpace(authoredCartName)
+                ? null
+                : GameObject.Find(authoredCartName);
+            MissionCart.ConfigureExisting(
+                authoredCart,
+                cartPosition,
+                cartRotation);
             ProximitySlidingDoor[] levelDoors =
                 FindObjectsOfType<ProximitySlidingDoor>(true);
             for (int i = 0; i < levelDoors.Length; i++)
@@ -163,7 +233,7 @@ namespace Supernova.Missions
                 levelDoors[i].SetStayOpenAfterFirstOpen(true);
             }
             caveSetup = true;
-            SetPrompt("用 MAGNET 搬运矿石/矿车 · 回到 CELL 按 E 提前撤离");
+            SetPrompt("用 MAGNET 搬运矿石 · 点击把手牵引矿车 · 回到 CELL 按 E 提前撤离");
             RefreshObjective();
         }
 
@@ -196,11 +266,19 @@ namespace Supernova.Missions
 
         private static Transform FindCell()
         {
-            GameObject exact = GameObject.Find("Cell");
+            string cellName = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.SceneLookups.MissionCellObjectName
+                : string.Empty;
+            GameObject exact = string.IsNullOrWhiteSpace(cellName)
+                ? null
+                : GameObject.Find(cellName);
             if (exact != null) return exact.transform;
             foreach (Transform candidate in FindObjectsOfType<Transform>())
             {
-                if (candidate.name.IndexOf("Cell", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                if (!string.IsNullOrWhiteSpace(cellName)
+                    && candidate.name.IndexOf(
+                        cellName,
+                        System.StringComparison.OrdinalIgnoreCase) >= 0)
                     return candidate;
             }
             return null;
@@ -245,11 +323,19 @@ namespace Supernova.Missions
         private IEnumerator LoadWithFade(string sceneName)
         {
             transitioning = true;
+            if (!fade.gameObject.activeSelf)
+            {
+                fade.alpha = 0f;
+            }
             fade.gameObject.SetActive(true);
-            yield return FadeTo(1f, 0.45f);
+            fade.blocksRaycasts = true;
+            Canvas.ForceUpdateCanvases();
+            yield return null;
+            yield return FadeTo(1f, SceneFadeOutSeconds);
+            yield return new WaitForEndOfFrame();
             AsyncOperation operation = SceneManager.LoadSceneAsync(sceneName);
             while (operation != null && !operation.isDone) yield return null;
-            yield return FadeTo(0f, 0.55f);
+            yield return FadeTo(0f, SceneFadeInSeconds);
             fade.gameObject.SetActive(false);
             transitioning = false;
         }
@@ -314,6 +400,7 @@ namespace Supernova.Missions
             fadeObject.GetComponent<Image>().color = Color.black;
             Stretch(fadeObject.GetComponent<RectTransform>());
             fade = fadeObject.GetComponent<CanvasGroup>();
+            fade.alpha = 0f;
             fade.blocksRaycasts = true;
             fadeObject.SetActive(false);
         }
@@ -338,11 +425,9 @@ namespace Supernova.Missions
         private static Font GetUiFont()
         {
             if (missionFont != null) return missionFont;
-            missionFont = Font.CreateDynamicFontFromOSFont(
-                new[] { "Microsoft YaHei", "Noto Sans CJK SC", "SimHei", "Arial" },
-                32);
-            if (missionFont == null)
-                missionFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            missionFont = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.Missions.UiFont
+                : null;
             return missionFont;
         }
 
@@ -364,11 +449,15 @@ namespace Supernova.Missions
             rect.offsetMax = Vector2.zero;
         }
 
-        private float TimeLimit => definition != null ? definition.TimeLimitSeconds : 300f;
-        private int RequiredValue => definition != null ? definition.RequiredValue : 100;
-        private int OreUnitValue => definition != null ? definition.OreUnitValue : 10;
-        private string MissionName => definition != null ? definition.DisplayName : "FIRST DESCENT";
-        private string CaveSceneName => definition != null ? definition.CaveSceneName : "InfiniteCaves";
-        private string HomeSceneName => definition != null ? definition.HomeSceneName : "Home";
+        private int OreUnitValue => definition != null ? definition.OreUnitValue : 1;
+        private string MissionName => definition != null
+            ? definition.DisplayName
+            : string.Empty;
+        private string CaveSceneName => definition != null
+            ? definition.CaveSceneName
+            : string.Empty;
+        private string HomeSceneName => definition != null
+            ? definition.HomeSceneName
+            : string.Empty;
     }
 }

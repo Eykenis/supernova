@@ -13,14 +13,15 @@ namespace Supernova.MinecraftCaves.Editor
     public static class MinecraftCaveInfiniteSceneBuilder
     {
         public const string ScenePath =
-            "Assets/Game/Scenes/MinecraftCaveInfiniteWorld.scene";
-        public const string TreasureSpawnTablePath =
-            "Assets/Game/Config/TreasureSpawnTable.asset";
+            ProjectAssetPaths.Scenes.InfiniteWorldDemo;
 
         [MenuItem("Tools/Minecraft Caves/Rebuild Infinite World Scene")]
         public static void RebuildInfiniteWorldScene()
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(ScenePath) ?? string.Empty);
+            Directory.CreateDirectory(
+                Path.GetDirectoryName(
+                    ProjectAssetPaths.ToAbsoluteFileSystemPath(ScenePath))
+                ?? string.Empty);
             NewSceneMode mode = HasDirtyLoadedScene()
                 ? NewSceneMode.Additive
                 : NewSceneMode.Single;
@@ -29,11 +30,7 @@ namespace Supernova.MinecraftCaves.Editor
             SceneManager.SetActiveScene(scene);
 
             var worldObject = new GameObject("Minecraft Infinite Cave World");
-            MinecraftCaveInfiniteWorld world =
-                worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
-            world.SetTreasureSpawnTable(
-                AssetDatabase.LoadAssetAtPath<Supernova.Gameplay.TreasureSpawnTable>(
-                    TreasureSpawnTablePath));
+            worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
             CreateViewer();
             CreateDirectionalLight(
                 "Warm Directional Light",

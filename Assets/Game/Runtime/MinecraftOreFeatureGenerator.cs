@@ -27,7 +27,8 @@ namespace Supernova.MinecraftCaves
             int worldSeed,
             IReadOnlyList<MinecraftOreFeatureSettings> features,
             DensitySampler densitySampler = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            DepthProbabilityProfile depthProbability = null)
         {
             Vector3Int targetOrigin = chunkCoordinate * VoxelVolume.Size;
             return GenerateRegion(
@@ -40,7 +41,8 @@ namespace Supernova.MinecraftCaves
                 worldSeed,
                 features,
                 densitySampler,
-                cancellationToken);
+                cancellationToken,
+                depthProbability);
         }
 
         public static int GenerateColumn(
@@ -50,7 +52,8 @@ namespace Supernova.MinecraftCaves
             int worldSeed,
             IReadOnlyList<MinecraftOreFeatureSettings> features,
             DensitySampler densitySampler = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            DepthProbabilityProfile depthProbability = null)
         {
             var targetOrigin = new Vector3Int(
                 columnCoordinate.x * VoxelColumnChunkData.Width,
@@ -66,7 +69,8 @@ namespace Supernova.MinecraftCaves
                 worldSeed,
                 features,
                 densitySampler,
-                cancellationToken);
+                cancellationToken,
+                depthProbability);
         }
 
         private static int GenerateRegion(
@@ -79,7 +83,8 @@ namespace Supernova.MinecraftCaves
             int worldSeed,
             IReadOnlyList<MinecraftOreFeatureSettings> features,
             DensitySampler densitySampler,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            DepthProbabilityProfile depthProbability)
         {
             if (densities == null)
             {
@@ -154,7 +159,9 @@ namespace Supernova.MinecraftCaves
                                 regionZ,
                                 attempt);
                             var random = new DeterministicRandom(attemptSeed);
-                            if (random.NextDouble() >= feature.PlacementChance)
+                            double placementRoll = random.NextDouble();
+                            if (depthProbability == null
+                                && placementRoll >= feature.PlacementChance)
                             {
                                 continue;
                             }
@@ -164,6 +171,15 @@ namespace Supernova.MinecraftCaves
                             int originZ = regionZ * PlacementRegionSize
                                 + random.NextInt(PlacementRegionSize);
                             int originY = SampleHeight(feature, ref random);
+                            if (depthProbability != null
+                                && placementRoll
+                                    >= depthProbability.EvaluateProbability(
+                                        feature.PlacementChance,
+                                        originY,
+                                        VoxelColumnChunkData.Height))
+                            {
+                                continue;
+                            }
                             Sphere[] spheres = BuildSpheres(
                                 originX,
                                 originY,

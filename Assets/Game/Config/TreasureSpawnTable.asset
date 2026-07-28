@@ -16,3 +16,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
   - {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
   - {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
+  spawnExclusionRadius: 12

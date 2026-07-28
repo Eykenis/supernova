@@ -10,7 +10,7 @@ namespace Supernova.Tests
     public sealed class UiFoundationTests
     {
         private const string MainMenuPrefabPath =
-            "Assets/Game/Resources/UI/MainMenuCanvas.prefab";
+            ProjectAssetPaths.Prefabs.MainMenu;
 
         [Test]
         public void SafeAreaCalculator_ConvertsPixelsToNormalizedAnchors()
@@ -67,11 +67,17 @@ namespace Supernova.Tests
             GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(MainMenuPrefabPath);
 
             Assert.That(prefab, Is.Not.Null);
+            Assert.That(SciFiUiSkin.HasRequiredAssets, Is.True);
             Assert.That(prefab.GetComponent<Canvas>(), Is.Not.Null);
             Assert.That(prefab.GetComponent<CanvasScaler>(), Is.Not.Null);
             Assert.That(prefab.GetComponent<UiCanvasPolicy>(), Is.Not.Null);
             Assert.That(prefab.GetComponent<MainMenuView>(), Is.Not.Null);
+            Assert.That(prefab.GetComponent<SciFiUiStyler>(), Is.Not.Null);
             Assert.That(prefab.GetComponentInChildren<UiSafeArea>(true), Is.Not.Null);
+            Assert.That(
+                prefab.transform.Find(
+                    UiHierarchyPaths.MainMenu.ExpeditionFrame)?.GetComponent<Image>(),
+                Is.Not.Null);
 
             MainMenuView view = prefab.GetComponent<MainMenuView>();
             Assert.That(view.PlayButton, Is.Not.Null);

@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f22f3bace7421b42922345bd19ce404, type: 3}
+  m_Name: MonsterSpawnTable
+  m_EditorClassIdentifier: 
+  monsters:
+  - {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
+  - {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
+  - {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
+  maximumActiveMonsters: 12
+  spawnExclusionRadius: 12
+  spawnCellSizeInChunks: 6

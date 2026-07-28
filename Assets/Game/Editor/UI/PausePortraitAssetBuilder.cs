@@ -10,32 +10,31 @@ namespace Supernova.UI.Editor
     public static class PausePortraitAssetBuilder
     {
         private const string SourcePrefabPath =
-            "Assets/3rd/P05_Aki & Mika/Model_DATA/Prefab/NoPhysics_Plain/P05_ASTRO_Aki_Plain Variant.prefab";
+            ProjectAssetPaths.ThirdParty.PlainP05Prefab;
         private static readonly string[] DefaultPosePaths =
         {
-            "Assets/3rd/Suriyun/Animations/Anim@Angpose.fbx",
-            "Assets/3rd/Suriyun/Animations/Anim@CastspellC.fbx",
-            "Assets/3rd/Suriyun/Animations/Anim@Atk4.fbx",
-            "Assets/3rd/Suriyun/Animations/Anim@Thinking.fbx"
+            ProjectAssetPaths.ThirdParty.SuriyunPoseAngle,
+            ProjectAssetPaths.ThirdParty.SuriyunPoseCast,
+            ProjectAssetPaths.ThirdParty.SuriyunPoseAttack,
+            ProjectAssetPaths.ThirdParty.SuriyunPoseThinking
         };
         private static readonly float[] DefaultHoldTimes = { 0.995f, 0.72f, 0.48f, 0.78f };
         private static readonly float[] DefaultYawValues = { -8f, -12f, -18f, 10f };
         private const string ShaderName = "Supernova/UI/PauseSilhouette";
-        private const string ResourceFolder = "Assets/Game/Resources/Pause";
-        private const string PortraitPath = ResourceFolder + "/PausePortrait.prefab";
-        private const string ControllerPath = ResourceFolder + "/PausePortrait.controller";
-        private const string BodyMaterialPath = ResourceFolder + "/PauseSilhouetteBody.mat";
+        private const string AssetFolder = ProjectAssetPaths.Folders.PausePose;
+        private const string PortraitPath = AssetFolder + "/PausePortrait.prefab";
+        private const string ControllerPath = AssetFolder + "/PausePortrait.controller";
+        private const string BodyMaterialPath = AssetFolder + "/PauseSilhouetteBody.mat";
         private const string BackgroundMaterialPath =
-            ResourceFolder + "/PauseSilhouetteBackground.mat";
-        private const string SettingsPath = ResourceFolder + "/PausePortraitSettings.asset";
+            AssetFolder + "/PauseSilhouetteBackground.mat";
+        private const string SettingsPath = AssetFolder + "/PausePortraitSettings.asset";
         private const string PreviewScenePath =
-            "Assets/Game/Scenes/PausePortraitPreview.unity";
+            ProjectAssetPaths.Scenes.PausePortraitPreview;
 
         [MenuItem("Tools/Supernova/UI/Rebuild Pause Portrait Assets")]
         public static void Rebuild()
         {
-            EnsureFolder("Assets/Game", "Resources");
-            EnsureFolder("Assets/Game/Resources", "Pause");
+            EnsureFolder(AssetFolder);
 
             GameObject sourcePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SourcePrefabPath);
             AnimationClip[] defaultPoses = DefaultPosePaths
@@ -68,7 +67,8 @@ namespace Supernova.UI.Editor
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("Rebuilt pause portrait resources with Suriyun Angpose.");
+            GameAssetCatalogBuilder.EnsureCatalog();
+            Debug.Log("Rebuilt pause portrait assets with Suriyun Angpose.");
         }
 
         [MenuItem("Tools/Supernova/UI/Select Pause Portrait Settings")]
@@ -81,7 +81,7 @@ namespace Supernova.UI.Editor
         [MenuItem("Tools/Supernova/UI/Rebuild Pause Portrait Preview Scene")]
         public static void RebuildPreviewScene()
         {
-            EnsureFolder("Assets/Game", "Scenes");
+            EnsureFolder(ProjectAssetPaths.Folders.Scenes);
             Scene scene = EditorSceneManager.NewScene(
                 NewSceneSetup.EmptyScene,
                 NewSceneMode.Single);
@@ -215,11 +215,17 @@ namespace Supernova.UI.Editor
                 Debug.LogError($"Could not copy pause portrait prefab to {destinationPath}.");
         }
 
-        private static void EnsureFolder(string parent, string child)
+private static void EnsureFolder(string path)
         {
-            string fullPath = parent + "/" + child;
-            if (!AssetDatabase.IsValidFolder(fullPath))
-                AssetDatabase.CreateFolder(parent, child);
+            if (AssetDatabase.IsValidFolder(path))
+                return;
+
+            string parent = System.IO.Path.GetDirectoryName(path)?.Replace('\\', '/');
+            string name = System.IO.Path.GetFileName(path);
+            if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(name))
+                throw new UnityException("Invalid asset folder: " + path);
+            EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, name);
         }
     }
 }

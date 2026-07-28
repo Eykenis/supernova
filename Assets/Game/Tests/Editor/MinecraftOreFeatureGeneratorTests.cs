@@ -166,6 +166,62 @@ namespace Supernova.Tests
             Assert.That(buriedTypes, Has.None.EqualTo(Ore));
         }
 
+        [Test]
+        public void GenerateColumn_DepthProfileFavorsDeepOreAttempts()
+        {
+            var profile = new DepthProbabilityProfile();
+            profile.Configure(0f, 1f, 1f);
+            var shallowFeature = new MinecraftOreFeatureSettings(
+                Ore,
+                new[] { Stone },
+                3109,
+                64,
+                1f,
+                MinecraftOreFeatureSettings.HeightDistribution.Uniform,
+                VoxelColumnChunkData.Height - 1,
+                VoxelColumnChunkData.Height - 1,
+                0,
+                8,
+                0f);
+            var deepFeature = new MinecraftOreFeatureSettings(
+                Ore,
+                new[] { Stone },
+                3109,
+                64,
+                1f,
+                MinecraftOreFeatureSettings.HeightDistribution.Uniform,
+                1,
+                1,
+                0,
+                8,
+                0f);
+            float[] densities = Enumerable
+                .Repeat(1f, VoxelColumnChunkData.VoxelCount)
+                .ToArray();
+
+            int shallowCount = MinecraftOreFeatureGenerator.GenerateColumn(
+                Vector3Int.zero,
+                densities,
+                Enumerable
+                    .Repeat(Stone, VoxelColumnChunkData.VoxelCount)
+                    .ToArray(),
+                18731,
+                new[] { shallowFeature },
+                depthProbability: profile);
+            int deepCount = MinecraftOreFeatureGenerator.GenerateColumn(
+                Vector3Int.zero,
+                densities,
+                Enumerable
+                    .Repeat(Stone, VoxelColumnChunkData.VoxelCount)
+                    .ToArray(),
+                18731,
+                new[] { deepFeature },
+                depthProbability: profile);
+
+            Assert.That(shallowCount, Is.Zero);
+            Assert.That(deepCount, Is.GreaterThan(0));
+        }
+
         private static MinecraftOreFeatureSettings CreateFeature(
             int attempts,
             int size,

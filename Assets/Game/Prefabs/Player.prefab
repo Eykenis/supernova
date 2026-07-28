@@ -495,6 +495,7 @@ MonoBehaviour:
   perspectiveCamera: {fileID: 1868027582647821248}
   viewCamera: {fileID: 4724487542240598141}
   playerRoot: {fileID: 4331721374357085242}
+  cartHandleAcquisitionDistance: 2
   acquisitionDistance: 3.5
   targetLayers:
     serializedVersion: 2
@@ -504,9 +505,13 @@ MonoBehaviour:
   maximumHoldDistance: 6
   scrollDistancePerStep: 0.35
   attractionForce: 800
+  maximumAttractionAcceleration: 40
+  positionSpring: 300
   forceDamping: 90
-  yawTorque: 120
-  yawDamping: 20
+  orientationSpring: 55
+  orientationDamping: 14
+  maximumOrientationTorque: 180
+  rotationDegreesPerMouseUnit: 5
   breakDistance: 8
 --- !u!114 &3337162664311632006
 MonoBehaviour:

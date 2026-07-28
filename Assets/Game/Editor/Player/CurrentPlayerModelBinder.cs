@@ -17,9 +17,9 @@ namespace Supernova.EditorTools.PlayerSetup
     /// </summary>
     public static class CurrentPlayerModelBinder
     {
-        private const string PlayerPrefabPath = "Assets/Game/Prefabs/Player.prefab";
-        private const string ControllerPath = "Assets/Game/Animations/P05Player.controller";
-        private const string SourceControllerPath = "Assets/3rd/Mryotaisu/Animators/Muryotaisu.controller";
+        private const string PlayerPrefabPath = ProjectAssetPaths.Prefabs.Player;
+        private const string ControllerPath = ProjectAssetPaths.Animations.PlayerController;
+        private const string SourceControllerPath = ProjectAssetPaths.ThirdParty.MuryotaisuController;
         private const string CrouchIdleStateName = "Crouch Idle";
         private const string CrouchMoveStateName = "Crouch Move";
 
@@ -95,7 +95,7 @@ namespace Supernova.EditorTools.PlayerSetup
 
         private static void CloseAnimatorWindows()
         {
-            EditorWindow[] windows = Resources.FindObjectsOfTypeAll<EditorWindow>();
+            EditorWindow[] windows = UnityEngine.Object.FindObjectsOfType<EditorWindow>();
             foreach (EditorWindow window in windows)
                 if (window.GetType().FullName == "UnityEditor.Graphs.AnimatorControllerTool")
                     window.Close();
@@ -240,9 +240,9 @@ namespace Supernova.EditorTools.PlayerSetup
         }
 
         private const string LowerBodyLayerName = "LowerBody Layer";
-        private const string LowerBodyMaskPath = "Assets/3rd/Mryotaisu/Animators/LowerBodyMask.mask";
-        private const string CrouchIdleClipPath = "Assets/Game/Animations/Other/CrouchLoop.anim";
-        private const string CrouchMoveClipPath = "Assets/Game/Animations/Other/Crouch_WalkFwd.anim";
+        private const string LowerBodyMaskPath = ProjectAssetPaths.ThirdParty.LowerBodyMask;
+        private const string CrouchIdleClipPath = ProjectAssetPaths.Animations.CrouchIdle;
+        private const string CrouchMoveClipPath = ProjectAssetPaths.Animations.CrouchMove;
 
         // Crouch lives on its own masked layer (legs/feet only) so it never overrides
         // the upper body: the player can still swing a tool while crouched. The layer's

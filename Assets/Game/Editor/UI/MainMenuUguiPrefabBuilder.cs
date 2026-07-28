@@ -10,9 +10,9 @@ namespace Supernova.Editor.UI
 {
     public static class MainMenuUguiPrefabBuilder
     {
-        private const string ThemeFolder = "Assets/Game/Config/UI";
+        private const string ThemeFolder = ProjectAssetPaths.Folders.UiConfig;
         private const string ThemePath = ThemeFolder + "/DefaultUiDesignTokens.asset";
-        private const string PrefabFolder = "Assets/Game/Resources/UI";
+        private const string PrefabFolder = ProjectAssetPaths.Folders.UiViews;
         private const string PrefabPath = PrefabFolder + "/MainMenuCanvas.prefab";
 
         [MenuItem("Supernova/UI/Rebuild Main Menu UGUI Prefab")]
@@ -34,6 +34,7 @@ namespace Supernova.Editor.UI
 
                 EditorUtility.SetDirty(prefab);
                 AssetDatabase.SaveAssets();
+                GameAssetCatalogBuilder.EnsureCatalog();
                 Debug.Log("Rebuilt main-menu UGUI prefab at " + PrefabPath);
             }
             finally
@@ -63,7 +64,8 @@ namespace Supernova.Editor.UI
                 typeof(CanvasScaler),
                 typeof(GraphicRaycaster),
                 typeof(UiCanvasPolicy),
-                typeof(MainMenuView));
+                typeof(MainMenuView),
+                typeof(SciFiUiStyler));
             RectTransform rootRect = root.GetComponent<RectTransform>();
             Stretch(rootRect);
 
@@ -113,6 +115,8 @@ namespace Supernova.Editor.UI
             BuildFooter(safeArea, tokens);
 
             MainMenuView view = root.GetComponent<MainMenuView>();
+            SciFiUiStyler styler = root.GetComponent<SciFiUiStyler>();
+            styler.Configure(SciFiUiScope.MainMenu);
             view.Configure(
                 viewReferences.MainPanel,
                 viewReferences.SettingsPanel,
@@ -125,6 +129,7 @@ namespace Supernova.Editor.UI
                 viewReferences.VolumeValue,
                 viewReferences.Status);
             view.ShowMainPanel();
+            SciFiUiSkin.ApplyMainMenu(root.transform);
             return root;
         }
 

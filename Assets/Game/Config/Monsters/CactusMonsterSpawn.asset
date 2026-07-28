@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c57bf3ddfe85fbb4081635e6ed8d2224, type: 3}
+  m_Name: CactusMonsterSpawn
+  m_EditorClassIdentifier: 
+  prefab: {fileID: 883849422808084752, guid: d26c890f8a43939418264302d9bb3d44, type: 3}
+  spawnChance: 1
+  attemptsPerChunk: 32
+  minimumGroupSize: 3
+  maximumGroupSize: 5
+  groupRadiusInVoxels: 8
+  requiredHeadroom: 1.6
+  spawnHeightOffset: 0.1

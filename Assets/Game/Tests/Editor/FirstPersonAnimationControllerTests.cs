@@ -21,7 +21,7 @@ namespace Supernova.Tests
         {
             RuntimeAnimatorController runtimeController =
                 AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
-                    "Assets/3rd/Mryotaisu/Animators/Muryotaisu.controller");
+                    ProjectAssetPaths.ThirdParty.MuryotaisuController);
             Assert.That(runtimeController, Is.Not.Null);
 
             player = new GameObject("Player");

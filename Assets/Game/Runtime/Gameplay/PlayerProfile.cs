@@ -33,14 +33,6 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0.02f)] private float hurtDuration = 0.35f;
         [SerializeField] private LayerMask attackLayers = ~0;
 
-        [Header("Bomb throwing")]
-        [SerializeField] private TimedBomb bombPrefab;
-        [SerializeField] private KeyCode throwKey = KeyCode.G;
-        [SerializeField, Min(0f)] private float throwSpeed = 12f;
-        [SerializeField, Min(0f)] private float upwardThrowSpeed = 2f;
-        [SerializeField, Min(0f)] private float spinSpeed = 12f;
-        [SerializeField, Min(0f)] private float throwCooldown = 0.25f;
-
         [Header("Animation")]
         [SerializeField, Min(0.1f)] private float alternateIdleDelay = 15f;
         [SerializeField] private KeyCode smileKey = KeyCode.Q;
@@ -85,12 +77,6 @@ namespace Supernova.Gameplay
         public float AttackCooldown => Mathf.Max(0.02f, attackCooldown);
         public float HurtDuration => Mathf.Max(0.02f, hurtDuration);
         public LayerMask AttackLayers => attackLayers;
-        public TimedBomb BombPrefab => bombPrefab;
-        public KeyCode ThrowKey => throwKey;
-        public float ThrowSpeed => Mathf.Max(0f, throwSpeed);
-        public float UpwardThrowSpeed => Mathf.Max(0f, upwardThrowSpeed);
-        public float SpinSpeed => Mathf.Max(0f, spinSpeed);
-        public float ThrowCooldown => Mathf.Max(0f, throwCooldown);
         public float AlternateIdleDelay => Mathf.Max(0.1f, alternateIdleDelay);
         public KeyCode SmileKey => smileKey;
         public KeyCode HitKey => hitKey;

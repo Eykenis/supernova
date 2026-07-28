@@ -15,7 +15,12 @@ MonoBehaviour:
   prefab: {fileID: 7212807089758395303, guid: 9b2c6fdf9ab72d54fa063f718b699d81, type: 3}
   value: 140
   weight: 3
+  fragility: 0.9
   spawnChance: 1
   attemptsPerChunk: 2
   maximumSurfaceSlope: 12
   requiredHeadroom: 1.5
+  fractureVariants:
+  - {fileID: 2693891218414060916, guid: 5781feb10ca0fe44ab05a9606be77614, type: 3}
+  - {fileID: 3620762834285924744, guid: cba30dcfb06932e4da2049cee2b8ca0f, type: 3}
+  - {fileID: 3985530130762518639, guid: 5ef96ede50153bd419de8e9f8eff2379, type: 3}

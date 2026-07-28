@@ -1,4 +1,5 @@
 using UnityEngine;
+using Supernova.Gameplay;
 
 namespace Supernova.Voxels
 {
@@ -8,7 +9,10 @@ namespace Supernova.Voxels
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody))]
-    public sealed class MinedOreDrop : MonoBehaviour
+    [RequireComponent(typeof(ValuableObject))]
+    public sealed class MinedOreDrop :
+        MonoBehaviour,
+        ValuableObject.IBreakEffect
     {
         public const float DefaultMassDensity = 10f;
 
@@ -18,6 +22,7 @@ namespace Supernova.Voxels
             DefaultMassDensity;
 
         private Rigidbody cachedBody;
+        private ValuableObject cachedValuable;
         private Mesh ownedMesh;
         private Material ownedMaterial;
 
@@ -25,6 +30,17 @@ namespace Supernova.Voxels
         public int VoxelCount => voxelCount;
         public float MassDensity => massDensity;
         public Mesh Mesh => ownedMesh;
+        public BreakFragmentEffect LastBreakEffect { get; private set; }
+        public ValuableObject Valuable
+        {
+            get
+            {
+                if (cachedValuable == null)
+                    cachedValuable = GetComponent<ValuableObject>();
+                return cachedValuable;
+            }
+        }
+        public int Value => Valuable != null ? Valuable.CurrentValue : 0;
         public Rigidbody Body
         {
             get
@@ -39,7 +55,9 @@ namespace Supernova.Voxels
             int representedVoxelCount,
             Mesh mesh,
             float density = DefaultMassDensity,
-            Material material = null)
+            Material material = null,
+            int valuePerVoxel = 1,
+            float fragility = 0.25f)
         {
             voxelType = type.IsAir ? VoxelTypeId.Default : type;
             voxelCount = Mathf.Max(1, representedVoxelCount);
@@ -47,24 +65,74 @@ namespace Supernova.Voxels
             ownedMesh = mesh;
             ownedMaterial = material;
             Body.mass = massDensity * voxelCount;
+            Valuable.Configure(
+                voxelCount * Mathf.Max(1, valuePerVoxel),
+                fragility);
+        }
+
+        public bool TrySpawnBreakEffect(
+            ValuableObject.BreakContext context)
+        {
+            Mesh sourceMesh = ownedMesh;
+            MeshRenderer sourceRenderer = GetComponent<MeshRenderer>();
+            if (sourceMesh == null || sourceRenderer == null)
+            {
+                return false;
+            }
+
+            int fragmentCount = Mathf.Clamp(
+                Mathf.RoundToInt(Mathf.Sqrt(voxelCount)) + 3,
+                4,
+                8);
+            System.Collections.Generic.IReadOnlyList
+                <MeshFragmentBuilder.Fragment> fragments =
+                MeshFragmentBuilder.Build(
+                    sourceMesh,
+                    fragmentCount,
+                    context.RandomSeed);
+            if (fragments.Count == 0)
+            {
+                return false;
+            }
+
+            Material transferredMaterial = ownedMaterial;
+            Texture transferredTexture =
+                transferredMaterial != null
+                && transferredMaterial.HasProperty("_BaseMap")
+                    ? transferredMaterial.GetTexture("_BaseMap")
+                    : null;
+            LastBreakEffect =
+                BreakFragmentEffect.SpawnMeshes(
+                    $"{gameObject.name} Fragments",
+                    fragments,
+                    sourceRenderer.sharedMaterials,
+                    context,
+                    transferredMaterial,
+                    transferredTexture);
+            if (LastBreakEffect == null)
+            {
+                return false;
+            }
+
+            ownedMaterial = null;
+            return true;
         }
 
         private void OnDestroy()
         {
-            if (ownedMesh == null)
+            if (ownedMesh != null)
             {
-                return;
+                if (Application.isPlaying)
+                {
+                    Destroy(ownedMesh);
+                }
+                else
+                {
+                    DestroyImmediate(ownedMesh);
+                }
+                ownedMesh = null;
             }
 
-            if (Application.isPlaying)
-            {
-                Destroy(ownedMesh);
-            }
-            else
-            {
-                DestroyImmediate(ownedMesh);
-            }
-            ownedMesh = null;
             if (ownedMaterial != null)
             {
                 Texture ownedTexture = ownedMaterial.HasProperty("_BaseMap")
