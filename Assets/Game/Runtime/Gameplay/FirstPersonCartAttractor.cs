@@ -40,6 +40,14 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0f)] private float orientationDamping = 14f;
         [SerializeField, Min(0f)] private float maximumOrientationTorque = 180f;
         [SerializeField, Min(0f)] private float rotationDegreesPerMouseUnit = 5f;
+        [Header("Magnet height control")]
+        [Tooltip("World-space height added to the magnet hold point per Mouse Y unit while right mouse is held.")]
+        [SerializeField, Min(0f)] private float heightDistancePerMouseUnit = 0.15f;
+        [SerializeField, Min(0f)] private float maximumHeightOffset = 3f;
+        [Tooltip("Maximum upward force at the height where the object was acquired, in newtons.")]
+        [SerializeField, Min(0f)] private float baseMaximumLiftForce = 300f;
+        [Tooltip("Reduces maximum upward force as the object's actual height above its acquisition point increases.")]
+        [SerializeField, Min(0f)] private float liftForceFalloffPerMeter = 0.6f;
         [SerializeField, Min(0.5f)] private float breakDistance = 8f;
 
         private readonly RaycastHit[] acquisitionHits = new RaycastHit[32];
@@ -47,10 +55,13 @@ namespace Supernova.Gameplay
         private CartHandle heldHandle;
         private ValuableObject heldValuableObject;
         private CharacterController playerController;
-        private bool actionActive;
+        private bool magnetActionActive;
         private Quaternion heldTargetRotation;
         private bool hasHeldTargetRotation;
         private Vector3 cartTowWorldOffset;
+        private float magnetHeightOffset;
+        private float magnetPickupHeight;
+        private int cartTowClickConsumedFrame = -1;
 
         public bool DeviceEnabled => deviceEnabled;
         public bool IsHolding => heldBody != null;
@@ -58,9 +69,17 @@ namespace Supernova.Gameplay
         public bool IsRotatingHeldObject => IsHolding
             && !IsTowingCart
             && Input.GetMouseButton(2);
+        public bool IsAdjustingHeldObjectHeight => magnetActionActive
+            && IsHolding
+            && !IsTowingCart
+            && Input.GetMouseButton(1);
+        public bool IsManipulatingHeldObject => IsRotatingHeldObject
+            || IsAdjustingHeldObjectHeight;
+        public bool ConsumedCartTowClickThisFrame =>
+            cartTowClickConsumedFrame == Time.frameCount;
         public Rigidbody HeldBody => heldBody;
         public ValuableObject HeldValuableObject => heldValuableObject;
-        public bool IsActionActive => actionActive;
+        public bool IsActionActive => magnetActionActive;
         public float HoldDistance => holdDistance;
         public float AttractionForce => attractionForce;
         public float CartHandleAcquisitionDistance => cartHandleAcquisitionDistance;
@@ -87,16 +106,24 @@ namespace Supernova.Gameplay
                     Input.GetAxis("Mouse X"),
                     Input.GetAxis("Mouse Y"));
             }
+            else if (IsAdjustingHeldObjectHeight)
+            {
+                AdjustMagnetHeight(Input.GetAxis("Mouse Y"));
+            }
 
             if (!Input.GetMouseButtonDown(0)) return;
 
             if (IsTowingCart)
             {
-                EndAttraction();
+                EndHandleTow();
+                cartTowClickConsumedFrame = Time.frameCount;
                 return;
             }
 
-            BeginHandleTow();
+            if (BeginHandleTow())
+            {
+                cartTowClickConsumedFrame = Time.frameCount;
+            }
         }
 
         public bool BeginHandleTow()
@@ -107,8 +134,11 @@ namespace Supernova.Gameplay
                 return false;
             }
 
-            actionActive = TryAcquireTarget(true);
-            return actionActive;
+            if (!TryAcquireCartHandle()) return false;
+
+            magnetActionActive = false;
+            magnetHeightOffset = 0f;
+            return true;
         }
 
         public bool BeginAttraction()
@@ -119,25 +149,23 @@ namespace Supernova.Gameplay
                 EndAttraction();
                 return false;
             }
+            if (IsTowingCart) return false;
 
-            actionActive = true;
-            if (heldBody == null) TryAcquireTarget(false);
+            magnetActionActive = true;
+            if (heldBody == null) TryAcquireMagnetTarget();
             return true;
         }
 
         public void TickAttraction()
         {
             ResolveReferences();
-            bool canContinue = IsTowingCart
-                ? CanOperateInFirstPerson
-                : CanOperate;
-            if (!actionActive || !isActiveAndEnabled || !canContinue)
+            if (!magnetActionActive || !isActiveAndEnabled || !CanOperate)
             {
                 EndAttraction();
                 return;
             }
 
-            if (heldBody == null && !IsTowingCart) TryAcquireTarget(false);
+            if (heldBody == null) TryAcquireMagnetTarget();
         }
 
         public void TickAttraction(float scrollSteps)
@@ -157,23 +185,62 @@ namespace Supernova.Gameplay
                 maximum);
         }
 
+        public void AdjustMagnetHeight(float mouseY)
+        {
+            if (!magnetActionActive
+                || IsTowingCart
+                || Mathf.Abs(mouseY) <= 0.001f)
+            {
+                return;
+            }
+
+            float limit = Mathf.Max(0f, maximumHeightOffset);
+            magnetHeightOffset = Mathf.Clamp(
+                magnetHeightOffset
+                    + mouseY * Mathf.Max(0f, heightDistancePerMouseUnit),
+                -limit,
+                limit);
+        }
+
         public void EndAttraction()
         {
-            actionActive = false;
+            magnetActionActive = false;
+            magnetHeightOffset = 0f;
+            hasHeldTargetRotation = false;
+            if (!IsTowingCart) Release();
+        }
+
+        public void EndHandleTow()
+        {
             heldHandle = null;
             hasHeldTargetRotation = false;
             Release();
         }
 
+        private void EndCurrentInteraction()
+        {
+            if (IsTowingCart)
+            {
+                EndHandleTow();
+            }
+            else
+            {
+                EndAttraction();
+            }
+        }
+
         private void FixedUpdate()
         {
-            if (!actionActive || heldBody == null) return;
+            if ((!magnetActionActive && !IsTowingCart) || heldBody == null)
+            {
+                return;
+            }
             bool canContinue = IsTowingCart
                 ? CanOperateInFirstPerson
                 : CanOperate;
             if (!canContinue || heldBody.isKinematic)
             {
-                EndAttraction();
+                EndCurrentInteraction();
                 return;
             }
 
@@ -185,7 +252,7 @@ namespace Supernova.Gameplay
             Vector3 error = desiredPosition - handlePosition;
             if (error.sqrMagnitude > breakDistance * breakDistance)
             {
-                EndAttraction();
+                EndCurrentInteraction();
                 return;
             }
 
@@ -201,6 +268,9 @@ namespace Supernova.Gameplay
                 force = Vector3.ClampMagnitude(
                     force,
                     heldBody.mass * Mathf.Max(0f, maximumAttractionAcceleration));
+                force = LimitMagnetLiftForce(
+                    force,
+                    heldBody.worldCenterOfMass.y);
             }
             heldBody.AddForceAtPosition(force, handlePosition, ForceMode.Force);
 
@@ -227,6 +297,29 @@ namespace Supernova.Gameplay
             Vector3 force = positionError * Mathf.Max(0f, positionSpring);
             force += relativeVelocity * Mathf.Max(0f, forceDamping);
             return Vector3.ClampMagnitude(force, forceLimit);
+        }
+
+        private Vector3 LimitMagnetLiftForce(
+            Vector3 force,
+            float currentBodyHeight)
+        {
+            float maximumLiftForce = CalculateMaximumLiftForce(
+                currentBodyHeight);
+            if (force.y > maximumLiftForce)
+            {
+                force.y = maximumLiftForce;
+            }
+            return force;
+        }
+
+        private float CalculateMaximumLiftForce(float currentBodyHeight)
+        {
+            float liftedHeight = Mathf.Max(
+                0f,
+                currentBodyHeight - magnetPickupHeight);
+            float falloff = Mathf.Max(0f, liftForceFalloffPerMeter);
+            return Mathf.Max(0f, baseMaximumLiftForce)
+                / (1f + liftedHeight * falloff);
         }
 
         private Vector3 CalculateOrientationTorque(
@@ -284,27 +377,88 @@ namespace Supernova.Gameplay
             heldBody = null;
             heldValuableObject = null;
             cartTowWorldOffset = Vector3.zero;
+            magnetHeightOffset = 0f;
+            magnetPickupHeight = 0f;
         }
 
-        private bool TryAcquireTarget(bool requireCartHandle)
+        private bool TryAcquireCartHandle()
         {
             if (viewCamera == null) return false;
 
             Transform cameraTransform = viewCamera.transform;
-            float maximumDistance = requireCartHandle
-                ? cartHandleAcquisitionDistance
-                : acquisitionDistance;
             int count = Physics.RaycastNonAlloc(
                 cameraTransform.position,
                 cameraTransform.forward,
                 acquisitionHits,
-                Mathf.Max(0.1f, maximumDistance),
+                Mathf.Max(0.1f, cartHandleAcquisitionDistance),
+                targetLayers,
+                QueryTriggerInteraction.Ignore);
+
+            float handleHitDistance = float.PositiveInfinity;
+            CartHandle focusedHandle = null;
+            Rigidbody focusedBody = null;
+
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = acquisitionHits[i];
+                Collider collider = hit.collider;
+                if (collider == null || IsOwnedByPlayer(collider.transform)) continue;
+                CartHandle handle = collider.GetComponentInParent<CartHandle>();
+                Rigidbody body = handle != null ? handle.CartBody : null;
+                if (body == null || body.isKinematic) continue;
+                if (hit.distance >= handleHitDistance) continue;
+
+                handleHitDistance = hit.distance;
+                focusedHandle = handle;
+                focusedBody = body;
+            }
+
+            if (focusedHandle == null || focusedBody == null) return false;
+
+            // The authored cart uses compound colliders. From normal camera height
+            // its own tray can be hit just before the handle collider. Those colliders
+            // must not hide their own handle, while unrelated geometry still blocks it.
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = acquisitionHits[i];
+                Collider collider = hit.collider;
+                if (collider == null
+                    || IsOwnedByPlayer(collider.transform)
+                    || hit.distance >= handleHitDistance
+                    || BelongsToBody(collider, focusedBody))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            heldHandle = focusedHandle;
+            heldBody = focusedBody;
+            ResolveHeldValuableObject();
+            heldTargetRotation = focusedBody.rotation;
+            hasHeldTargetRotation = true;
+            cartTowWorldOffset =
+                focusedHandle.AttachmentPoint.position - playerRoot.position;
+            focusedBody.WakeUp();
+            return true;
+        }
+
+        private bool TryAcquireMagnetTarget()
+        {
+            if (viewCamera == null) return false;
+
+            Transform cameraTransform = viewCamera.transform;
+            int count = Physics.RaycastNonAlloc(
+                cameraTransform.position,
+                cameraTransform.forward,
+                acquisitionHits,
+                Mathf.Max(0.1f, acquisitionDistance),
                 targetLayers,
                 QueryTriggerInteraction.Ignore);
 
             float focusedHitDistance = float.PositiveInfinity;
             Collider focusedCollider = null;
-
             for (int i = 0; i < count; i++)
             {
                 RaycastHit hit = acquisitionHits[i];
@@ -318,31 +472,46 @@ namespace Supernova.Gameplay
 
             if (focusedCollider == null) return false;
 
-            CartHandle handle = focusedCollider.GetComponentInParent<CartHandle>();
-            Rigidbody body = requireCartHandle
-                ? (handle != null ? handle.CartBody : null)
-                : focusedCollider.attachedRigidbody;
-            if (body == null || body.isKinematic) return false;
-            bool bodyIsCart = body.GetComponentInChildren<CartHandle>(true) != null;
-            if (requireCartHandle ? handle == null : bodyIsCart) return false;
+            Rigidbody body = focusedCollider.attachedRigidbody;
+            if (body == null
+                || body.isKinematic
+                || body.GetComponentInChildren<CartHandle>(true) != null)
+            {
+                return false;
+            }
 
-            heldHandle = requireCartHandle ? handle : null;
+            heldHandle = null;
             heldBody = body;
-            heldValuableObject = body.GetComponent<ValuableObject>();
+            ResolveHeldValuableObject();
+            heldTargetRotation = body.rotation;
+            hasHeldTargetRotation = true;
+            magnetHeightOffset = 0f;
+            magnetPickupHeight = body.worldCenterOfMass.y;
+            body.WakeUp();
+            return true;
+        }
+
+        private void ResolveHeldValuableObject()
+        {
+            heldValuableObject = heldBody != null
+                ? heldBody.GetComponent<ValuableObject>()
+                : null;
             if (heldValuableObject == null)
             {
                 heldValuableObject =
-                    body.GetComponentInChildren<ValuableObject>(true);
+                    heldBody != null
+                        ? heldBody.GetComponentInChildren<ValuableObject>(true)
+                        : null;
             }
-            heldTargetRotation = body.rotation;
-            hasHeldTargetRotation = true;
-            if (requireCartHandle)
-            {
-                cartTowWorldOffset =
-                    handle.AttachmentPoint.position - playerRoot.position;
-            }
-            heldBody.WakeUp();
-            return true;
+        }
+
+        private static bool BelongsToBody(Collider collider, Rigidbody body)
+        {
+            return collider != null
+                && body != null
+                && (collider.attachedRigidbody == body
+                    || collider.transform == body.transform
+                    || collider.transform.IsChildOf(body.transform));
         }
 
         private bool CanOperateInFirstPerson => perspectiveCamera != null
@@ -373,6 +542,7 @@ namespace Supernova.Gameplay
         private void OnDisable()
         {
             EndAttraction();
+            EndHandleTow();
         }
 
         private void OnValidate()
@@ -393,6 +563,12 @@ namespace Supernova.Gameplay
             maximumOrientationTorque = Mathf.Max(0f, maximumOrientationTorque);
             rotationDegreesPerMouseUnit =
                 Mathf.Max(0f, rotationDegreesPerMouseUnit);
+            heightDistancePerMouseUnit =
+                Mathf.Max(0f, heightDistancePerMouseUnit);
+            maximumHeightOffset = Mathf.Max(0f, maximumHeightOffset);
+            baseMaximumLiftForce = Mathf.Max(0f, baseMaximumLiftForce);
+            liftForceFalloffPerMeter =
+                Mathf.Max(0f, liftForceFalloffPerMeter);
             breakDistance = Mathf.Max(0.5f, breakDistance);
         }
 
@@ -405,7 +581,8 @@ namespace Supernova.Gameplay
 
             return viewCamera.transform.position
                 + viewCamera.transform.forward.normalized
-                * Mathf.Max(0.2f, holdDistance);
+                * Mathf.Max(0.2f, holdDistance)
+                + Vector3.up * magnetHeightOffset;
         }
     }
 }

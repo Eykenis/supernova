@@ -1,6 +1,6 @@
 # 矿车牵引、磁力工具与玩家输入
 
-本文档描述当前实现。矿车把手牵引和 Magnet 普通刚体吸附是两套独立行为，共用 `FirstPersonCartAttractor` 的目标状态与物理辅助函数，但不共享交互语义或视觉表现。
+本文档描述当前实现。矿车把手牵引和 Magnet 普通刚体吸附是两套独立行为；它们只共用 `FirstPersonCartAttractor` 的物理施力辅助函数，不共享动作激活状态、输入语义或视觉表现。
 
 ## 1. 行为边界
 
@@ -10,6 +10,7 @@
 - 矿车牵引不要求装备 Magnet，也不检查 `deviceEnabled`。
 - 再次点击左键会解除当前矿车牵引。
 - 开始交互时必须由准星射线直接命中把手，默认最大距离为 `2m`。
+- 矿车自身的复合碰撞体不会遮挡同一刚体上的把手，但更近的墙体或其他物体仍会阻止牵引。
 - 矿车牵引期间不能切换快捷栏工具。
 - 矿车牵引不显示 `MagnetAttractionBeam`。
 
@@ -19,6 +20,8 @@
 - 普通吸附默认取得距离为 `3.5m`，保持距离可在 `0.5m` 到 `6m` 之间通过滚轮调整。
 - 带有 `CartHandle` 的刚体会被普通 Magnet 取得逻辑明确排除；矿车必须通过把手牵引。
 - 普通吸附显示磁力光束，并允许中键配合鼠标调整物体朝向。
+- 吸附期间按住右键上下拖动，会在世界 Y 轴上移动物理保持点；刚体仍只通过现有弹簧力、阻尼和最大力限制运动，不直接修改 Transform。
+- Magnet 记录取得物体时的实际重心高度。物体实际升高后，最大向上力按 `baseMaximumLiftForce / (1 + liftedHeight * liftForceFalloffPerMeter)` 衰减；默认从 `300N` 开始、每米衰减系数为 `0.6`。质量和重力决定物体能否继续上升或维持高度。
 
 `PlayerToolDefinition.animationTriggerMode` 是每个工具资产自己的表现配置，不在本文档中规定 Magnet 必须使用哪一种动画触发模式。开发者可按动画内容选择 `Single`、`Periodic` 或 `Continuous`。
 
@@ -28,10 +31,10 @@
 
 1. `FirstPersonCartAttractor.Update()` 以 `DefaultExecutionOrder(-300)` 优先读取左键按下，处理矿车把手的开始/解除牵引。
 2. `VoxelPlayerController` 生成 `PlayerInputSnapshot`，处理工具动作、角色状态机、移动和动画。
-3. 如果前一步已经开始矿车牵引，`VoxelPlayerController` 会通过 `IsTowingCart` 抑制本帧工具主操作，避免同时进入挖矿或 Magnet 普通吸附。
+3. 如果前一步开始或解除矿车牵引，`VoxelPlayerController` 会通过 `IsTowingCart` 和当帧点击消费标记抑制工具主操作，避免同一次左键同时进入挖矿或 Magnet 普通吸附。
 4. 未牵引矿车且当前工具允许主操作时，`VoxelPlayerController` 进入统一的 `ToolAction` 状态；Magnet 对应调用 `BeginAttraction()`、`TickAttraction()` 和 `EndAttraction()`。
 
-这两个入口尚未统一。本轮只记录职责和互斥关系，不调整输入架构。
+矿车牵引和 Magnet 使用各自独立的激活状态与结束方法。矿车取得失败不会清空正在运行的 Magnet 动作，结束 Magnet 动作也不会释放矿车牵引。
 
 ## 3. 矿车跟随模型
 

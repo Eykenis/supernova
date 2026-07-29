@@ -229,10 +229,12 @@ namespace Supernova.Voxels
             bool acceptsAction = Cursor.lockState == CursorLockMode.Locked;
             bool primaryHeld = acceptsAction && Input.GetMouseButton(0);
             bool towingCart = cartAttractor != null && cartAttractor.IsTowingCart;
+            bool cartTowClickConsumed = cartAttractor != null
+                && cartAttractor.ConsumedCartTowClickThisFrame;
             return new PlayerInputSnapshot(
                 movement,
                 acceptsAction && Input.GetButtonDown("Jump"),
-                primaryHeld && !towingCart
+                primaryHeld && !towingCart && !cartTowClickConsumed
                     && toolController != null
                     && toolController.CanUseSelectedPrimaryAction(),
                 Input.GetKey(Profile.CrouchKey),

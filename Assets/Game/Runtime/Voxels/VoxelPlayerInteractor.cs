@@ -23,6 +23,7 @@ namespace Supernova.Voxels
         [SerializeField] private Camera viewCamera;
         [SerializeField] private MonoBehaviour terrain;
         [SerializeField] private VoxelMiningImpactEffect miningImpactEffect;
+        [SerializeField] private FirstPersonCartAttractor cartAttractor;
         private PlayerProfile profile;
         private int raycastMask;
         private bool hasPendingMine;
@@ -78,7 +79,11 @@ namespace Supernova.Voxels
                 return;
             }
 
-            if (Input.GetMouseButtonDown(1) && canPlace)
+            bool magnetConsumesRightMouse = cartAttractor != null
+                && cartAttractor.IsAdjustingHeldObjectHeight;
+            if (Input.GetMouseButtonDown(1)
+                && !magnetConsumesRightMouse
+                && canPlace)
             {
                 Terrain.TrySetVoxelAndRebuild(
                     placeVoxel.x,
@@ -478,6 +483,10 @@ namespace Supernova.Voxels
             if (miningImpactEffect == null)
             {
                 miningImpactEffect = GetComponent<VoxelMiningImpactEffect>();
+            }
+            if (cartAttractor == null)
+            {
+                cartAttractor = GetComponent<FirstPersonCartAttractor>();
             }
         }
 

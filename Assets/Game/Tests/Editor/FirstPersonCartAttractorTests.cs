@@ -53,6 +53,67 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void BeginHandleTow_AllowsOwnCartColliderBeforeHandle()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            GameObject cart = Create("Compound Cart");
+            Rigidbody body = cart.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            BoxCollider cartCollider = cart.AddComponent<BoxCollider>();
+            cartCollider.center = Vector3.forward;
+            cartCollider.size = Vector3.one * 0.4f;
+            GameObject handleObject = Create("Tow Handle");
+            handleObject.transform.SetParent(cart.transform);
+            handleObject.transform.localPosition = Vector3.forward * 1.5f;
+            handleObject.AddComponent<BoxCollider>().size = Vector3.one * 0.2f;
+            handleObject.AddComponent<CartHandle>().Configure(body);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginHandleTow(), Is.True);
+            Assert.That(attractor.IsTowingCart, Is.True);
+            Assert.That(attractor.HeldBody, Is.SameAs(body));
+        }
+
+        [Test]
+        public void BeginHandleTow_IsBlockedByUnrelatedColliderBeforeHandle()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            GameObject cart = Create("Cart");
+            Rigidbody body = cart.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            GameObject handleObject = Create("Tow Handle");
+            handleObject.transform.SetParent(cart.transform);
+            handleObject.transform.localPosition = Vector3.forward * 1.5f;
+            handleObject.AddComponent<BoxCollider>().size = Vector3.one * 0.2f;
+            handleObject.AddComponent<CartHandle>().Configure(body);
+            GameObject blocker = Create("Unrelated Blocker");
+            blocker.transform.position = Vector3.forward * 0.75f;
+            blocker.AddComponent<BoxCollider>().size = Vector3.one * 0.2f;
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginHandleTow(), Is.False);
+            Assert.That(attractor.IsTowingCart, Is.False);
+        }
+
+        [Test]
         public void BeginHandleTow_RejectsCartHandleBeyondShortRange()
         {
             GameObject player = Create("Player");
@@ -182,6 +243,141 @@ namespace Supernova.Tests
 
             Assert.That(attractor.BeginAttraction(), Is.True);
             Assert.That(attractor.HeldBody, Is.Null);
+        }
+
+        [Test]
+        public void FailedCartTow_DoesNotInterruptMagnetAction()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody body = CreateBody(
+                "Magnet Target",
+                new Vector3(0f, 0f, 1.5f));
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HeldBody, Is.SameAs(body));
+            Assert.That(attractor.BeginHandleTow(), Is.False);
+            Assert.That(attractor.IsActionActive, Is.True);
+            Assert.That(attractor.HeldBody, Is.SameAs(body));
+        }
+
+        [Test]
+        public void EndingMagnetAction_DoesNotReleaseCartTow()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody cart = CreateBody("Cart", new Vector3(0f, 0f, 1.5f));
+            cart.gameObject.AddComponent<CartHandle>().Configure(cart);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginHandleTow(), Is.True);
+            attractor.EndAttraction();
+
+            Assert.That(attractor.IsTowingCart, Is.True);
+            Assert.That(attractor.HeldBody, Is.SameAs(cart));
+        }
+
+        [Test]
+        public void MagnetHeightDrag_MovesPhysicalHoldPointWithoutMovingBodyDirectly()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody body = CreateBody(
+                "Magnet Target",
+                new Vector3(0f, 0f, 2f));
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Vector3 bodyPosition = body.position;
+            Vector3 before = InvokePrivate<Vector3>(
+                attractor,
+                "CalculateDesiredHoldPosition");
+            attractor.AdjustMagnetHeight(2f);
+            Vector3 after = InvokePrivate<Vector3>(
+                attractor,
+                "CalculateDesiredHoldPosition");
+
+            Assert.That(after.y - before.y, Is.EqualTo(0.3f).Within(0.001f));
+            Assert.That(body.position, Is.EqualTo(bodyPosition));
+        }
+
+        [Test]
+        public void MagnetLiftForce_DecreasesWithActualLiftedHeight()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            CreateBody("Magnet Target", new Vector3(0f, 0f, 2f));
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            float forceAtPickup = InvokePrivate<float>(
+                attractor,
+                "CalculateMaximumLiftForce",
+                0f);
+            float forceAtThreeMetres = InvokePrivate<float>(
+                attractor,
+                "CalculateMaximumLiftForce",
+                3f);
+
+            Assert.That(forceAtPickup, Is.EqualTo(300f).Within(0.001f));
+            Assert.That(
+                forceAtThreeMetres,
+                Is.EqualTo(300f / 2.8f).Within(0.001f));
+            Assert.That(forceAtThreeMetres, Is.LessThan(forceAtPickup));
+        }
+
+        [Test]
+        public void MagnetLiftLimit_ClampsOnlyUpwardForce()
+        {
+            GameObject player = Create("Player");
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            SetPrivateField(attractor, "baseMaximumLiftForce", 100f);
+            SetPrivateField(attractor, "liftForceFalloffPerMeter", 1f);
+            SetPrivateField(attractor, "magnetPickupHeight", 0f);
+
+            Vector3 upward = InvokePrivate<Vector3>(
+                attractor,
+                "LimitMagnetLiftForce",
+                new Vector3(20f, 200f, 30f),
+                1f);
+            Vector3 downward = InvokePrivate<Vector3>(
+                attractor,
+                "LimitMagnetLiftForce",
+                new Vector3(20f, -200f, 30f),
+                1f);
+
+            Assert.That(upward, Is.EqualTo(new Vector3(20f, 50f, 30f)));
+            Assert.That(downward, Is.EqualTo(new Vector3(20f, -200f, 30f)));
         }
 
         private static void SetPrivateField(

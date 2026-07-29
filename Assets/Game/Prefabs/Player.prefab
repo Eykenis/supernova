@@ -479,6 +479,7 @@ MonoBehaviour:
   viewCamera: {fileID: 6169288453656789140}
   terrain: {fileID: 0}
   miningImpactEffect: {fileID: 0}
+  cartAttractor: {fileID: 2931897021740309335}
 --- !u!114 &2931897021740309335
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -512,6 +513,10 @@ MonoBehaviour:
   orientationDamping: 14
   maximumOrientationTorque: 180
   rotationDegreesPerMouseUnit: 5
+  heightDistancePerMouseUnit: 0.15
+  maximumHeightOffset: 3
+  baseMaximumLiftForce: 300
+  liftForceFalloffPerMeter: 0.6
   breakDistance: 8
 --- !u!114 &3337162664311632006
 MonoBehaviour:

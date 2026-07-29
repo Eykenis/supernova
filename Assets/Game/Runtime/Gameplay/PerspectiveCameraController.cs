@@ -196,7 +196,7 @@ namespace Supernova.Gameplay
         {
             FirstPersonCartAttractor attractor =
                 GetComponentInParent<FirstPersonCartAttractor>();
-            if (attractor != null && attractor.IsRotatingHeldObject)
+            if (attractor != null && attractor.IsManipulatingHeldObject)
             {
                 return;
             }
