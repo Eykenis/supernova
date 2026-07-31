@@ -22,11 +22,18 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerInventory_OwnershipPredicateLocksAndUnlocksFlashlight()
+        public void PlayerInventory_OnlyAcceptsOwnedItemsFromSavedConfiguration()
         {
             var inventory = new PlayerInventory(
                 2,
-                item => item != PlayerInventoryItem.Flashlight);
+                item => item != PlayerInventoryItem.Flashlight,
+                new[]
+                {
+                    PlayerInventoryItem.Pickaxe,
+                    PlayerInventoryItem.Magnet,
+                    PlayerInventoryItem.Flashlight,
+                    PlayerInventoryItem.Empty,
+                });
 
             Assert.That(
                 inventory.GetItemAtSlot(2),
@@ -35,9 +42,9 @@ namespace Supernova.Tests
                 Is.EqualTo(PlayerInventoryItem.Empty));
 
             Assert.That(
-                inventory.SetItemOwned(
-                    PlayerInventoryItem.Flashlight,
-                    true),
+                inventory.SetItemAtSlot(
+                    2,
+                    PlayerInventoryItem.Flashlight),
                 Is.True);
             Assert.That(
                 inventory.GetItemAtSlot(2),
@@ -172,7 +179,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void CartPurchase_UnlocksSeventhToolSlot()
+        public void CartPurchase_AddsItemToBackpackWithoutAutoAssigningQuickSlot()
         {
             ShopProductProfile profile = LoadProducts().Single(product =>
                 product.ProductId == "cart");
@@ -190,23 +197,29 @@ namespace Supernova.Tests
                 PlayerPrefs.SetInt(creditsKey, profile.Price);
                 PlayerPrefs.DeleteKey(ownershipKey);
                 var inventory = new PlayerInventory(
-                    6,
+                    3,
                     PlayerEconomy.IsItemOwned);
 
                 Assert.That(
-                    inventory.GetItemAtSlot(6),
+                    inventory.GetItemAtSlot(3),
                     Is.EqualTo(PlayerInventoryItem.Empty));
                 Assert.That(
                     PlayerEconomy.TryPurchase(profile),
                     Is.EqualTo(ShopPurchaseResult.Purchased));
                 Assert.That(
-                    inventory.SetItemOwned(
-                        PlayerInventoryItem.Cart,
-                        PlayerEconomy.IsItemOwned(
-                            PlayerInventoryItem.Cart)),
+                    PlayerEconomy.IsItemOwned(PlayerInventoryItem.Cart),
                     Is.True);
                 Assert.That(
-                    inventory.GetItemAtSlot(6),
+                    inventory.GetItemAtSlot(3),
+                    Is.EqualTo(PlayerInventoryItem.Empty),
+                    "Purchasing an item must not silently overwrite the loadout.");
+                Assert.That(
+                    inventory.SetItemAtSlot(
+                        3,
+                        PlayerInventoryItem.Cart),
+                    Is.True);
+                Assert.That(
+                    inventory.GetItemAtSlot(3),
                     Is.EqualTo(PlayerInventoryItem.Cart));
                 Assert.That(PlayerEconomy.Credits, Is.Zero);
             }

@@ -1,0 +1,55 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6eac2d1eb75025b4dbb255c6dd3e15d9, type: 3}
+  m_Name: GrabHookTool
+  m_EditorClassIdentifier: 
+  item: 8
+  primaryAction: 6
+  animationTriggerMode: 0
+  primaryActionAnimation: {fileID: 0}
+  heldModelPrefab: {fileID: 4117411956817622082, guid: 4c833792bdb758c45aead63b9e6f151e,
+    type: 3}
+  heldModelMountStrategy: 0
+  allowMovementWhileUsing: 1
+  actionTriggerDelay: 0
+  actionCyclePeriod: 0.2
+  actionIsPeriodic: 0
+  projectilePrefab: {fileID: 0}
+  throwSpeed: 8
+  upwardThrowSpeed: 1.5
+  throwSpinSpeed: 8
+  throwForwardOffset: 0.75
+  firearmProjectilePrefab: {fileID: 0}
+  projectileSpeed: 180
+  initialAmmunition: 120
+  muzzleFlashPrefab: {fileID: 0}
+  muzzleFlashLifetime: 0.75
+  grabHookProjectileModelPrefab: {fileID: 4117411956817622082, guid: 4c833792bdb758c45aead63b9e6f151e,
+    type: 3}
+  grabHookLaunchSpeed: 36
+  grabHookMaximumLength: 30
+  grabHookCollisionRadius: 0.12
+  grabHookRetractSpeed: 45
+  grabHookAimPredictionDuration: 3
+  grabHookAimPredictionStep: 0.05
+  grabHookArrivalDistance: 1.25
+  grabHookPullAcceleration: 32
+  grabHookMaximumPullSpeed: 18
+  grabHookRopeWidth: 0.035
+  miningPower: 1
+  miningEvenHitMultiplier: 4
+  miningPropagationDivisor: 2
+  miningRadius: 0.55
+  miningDepth: 0.75
+  miningFalloffExponent: 1.5
+  miningMinimumPowerFraction: 0.25
+  miningMaxAffectedSamples: 24

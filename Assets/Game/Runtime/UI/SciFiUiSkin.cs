@@ -186,19 +186,56 @@ namespace Supernova.UI
             if (menu == null)
                 return;
 
-            // Deliberately style only the control card. PauseMenuPresentation owns the
-            // character silhouette, portrait render stage, and its composition.
-            StylePanel(menu, GetPauseCardFrame(), Surface,
-                new Color(Accent.r, Accent.g, Accent.b, 0.58f));
+            UiDesignTokens tokens = GetDesignTokens();
+            Color surface = tokens != null
+                ? tokens.OverlaySurface
+                : new Color(1f, 1f, 1f, 0.055f);
+            Color primary = tokens != null
+                ? tokens.OverlayPrimary
+                : Color.white;
+            Color secondary = tokens != null
+                ? tokens.OverlaySecondary
+                : new Color(1f, 1f, 1f, 0.58f);
+            Color divider = tokens != null
+                ? tokens.OverlayDivider
+                : new Color(1f, 1f, 1f, 0.24f);
+            Color inverse = tokens != null
+                ? tokens.OverlayInverse
+                : new Color(0.018f, 0.02f, 0.025f, 1f);
+
+            Image menuImage = menu.GetComponent<Image>();
+            if (menuImage != null)
+                menuImage.color = surface;
+            Outline menuOutline = menu.GetComponent<Outline>();
+            if (menuOutline != null)
+            {
+                menuOutline.effectColor = divider;
+                menuOutline.useGraphicAlpha = false;
+            }
+            DisableDecoration(menu, DecorationName);
+            SetTextColor(menu, UiHierarchyPaths.Pause.Title, primary);
+            SetTextColor(menu, UiHierarchyPaths.Pause.LoadoutHeader, secondary);
 
             RectTransform backSlot = FindRect(menu, UiHierarchyPaths.Pause.BackSlot);
             if (backSlot != null)
             {
-                StylePanel(backSlot, GetHudPanelFrame(), SurfaceRaised,
-                    new Color(Accent.r, Accent.g, Accent.b, 0.46f));
+                Image slotImage = backSlot.GetComponent<Image>();
+                if (slotImage != null)
+                    slotImage.color = surface;
+                Outline slotOutline = backSlot.GetComponent<Outline>();
+                if (slotOutline != null)
+                {
+                    slotOutline.effectColor = divider;
+                    slotOutline.useGraphicAlpha = false;
+                }
+                DisableDecoration(backSlot, DecorationName);
                 SetAnchoredPositionY(backSlot, UiHierarchyPaths.Pause.SlotName, -22f);
                 SetAnchoredPositionY(backSlot, UiHierarchyPaths.Pause.State, -22f);
                 SetAnchoredPositionY(backSlot, UiHierarchyPaths.Pause.EquipmentName, 0f);
+                SetTextColor(backSlot, UiHierarchyPaths.Pause.SlotName, secondary);
+                SetTextColor(backSlot, UiHierarchyPaths.Pause.EquipmentName, primary);
+                SetTextColor(backSlot, UiHierarchyPaths.Pause.State, primary);
+                SetTextColor(backSlot, UiHierarchyPaths.Pause.Hint, secondary);
             }
 
             RectTransform resume = FindRect(menu, UiHierarchyPaths.Pause.Resume);
@@ -206,13 +243,21 @@ namespace Supernova.UI
             {
                 Image image = resume.GetComponent<Image>();
                 if (image != null)
-                    image.color = Color.clear;
-                Image frame = EnsureFrame(resume, GetButtonCleanFrame(),
-                    new Color(Accent.r, Accent.g, Accent.b, 0.66f),
-                    new Vector2(-4f, -4f), new Vector2(4f, 4f));
+                    image.color = primary;
+                DisableDecoration(resume, DecorationName);
                 Button button = resume.GetComponent<Button>();
-                if (button != null && frame != null)
-                    button.targetGraphic = frame;
+                if (button != null)
+                {
+                    button.targetGraphic = image;
+                    ColorBlock colors = button.colors;
+                    colors.normalColor = Color.white;
+                    colors.highlightedColor = new Color(1f, 1f, 1f, 0.82f);
+                    colors.selectedColor = colors.highlightedColor;
+                    colors.pressedColor = new Color(1f, 1f, 1f, 0.62f);
+                    colors.fadeDuration = 0.12f;
+                    button.colors = colors;
+                }
+                SetTextColor(resume, UiHierarchyPaths.Pause.Label, inverse);
             }
         }
 
@@ -222,48 +267,85 @@ namespace Supernova.UI
             if (panel == null)
                 return;
 
+            UiDesignTokens tokens = GetDesignTokens();
+            Color backdrop = tokens != null
+                ? tokens.OverlayBackdrop
+                : new Color(0.008f, 0.01f, 0.014f, 0.72f);
+            Color primary = tokens != null
+                ? tokens.OverlayPrimary
+                : Color.white;
+            Color secondary = tokens != null
+                ? tokens.OverlaySecondary
+                : new Color(1f, 1f, 1f, 0.58f);
+            Color divider = tokens != null
+                ? tokens.OverlayDivider
+                : new Color(1f, 1f, 1f, 0.24f);
+
             Image background = panel.GetComponent<Image>();
             if (background != null)
-                background.color = Backdrop;
-            EnsureTelemetry(panel, new Color(0.25f, 0.9f, 1f, 0.016f));
+                background.color = backdrop;
+            DisableDecoration(panel, PatternName);
 
             RectTransform spinner = FindRect(panel, UiHierarchyPaths.Loading.LocalSpinner);
             if (spinner != null)
             {
-                spinner.sizeDelta = new Vector2(126f, 126f);
+                spinner.sizeDelta = new Vector2(44f, 44f);
                 Image spinnerImage = spinner.GetComponent<Image>();
                 if (spinnerImage != null)
                 {
-                    spinnerImage.sprite = GetLoadingDial();
+                    spinnerImage.sprite = null;
                     spinnerImage.type = Image.Type.Simple;
-                    spinnerImage.preserveAspect = true;
-                    spinnerImage.color = Accent;
+                    spinnerImage.preserveAspect = false;
+                    spinnerImage.color = primary;
                 }
 
                 Transform core = spinner.Find(UiHierarchyPaths.Loading.Core);
                 if (core != null)
-                    core.gameObject.SetActive(false);
+                {
+                    Image coreImage = core.GetComponent<Image>();
+                    if (coreImage != null)
+                        coreImage.color = Color.clear;
+                    RectTransform coreRect = core as RectTransform;
+                    if (coreRect != null)
+                        coreRect.sizeDelta = new Vector2(38f, 38f);
+                    core.gameObject.SetActive(true);
+                }
             }
 
             RectTransform progressTrack = FindRect(panel, UiHierarchyPaths.Loading.LocalProgressTrack);
             if (progressTrack != null)
             {
                 Vector2 trackSize = progressTrack.sizeDelta;
-                trackSize.y = 18f;
+                trackSize.y = 2f;
                 progressTrack.sizeDelta = trackSize;
                 Image track = progressTrack.GetComponent<Image>();
                 if (track != null)
-                    track.color = Color.clear;
-                EnsureFrame(progressTrack, GetProgressCleanFrame(),
-                    new Color(Accent.r, Accent.g, Accent.b, 0.62f),
-                    new Vector2(-5f, -5f), new Vector2(5f, 5f));
+                    track.color = divider;
+                DisableDecoration(progressTrack, DecorationName);
             }
 
-            SetTextColor(panel, UiHierarchyPaths.Loading.Brand, Accent);
-            SetTextColor(panel, UiHierarchyPaths.Loading.Title, TextPrimary);
-            SetTextColor(panel, UiHierarchyPaths.Loading.LocalStatus, TextPrimary);
-            SetTextColor(panel, UiHierarchyPaths.Loading.LocalProgress, Accent);
-            SetTextColor(panel, UiHierarchyPaths.Loading.Hint, TextSecondary);
+            SetImageColor(panel, UiHierarchyPaths.Loading.LocalProgressFill, primary);
+            SetTextColor(panel, UiHierarchyPaths.Loading.Brand, secondary);
+            SetTextColor(panel, UiHierarchyPaths.Loading.Title, primary);
+            SetTextColor(panel, UiHierarchyPaths.Loading.LocalStatus, secondary);
+            SetTextColor(panel, UiHierarchyPaths.Loading.LocalProgress, primary);
+            SetTextColor(panel, UiHierarchyPaths.Loading.Hint, secondary);
+        }
+
+        private static UiDesignTokens GetDesignTokens()
+        {
+            return GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.UI.DesignTokens
+                : null;
+        }
+
+        private static void DisableDecoration(Transform parent, string objectName)
+        {
+            if (parent == null)
+                return;
+            Transform decoration = parent.Find(objectName);
+            if (decoration != null)
+                decoration.gameObject.SetActive(false);
         }
 
         private static void StyleButton(Transform root, string path, bool primary)

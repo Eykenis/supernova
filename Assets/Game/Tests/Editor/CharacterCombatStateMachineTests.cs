@@ -68,28 +68,33 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerInventory_UsesTenSlotsWithSevenConfiguredTools()
+        public void PlayerInventory_UsesFourPlayerConfiguredSlots()
         {
             var inventory = new PlayerInventory();
 
-            Assert.That(PlayerInventory.SlotCount, Is.EqualTo(10));
-            Assert.That(inventory.GetItemAtSlot(0), Is.EqualTo(PlayerInventoryItem.Pickaxe));
-            Assert.That(inventory.GetItemAtSlot(1), Is.EqualTo(PlayerInventoryItem.Magnet));
-            Assert.That(inventory.GetItemAtSlot(2), Is.EqualTo(PlayerInventoryItem.Flashlight));
-            Assert.That(inventory.GetItemAtSlot(3), Is.EqualTo(PlayerInventoryItem.Rifle));
-            Assert.That(inventory.GetItemAtSlot(4), Is.EqualTo(PlayerInventoryItem.SolidGun));
-            Assert.That(inventory.GetItemAtSlot(5), Is.EqualTo(PlayerInventoryItem.SMG));
-            Assert.That(inventory.GetItemAtSlot(6), Is.EqualTo(PlayerInventoryItem.Cart));
-            for (int i = 7; i < PlayerInventory.SlotCount; i++)
+            Assert.That(PlayerInventory.SlotCount, Is.EqualTo(4));
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
                 Assert.That(inventory.GetItemAtSlot(i), Is.EqualTo(PlayerInventoryItem.Empty));
 
-            Assert.That(inventory.SelectSlot(9), Is.True);
-            Assert.That(inventory.SelectedSlotIndex, Is.EqualTo(9));
-            Assert.That(inventory.SelectedItem, Is.EqualTo(PlayerInventoryItem.Empty));
+            Assert.That(
+                inventory.SetItemAtSlot(3, PlayerInventoryItem.Pickaxe),
+                Is.True);
+            Assert.That(inventory.SelectSlot(3), Is.True);
+            Assert.That(inventory.SelectedItem, Is.EqualTo(PlayerInventoryItem.Pickaxe));
+            Assert.That(
+                inventory.SetItemAtSlot(0, PlayerInventoryItem.Pickaxe),
+                Is.True);
+            Assert.That(
+                inventory.GetItemAtSlot(3),
+                Is.EqualTo(PlayerInventoryItem.Empty),
+                "An item can only occupy one quick slot.");
+            Assert.That(
+                inventory.GetItemAtSlot(0),
+                Is.EqualTo(PlayerInventoryItem.Pickaxe));
         }
 
         [Test]
-        public void RifleTool_UsesFourthSlotAndConfiguredAnimationStateMachine()
+        public void RifleTool_UsesConfiguredAnimationStateMachine()
         {
             PlayerToolDefinition rifle =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
@@ -465,6 +470,9 @@ namespace Supernova.Tests
             SetPrivateField(magnet, "item", PlayerInventoryItem.Magnet);
             SetPrivateField(magnet, "primaryAction", PlayerToolPrimaryAction.AttractCart);
             SetPrivateField(inventory, "toolDefinitions", new[] { magnet });
+            Assert.That(
+                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
+                Is.True);
             inventory.SelectSlot(1);
             VoxelPlayerController player = playerObject.AddComponent<VoxelPlayerController>();
 
@@ -513,6 +521,12 @@ namespace Supernova.Tests
                 PlayerToolAnimationTriggerMode.Single);
             SetPrivateField(magnet, "primaryActionAnimation", magnetClip);
             SetPrivateField(inventory, "toolDefinitions", new[] { pickaxe, magnet });
+            Assert.That(
+                inventory.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
+                Is.True);
+            Assert.That(
+                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
+                Is.True);
 
             inventory.SelectSlot(0);
             Assert.That(inventory.SelectedDefinition, Is.SameAs(pickaxe));
@@ -636,6 +650,16 @@ namespace Supernova.Tests
                     inventory,
                     "toolModelMount",
                     mountObject.transform);
+                Assert.That(
+                    inventory.ConfigureSlot(
+                        0,
+                        PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                Assert.That(
+                    inventory.ConfigureSlot(
+                        1,
+                        PlayerInventoryItem.Magnet),
+                    Is.True);
 
                 inventory.SelectSlot(0);
                 Assert.That(inventory.EquippedToolModel, Is.Not.Null);
@@ -705,13 +729,16 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void InventorySelection_EnablesMagnetOnlyForSlotTwo()
+        public void InventorySelection_EnablesMagnetOnlyWhenConfiguredSlotIsSelected()
         {
             GameObject playerObject = Create("Player");
             FirstPersonCartAttractor attractor =
                 playerObject.AddComponent<FirstPersonCartAttractor>();
             PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
 
+            Assert.That(
+                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
+                Is.True);
             inventory.SelectSlot(1);
             Assert.That(attractor.DeviceEnabled, Is.True);
 
@@ -719,11 +746,7 @@ namespace Supernova.Tests
             Assert.That(attractor.DeviceEnabled, Is.False);
             Assert.That(
                 inventory.SelectedItem,
-                Is.EqualTo(
-                    PlayerEconomy.IsItemOwned(
-                        PlayerInventoryItem.Flashlight)
-                        ? PlayerInventoryItem.Flashlight
-                        : PlayerInventoryItem.Empty));
+                Is.EqualTo(PlayerInventoryItem.Empty));
         }
 
         [Test]

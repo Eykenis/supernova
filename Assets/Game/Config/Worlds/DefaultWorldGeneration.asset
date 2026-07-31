@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   generationMode: 0
   superflatStoneHeight: 10
-  worldSeed: 666
+  worldSeed: 1234
   settings:
     cheeseFrequency: 0.001
     cheeseThreshold: 0.02

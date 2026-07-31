@@ -1,6 +1,7 @@
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
+using Supernova.Voxels;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -82,7 +83,26 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void ExternalCamera_IsPushedForwardByTriggerCollider_AndIgnoresPlayerCollider()
+        public void PlayerDeath_SwitchesCameraToThirdPerson()
+        {
+            PerspectiveCameraController controller = CreateController();
+            VoxelPlayerController playerController =
+                player.AddComponent<VoxelPlayerController>();
+
+            var lethalDamage = new DamageInfo(
+                1000f,
+                null,
+                Vector3.zero,
+                Vector3.forward);
+            Assert.That(playerController.ReceiveDamage(lethalDamage), Is.True);
+
+            Assert.That(
+                controller.CurrentMode,
+                Is.EqualTo(PlayerViewMode.ThirdPerson));
+        }
+
+        [Test]
+        public void ExternalCamera_IsBlockedOnlyByStaticSceneMesh()
         {
             PerspectiveCameraController controller = CreateController();
 
@@ -91,11 +111,17 @@ namespace Supernova.Tests
             ownedCollider.transform.localPosition = new Vector3(0f, 0f, -0.5f);
             ownedCollider.AddComponent<BoxCollider>();
 
-            obstruction = new GameObject("TriggerObstruction");
-            obstruction.transform.position = new Vector3(0f, 0f, -2f);
-            BoxCollider wall = obstruction.AddComponent<BoxCollider>();
-            wall.size = new Vector3(4f, 4f, 0.4f);
-            wall.isTrigger = true;
+            obstruction = new GameObject("Obstructions");
+            CreateMeshObstruction("DynamicMesh", -1.2f, true, false);
+            CreateMeshObstruction("TriggerMesh", -1.8f, false, true);
+
+            GameObject rigidCollider = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rigidCollider.name = "OtherCollider";
+            rigidCollider.transform.SetParent(obstruction.transform);
+            rigidCollider.transform.position = new Vector3(0f, 0f, -2.4f);
+            rigidCollider.transform.localScale = new Vector3(4f, 4f, 0.4f);
+
+            CreateMeshObstruction("SceneMesh", -3.2f, false, false);
             Physics.SyncTransforms();
 
             MethodInfo method = typeof(PerspectiveCameraController).GetMethod(
@@ -104,10 +130,10 @@ namespace Supernova.Tests
                 controller,
                 new object[] { Vector3.zero, Vector3.back, 4f });
 
-            Assert.That(distance, Is.GreaterThan(0.5f),
-                "The player's own collider must be ignored.");
+            Assert.That(distance, Is.GreaterThan(2.5f),
+                "Player, trigger, non-mesh, and Rigidbody colliders must be ignored.");
             Assert.That(distance, Is.LessThan(4f),
-                "Even a trigger Collider must push the camera forward.");
+                "A static scene MeshCollider must push the camera forward.");
         }
 
         [Test]
@@ -222,6 +248,31 @@ namespace Supernova.Tests
             controller.Bind(player.transform, head.transform, camera, new Renderer[0]);
             controller.SetMode(PlayerViewMode.FirstPerson, true);
             return controller;
+        }
+
+        private void CreateMeshObstruction(
+            string name,
+            float z,
+            bool addRigidbody,
+            bool isTrigger)
+        {
+            GameObject meshObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            meshObject.name = name;
+            meshObject.transform.SetParent(obstruction.transform);
+            meshObject.transform.position = new Vector3(0f, 0f, z);
+            meshObject.transform.localScale = new Vector3(4f, 4f, 0.4f);
+
+            Mesh mesh = meshObject.GetComponent<MeshFilter>().sharedMesh;
+            Object.DestroyImmediate(meshObject.GetComponent<BoxCollider>());
+            MeshCollider meshCollider = meshObject.AddComponent<MeshCollider>();
+            meshCollider.sharedMesh = mesh;
+            meshCollider.convex = addRigidbody || isTrigger;
+            meshCollider.isTrigger = isTrigger;
+            if (addRigidbody)
+            {
+                Rigidbody body = meshObject.AddComponent<Rigidbody>();
+                body.isKinematic = true;
+            }
         }
     }
 }

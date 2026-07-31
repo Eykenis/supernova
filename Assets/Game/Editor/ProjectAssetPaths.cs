@@ -33,6 +33,7 @@ public static class ProjectAssetPaths
         public const string EquipmentPrefabs = Prefabs + "/Equipment";
         public const string ToolPrefabs = Prefabs + "/Tools";
         public const string FlashlightPrefabs = ToolPrefabs + "/Flashlight";
+        public const string GrabHookPrefabs = ToolPrefabs + "/Grabhook";
         public const string GunPrefabs = ToolPrefabs + "/Guns";
         public const string ProjectilePrefabs = GunPrefabs + "/Projectiles";
         public const string EffectPrefabs = Prefabs + "/Effects";
@@ -97,6 +98,8 @@ public static class ProjectAssetPaths
         public const string SolidGunTool =
             Folders.Tools + "/SolidGunTool.asset";
         public const string CartTool = Folders.Tools + "/CartTool.asset";
+        public const string GrabHookTool =
+            Folders.Tools + "/GrabHookTool.asset";
         public const string GunProduct =
             Folders.Shop + "/GunProduct.asset";
         public const string SmgProduct =
@@ -160,6 +163,10 @@ public static class ProjectAssetPaths
             Folders.GunPrefabs + "/SolidGun.prefab";
         public const string AttractionModuleDisplay =
             Folders.ToolPrefabs + "/AttractionModuleDisplay.prefab";
+        public const string GrabHook =
+            Folders.GrabHookPrefabs + "/GrabHook.prefab";
+        public const string GrabHookSourceModel =
+            Folders.GrabHookPrefabs + "/hook_exported.fbx";
         public const string RifleProjectile =
             Folders.ProjectilePrefabs + "/RifleProjectile.prefab";
         public const string SolidVoxelProjectile =

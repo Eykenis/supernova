@@ -11,6 +11,7 @@ namespace Supernova.Gameplay
         ThrowPersistentLight = 3,
         FireRifle = 4,
         TowCart = 5,
+        FireGrabHook = 6,
     }
 
     public enum PlayerToolAnimationTriggerMode
@@ -75,6 +76,21 @@ namespace Supernova.Gameplay
         [SerializeField] private GameObject muzzleFlashPrefab;
         [SerializeField, Min(0.01f)] private float muzzleFlashLifetime = 0.75f;
 
+        [Header("Grab Hook")]
+        [Tooltip("Model launched from the held grab-hook tool.")]
+        [SerializeField] private GameObject grabHookProjectileModelPrefab;
+        [SerializeField, Min(0.1f)] private float grabHookLaunchSpeed = 36f;
+        [SerializeField, Min(1f)] private float grabHookMaximumLength = 30f;
+        [SerializeField, Min(0.01f)] private float grabHookCollisionRadius = 0.12f;
+        [SerializeField, Min(0.1f)] private float grabHookRetractSpeed = 45f;
+        [SerializeField, Min(0.1f)] private float grabHookAimPredictionDuration = 3f;
+        [SerializeField, Min(0.01f)] private float grabHookAimPredictionStep = 0.05f;
+        [SerializeField, Min(0.01f)] private float grabHookArrivalDistance = 1.25f;
+        [Tooltip("Maximum automatic pull acceleration after the hook attaches.")]
+        [SerializeField, Min(0f)] private float grabHookPullAcceleration = 32f;
+        [SerializeField, Min(0.1f)] private float grabHookMaximumPullSpeed = 18f;
+        [SerializeField, Min(0.001f)] private float grabHookRopeWidth = 0.035f;
+
         [Header("Mining Brush")]
         [Tooltip("Upgradeable base damage dealt by an odd-numbered mining strike.")]
         [SerializeField, Min(0.01f)] private float miningPower = 1f;
@@ -117,6 +133,28 @@ namespace Supernova.Gameplay
         public GameObject MuzzleFlashPrefab => muzzleFlashPrefab;
         public float MuzzleFlashLifetime => Mathf.Max(0.01f, muzzleFlashLifetime);
         public bool IsFirearm => primaryAction == PlayerToolPrimaryAction.FireRifle;
+        public GameObject GrabHookProjectileModelPrefab =>
+            grabHookProjectileModelPrefab;
+        public float GrabHookLaunchSpeed => Mathf.Max(0.1f, grabHookLaunchSpeed);
+        public float GrabHookMaximumLength =>
+            Mathf.Max(1f, grabHookMaximumLength);
+        public float GrabHookCollisionRadius =>
+            Mathf.Max(0.01f, grabHookCollisionRadius);
+        public float GrabHookRetractSpeed =>
+            Mathf.Max(0.1f, grabHookRetractSpeed);
+        public float GrabHookAimPredictionDuration =>
+            Mathf.Max(0.1f, grabHookAimPredictionDuration);
+        public float GrabHookAimPredictionStep =>
+            Mathf.Max(0.01f, grabHookAimPredictionStep);
+        public float GrabHookArrivalDistance =>
+            Mathf.Max(0.01f, grabHookArrivalDistance);
+        public float GrabHookPullAcceleration =>
+            Mathf.Max(0f, grabHookPullAcceleration);
+        public float GrabHookMaximumPullSpeed =>
+            Mathf.Max(0.1f, grabHookMaximumPullSpeed);
+        public float GrabHookRopeWidth => Mathf.Max(0.001f, grabHookRopeWidth);
+        public bool IsGrabHook =>
+            primaryAction == PlayerToolPrimaryAction.FireGrabHook;
         public VoxelMiningBrushSettings MiningBrush =>
             new VoxelMiningBrushSettings(
                 miningPower,

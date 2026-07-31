@@ -107,21 +107,17 @@ namespace Supernova.Tests
             Assert.That(hotbarRect.anchorMin, Is.EqualTo(new Vector2(1f, 0f)));
             Assert.That(hotbarRect.anchorMax, Is.EqualTo(new Vector2(1f, 0f)));
             Assert.That(hotbarRect.pivot, Is.EqualTo(new Vector2(1f, 0f)));
-            Assert.That(hotbar.Find(UiHierarchyPaths.Hud.SlotItem(1))?.GetComponent<TMP_Text>().text, Is.EqualTo("PICKAXE"));
-            Assert.That(hotbar.Find(UiHierarchyPaths.Hud.SlotItem(2))?.GetComponent<TMP_Text>().text, Is.EqualTo("MAGNET"));
-            Assert.That(
-                hotbar.Find(UiHierarchyPaths.Hud.SlotItem(3))?.GetComponent<TMP_Text>().text,
-                Is.EqualTo("FLASHLIGHT"));
-            Assert.That(
-                hotbar.Find(UiHierarchyPaths.Hud.SlotItem(4))?.GetComponent<TMP_Text>().text,
-                Is.EqualTo("RIFLE"));
-            Assert.That(
-                hotbar.Find(UiHierarchyPaths.Hud.SlotItem(5))?.GetComponent<TMP_Text>().text,
-                Is.EqualTo("SOLID GUN"));
-            Assert.That(
-                hotbar.Find(UiHierarchyPaths.Hud.SlotItem(6))?.GetComponent<TMP_Text>().text,
-                Is.EqualTo("SMG"));
-            Assert.That(hotbar.Find(UiHierarchyPaths.Hud.SlotKey(10))?.GetComponent<TMP_Text>().text, Is.EqualTo("0"));
+            for (int i = 1; i <= PlayerInventory.SlotCount; i++)
+            {
+                Assert.That(
+                    hotbar.Find(UiHierarchyPaths.Hud.SlotItem(i))
+                        ?.GetComponent<TMP_Text>().text,
+                    Is.Empty);
+                Assert.That(
+                    hotbar.Find(UiHierarchyPaths.Hud.SlotKey(i))
+                        ?.GetComponent<TMP_Text>().text,
+                    Is.EqualTo(i.ToString()));
+            }
             Assert.That(
                 hotbar.Find(UiHierarchyPaths.Hud.SlotAngledSurface(1))
                     ?.GetComponent<AngledPanelGraphic>(),
@@ -170,7 +166,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PauseMenu_HasResumeAndBackEquipmentSlotAndTogglesVisibility()
+        public void PauseMenu_HasLoadoutBackpackAndEquipmentControls()
         {
             hudObject = new GameObject("Game HUD");
             GameHudController controller = hudObject.AddComponent<GameHudController>();
@@ -181,7 +177,39 @@ namespace Supernova.Tests
             Selectable[] options = panel.GetComponentsInChildren<Selectable>(true);
 
             Assert.That(panel.gameObject.activeSelf, Is.False);
-            Assert.That(options, Has.Length.EqualTo(2));
+            Assert.That(
+                panel.GetComponent<Image>().color.a,
+                Is.LessThan(1f),
+                "The pause overlay should preserve the transparent in-game HUD style.");
+            Assert.That(
+                options.Length,
+                Is.GreaterThanOrEqualTo(PlayerInventory.SlotCount + 3));
+            Assert.That(
+                panel.Find(
+                    UiHierarchyPaths.Pause.Menu
+                    + "/"
+                    + UiHierarchyPaths.Pause.QuickSlots),
+                Is.Not.Null);
+            Assert.That(
+                panel.Find(
+                    UiHierarchyPaths.Pause.Menu
+                    + "/"
+                    + UiHierarchyPaths.Pause.Backpack),
+                Is.Not.Null);
+            TMP_Text firstQuickSlotLabel = panel.Find(
+                    UiHierarchyPaths.Pause.Menu
+                    + "/"
+                    + UiHierarchyPaths.Pause.QuickSlots
+                    + "/"
+                    + UiHierarchyPaths.Pause.QuickSlotName(1)
+                    + "/"
+                    + UiHierarchyPaths.Pause.SlotItem)
+                .GetComponent<TMP_Text>();
+            Assert.That(
+                firstQuickSlotLabel.color,
+                Is.EqualTo(controller.DesignTokens != null
+                    ? controller.DesignTokens.OverlayInverse
+                    : new Color(0.018f, 0.02f, 0.025f, 1f)));
             Assert.That(resume.GetComponent<Button>(), Is.Not.Null);
             Assert.That(resume.Find(UiHierarchyPaths.Pause.Label).GetComponent<TMP_Text>().text, Is.EqualTo("RESUME"));
             Transform backSlot = panel.Find(UiHierarchyPaths.Pause.MenuBackSlot);
@@ -190,8 +218,14 @@ namespace Supernova.Tests
                 backSlot.Find(UiHierarchyPaths.Pause.SlotName).GetComponent<TMP_Text>().text,
                 Is.EqualTo("BACK MODULE"));
             Assert.That(
-                panel.Find(UiHierarchyPaths.Pause.MenuFrame)?.GetComponent<Image>(),
-                Is.Not.Null);
+                panel.Find(UiHierarchyPaths.Pause.MenuFrame),
+                Is.Null,
+                "The pause menu should not depend on the legacy sci-fi frame.");
+            Assert.That(
+                resume.GetComponent<Image>().color,
+                Is.EqualTo(controller.DesignTokens != null
+                    ? controller.DesignTokens.OverlayPrimary
+                    : Color.white));
             Assert.That(controller.PauseCanvas.sortingOrder,
                 Is.GreaterThan(controller.LoadingCanvas.sortingOrder));
 
@@ -244,13 +278,25 @@ namespace Supernova.Tests
                 UiHierarchyPaths.Loading.Progress).GetComponent<TMP_Text>();
             Assert.That(panel, Is.Not.Null);
             Assert.That(panel.gameObject.activeSelf, Is.True);
+            Assert.That(
+                panel.GetComponent<Image>().color.a,
+                Is.LessThan(1f),
+                "The loading overlay should keep the game visible behind it.");
             Assert.That(progress.text, Is.EqualTo("0%"));
             Assert.That(
                 panel.Find(UiHierarchyPaths.Loading.LocalSpinner).GetComponent<Image>().sprite,
-                Is.Not.Null);
+                Is.Null,
+                "The loading indicator should use the minimal built-in white shape.");
             Assert.That(
-                panel.Find(UiHierarchyPaths.Decoration.Telemetry)?.GetComponent<RawImage>(),
-                Is.Not.Null);
+                panel.Find(UiHierarchyPaths.Decoration.Telemetry),
+                Is.Null,
+                "The loading screen should not use the legacy telemetry texture.");
+            Assert.That(
+                panel.Find(UiHierarchyPaths.Loading.LocalProgressFill)
+                    .GetComponent<Image>().color,
+                Is.EqualTo(controller.DesignTokens != null
+                    ? controller.DesignTokens.OverlayPrimary
+                    : Color.white));
             Assert.That(controller.LoadingCanvas.sortingOrder,
                 Is.GreaterThan(controller.CrosshairCanvas.sortingOrder));
 
@@ -404,6 +450,43 @@ namespace Supernova.Tests
             Assert.That(second.color, Is.EqualTo(Color.clear));
             Assert.That(secondSurface.color, Is.Not.EqualTo(firstSurface.color));
             Assert.That(controller.InventorySource, Is.SameAs(inventory));
+        }
+
+        [Test]
+        public void PauseLoadout_AssignsOwnedBackpackItemToChosenQuickSlot()
+        {
+            sourceObject = new GameObject("Player");
+            PlayerToolController inventory =
+                sourceObject.AddComponent<PlayerToolController>();
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+            controller.BindInventorySource(inventory);
+
+            Transform quickSlots = hudObject.transform.Find(
+                UiHierarchyPaths.Pause.FullQuickSlots);
+            Button secondSlot = quickSlots.Find(
+                    UiHierarchyPaths.Pause.QuickSlotName(2))
+                .GetComponent<Button>();
+            Transform backpack = hudObject.transform.Find(
+                UiHierarchyPaths.Pause.FullBackpack);
+            Button pickaxe = backpack.Find(
+                    UiHierarchyPaths.Pause.BackpackItemName(
+                        PlayerInventoryItem.Pickaxe))
+                .GetComponent<Button>();
+
+            secondSlot.onClick.Invoke();
+            pickaxe.onClick.Invoke();
+
+            Assert.That(
+                inventory.GetItemAtSlot(1),
+                Is.EqualTo(PlayerInventoryItem.Pickaxe));
+            Assert.That(
+                hudObject.transform.Find(
+                        UiHierarchyPaths.Hud.SlotItem(2))
+                    .GetComponent<TMP_Text>().text,
+                Is.EqualTo("PICKAXE"));
         }
     }
 

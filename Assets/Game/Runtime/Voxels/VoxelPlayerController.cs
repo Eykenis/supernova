@@ -79,6 +79,7 @@ namespace Supernova.Voxels
         private PerspectiveCameraController perspectiveCamera;
 
         private FirstPersonCartAttractor cartAttractor;
+        private GrabHookController grabHook;
         private PlayerToolController toolController;
         private PlayerEquipmentController equipmentController;
         private VoxelPlayerInteractor voxelInteractor;
@@ -214,6 +215,7 @@ namespace Supernova.Voxels
             idleSeconds = 0f;
             stateMachine?.Stop();
             motor?.ResetVerticalVelocity();
+            motor?.ResetExternalVelocity();
             ResolveReferences();
             if (characterController != null) characterController.enabled = true;
             SetAnimationState(false, false, true);
@@ -283,11 +285,46 @@ namespace Supernova.Voxels
             stateMachine.Change(PlayerCharacterState.Idle);
         }
 
+        /// <summary>
+        /// Integrates mass-independent acceleration into the CharacterController
+        /// motor without directly changing the player's position.
+        /// </summary>
+        public void AddExternalAcceleration(
+            Vector3 acceleration,
+            float deltaTime,
+            float maximumSpeed)
+        {
+            ResolveReferences();
+            EnsureMotor();
+            motor?.AddExternalAcceleration(
+                acceleration,
+                deltaTime,
+                maximumSpeed);
+        }
+
+        public void ClearExternalVelocity()
+        {
+            ResolveReferences();
+            EnsureMotor();
+            motor?.ResetExternalVelocity();
+        }
+
+        public void ClearVerticalVelocity()
+        {
+            ResolveReferences();
+            EnsureMotor();
+            motor?.ResetVerticalVelocity();
+        }
+
         private PlayerInputSnapshot CaptureInput()
         {
             Vector2 movement = new Vector2(
                 Input.GetAxisRaw("Horizontal"),
                 Input.GetAxisRaw("Vertical"));
+            bool grabHookMovementLocked =
+                grabHook != null && grabHook.LocksPlayerMovement;
+            if (grabHookMovementLocked)
+                movement = Vector2.zero;
             if (movement.sqrMagnitude > 1f) movement.Normalize();
             bool acceptsAction = Cursor.lockState == CursorLockMode.Locked;
             bool primaryHeld = acceptsAction && Input.GetMouseButton(0);
@@ -296,7 +333,9 @@ namespace Supernova.Voxels
                 && cartAttractor.ConsumedCartTowClickThisFrame;
             return new PlayerInputSnapshot(
                 movement,
-                acceptsAction && Input.GetButtonDown("Jump"),
+                acceptsAction
+                    && !grabHookMovementLocked
+                    && Input.GetButtonDown("Jump"),
                 primaryHeld && !towingCart && !cartTowClickConsumed
                     && toolController != null
                     && toolController.CanUseSelectedPrimaryAction(),
@@ -308,7 +347,11 @@ namespace Supernova.Voxels
 
         private void TickLocomotion(float deltaTime, bool acceptInput)
         {
-            Vector2 movement = acceptInput ? input.Move : Vector2.zero;
+            bool movementLocked =
+                grabHook != null && grabHook.LocksPlayerMovement;
+            Vector2 movement = acceptInput && !movementLocked
+                ? input.Move
+                : Vector2.zero;
             Vector3 worldMovement = GetWorldMovement(movement);
             UpdateThirdPersonFacing(worldMovement, deltaTime);
             // Crouch pose follows the held key regardless of acceptInput: an attack or
@@ -493,6 +536,13 @@ namespace Supernova.Voxels
 
         private bool TryUpdateEquipmentLocomotion()
         {
+            if (grabHook != null && grabHook.LocksPlayerMovement)
+            {
+                equipmentController?.CancelActiveLocomotionOverride();
+                StopEquipmentLocomotionAnimation(true);
+                return false;
+            }
+
             if (input.CrouchHeld)
             {
                 equipmentController?.CancelActiveLocomotionOverride();
@@ -644,6 +694,10 @@ namespace Supernova.Voxels
             {
                 cartAttractor = GetComponent<FirstPersonCartAttractor>();
             }
+            if (grabHook == null)
+            {
+                grabHook = GetComponent<GrabHookController>();
+            }
             if (toolController == null)
             {
                 toolController = GetComponent<PlayerToolController>();
@@ -708,10 +762,13 @@ namespace Supernova.Voxels
 
         private void ConfigureMotor(float moveSpeed)
         {
+            float gravity = grabHook != null && grabHook.IsAttached
+                ? 0f
+                : Profile.Gravity;
             motor.Configure(
                 moveSpeed,
                 Profile.JumpHeight,
-                Profile.Gravity,
+                gravity,
                 Profile.GroundedForce);
         }
 
@@ -1047,6 +1104,9 @@ namespace Supernova.Voxels
                         && toolController != null
                         && toolController.GetAmmunition(definition.Item)
                             > CountPendingToolActions(definition);
+                case PlayerToolPrimaryAction.FireGrabHook:
+                    return grabHook != null
+                        && grabHook.CanBeginAim(definition);
                 case PlayerToolPrimaryAction.TowCart:
                     // FirstPersonCartAttractor handles towing as a click
                     // toggle before the held-action state machine runs.
@@ -1374,6 +1434,12 @@ namespace Supernova.Voxels
             StartConfiguredToolActionAnimation();
 
             if (activeToolDefinition == null) return;
+            if (activeToolDefinition.PrimaryAction
+                == PlayerToolPrimaryAction.FireGrabHook)
+            {
+                grabHook?.BeginAim(activeToolDefinition);
+                return;
+            }
             StartToolActionCycle(activeToolDefinition);
         }
 
@@ -1384,6 +1450,14 @@ namespace Supernova.Voxels
             {
                 RemovePendingToolActions(activeToolDefinition);
                 cartAttractor?.EndAttraction();
+            }
+            if (activeToolDefinition != null
+                && activeToolDefinition.PrimaryAction
+                    == PlayerToolPrimaryAction.FireGrabHook
+                && grabHook != null
+                && grabHook.IsAiming)
+            {
+                grabHook.CancelAim();
             }
             StopConfiguredToolActionAnimation();
             activeToolDefinition = null;
@@ -1503,6 +1577,29 @@ namespace Supernova.Voxels
             }
 
             stateSeconds += deltaTime;
+            if (activeToolDefinition.PrimaryAction
+                == PlayerToolPrimaryAction.FireGrabHook)
+            {
+                TickLocomotion(
+                    deltaTime,
+                    activeToolDefinition.AllowMovementWhileUsing);
+                if (input.PrimaryActionHeld) return;
+
+                if (Cursor.lockState == CursorLockMode.Locked)
+                {
+                    grabHook?.ReleaseThrow();
+                    nextToolActionCycleTimes[activeToolDefinition] =
+                        Time.time
+                        + activeToolDefinition.ActionCyclePeriod;
+                }
+                else
+                {
+                    grabHook?.CancelAim();
+                }
+                SelectGroundOrAirState();
+                return;
+            }
+
             TickLocomotion(deltaTime, activeToolDefinition.AllowMovementWhileUsing);
             bool actionHeld = input.PrimaryActionHeld;
             if (!actionHeld
@@ -1671,6 +1768,8 @@ namespace Supernova.Voxels
 
         private void EnterDead()
         {
+            ResolveReferences();
+            perspectiveCamera?.SetMode(PlayerViewMode.ThirdPerson, false);
             if (animator != null && hasDieFlag) animator.SetTrigger(DieFlag);
             SetAnimationState(false, false, false);
             SuppressOverrideAnimationLayers();
@@ -1767,6 +1866,11 @@ namespace Supernova.Voxels
             void RequestJump();
             void Tick(Vector3 planarMovement, float deltaTime);
             void ResetVerticalVelocity();
+            void AddExternalAcceleration(
+                Vector3 acceleration,
+                float deltaTime,
+                float maximumSpeed);
+            void ResetExternalVelocity();
         }
 
         private sealed class CharacterControllerMotor : IPlayerMotor
@@ -1776,6 +1880,7 @@ namespace Supernova.Voxels
             private float jumpHeight;
             private float gravity;
             private float groundedForce;
+            private Vector3 externalVelocity;
 
             public CharacterControllerMotor(
                 CharacterController controller,
@@ -1814,13 +1919,45 @@ namespace Supernova.Voxels
                     VerticalVelocity -= gravity * deltaTime;
 
                 if (planarMovement.sqrMagnitude > 1f) planarMovement.Normalize();
-                Vector3 velocity = planarMovement * moveSpeed + Vector3.up * VerticalVelocity;
-                controller.Move(velocity * deltaTime);
+                Vector3 velocity = planarMovement * moveSpeed
+                    + Vector3.up * VerticalVelocity
+                    + externalVelocity;
+                CollisionFlags collisions = controller.Move(
+                    velocity * deltaTime);
+                if ((collisions & CollisionFlags.Below) != 0
+                    && externalVelocity.y < 0f)
+                {
+                    externalVelocity.y = 0f;
+                }
+                if ((collisions & CollisionFlags.Above) != 0
+                    && externalVelocity.y > 0f)
+                {
+                    externalVelocity.y = 0f;
+                }
             }
 
             public void ResetVerticalVelocity()
             {
                 VerticalVelocity = 0f;
+            }
+
+            public void AddExternalAcceleration(
+                Vector3 acceleration,
+                float deltaTime,
+                float maximumSpeed)
+            {
+                if (deltaTime <= 0f || acceleration.sqrMagnitude <= 0f)
+                    return;
+
+                externalVelocity += acceleration * deltaTime;
+                externalVelocity = Vector3.ClampMagnitude(
+                    externalVelocity,
+                    Mathf.Max(0f, maximumSpeed));
+            }
+
+            public void ResetExternalVelocity()
+            {
+                externalVelocity = Vector3.zero;
             }
         }
     }

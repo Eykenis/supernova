@@ -451,6 +451,7 @@ GameObject:
   - component: {fileID: 8363300534232029083}
   - component: {fileID: 945886780990949207}
   - component: {fileID: 891119859139284044}
+  - component: {fileID: 2746928921300727229}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: Player
@@ -633,6 +634,7 @@ MonoBehaviour:
   ownedItems:
     inventoryItems: 0100000002000000
     upgrades: 
+  configuredSlots: 00000000000000000000000000000000
   toolDefinitions:
   - {fileID: 11400000, guid: 8a9fb7101563a89428fd7b0a3eb7c987, type: 2}
   - {fileID: 11400000, guid: 20566b5f028f3024f97f93b5c8dc94cc, type: 2}
@@ -641,7 +643,9 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 4a10114642b174747a3d1bd8eb26b894, type: 2}
   - {fileID: 11400000, guid: c99ab339e6d077241a993ce96bc6d966, type: 2}
   - {fileID: 11400000, guid: b45c9c9ae47c42ab831d847d563ae187, type: 2}
+  - {fileID: 11400000, guid: e52711d138996854cb651e6b38b18ac5, type: 2}
   cartAttractor: {fileID: 2931897021740309335}
+  grabHook: {fileID: 2746928921300727229}
   toolModelMount: {fileID: 9000000000000000002}
   selectedSlotIndex: 0
 --- !u!114 &8363300534232029083
@@ -710,6 +714,25 @@ MonoBehaviour:
   startingBackEquipment: {fileID: 11400000, guid: 2e9bf1683ac877e469cd1ddc3fe9fc53,
     type: 2}
   backMountOverride: {fileID: 0}
+--- !u!114 &2746928921300727229
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6191435648502811240}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4a3fb1ced7eb4db7bde4f76ad8184e68, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  deviceEnabled: 0
+  view: {fileID: 0}
+  playerController: {fileID: 0}
+  toolController: {fileID: 0}
+  collisionLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!1 &6439921682041307256
 GameObject:
   m_ObjectHideFlags: 0

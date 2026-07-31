@@ -15,8 +15,8 @@ namespace Supernova.Gameplay
 
     /// <summary>
     /// Switches between first-person and an independent orbiting third-person camera.
-    /// The third-person view uses a non-allocating sphere cast and treats every
-    /// non-player Collider (including triggers) as obstruction.
+    /// The third-person view uses a non-allocating sphere cast and only treats
+    /// static scene meshes as camera obstructions.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class PerspectiveCameraController : MonoBehaviour
@@ -365,12 +365,12 @@ namespace Supernova.Gameplay
                 obstructionHits,
                 desiredDistance,
                 ~0,
-                QueryTriggerInteraction.Collide);
+                QueryTriggerInteraction.Ignore);
             float nearestDistance = desiredDistance;
             for (int i = 0; i < count; i++)
             {
                 Collider collider = obstructionHits[i].collider;
-                if (collider == null || IsOwnedByPlayer(collider.transform)) continue;
+                if (!IsSceneMeshObstruction(collider)) continue;
                 nearestDistance = Mathf.Min(
                     nearestDistance,
                     Mathf.Max(0f, obstructionHits[i].distance - Mathf.Max(0f, cameraCollisionPadding)));
@@ -378,9 +378,18 @@ namespace Supernova.Gameplay
             return nearestDistance;
         }
 
-        private bool IsOwnedByPlayer(Transform candidate)
+        private bool IsSceneMeshObstruction(Collider collider)
         {
-            return candidate == playerRoot || candidate.IsChildOf(playerRoot);
+            if (collider == null
+                || collider.isTrigger
+                || collider.attachedRigidbody != null
+                || !(collider is MeshCollider))
+            {
+                return false;
+            }
+
+            Transform candidate = collider.transform;
+            return candidate != playerRoot && !candidate.IsChildOf(playerRoot);
         }
 
         private void SetFirstPersonRendererState(bool firstPerson)

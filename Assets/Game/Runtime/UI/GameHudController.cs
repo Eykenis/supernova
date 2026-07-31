@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using Supernova.Gameplay;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
@@ -87,6 +89,17 @@ namespace Supernova.UI
         private readonly Image[] hotbarSlotBackgrounds = new Image[PlayerInventory.SlotCount];
         private readonly Outline[] hotbarSlotOutlines = new Outline[PlayerInventory.SlotCount];
         private readonly TMP_Text[] hotbarItemLabels = new TMP_Text[PlayerInventory.SlotCount];
+        private readonly Button[] loadoutSlotButtons =
+            new Button[PlayerInventory.SlotCount];
+        private readonly TMP_Text[] loadoutSlotItemLabels =
+            new TMP_Text[PlayerInventory.SlotCount];
+        private readonly Dictionary<PlayerInventoryItem, Button>
+            backpackItemButtons =
+                new Dictionary<PlayerInventoryItem, Button>();
+        private readonly Dictionary<PlayerInventoryItem, TMP_Text>
+            backpackItemLabels =
+                new Dictionary<PlayerInventoryItem, TMP_Text>();
+        private int configuringSlotIndex;
 
         public Canvas RootCanvas => rootCanvas;
         public Canvas CrosshairCanvas => crosshairCanvas;
@@ -240,7 +253,11 @@ namespace Supernova.UI
         {
             ResumeGame();
             if (inventorySource != null)
+            {
                 inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
+                inventorySource.LoadoutChanged -= HandleLoadoutChanged;
+                inventorySource.OwnedItemsChanged -= HandleOwnedItemsChanged;
+            }
         }
 
         private void OnDestroy()
@@ -315,6 +332,10 @@ namespace Supernova.UI
             if (equipmentSource == null)
                 equipmentSource = FindObjectOfType<PlayerEquipmentController>();
             pausePresentation.BindEquipment(equipmentSource);
+            configuringSlotIndex = inventorySource != null
+                ? inventorySource.SelectedSlotIndex
+                : 0;
+            RefreshLoadoutConfigurationView();
             pausePresentation.PlayIntro();
             if (EventSystem.current != null)
                 EventSystem.current.SetSelectedGameObject(resumeButton.gameObject);
@@ -417,13 +438,25 @@ namespace Supernova.UI
         public void BindInventorySource(PlayerToolController source)
         {
             if (inventorySource != null)
+            {
                 inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
+                inventorySource.LoadoutChanged -= HandleLoadoutChanged;
+                inventorySource.OwnedItemsChanged -= HandleOwnedItemsChanged;
+            }
 
             inventorySource = source;
             if (inventorySource != null)
+            {
                 inventorySource.SelectionChanged += HandleInventorySelectionChanged;
+                inventorySource.LoadoutChanged += HandleLoadoutChanged;
+                inventorySource.OwnedItemsChanged += HandleOwnedItemsChanged;
+            }
             displayedSlotIndex = -1;
+            configuringSlotIndex = inventorySource != null
+                ? inventorySource.SelectedSlotIndex
+                : 0;
             RefreshNow();
+            RefreshLoadoutConfigurationView();
         }
 
         public void RefreshNow()
@@ -602,6 +635,18 @@ namespace Supernova.UI
         {
             displayedSlotIndex = -1;
             RefreshHotbar();
+            RefreshLoadoutConfigurationView();
+        }
+
+        private void HandleLoadoutChanged()
+        {
+            RefreshHotbar();
+            RefreshLoadoutConfigurationView();
+        }
+
+        private void HandleOwnedItemsChanged()
+        {
+            RefreshLoadoutConfigurationView();
         }
 
         [ContextMenu("Rebuild Default UGUI View")]
@@ -634,7 +679,9 @@ namespace Supernova.UI
             {
                 BuildDefaultView();
             }
-            else if (hotbarRoot == null)
+            else if (hotbarRoot == null
+                || hotbarRoot.transform.childCount
+                    != PlayerInventory.SlotCount)
             {
                 BuildHotbarView((RectTransform)rootCanvas.transform);
             }
@@ -656,13 +703,16 @@ namespace Supernova.UI
             }
 
             bool pauseViewNeedsUpgrade =
-                transform.Find(UiHierarchyPaths.Pause.FullBackSlot) == null;
+                transform.Find(UiHierarchyPaths.Pause.FullBackSlot) == null
+                || transform.Find(UiHierarchyPaths.Pause.FullQuickSlots) == null
+                || transform.Find(UiHierarchyPaths.Pause.FullBackpack) == null;
             if (pauseCanvas == null || pausePanel == null || resumeButton == null
                 || pauseViewNeedsUpgrade)
             {
                 BuildPauseView();
             }
 
+            BindLoadoutConfigurationButtons();
             SciFiUiSkin.ApplyGameHud(transform);
             ApplyReferenceHudLayout();
             CreatePresenter();
@@ -702,6 +752,7 @@ namespace Supernova.UI
             Transform resume = transform.Find(UiHierarchyPaths.Pause.FullResume);
             if (resumeButton == null && resume != null)
                 resumeButton = resume.GetComponent<Button>();
+            CacheLoadoutViewReferences();
 
             Transform loadingCanvasTransform = transform.Find(UiHierarchyPaths.Loading.Canvas);
             if (loadingCanvas == null && loadingCanvasTransform != null)
@@ -1114,13 +1165,25 @@ namespace Supernova.UI
             CanvasScaler scaler = loadingRoot.gameObject.AddComponent<CanvasScaler>();
             ApplyCanvasPolicy(loadingRoot.gameObject, scaler);
 
+            Color overlayBackdrop = designTokens != null
+                ? designTokens.OverlayBackdrop
+                : new Color(0.008f, 0.01f, 0.014f, 0.72f);
+            Color overlayPrimary = designTokens != null
+                ? designTokens.OverlayPrimary
+                : Color.white;
+            Color overlaySecondary = designTokens != null
+                ? designTokens.OverlaySecondary
+                : new Color(1f, 1f, 1f, 0.58f);
+            Color overlayDivider = designTokens != null
+                ? designTokens.OverlayDivider
+                : new Color(1f, 1f, 1f, 0.24f);
             RectTransform panel = CreateRect("Loading Panel", loadingRoot);
             panel.anchorMin = Vector2.zero;
             panel.anchorMax = Vector2.one;
             panel.offsetMin = Vector2.zero;
             panel.offsetMax = Vector2.zero;
             Image background = panel.gameObject.AddComponent<Image>();
-            background.color = new Color(0.018f, 0.026f, 0.041f, 1f);
+            background.color = overlayBackdrop;
             background.raycastTarget = true;
             loadingPanel = panel.gameObject;
             loadingFadeGroup = panel.gameObject.AddComponent<CanvasGroup>();
@@ -1135,52 +1198,54 @@ namespace Supernova.UI
             loadingContentGroup.alpha = 0f;
 
             TMP_Text brand = CreateText(
-                "Brand", content, "SUPERNOVA", TextAlignmentOptions.Center);
+                "Brand", content, "SUPERNOVA  /  DESCENT", TextAlignmentOptions.Center);
             SetAnchoredRect((RectTransform)brand.transform,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, 184f), new Vector2(560f, 44f));
-            brand.fontSize = 32f;
-            brand.characterSpacing = 8f;
-            brand.color = new Color(0.42f, 0.91f, 1f, 1f);
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 166f), new Vector2(620f, 30f));
+            brand.fontSize = 13f;
+            brand.characterSpacing = 5f;
+            brand.color = overlaySecondary;
 
             TMP_Text title = CreateText(
-                "Title", content, "LOADING WORLD", TextAlignmentOptions.Center);
+                "Title", content, "LOADING", TextAlignmentOptions.Center);
             SetAnchoredRect((RectTransform)title.transform,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, 132f), new Vector2(560f, 36f));
-            title.fontSize = 18f;
-            title.characterSpacing = 3f;
-            title.color = new Color(0.82f, 0.86f, 0.9f, 1f);
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 106f), new Vector2(620f, 54f));
+            title.fontSize = 42f;
+            title.fontStyle = FontStyles.Bold;
+            title.characterSpacing = 6f;
+            title.color = overlayPrimary;
 
             loadingSpinner = CreateRect("Spinner", content);
             SetAnchoredRect(loadingSpinner,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, 54f), new Vector2(62f, 62f));
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 31f), new Vector2(44f, 44f));
             Image spinnerFrame = loadingSpinner.gameObject.AddComponent<Image>();
-            spinnerFrame.color = new Color(0.22f, 0.82f, 0.94f, 1f);
+            spinnerFrame.color = overlayPrimary;
             spinnerFrame.raycastTarget = false;
             RectTransform spinnerCore = CreateRect("Core", loadingSpinner);
             SetAnchoredRect(spinnerCore,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(48f, 48f));
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(38f, 38f));
             Image spinnerCoreImage = spinnerCore.gameObject.AddComponent<Image>();
-            spinnerCoreImage.color = background.color;
+            spinnerCoreImage.color = Color.clear;
             spinnerCoreImage.raycastTarget = false;
 
             loadingStatusLabel = CreateText(
                 "Status", content, "PREPARING WORLD", TextAlignmentOptions.Center);
             SetAnchoredRect((RectTransform)loadingStatusLabel.transform,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(620f, 28f));
-            loadingStatusLabel.fontSize = 15f;
-            loadingStatusLabel.characterSpacing = 2f;
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -26f), new Vector2(620f, 28f));
+            loadingStatusLabel.fontSize = 13f;
+            loadingStatusLabel.characterSpacing = 3f;
+            loadingStatusLabel.color = overlaySecondary;
 
             RectTransform track = CreateRect("Progress Track", content);
             SetAnchoredRect(track,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, -64f), new Vector2(520f, 12f));
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -66f), new Vector2(520f, 2f));
             Image trackImage = track.gameObject.AddComponent<Image>();
-            trackImage.color = new Color(0.12f, 0.15f, 0.19f, 1f);
+            trackImage.color = overlayDivider;
             trackImage.raycastTarget = false;
 
             loadingFill = CreateRect("Fill", track);
@@ -1190,16 +1255,17 @@ namespace Supernova.UI
             loadingFill.offsetMin = Vector2.zero;
             loadingFill.offsetMax = Vector2.zero;
             Image fillImage = loadingFill.gameObject.AddComponent<Image>();
-            fillImage.color = new Color(0.22f, 0.82f, 0.94f, 1f);
+            fillImage.color = overlayPrimary;
             fillImage.raycastTarget = false;
 
             loadingProgressLabel = CreateText(
                 "Progress", content, "0%", TextAlignmentOptions.Center);
             SetAnchoredRect((RectTransform)loadingProgressLabel.transform,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, -94f), new Vector2(300f, 30f));
-            loadingProgressLabel.fontSize = 17f;
-            loadingProgressLabel.color = new Color(0.7f, 0.93f, 0.98f, 1f);
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -95f), new Vector2(300f, 30f));
+            loadingProgressLabel.fontSize = 14f;
+            loadingProgressLabel.characterSpacing = 2f;
+            loadingProgressLabel.color = overlayPrimary;
 
             TMP_Text hint = CreateText(
                 "Hint", content, "PREPARING A SAFE LANDING...", TextAlignmentOptions.Center);
@@ -1208,7 +1274,7 @@ namespace Supernova.UI
                 new Vector2(0.5f, 0f), new Vector2(0f, 46f), new Vector2(620f, 28f));
             hint.fontSize = 12f;
             hint.characterSpacing = 1.5f;
-            hint.color = new Color(0.42f, 0.5f, 0.58f, 1f);
+            hint.color = overlaySecondary;
 
             loadingRequestedVisible = false;
             loadingPanel.SetActive(false);
@@ -1229,6 +1295,13 @@ namespace Supernova.UI
                 if (Application.isPlaying) Destroy(existing.gameObject);
                 else DestroyImmediate(existing.gameObject);
             }
+            backpackItemButtons.Clear();
+            backpackItemLabels.Clear();
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                loadoutSlotButtons[i] = null;
+                loadoutSlotItemLabels[i] = null;
+            }
 
             RectTransform pauseRoot = CreateRect(UiHierarchyPaths.Pause.Canvas, transform);
             pauseCanvas = pauseRoot.gameObject.AddComponent<Canvas>();
@@ -1240,63 +1313,176 @@ namespace Supernova.UI
             ApplyCanvasPolicy(pauseRoot.gameObject, scaler);
             pauseRoot.gameObject.AddComponent<GraphicRaycaster>();
 
+            Color overlayBackdrop = designTokens != null
+                ? designTokens.OverlayBackdrop
+                : new Color(0.008f, 0.01f, 0.014f, 0.72f);
+            Color overlaySurface = designTokens != null
+                ? designTokens.OverlaySurface
+                : new Color(1f, 1f, 1f, 0.055f);
+            Color overlayPrimary = designTokens != null
+                ? designTokens.OverlayPrimary
+                : Color.white;
+            Color overlaySecondary = designTokens != null
+                ? designTokens.OverlaySecondary
+                : new Color(1f, 1f, 1f, 0.58f);
+            Color overlayDivider = designTokens != null
+                ? designTokens.OverlayDivider
+                : new Color(1f, 1f, 1f, 0.24f);
+            Color overlayInverse = designTokens != null
+                ? designTokens.OverlayInverse
+                : new Color(0.018f, 0.02f, 0.025f, 1f);
+
             RectTransform panel = CreateRect("Pause Panel", pauseRoot);
             panel.anchorMin = Vector2.zero;
             panel.anchorMax = Vector2.one;
             panel.offsetMin = Vector2.zero;
             panel.offsetMax = Vector2.zero;
             Image backdrop = panel.gameObject.AddComponent<Image>();
-            backdrop.color = new Color(0.012f, 0.02f, 0.032f, 0.88f);
+            backdrop.color = overlayBackdrop;
             backdrop.raycastTarget = true;
             pausePanel = panel.gameObject;
 
             RectTransform menu = CreateRect("Menu", panel);
             SetAnchoredRect(menu,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560f, 430f));
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560f, 650f));
             Image menuImage = menu.gameObject.AddComponent<Image>();
-            menuImage.color = new Color(0.04f, 0.055f, 0.078f, 0.98f);
+            menuImage.color = overlaySurface;
             Outline menuOutline = menu.gameObject.AddComponent<Outline>();
-            menuOutline.effectColor = new Color(0.42f, 0.91f, 1f, 0.45f);
+            menuOutline.effectColor = overlayDivider;
             menuOutline.effectDistance = new Vector2(1f, -1f);
             menuOutline.useGraphicAlpha = false;
 
-            TMP_Text title = CreateText("Title", menu, "SYSTEM PAUSED", TextAlignmentOptions.Left);
+            TMP_Text title = CreateText("Title", menu, "PAUSED", TextAlignmentOptions.Left);
             SetAnchoredRect((RectTransform)title.transform,
                 new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(0f, 1f), new Vector2(30f, -28f), new Vector2(500f, 44f));
-            title.fontSize = 24f;
-            title.characterSpacing = 5f;
-            title.color = new Color(0.42f, 0.91f, 1f, 1f);
+                new Vector2(0f, 1f), new Vector2(30f, -26f), new Vector2(500f, 58f));
+            title.fontSize = 42f;
+            title.fontStyle = FontStyles.Bold;
+            title.characterSpacing = 4f;
+            title.color = overlayPrimary;
 
             TMP_Text loadout = CreateText(
                 "Loadout Header",
                 menu,
-                "LOADOUT  /  EQUIPMENT",
+                "QUICK SLOTS  //  SELECT A SLOT, THEN CHOOSE AN ITEM",
                 TextAlignmentOptions.Left);
             SetAnchoredRect((RectTransform)loadout.transform,
                 new Vector2(0f, 1f), new Vector2(0f, 1f),
                 new Vector2(0f, 1f), new Vector2(30f, -84f), new Vector2(500f, 28f));
             loadout.fontSize = 12f;
             loadout.characterSpacing = 3f;
-            loadout.color = new Color(0.55f, 0.65f, 0.72f, 1f);
+            loadout.color = overlayInverse;
+
+            RectTransform quickSlots = CreateRect(
+                UiHierarchyPaths.Pause.QuickSlots,
+                menu);
+            SetAnchoredRect(
+                quickSlots,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -116f),
+                new Vector2(500f, 72f));
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                int slotIndex = i;
+                Button button = CreateLoadoutButton(
+                    UiHierarchyPaths.Pause.QuickSlotName(i + 1),
+                    quickSlots,
+                    new Vector2(i * 126f, 0f),
+                    new Vector2(119f, 66f),
+                    overlaySurface,
+                    overlayDivider,
+                    out TMP_Text label);
+                label.text = (i + 1) + "  //  EMPTY";
+                button.onClick.AddListener(
+                    () => SelectConfiguringSlot(slotIndex));
+                loadoutSlotButtons[i] = button;
+                loadoutSlotItemLabels[i] = label;
+            }
+
+            TMP_Text backpackHeader = CreateText(
+                UiHierarchyPaths.Pause.BackpackHeader,
+                menu,
+                "BACKPACK  //  OWNED ITEMS",
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)backpackHeader.transform,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(30f, -202f),
+                new Vector2(390f, 28f));
+            backpackHeader.fontSize = 12f;
+            backpackHeader.characterSpacing = 3f;
+            backpackHeader.color = overlayInverse;
+
+            Button clearButton = CreateLoadoutButton(
+                UiHierarchyPaths.Pause.ClearSlot,
+                menu,
+                new Vector2(430f, -198f),
+                new Vector2(100f, 26f),
+                overlaySurface,
+                overlayDivider,
+                out TMP_Text clearLabel);
+            RectTransform clearRect = (RectTransform)clearButton.transform;
+            clearRect.anchorMin = new Vector2(0f, 1f);
+            clearRect.anchorMax = new Vector2(0f, 1f);
+            clearRect.pivot = new Vector2(0f, 1f);
+            clearLabel.text = "CLEAR SLOT";
+            clearLabel.fontSize = 9f;
+            clearLabel.color = overlayInverse;
+            clearButton.onClick.AddListener(ClearConfiguringSlot);
+
+            RectTransform backpack = CreateRect(
+                UiHierarchyPaths.Pause.Backpack,
+                menu);
+            SetAnchoredRect(
+                backpack,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -232f),
+                new Vector2(500f, 132f));
+            List<PlayerInventoryItem> inventoryItems =
+                GetDistinctInventoryItems();
+            for (int i = 0; i < inventoryItems.Count; i++)
+            {
+                PlayerInventoryItem item = inventoryItems[i];
+                int column = i % 4;
+                int row = i / 4;
+                Button button = CreateLoadoutButton(
+                    UiHierarchyPaths.Pause.BackpackItemName(item),
+                    backpack,
+                    new Vector2(column * 126f, -row * 64f),
+                    new Vector2(119f, 58f),
+                    overlaySurface,
+                    overlayDivider,
+                    out TMP_Text itemLabel);
+                itemLabel.text = HotbarPresenter.GetItemLabel(item);
+                button.onClick.AddListener(
+                    () => ConfigureSelectedSlot(item));
+                backpackItemButtons[item] = button;
+                backpackItemLabels[item] = itemLabel;
+            }
 
             RectTransform backSlot = CreateRect("Back Slot", menu);
             SetAnchoredRect(backSlot,
                 new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f), new Vector2(0f, -122f), new Vector2(500f, 140f));
+                new Vector2(0.5f, 1f), new Vector2(0f, -382f), new Vector2(500f, 108f));
             Image backSlotImage = backSlot.gameObject.AddComponent<Image>();
-            backSlotImage.color = new Color(0.025f, 0.08f, 0.11f, 0.96f);
+            backSlotImage.color = overlaySurface;
             Button backSlotButton = backSlot.gameObject.AddComponent<Button>();
             backSlotButton.targetGraphic = backSlotImage;
             ColorBlock backColors = backSlotButton.colors;
             backColors.normalColor = Color.white;
-            backColors.highlightedColor = new Color(1.18f, 1.18f, 1.18f, 1f);
-            backColors.pressedColor = new Color(0.72f, 0.84f, 0.9f, 1f);
+            backColors.highlightedColor = new Color(1f, 1f, 1f, 1.35f);
+            backColors.pressedColor = new Color(1f, 1f, 1f, 0.72f);
             backColors.selectedColor = backColors.highlightedColor;
             backSlotButton.colors = backColors;
             Outline backOutline = backSlot.gameObject.AddComponent<Outline>();
-            backOutline.effectColor = new Color(0.28f, 0.86f, 1f, 0.7f);
+            backOutline.effectColor = overlayDivider;
             backOutline.effectDistance = new Vector2(1f, -1f);
             backOutline.useGraphicAlpha = false;
 
@@ -1307,16 +1493,16 @@ namespace Supernova.UI
                 new Vector2(18f, -14f), new Vector2(-36f, -24f));
             slotName.fontSize = 12f;
             slotName.characterSpacing = 2f;
-            slotName.color = new Color(0.55f, 0.65f, 0.72f, 1f);
+            slotName.color = overlaySecondary;
 
             TMP_Text equipmentName = CreateText(
                 "Equipment Name", backSlot, "NO EQUIPMENT", TextAlignmentOptions.Left);
             SetAnchoredRect((RectTransform)equipmentName.transform,
                 new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0f, 0.5f), new Vector2(18f, 5f), new Vector2(310f, 38f));
-            equipmentName.fontSize = 23f;
+                new Vector2(0f, 0.5f), new Vector2(18f, 1f), new Vector2(310f, 34f));
+            equipmentName.fontSize = 20f;
             equipmentName.fontStyle = FontStyles.Bold;
-            equipmentName.color = new Color(0.86f, 0.96f, 1f, 1f);
+            equipmentName.color = overlayPrimary;
 
             TMP_Text equipmentState = CreateText(
                 "State", backSlot, "EMPTY", TextAlignmentOptions.TopRight);
@@ -1325,7 +1511,7 @@ namespace Supernova.UI
                 new Vector2(-18f, -14f), new Vector2(-36f, -24f));
             equipmentState.fontSize = 12f;
             equipmentState.characterSpacing = 2f;
-            equipmentState.color = new Color(0.28f, 0.86f, 1f, 1f);
+            equipmentState.color = overlayPrimary;
 
             TMP_Text equipmentHint = CreateText(
                 "Hint", backSlot, "NO MODULE AVAILABLE", TextAlignmentOptions.BottomLeft);
@@ -1334,20 +1520,20 @@ namespace Supernova.UI
                 new Vector2(18f, 12f), new Vector2(-36f, -24f));
             equipmentHint.fontSize = 10f;
             equipmentHint.characterSpacing = 1f;
-            equipmentHint.color = new Color(0.55f, 0.65f, 0.72f, 1f);
+            equipmentHint.color = overlaySecondary;
 
             RectTransform resume = CreateRect("Resume", menu);
             SetAnchoredRect(resume,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                 new Vector2(0.5f, 0f), new Vector2(0f, 28f), new Vector2(500f, 58f));
             Image resumeImage = resume.gameObject.AddComponent<Image>();
-            resumeImage.color = new Color(0.12f, 0.5f, 0.6f, 1f);
+            resumeImage.color = overlayPrimary;
             resumeButton = resume.gameObject.AddComponent<Button>();
             resumeButton.targetGraphic = resumeImage;
             ColorBlock colors = resumeButton.colors;
             colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(1.16f, 1.16f, 1.16f, 1f);
-            colors.pressedColor = new Color(0.78f, 0.86f, 0.9f, 1f);
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.82f);
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.62f);
             colors.selectedColor = colors.highlightedColor;
             resumeButton.colors = colors;
             Navigation navigation = resumeButton.navigation;
@@ -1362,9 +1548,257 @@ namespace Supernova.UI
                 Vector2.zero, Vector2.zero);
             resumeLabel.fontSize = 18f;
             resumeLabel.characterSpacing = 2f;
+            resumeLabel.fontStyle = FontStyles.Bold;
+            resumeLabel.color = overlayInverse;
 
+            RefreshLoadoutConfigurationView();
             EnsureSingleEventSystem(transform);
             pausePanel.SetActive(pauseMenuOpen);
+        }
+
+        private static Button CreateLoadoutButton(
+            string name,
+            Transform parent,
+            Vector2 anchoredPosition,
+            Vector2 size,
+            Color surface,
+            Color divider,
+            out TMP_Text label)
+        {
+            RectTransform rect = CreateRect(name, parent);
+            SetAnchoredRect(
+                rect,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                anchoredPosition,
+                size);
+            Image image = rect.gameObject.AddComponent<Image>();
+            image.color = surface;
+            Button button = rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            ColorBlock colors = button.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1f, 1f, 1f, 1.35f);
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.72f);
+            colors.selectedColor = colors.highlightedColor;
+            button.colors = colors;
+            Outline outline = rect.gameObject.AddComponent<Outline>();
+            outline.effectColor = divider;
+            outline.effectDistance = new Vector2(1f, -1f);
+            outline.useGraphicAlpha = false;
+
+            label = CreateText(
+                UiHierarchyPaths.Pause.SlotItem,
+                rect,
+                string.Empty,
+                TextAlignmentOptions.Center);
+            SetAnchoredRect(
+                (RectTransform)label.transform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(-12f, -8f));
+            label.fontSize = 10f;
+            label.fontStyle = FontStyles.Bold;
+            label.characterSpacing = 1f;
+            label.color = Color.white;
+            return button;
+        }
+
+        private void CacheLoadoutViewReferences()
+        {
+            Transform quickSlots = transform.Find(
+                UiHierarchyPaths.Pause.FullQuickSlots);
+            if (quickSlots != null)
+            {
+                for (int i = 0; i < PlayerInventory.SlotCount; i++)
+                {
+                    Transform slot = quickSlots.Find(
+                        UiHierarchyPaths.Pause.QuickSlotName(i + 1));
+                    loadoutSlotButtons[i] = slot != null
+                        ? slot.GetComponent<Button>()
+                        : null;
+                    loadoutSlotItemLabels[i] = slot != null
+                        ? slot.Find(UiHierarchyPaths.Pause.SlotItem)
+                            ?.GetComponent<TMP_Text>()
+                        : null;
+                }
+            }
+
+            backpackItemButtons.Clear();
+            backpackItemLabels.Clear();
+            Transform backpack = transform.Find(
+                UiHierarchyPaths.Pause.FullBackpack);
+            if (backpack == null)
+                return;
+
+            List<PlayerInventoryItem> items =
+                GetDistinctInventoryItems();
+            for (int i = 0; i < items.Count; i++)
+            {
+                PlayerInventoryItem item = items[i];
+                Transform itemRoot = backpack.Find(
+                    UiHierarchyPaths.Pause.BackpackItemName(item));
+                if (itemRoot == null)
+                    continue;
+                backpackItemButtons[item] =
+                    itemRoot.GetComponent<Button>();
+                backpackItemLabels[item] =
+                    itemRoot.Find(UiHierarchyPaths.Pause.SlotItem)
+                        ?.GetComponent<TMP_Text>();
+            }
+        }
+
+        private void BindLoadoutConfigurationButtons()
+        {
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                Button button = loadoutSlotButtons[i];
+                if (button == null)
+                    continue;
+                int slotIndex = i;
+                button.onClick.RemoveAllListeners();
+                button.onClick.AddListener(
+                    () => SelectConfiguringSlot(slotIndex));
+            }
+
+            foreach (KeyValuePair<PlayerInventoryItem, Button> pair
+                in backpackItemButtons)
+            {
+                if (pair.Value == null)
+                    continue;
+                PlayerInventoryItem item = pair.Key;
+                pair.Value.onClick.RemoveAllListeners();
+                pair.Value.onClick.AddListener(
+                    () => ConfigureSelectedSlot(item));
+            }
+
+            Transform clear = transform.Find(
+                UiHierarchyPaths.Pause.FullMenu
+                + "/"
+                + UiHierarchyPaths.Pause.ClearSlot);
+            Button clearButton = clear != null
+                ? clear.GetComponent<Button>()
+                : null;
+            if (clearButton != null)
+            {
+                clearButton.onClick.RemoveAllListeners();
+                clearButton.onClick.AddListener(ClearConfiguringSlot);
+            }
+        }
+
+        private void SelectConfiguringSlot(int slotIndex)
+        {
+            configuringSlotIndex = Mathf.Clamp(
+                slotIndex,
+                0,
+                PlayerInventory.SlotCount - 1);
+            RefreshLoadoutConfigurationView();
+        }
+
+        private void ConfigureSelectedSlot(PlayerInventoryItem item)
+        {
+            if (inventorySource == null)
+                return;
+            inventorySource.ConfigureSlot(configuringSlotIndex, item);
+            RefreshLoadoutConfigurationView();
+        }
+
+        private void ClearConfiguringSlot()
+        {
+            ConfigureSelectedSlot(PlayerInventoryItem.Empty);
+        }
+
+        private void RefreshLoadoutConfigurationView()
+        {
+            Color primary = designTokens != null
+                ? designTokens.OverlayPrimary
+                : Color.white;
+            Color surface = designTokens != null
+                ? designTokens.OverlaySurface
+                : new Color(1f, 1f, 1f, 0.055f);
+            Color inverse = designTokens != null
+                ? designTokens.OverlayInverse
+                : new Color(0.018f, 0.02f, 0.025f, 1f);
+
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                PlayerInventoryItem item = inventorySource != null
+                    ? inventorySource.GetItemAtSlot(i)
+                    : PlayerInventoryItem.Empty;
+                bool selected = i == configuringSlotIndex;
+                if (loadoutSlotItemLabels[i] != null)
+                {
+                    string itemName = HotbarPresenter.GetItemLabel(item);
+                    loadoutSlotItemLabels[i].text = (i + 1)
+                        + "  //  "
+                        + (string.IsNullOrEmpty(itemName)
+                            ? "EMPTY"
+                            : itemName);
+                    loadoutSlotItemLabels[i].color = inverse;
+                }
+                if (loadoutSlotButtons[i] != null)
+                {
+                    Image image =
+                        loadoutSlotButtons[i].targetGraphic as Image;
+                    if (image != null)
+                        image.color = selected ? primary : surface;
+                }
+            }
+
+            foreach (KeyValuePair<PlayerInventoryItem, Button> pair
+                in backpackItemButtons)
+            {
+                PlayerInventoryItem item = pair.Key;
+                Button button = pair.Value;
+                bool owned = inventorySource != null
+                    && inventorySource.OwnedItems.Owns(item);
+                if (button != null)
+                {
+                    button.gameObject.SetActive(owned);
+                    button.interactable = owned;
+                }
+
+                if (!backpackItemLabels.TryGetValue(
+                        item,
+                        out TMP_Text label)
+                    || label == null)
+                {
+                    continue;
+                }
+
+                int assignedSlot = inventorySource != null
+                    ? inventorySource.Inventory.IndexOf(item)
+                    : -1;
+                label.text = HotbarPresenter.GetItemLabel(item)
+                    + (assignedSlot >= 0
+                        ? "\nSLOT " + (assignedSlot + 1)
+                        : string.Empty);
+                label.color = inverse;
+            }
+        }
+
+        private static List<PlayerInventoryItem>
+            GetDistinctInventoryItems()
+        {
+            var items = new List<PlayerInventoryItem>();
+            var seenValues = new HashSet<int>();
+            Array values = Enum.GetValues(typeof(PlayerInventoryItem));
+            for (int i = 0; i < values.Length; i++)
+            {
+                PlayerInventoryItem item =
+                    (PlayerInventoryItem)values.GetValue(i);
+                int value = (int)item;
+                if (item == PlayerInventoryItem.Empty
+                    || !seenValues.Add(value))
+                {
+                    continue;
+                }
+                items.Add(item);
+            }
+            return items;
         }
 
         public static EventSystem EnsureSingleEventSystem(Transform fallbackParent)
@@ -1592,9 +2026,22 @@ namespace Supernova.UI
 
         private void BuildHotbarView(RectTransform rootRect)
         {
+            Transform existing = rootRect.Find("Hotbar");
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                hotbarSlotBackgrounds[i] = null;
+                hotbarSlotOutlines[i] = null;
+                hotbarItemLabels[i] = null;
+            }
+
             RectTransform hotbar = CreateRect("Hotbar", rootRect);
             SetAnchoredRect(hotbar, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(556f, 56f));
+                new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(272f, 56f));
             hotbarRoot = hotbar.gameObject;
 
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
@@ -1616,23 +2063,18 @@ namespace Supernova.UI
                 outline.useGraphicAlpha = false;
                 hotbarSlotOutlines[i] = outline;
 
-                string keyText = i == PlayerInventory.SlotCount - 1 ? "0" : (i + 1).ToString();
+                string keyText = (i + 1).ToString();
                 TMP_Text key = CreateText("Key", slot, keyText, TextAlignmentOptions.TopLeft);
                 SetAnchoredRect((RectTransform)key.transform, Vector2.zero, Vector2.one,
                     new Vector2(0.5f, 0.5f), new Vector2(5f, -3f), new Vector2(-10f, -6f));
                 key.fontSize = 11f;
                 key.color = new Color(0.7f, 0.75f, 0.8f, 1f);
 
-                string itemText = i == 0
-                    ? "PICKAXE"
-                    : i == 1
-                        ? "MAGNET"
-                        : i == 2
-                            ? "FLASHLIGHT"
-                            : i == 3
-                                ? "RIFLE"
-                                : string.Empty;
-                TMP_Text item = CreateText("Item", slot, itemText, TextAlignmentOptions.Center);
+                TMP_Text item = CreateText(
+                    "Item",
+                    slot,
+                    string.Empty,
+                    TextAlignmentOptions.Center);
                 SetAnchoredRect((RectTransform)item.transform, Vector2.zero, Vector2.one,
                     new Vector2(0.5f, 0.5f), new Vector2(3f, -6f), new Vector2(-6f, -16f));
                 item.fontSize = i == 2 ? 7f : 9f;
@@ -1666,7 +2108,7 @@ namespace Supernova.UI
                 : new Vector2(-46f, 42f);
             Vector2 hotbarSize = designTokens != null
                 ? designTokens.HudHotbarSize
-                : new Vector2(640f, 78f);
+                : new Vector2(320f, 78f);
             float healthTilt = designTokens != null
                 ? designTokens.HudHealthTiltDegrees
                 : 3.5f;
@@ -2109,7 +2551,8 @@ namespace Supernova.UI
         private static bool IsHealthSourceValid(IDamageable source)
         {
             if (source == null) return false;
-            return !(source is Object unityObject) || unityObject != null;
+            return !(source is UnityEngine.Object unityObject)
+                || unityObject != null;
         }
 
         private static PlayerToolController FindPlayerInventorySource()
@@ -2135,7 +2578,7 @@ namespace Supernova.UI
         }
     }
 
-    /// <summary>Presentation-only adapter for the ten hotbar slots.</summary>
+    /// <summary>Presentation-only adapter for the four configurable hotbar slots.</summary>
     public sealed class HotbarPresenter
     {
         private readonly Image[] backgrounds;
@@ -2268,7 +2711,7 @@ namespace Supernova.UI
             }
         }
 
-        private static string GetItemLabel(PlayerInventoryItem item)
+        public static string GetItemLabel(PlayerInventoryItem item)
         {
             switch (item)
             {
@@ -2286,6 +2729,8 @@ namespace Supernova.UI
                     return "SOLIDGUN";
                 case PlayerInventoryItem.Cart:
                     return "CART";
+                case PlayerInventoryItem.GrabHook:
+                    return "GRABHOOK";
                 default:
                     return string.Empty;
             }

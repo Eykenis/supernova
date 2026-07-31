@@ -1,3 +1,5 @@
+using Supernova.Gameplay;
+
 namespace Supernova.UI
 {
     public static class UiHierarchyPaths
@@ -132,6 +134,16 @@ namespace Supernova.UI
             public const string Resume = "Resume";
             public const string FullResume = "Pause Canvas/Pause Panel/Menu/Resume";
             public const string BackSlot = "Back Slot";
+            public const string LoadoutHeader = "Loadout Header";
+            public const string QuickSlots = "Quick Slots";
+            public const string BackpackHeader = "Backpack Header";
+            public const string Backpack = "Backpack";
+            public const string ClearSlot = "Clear Slot";
+            public const string SlotItem = "Item";
+            public const string FullQuickSlots =
+                "Pause Canvas/Pause Panel/Menu/Quick Slots";
+            public const string FullBackpack =
+                "Pause Canvas/Pause Panel/Menu/Backpack";
             public const string FullBackSlot =
                 "Pause Canvas/Pause Panel/Menu/Back Slot";
             public const string Title = "Title";
@@ -144,6 +156,15 @@ namespace Supernova.UI
             public const string MenuBackSlot = Menu + "/" + BackSlot;
             public const string MenuFrame = Menu + "/" + Decoration.Frame;
 
+            public static string QuickSlotName(int oneBasedIndex)
+            {
+                return "Quick Slot " + oneBasedIndex;
+            }
+
+            public static string BackpackItemName(PlayerInventoryItem item)
+            {
+                return "Backpack Item " + (int)item;
+            }
         }
 
         public static class Loading
@@ -168,6 +189,7 @@ namespace Supernova.UI
             public const string Hint = "Content/Hint";
             public const string LocalSpinner = "Content/Spinner";
             public const string LocalProgressTrack = "Content/Progress Track";
+            public const string LocalProgressFill = "Content/Progress Track/Fill";
             public const string Core = "Core";
         }
 

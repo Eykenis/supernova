@@ -59,7 +59,7 @@ namespace Supernova.UI
         [SerializeField] private Vector2 hudHealthPosition = new Vector2(48f, 42f);
         [SerializeField] private Vector2 hudHealthSize = new Vector2(372f, 104f);
         [SerializeField] private Vector2 hudHotbarPosition = new Vector2(-46f, 42f);
-        [SerializeField] private Vector2 hudHotbarSize = new Vector2(640f, 78f);
+        [SerializeField] private Vector2 hudHotbarSize = new Vector2(320f, 78f);
         [SerializeField, Range(3, 16)] private int hudHealthSegmentCount = 8;
         [SerializeField, Range(-10f, 10f)] private float hudHealthTiltDegrees = 3.5f;
         [SerializeField, Range(-10f, 10f)] private float hudHotbarTiltDegrees = -3.5f;
@@ -74,6 +74,19 @@ namespace Supernova.UI
         [SerializeField] private Color hudMuted = new Color(0.96f, 0.98f, 1f, 0.2f);
         [SerializeField] private Color hudShadow = new Color(0f, 0f, 0f, 0.72f);
         [SerializeField] private Color hudDanger = new Color(0.92f, 0.18f, 0.14f, 1f);
+
+        [Header("Overlay Palette")]
+        [SerializeField] private Color overlayBackdrop =
+            new Color(0.008f, 0.01f, 0.014f, 0.72f);
+        [SerializeField] private Color overlaySurface =
+            new Color(1f, 1f, 1f, 0.055f);
+        [SerializeField] private Color overlayPrimary = Color.white;
+        [SerializeField] private Color overlaySecondary =
+            new Color(1f, 1f, 1f, 0.58f);
+        [SerializeField] private Color overlayDivider =
+            new Color(1f, 1f, 1f, 0.24f);
+        [SerializeField] private Color overlayInverse =
+            new Color(0.018f, 0.02f, 0.025f, 1f);
 
         [Header("Mission Layout")]
         [SerializeField] private Vector2 missionObjectivePosition =
@@ -152,6 +165,12 @@ namespace Supernova.UI
         public Color HudMuted => hudMuted;
         public Color HudShadow => hudShadow;
         public Color HudDanger => hudDanger;
+        public Color OverlayBackdrop => overlayBackdrop;
+        public Color OverlaySurface => overlaySurface;
+        public Color OverlayPrimary => overlayPrimary;
+        public Color OverlaySecondary => overlaySecondary;
+        public Color OverlayDivider => overlayDivider;
+        public Color OverlayInverse => overlayInverse;
         public Vector2 MissionObjectivePosition => missionObjectivePosition;
         public Vector2 MissionObjectiveSize => missionObjectiveSize;
         public Vector2 MissionPromptPosition => missionPromptPosition;

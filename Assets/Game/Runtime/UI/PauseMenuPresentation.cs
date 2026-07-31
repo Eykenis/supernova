@@ -17,13 +17,8 @@ namespace Supernova.UI
     {
         private const float IntroDuration = 0.9f;
 
-        private static readonly Color PortraitFieldColor = new Color32(22, 0, 13, 255);
-        private static readonly Color InkColor = new Color32(10, 7, 11, 255);
-        private static readonly Color UiBackgroundColor = new Color32(4, 10, 17, 244);
-        private static readonly Color UiPanelColor = new Color32(7, 23, 34, 246);
-        private static readonly Color UiAccentColor = new Color32(67, 222, 255, 255);
-        private static readonly Color UiTextColor = new Color32(220, 245, 252, 255);
-        private static readonly Color UiMutedColor = new Color32(111, 142, 156, 255);
+        private static readonly Color PortraitFieldColor = new Color32(4, 4, 6, 255);
+        private static readonly Color InkColor = new Color32(8, 8, 10, 255);
 
         private RectTransform rootRect;
         private RectTransform inkSlash;
@@ -51,6 +46,7 @@ namespace Supernova.UI
         private Camera portraitCamera;
         private Animator portraitAnimator;
         private RenderTexture portraitTexture;
+        private UiDesignTokens designTokens;
         private PausePortraitSettings portraitSettings;
         private RuntimeAnimatorController portraitController;
         private AnimatorOverrideController portraitOverrideController;
@@ -70,6 +66,25 @@ namespace Supernova.UI
         private bool portraitRenderCallbackRegistered;
         private int portraitLayer = -1;
         private int portraitLayerMask;
+
+        private Color OverlayBackdrop => designTokens != null
+            ? designTokens.OverlayBackdrop
+            : new Color(0.008f, 0.01f, 0.014f, 0.72f);
+        private Color OverlaySurface => designTokens != null
+            ? designTokens.OverlaySurface
+            : new Color(1f, 1f, 1f, 0.055f);
+        private Color OverlayPrimary => designTokens != null
+            ? designTokens.OverlayPrimary
+            : Color.white;
+        private Color OverlaySecondary => designTokens != null
+            ? designTokens.OverlaySecondary
+            : new Color(1f, 1f, 1f, 0.58f);
+        private Color OverlayDivider => designTokens != null
+            ? designTokens.OverlayDivider
+            : new Color(1f, 1f, 1f, 0.24f);
+        private Color OverlayInverse => designTokens != null
+            ? designTokens.OverlayInverse
+            : new Color(0.018f, 0.02f, 0.025f, 1f);
 
         private sealed class PortraitRendererProxy
         {
@@ -181,21 +196,24 @@ namespace Supernova.UI
                 return;
 
             visualsBuilt = true;
+            designTokens = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.UI.DesignTokens
+                : null;
             backdrop = GetComponent<Image>();
             if (backdrop != null)
-                backdrop.color = UiBackgroundColor;
+                backdrop.color = OverlayBackdrop;
 
-            inkSlash = CreateImage("Sci-Fi Portrait Backplate", transform, UiPanelColor);
+            inkSlash = CreateImage("Portrait Field", transform, OverlaySurface);
             SetRect(inkSlash, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
                 new Vector2(0.5f, 0.5f), new Vector2(390f, 0f), new Vector2(850f, 1080f));
 
-            foregroundRedSlash = CreateImage("Sci-Fi Cyan Rail", transform, UiAccentColor);
+            foregroundRedSlash = CreateImage("Portrait Divider", transform, OverlayPrimary);
             SetRect(foregroundRedSlash, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(872f, 0f), new Vector2(3f, 920f));
+                new Vector2(0.5f, 0.5f), new Vector2(872f, 0f), new Vector2(2f, 920f));
 
-            paperSlash = CreateImage("Sci-Fi Secondary Rail", transform, UiMutedColor);
+            paperSlash = CreateImage("Portrait Divider Echo", transform, OverlayDivider);
             SetRect(paperSlash, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(886f, 0f), new Vector2(1f, 620f));
+                new Vector2(0.5f, 0.5f), new Vector2(884f, 0f), new Vector2(1f, 620f));
 
             RectTransform portrait = CreateRect("Pause Portrait", transform);
             portraitRect = portrait;
@@ -205,6 +223,7 @@ namespace Supernova.UI
             portraitImage.color = Color.white;
             portraitImage.raycastTarget = false;
             portraitGroup = portrait.gameObject.AddComponent<CanvasGroup>();
+            portraitGroup.alpha = 0.22f;
             portraitGroup.interactable = false;
             portraitGroup.blocksRaycasts = false;
 
@@ -212,7 +231,7 @@ namespace Supernova.UI
             if (menuRect != null)
             {
                 SetRect(menuRect, new Vector2(0.78f, 0.52f), new Vector2(0.78f, 0.52f),
-                    new Vector2(0.5f, 0.5f), new Vector2(70f, -10f), new Vector2(560f, 430f));
+                    new Vector2(0.5f, 0.5f), new Vector2(70f, -10f), new Vector2(560f, 650f));
                 menuRect.localEulerAngles = Vector3.zero;
                 menuGroup = menuRect.GetComponent<CanvasGroup>();
                 if (menuGroup == null)
@@ -220,13 +239,14 @@ namespace Supernova.UI
 
                 Image menuImage = menuRect.GetComponent<Image>();
                 if (menuImage != null)
-                    menuImage.color = UiPanelColor;
+                    menuImage.color = OverlaySurface;
 
                 Outline menuOutline = menuRect.GetComponent<Outline>();
                 if (menuOutline != null)
                 {
-                    menuOutline.effectColor = new Color(0.26f, 0.86f, 1f, 0.8f);
+                    menuOutline.effectColor = OverlayDivider;
                     menuOutline.effectDistance = new Vector2(1f, -1f);
+                    menuOutline.useGraphicAlpha = false;
                 }
 
                 title = menuRect.Find(UiHierarchyPaths.Pause.Title) != null
@@ -234,14 +254,14 @@ namespace Supernova.UI
                     : null;
                 if (title != null)
                 {
-                    title.text = "SYSTEM PAUSED";
-                    title.fontSize = 24f;
+                    title.text = "PAUSED";
+                    title.fontSize = 42f;
                     title.fontStyle = FontStyles.Bold;
-                    title.characterSpacing = 5f;
-                    title.color = UiAccentColor;
+                    title.characterSpacing = 4f;
+                    title.color = OverlayPrimary;
                     title.alignment = TextAlignmentOptions.Left;
                     SetRect((RectTransform)title.transform, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                        new Vector2(0f, 1f), new Vector2(30f, -28f), new Vector2(500f, 44f));
+                        new Vector2(0f, 1f), new Vector2(30f, -26f), new Vector2(500f, 58f));
                 }
 
                 RectTransform resume = menuRect.Find(UiHierarchyPaths.Pause.Resume) as RectTransform;
@@ -251,7 +271,7 @@ namespace Supernova.UI
                         new Vector2(1f, 0f), new Vector2(-30f, 28f), new Vector2(500f, 58f));
                     Image resumeImage = resume.GetComponent<Image>();
                     if (resumeImage != null)
-                        resumeImage.color = new Color(0.04f, 0.23f, 0.3f, 1f);
+                        resumeImage.color = OverlayPrimary;
 
                     TMP_Text resumeLabel = resume.Find(UiHierarchyPaths.Pause.Label) != null
                         ? resume.Find(UiHierarchyPaths.Pause.Label).GetComponent<TMP_Text>()
@@ -260,7 +280,7 @@ namespace Supernova.UI
                     {
                         resumeLabel.text = "RESUME  [ ESC ]";
                         resumeLabel.fontStyle = FontStyles.Bold;
-                        resumeLabel.color = UiTextColor;
+                        resumeLabel.color = OverlayInverse;
                     }
                 }
 
@@ -280,14 +300,14 @@ namespace Supernova.UI
                 }
             }
 
-            kicker = CreateText("Pause Kicker", transform, "EXPLORER OS  //  LOADOUT");
+            kicker = CreateText("Pause Kicker", transform, "SUPERNOVA  //  FIELD PAUSE");
             SetRect((RectTransform)kicker.transform, new Vector2(1f, 1f), new Vector2(1f, 1f),
                 new Vector2(1f, 1f), new Vector2(-46f, -36f), new Vector2(430f, 50f));
             kicker.alignment = TextAlignmentOptions.Right;
             kicker.fontSize = 20f;
             kicker.fontStyle = FontStyles.Bold;
             kicker.characterSpacing = 5f;
-            kicker.color = UiMutedColor;
+            kicker.color = OverlaySecondary;
 
             inkSlash.SetSiblingIndex(0);
             portraitRect.SetSiblingIndex(1);
@@ -339,8 +359,8 @@ namespace Supernova.UI
                         ? "STOWED  //  EQUIP"
                         : "EMPTY";
                 backEquipmentState.color = equipped != null
-                    ? UiAccentColor
-                    : UiMutedColor;
+                    ? OverlayPrimary
+                    : OverlaySecondary;
             }
             if (backEquipmentHint != null)
                 backEquipmentHint.text = shown != null
@@ -381,6 +401,8 @@ namespace Supernova.UI
 
             bodyMaterial = new Material(bodyTemplate) { name = "Pause Body (Runtime)" };
             backgroundMaterial = new Material(backgroundTemplate) { name = "Pause Background (Runtime)" };
+            bodyMaterial.SetColor("_Color", OverlayPrimary);
+            bodyMaterial.SetColor("_OutlineColor", InkColor);
             backgroundMaterial.SetColor("_Color", PortraitFieldColor);
             backgroundMaterial.SetColor("_OutlineColor", PortraitFieldColor);
 
@@ -852,8 +874,8 @@ namespace Supernova.UI
             float backgroundProgress = EaseOutCubic(progress);
             if (backdrop != null)
             {
-                Color color = UiBackgroundColor;
-                color.a = Mathf.Lerp(0f, 1f, Mathf.Clamp01(progress * 3.5f));
+                Color color = OverlayBackdrop;
+                color.a *= Mathf.Clamp01(progress * 3.5f);
                 backdrop.color = color;
             }
 
@@ -870,7 +892,8 @@ namespace Supernova.UI
                 0f, 0f, Mathf.Lerp(-11f, -2.5f, portraitProgress));
             portraitRect.localScale = Vector3.one * Mathf.Lerp(1.14f, 1f, portraitProgress);
             if (portraitGroup != null)
-                portraitGroup.alpha = Mathf.Clamp01((progress - 0.04f) / 0.22f);
+                portraitGroup.alpha =
+                    Mathf.Clamp01((progress - 0.04f) / 0.22f) * 0.22f;
 
             float menuProgress = EaseOutBack(Mathf.Clamp01((progress - 0.31f) / 0.62f));
             if (menuRect != null)
@@ -884,8 +907,8 @@ namespace Supernova.UI
 
             if (kicker != null)
             {
-                Color color = UiMutedColor;
-                color.a = Mathf.Clamp01((progress - 0.45f) / 0.3f);
+                Color color = OverlaySecondary;
+                color.a *= Mathf.Clamp01((progress - 0.45f) / 0.3f);
                 kicker.color = color;
                 ((RectTransform)kicker.transform).anchoredPosition =
                     new Vector2(-46f, Mathf.Lerp(-90f, -36f, backgroundProgress));

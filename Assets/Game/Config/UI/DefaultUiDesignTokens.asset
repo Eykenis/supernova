@@ -49,7 +49,7 @@ MonoBehaviour:
   hudHealthPosition: {x: 48, y: 42}
   hudHealthSize: {x: 372, y: 104}
   hudHotbarPosition: {x: -46, y: 42}
-  hudHotbarSize: {x: 640, y: 78}
+  hudHotbarSize: {x: 320, y: 78}
   hudHealthSegmentCount: 8
   hudHealthTiltDegrees: 3.5
   hudHotbarTiltDegrees: -3.5
@@ -62,6 +62,12 @@ MonoBehaviour:
   hudMuted: {r: 0.96, g: 0.98, b: 1, a: 0.2}
   hudShadow: {r: 0, g: 0, b: 0, a: 0.72}
   hudDanger: {r: 0.92, g: 0.18, b: 0.14, a: 1}
+  overlayBackdrop: {r: 0.008, g: 0.01, b: 0.014, a: 0.72}
+  overlaySurface: {r: 1, g: 1, b: 1, a: 0.055}
+  overlayPrimary: {r: 1, g: 1, b: 1, a: 1}
+  overlaySecondary: {r: 1, g: 1, b: 1, a: 0.58}
+  overlayDivider: {r: 1, g: 1, b: 1, a: 0.24}
+  overlayInverse: {r: 0.018, g: 0.02, b: 0.025, a: 1}
   missionObjectivePosition: {x: 30, y: -30}
   missionObjectiveSize: {x: 600, y: 160}
   missionPromptPosition: {x: 0, y: 112}

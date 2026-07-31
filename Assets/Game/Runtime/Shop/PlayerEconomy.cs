@@ -22,6 +22,8 @@ namespace Supernova.Shop
             "Supernova.OwnedInventoryItem.";
         private const string OwnedUpgradePreferencePrefix =
             "Supernova.OwnedUpgrade.";
+        private const string QuickSlotPreferencePrefix =
+            "Supernova.QuickSlot.";
 
         public static event Action<int> CreditsChanged;
         public static event Action<PlayerInventoryItem, bool>
@@ -37,7 +39,8 @@ namespace Supernova.Shop
             if (item == PlayerInventoryItem.Empty)
                 return false;
             if (item == PlayerInventoryItem.Pickaxe
-                || item == PlayerInventoryItem.Magnet)
+                || item == PlayerInventoryItem.Magnet
+                || item == PlayerInventoryItem.GrabHook)
             {
                 return true;
             }
@@ -63,6 +66,40 @@ namespace Supernova.Shop
         {
             return upgrade != PlayerUpgrade.None
                 && PlayerPrefs.GetInt(GetOwnedUpgradeKey(upgrade), 0) != 0;
+        }
+
+        public static bool HasQuickSlotConfiguration(int slotIndex)
+        {
+            ValidateQuickSlotIndex(slotIndex);
+            return PlayerPrefs.HasKey(GetQuickSlotKey(slotIndex));
+        }
+
+        public static PlayerInventoryItem GetQuickSlotItem(int slotIndex)
+        {
+            ValidateQuickSlotIndex(slotIndex);
+            int value = PlayerPrefs.GetInt(
+                GetQuickSlotKey(slotIndex),
+                (int)PlayerInventoryItem.Empty);
+            return Enum.IsDefined(typeof(PlayerInventoryItem), value)
+                ? (PlayerInventoryItem)value
+                : PlayerInventoryItem.Empty;
+        }
+
+        public static void SetQuickSlotItem(
+            int slotIndex,
+            PlayerInventoryItem item,
+            bool save = true)
+        {
+            ValidateQuickSlotIndex(slotIndex);
+            PlayerPrefs.SetInt(GetQuickSlotKey(slotIndex), (int)item);
+            if (save)
+                PlayerPrefs.Save();
+        }
+
+        public static string GetQuickSlotPreferenceKey(int slotIndex)
+        {
+            ValidateQuickSlotIndex(slotIndex);
+            return GetQuickSlotKey(slotIndex);
         }
 
         public static string GetUpgradeOwnershipPreferenceKey(
@@ -130,6 +167,17 @@ namespace Supernova.Shop
         private static string GetOwnedUpgradeKey(PlayerUpgrade upgrade)
         {
             return OwnedUpgradePreferencePrefix + (int)upgrade;
+        }
+
+        private static string GetQuickSlotKey(int slotIndex)
+        {
+            return QuickSlotPreferencePrefix + slotIndex;
+        }
+
+        private static void ValidateQuickSlotIndex(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= PlayerInventory.SlotCount)
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
         }
     }
 }

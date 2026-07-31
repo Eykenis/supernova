@@ -16,6 +16,7 @@ namespace Supernova.Gameplay
         SolidGun = 5,
         SMG = 6,
         Cart = 7,
+        GrabHook = 8,
     }
 
     public enum PlayerUpgrade
@@ -114,22 +115,20 @@ namespace Supernova.Gameplay
         SolidGun = 5,
         SMG = 6,
         Cart = 7,
+        GrabHook = 8,
     }
 
-    /// <summary>Fixed ten-slot player inventory used by the numeric hotbar.</summary>
+    /// <summary>
+    /// Four configurable quick slots. Item ownership lives in <see cref="PlayerOwnedItems"/>;
+    /// this type only tracks which owned items the player placed on the hotbar.
+    /// </summary>
     public sealed class PlayerInventory
     {
-        public const int SlotCount = 10;
+        public const int SlotCount = 4;
 
         private static readonly PlayerInventoryItem[] DefaultItems =
         {
-            PlayerInventoryItem.Pickaxe,
-            PlayerInventoryItem.Magnet,
-            PlayerInventoryItem.Flashlight,
-            PlayerInventoryItem.Gun,
-            PlayerInventoryItem.SolidGun,
-            PlayerInventoryItem.SMG,
-            PlayerInventoryItem.Cart,
+            PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
@@ -140,16 +139,24 @@ namespace Supernova.Gameplay
 
         public PlayerInventory(
             int initialSlotIndex = 0,
-            Predicate<PlayerInventoryItem> ownsItem = null)
+            Predicate<PlayerInventoryItem> ownsItem = null,
+            IReadOnlyList<PlayerInventoryItem> configuredItems = null)
         {
             items = (PlayerInventoryItem[])DefaultItems.Clone();
-            if (ownsItem != null)
+            if (configuredItems != null)
             {
-                for (int i = 0; i < items.Length; i++)
+                int configuredCount = Mathf.Min(
+                    configuredItems.Count,
+                    SlotCount);
+                for (int i = 0; i < configuredCount; i++)
                 {
-                    PlayerInventoryItem item = items[i];
-                    if (item != PlayerInventoryItem.Empty && !ownsItem(item))
-                        items[i] = PlayerInventoryItem.Empty;
+                    PlayerInventoryItem item = configuredItems[i];
+                    if (item == PlayerInventoryItem.Empty
+                        || ownsItem == null
+                        || ownsItem(item))
+                    {
+                        SetItemAtSlot(i, item);
+                    }
                 }
             }
 
@@ -175,21 +182,46 @@ namespace Supernova.Gameplay
             return DefaultItems[slotIndex];
         }
 
-        public bool SetItemOwned(PlayerInventoryItem item, bool owned)
+        public int IndexOf(PlayerInventoryItem item)
         {
-            int slotIndex = Array.IndexOf(DefaultItems, item);
-            if (slotIndex < 0 || item == PlayerInventoryItem.Empty)
+            return Array.IndexOf(items, item);
+        }
+
+        public bool SetItemAtSlot(
+            int slotIndex,
+            PlayerInventoryItem item)
+        {
+            if (slotIndex < 0 || slotIndex >= SlotCount)
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
+
+            bool changed = false;
+            if (item != PlayerInventoryItem.Empty)
+            {
+                int existingSlot = Array.IndexOf(items, item);
+                if (existingSlot >= 0 && existingSlot != slotIndex)
+                {
+                    items[existingSlot] = PlayerInventoryItem.Empty;
+                    changed = true;
+                }
+            }
+
+            if (items[slotIndex] == item)
+                return changed;
+
+            items[slotIndex] = item;
+            return true;
+        }
+
+        public bool RemoveItem(PlayerInventoryItem item)
+        {
+            if (item == PlayerInventoryItem.Empty)
                 return false;
 
-            PlayerInventoryItem nextItem = owned
-                ? item
-                : PlayerInventoryItem.Empty;
-            if (items[slotIndex] == nextItem)
+            int slotIndex = Array.IndexOf(items, item);
+            if (slotIndex < 0)
                 return false;
 
-            items[slotIndex] = nextItem;
-            if (slotIndex == selectedSlotIndex)
-                SelectionChanged?.Invoke(selectedSlotIndex, SelectedItem);
+            items[slotIndex] = PlayerInventoryItem.Empty;
             return true;
         }
 
@@ -238,8 +270,8 @@ namespace Supernova.Gameplay
     }
 
     /// <summary>
-    /// Owns the player's ten-slot inventory selection and enables the tool represented by
-    /// the selected slot. Number keys 1-9 select slots 0-8; number 0 selects slot 9.
+    /// Owns the player's four configurable quick slots and enables the selected tool.
+    /// Number keys 1-4 select slots 0-3.
     /// </summary>
     [DefaultExecutionOrder(-200)]
     [DisallowMultipleComponent]
@@ -250,9 +282,18 @@ namespace Supernova.Gameplay
         [Tooltip("Inspector-visible snapshot of the items and upgrades owned by this player.")]
         [SerializeField] private PlayerOwnedItems ownedItems =
             new PlayerOwnedItems();
+        [Tooltip("Fallback quick-slot configuration used until the player saves a loadout.")]
+        [SerializeField] private PlayerInventoryItem[] configuredSlots =
+        {
+            PlayerInventoryItem.Empty,
+            PlayerInventoryItem.Empty,
+            PlayerInventoryItem.Empty,
+            PlayerInventoryItem.Empty,
+        };
         [Tooltip("One definition per usable inventory item. The definition owns its left-click action and animation.")]
         [SerializeField] private PlayerToolDefinition[] toolDefinitions;
         [SerializeField] private FirstPersonCartAttractor cartAttractor;
+        [SerializeField] private GrabHookController grabHook;
         [Tooltip("Right-hand mount used by tools with the Single Hand mounting strategy.")]
         [SerializeField] private Transform toolModelMount;
         [SerializeField, Range(0, PlayerInventory.SlotCount - 1)]
@@ -266,6 +307,8 @@ namespace Supernova.Gameplay
         private Transform rifleModelMount;
 
         public event Action<int, PlayerInventoryItem> SelectionChanged;
+        public event Action LoadoutChanged;
+        public event Action OwnedItemsChanged;
         public event Action<PlayerInventoryItem, int> AmmunitionChanged;
 
         public PlayerInventory Inventory
@@ -279,7 +322,7 @@ namespace Supernova.Gameplay
 
         public int SelectedSlotIndex => Inventory.SelectedSlotIndex;
         public PlayerOwnedItems OwnedItems => ownedItems;
-        public int SelectedSlotNumber => SelectedSlotIndex == 9 ? 0 : SelectedSlotIndex + 1;
+        public int SelectedSlotNumber => SelectedSlotIndex + 1;
         public PlayerInventoryItem SelectedItem => Inventory.SelectedItem;
         public PlayerToolDefinition SelectedDefinition => GetDefinition(SelectedItem);
         public PlayerToolMode CurrentTool => (PlayerToolMode)SelectedItem;
@@ -287,6 +330,8 @@ namespace Supernova.Gameplay
         public bool IsCartAttractorSelected => SelectedItem == PlayerInventoryItem.Magnet;
         public bool IsFlashlightSelected => SelectedItem == PlayerInventoryItem.Flashlight;
         public bool IsCartSelected => SelectedItem == PlayerInventoryItem.Cart;
+        public bool IsGrabHookSelected =>
+            SelectedItem == PlayerInventoryItem.GrabHook;
         public bool IsRifleSelected =>
             SelectedDefinition != null && SelectedDefinition.IsFirearm;
         public GameObject EquippedToolModel => equippedToolModel;
@@ -323,6 +368,7 @@ namespace Supernova.Gameplay
                 cartAttractor.SetDeviceEnabled(false);
                 cartAttractor.SetCartTowEnabled(false);
             }
+            if (grabHook != null) grabHook.SetDeviceEnabled(false);
             ClearEquippedToolModel();
         }
 
@@ -361,6 +407,9 @@ namespace Supernova.Gameplay
             }
             if (definition.PrimaryAction == PlayerToolPrimaryAction.TowCart)
                 return false;
+            if (definition.PrimaryAction == PlayerToolPrimaryAction.FireGrabHook)
+                return grabHook != null
+                    && grabHook.CanUsePrimaryAction(definition);
             return definition.PrimaryAction != PlayerToolPrimaryAction.AttractCart
                 || (cartAttractor != null && cartAttractor.CanOperate);
         }
@@ -390,33 +439,39 @@ namespace Supernova.Gameplay
 
         public void SelectTool(PlayerToolMode tool)
         {
-            switch (tool)
+            EnsureInventory();
+            int slotIndex = inventory.IndexOf((PlayerInventoryItem)tool);
+            if (slotIndex >= 0)
+                SelectSlot(slotIndex);
+        }
+
+        public bool ConfigureSlot(
+            int slotIndex,
+            PlayerInventoryItem item)
+        {
+            EnsureInventory();
+            if (item != PlayerInventoryItem.Empty
+                && !ownedItems.Owns(item))
             {
-                case PlayerToolMode.CartAttractor:
-                    SelectSlot(1);
-                    break;
-                case PlayerToolMode.Pickaxe:
-                    SelectSlot(0);
-                    break;
-                case PlayerToolMode.Flashlight:
-                    SelectSlot(2);
-                    break;
-                case PlayerToolMode.Rifle:
-                    SelectSlot(3);
-                    break;
-                case PlayerToolMode.SolidGun:
-                    SelectSlot(4);
-                    break;
-                case PlayerToolMode.SMG:
-                    SelectSlot(5);
-                    break;
-                case PlayerToolMode.Cart:
-                    SelectSlot(6);
-                    break;
-                default:
-                    SelectSlot(3);
-                    break;
+                return false;
             }
+
+            PlayerInventoryItem previousSelectedItem =
+                inventory.SelectedItem;
+            if (!inventory.SetItemAtSlot(slotIndex, item))
+                return false;
+
+            CaptureConfiguredSlots();
+            SaveConfiguredSlots();
+            ApplySelectedItem();
+            LoadoutChanged?.Invoke();
+            if (previousSelectedItem != inventory.SelectedItem)
+            {
+                SelectionChanged?.Invoke(
+                    inventory.SelectedSlotIndex,
+                    inventory.SelectedItem);
+            }
+            return true;
         }
 
         private void EnsureInventory()
@@ -424,8 +479,13 @@ namespace Supernova.Gameplay
             if (inventory != null) return;
             SynchronizeOwnedItems();
             int slot = Application.isPlaying ? initialSelectedSlot : selectedSlotIndex;
-            inventory = new PlayerInventory(slot, ownedItems.Owns);
+            LoadConfiguredSlots();
+            inventory = new PlayerInventory(
+                slot,
+                ownedItems.Owns,
+                configuredSlots);
             selectedSlotIndex = inventory.SelectedSlotIndex;
+            CaptureConfiguredSlots();
         }
 
         private void EnsureAmmunitionInventory()
@@ -456,29 +516,36 @@ namespace Supernova.Gameplay
         {
             EnsureInventory();
             SynchronizeOwnedItems();
-            bool selectedItemChanged = false;
+            PlayerInventoryItem previousSelectedItem =
+                inventory.SelectedItem;
+            bool loadoutChanged = false;
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
-                PlayerInventoryItem item =
-                    PlayerInventory.GetDefaultItemAtSlot(i);
-                if (item == PlayerInventoryItem.Empty)
-                    continue;
-
-                bool changed = inventory.SetItemOwned(
-                    item,
-                    ownedItems.Owns(item));
-                selectedItemChanged |= changed
-                    && i == inventory.SelectedSlotIndex;
+                PlayerInventoryItem item = inventory.GetItemAtSlot(i);
+                if (item != PlayerInventoryItem.Empty
+                    && !ownedItems.Owns(item))
+                {
+                    loadoutChanged |= inventory.SetItemAtSlot(
+                        i,
+                        PlayerInventoryItem.Empty);
+                }
             }
 
             ApplyAttractionModuleUpgrade();
-            if (!selectedItemChanged)
-                return;
-
-            ApplySelectedItem();
-            SelectionChanged?.Invoke(
-                inventory.SelectedSlotIndex,
-                inventory.SelectedItem);
+            OwnedItemsChanged?.Invoke();
+            if (loadoutChanged)
+            {
+                CaptureConfiguredSlots();
+                SaveConfiguredSlots();
+                ApplySelectedItem();
+                LoadoutChanged?.Invoke();
+                if (previousSelectedItem != inventory.SelectedItem)
+                {
+                    SelectionChanged?.Invoke(
+                        inventory.SelectedSlotIndex,
+                        inventory.SelectedItem);
+                }
+            }
         }
 
         private void HandleItemOwnershipChanged(
@@ -487,19 +554,24 @@ namespace Supernova.Gameplay
         {
             EnsureInventory();
             ownedItems.SetOwned(item, isOwned);
-            int selectedSlot = inventory.SelectedSlotIndex;
-            bool selectedItemChanged =
-                inventory.GetItemAtSlot(selectedSlot) == item
-                || PlayerInventory.GetDefaultItemAtSlot(selectedSlot) == item;
-            if (!inventory.SetItemOwned(item, isOwned))
+            OwnedItemsChanged?.Invoke();
+            if (isOwned)
                 return;
 
-            if (selectedItemChanged)
+            PlayerInventoryItem previousSelectedItem =
+                inventory.SelectedItem;
+            if (inventory.RemoveItem(item))
             {
+                CaptureConfiguredSlots();
+                SaveConfiguredSlots();
                 ApplySelectedItem();
-                SelectionChanged?.Invoke(
-                    inventory.SelectedSlotIndex,
-                    inventory.SelectedItem);
+                LoadoutChanged?.Invoke();
+                if (previousSelectedItem != inventory.SelectedItem)
+                {
+                    SelectionChanged?.Invoke(
+                        inventory.SelectedSlotIndex,
+                        inventory.SelectedItem);
+                }
             }
         }
 
@@ -515,10 +587,11 @@ namespace Supernova.Gameplay
         private void SynchronizeOwnedItems()
         {
             if (ownedItems == null) ownedItems = new PlayerOwnedItems();
-            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            Array values = Enum.GetValues(typeof(PlayerInventoryItem));
+            for (int i = 0; i < values.Length; i++)
             {
                 PlayerInventoryItem item =
-                    PlayerInventory.GetDefaultItemAtSlot(i);
+                    (PlayerInventoryItem)values.GetValue(i);
                 if (item == PlayerInventoryItem.Empty) continue;
                 ownedItems.SetOwned(
                     item,
@@ -528,6 +601,66 @@ namespace Supernova.Gameplay
                 PlayerUpgrade.AttractionModule,
                 PlayerEconomy.IsUpgradeOwned(
                     PlayerUpgrade.AttractionModule));
+        }
+
+        private void LoadConfiguredSlots()
+        {
+            EnsureConfiguredSlotsArray();
+            if (!Application.isPlaying)
+                return;
+
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                if (PlayerEconomy.HasQuickSlotConfiguration(i))
+                {
+                    configuredSlots[i] =
+                        PlayerEconomy.GetQuickSlotItem(i);
+                }
+            }
+        }
+
+        private void CaptureConfiguredSlots()
+        {
+            EnsureConfiguredSlotsArray();
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+                configuredSlots[i] = inventory.GetItemAtSlot(i);
+        }
+
+        private void SaveConfiguredSlots()
+        {
+            if (!Application.isPlaying)
+                return;
+
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                PlayerEconomy.SetQuickSlotItem(
+                    i,
+                    inventory.GetItemAtSlot(i),
+                    false);
+            }
+            PlayerPrefs.Save();
+        }
+
+        private void EnsureConfiguredSlotsArray()
+        {
+            if (configuredSlots != null
+                && configuredSlots.Length == PlayerInventory.SlotCount)
+            {
+                return;
+            }
+
+            PlayerInventoryItem[] resized =
+                new PlayerInventoryItem[PlayerInventory.SlotCount];
+            if (configuredSlots != null)
+            {
+                Array.Copy(
+                    configuredSlots,
+                    resized,
+                    Mathf.Min(
+                        configuredSlots.Length,
+                        resized.Length));
+            }
+            configuredSlots = resized;
         }
 
         private void ApplyAttractionModuleUpgrade()
@@ -556,6 +689,13 @@ namespace Supernova.Gameplay
                     ? definition.PrimaryAction == PlayerToolPrimaryAction.TowCart
                     : IsCartSelected;
                 cartAttractor.SetCartTowEnabled(usesCartTow);
+            }
+            if (grabHook != null)
+            {
+                grabHook.SetDeviceEnabled(
+                    definition != null
+                    && definition.PrimaryAction
+                        == PlayerToolPrimaryAction.FireGrabHook);
             }
             ApplyEquippedToolModel(definition);
         }
@@ -661,6 +801,8 @@ namespace Supernova.Gameplay
         {
             if (cartAttractor == null)
                 cartAttractor = GetComponent<FirstPersonCartAttractor>();
+            if (grabHook == null)
+                grabHook = GetComponent<GrabHookController>();
         }
 
         private static int ReadRequestedSlot()
@@ -669,12 +811,6 @@ namespace Supernova.Gameplay
             if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2)) return 1;
             if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3)) return 2;
             if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4)) return 3;
-            if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5)) return 4;
-            if (Input.GetKeyDown(KeyCode.Alpha6) || Input.GetKeyDown(KeyCode.Keypad6)) return 5;
-            if (Input.GetKeyDown(KeyCode.Alpha7) || Input.GetKeyDown(KeyCode.Keypad7)) return 6;
-            if (Input.GetKeyDown(KeyCode.Alpha8) || Input.GetKeyDown(KeyCode.Keypad8)) return 7;
-            if (Input.GetKeyDown(KeyCode.Alpha9) || Input.GetKeyDown(KeyCode.Keypad9)) return 8;
-            if (Input.GetKeyDown(KeyCode.Alpha0) || Input.GetKeyDown(KeyCode.Keypad0)) return 9;
             return -1;
         }
     }
