@@ -10,7 +10,44 @@ namespace Supernova.MinecraftCaves.Creatures
         bool TryGetSolid(Vector3Int voxel, out bool isSolid);
     }
 
-    public sealed class MinecraftCaveVoxelQuery : ICreatureVoxelQuery
+    public readonly struct CreatureTraversalLink
+    {
+        public CreatureTraversalLink(
+            Vector3Int toSupport,
+            int movementCost,
+            float horizontalDistanceInVoxels,
+            int verticalDeltaInVoxels)
+        {
+            ToSupport = toSupport;
+            MovementCost = Mathf.Max(1, movementCost);
+            HorizontalDistanceInVoxels =
+                Mathf.Max(0f, horizontalDistanceInVoxels);
+            VerticalDeltaInVoxels = verticalDeltaInVoxels;
+        }
+
+        public Vector3Int ToSupport { get; }
+        public int MovementCost { get; }
+        public float HorizontalDistanceInVoxels { get; }
+        public int VerticalDeltaInVoxels { get; }
+    }
+
+    public interface ICreatureTraversalLinkQuery
+    {
+        int NavigationRevision { get; }
+
+        void GetTraversalLinks(
+            Vector3Int fromSupport,
+            List<CreatureTraversalLink> results);
+
+        bool TryGetTraversalLink(
+            Vector3Int fromSupport,
+            Vector3Int toSupport,
+            out CreatureTraversalLink link);
+    }
+
+    public sealed class MinecraftCaveVoxelQuery :
+        ICreatureVoxelQuery,
+        ICreatureTraversalLinkQuery
     {
         private readonly MinecraftCaveInfiniteWorld caveWorld;
         private readonly float solidDensityThreshold;
@@ -25,8 +62,17 @@ namespace Supernova.MinecraftCaves.Creatures
             this.solidDensityThreshold = solidDensityThreshold;
         }
 
+        public int NavigationRevision =>
+            DynamicCreatureNavigation.GetRevision(caveWorld);
+
         public bool TryGetSolid(Vector3Int voxel, out bool isSolid)
         {
+            if (DynamicCreatureNavigation.ContainsSupport(caveWorld, voxel))
+            {
+                isSolid = true;
+                return true;
+            }
+
             InfiniteVoxelWorld world = caveWorld.World;
             if (world == null
                 || !world.TryGetDensity(voxel.x, voxel.y, voxel.z, out float density))
@@ -38,6 +84,28 @@ namespace Supernova.MinecraftCaves.Creatures
             isSolid = density >= solidDensityThreshold;
             return true;
         }
+
+        public void GetTraversalLinks(
+            Vector3Int fromSupport,
+            List<CreatureTraversalLink> results)
+        {
+            DynamicCreatureNavigation.GetTraversalLinks(
+                caveWorld,
+                fromSupport,
+                results);
+        }
+
+        public bool TryGetTraversalLink(
+            Vector3Int fromSupport,
+            Vector3Int toSupport,
+            out CreatureTraversalLink link)
+        {
+            return DynamicCreatureNavigation.TryGetTraversalLink(
+                caveWorld,
+                fromSupport,
+                toSupport,
+                out link);
+        }
     }
 
     [Serializable]
@@ -45,12 +113,17 @@ namespace Supernova.MinecraftCaves.Creatures
     {
         [Min(0)] public int safeFallHeight = 3;
         [Min(0)] public int maximumJumpHeight = 1;
+        [Min(1)] public int maximumTraversalJumpHeight = 4;
+        [Min(1)] public int maximumTraversalHorizontalDistance = 3;
         [Min(1)] public int maximumSingleMoveCost = 100;
-        [Min(1)] public int maximumExpandedNodes = 8192;
+        [Range(1, CreatureVoxelNavigation.MaximumExpandedNodeLimit)]
+        public int maximumExpandedNodes = CreatureVoxelNavigation.MaximumExpandedNodeLimit;
     }
 
     public static class CreatureVoxelNavigation
     {
+        public const int MaximumExpandedNodeLimit = 512;
+
         private static readonly Vector3Int[] HorizontalDirections =
         {
             new Vector3Int(-1, 0, -1),
@@ -62,6 +135,10 @@ namespace Supernova.MinecraftCaves.Creatures
             new Vector3Int(0, 0, 1),
             new Vector3Int(1, 0, 1),
         };
+
+        [ThreadStatic] private static PathSearchWorkspace reusableWorkspace;
+        [ThreadStatic] private static List<CreatureTraversalLink>
+            reusableTraversalLinks;
 
         public static bool IsStandable(
             ICreatureVoxelQuery query,
@@ -112,15 +189,35 @@ namespace Supernova.MinecraftCaves.Creatures
         {
             destinationSupport = default;
             movementCost = settings.maximumSingleMoveCost + 1;
+            Vector3Int requestedDestination =
+                fromSupport + horizontalDirection;
+            if (query is ICreatureTraversalLinkQuery traversalQuery
+                && traversalQuery.TryGetTraversalLink(
+                    fromSupport,
+                    requestedDestination,
+                    out CreatureTraversalLink link)
+                && IsTraversalLinkAllowed(link, settings)
+                && IsStandable(query, shape, requestedDestination))
+            {
+                destinationSupport = requestedDestination;
+                movementCost = link.MovementCost;
+                return true;
+            }
+
+            int horizontalX = Math.Sign(horizontalDirection.x);
+            int horizontalZ = Math.Sign(horizontalDirection.z);
             Vector3Int candidate = fromSupport + new Vector3Int(
-                Math.Sign(horizontalDirection.x),
+                horizontalX,
                 0,
-                Math.Sign(horizontalDirection.z));
+                horizontalZ);
 
             if (candidate.x == fromSupport.x && candidate.z == fromSupport.z)
             {
                 return false;
             }
+
+            int horizontalMovementCost = Math.Abs(horizontalX)
+                + Math.Abs(horizontalZ);
 
             if (!query.TryGetSolid(candidate, out bool candidateSolid))
             {
@@ -134,7 +231,7 @@ namespace Supernova.MinecraftCaves.Creatures
                     Vector3Int raised = candidate + Vector3Int.up * rise;
                     if (IsStandable(query, shape, raised))
                     {
-                        int cost = 1 + rise * 2;
+                        int cost = horizontalMovementCost + rise * 2;
                         if (cost <= settings.maximumSingleMoveCost)
                         {
                             destinationSupport = raised;
@@ -155,7 +252,7 @@ namespace Supernova.MinecraftCaves.Creatures
                 return false;
             }
 
-            int costSoFar = 1;
+            int costSoFar = horizontalMovementCost;
             for (int drop = 1; costSoFar <= settings.maximumSingleMoveCost; drop++)
             {
                 costSoFar += drop <= settings.safeFallHeight ? 1 : 10;
@@ -222,35 +319,46 @@ namespace Supernova.MinecraftCaves.Creatures
                 return false;
             }
 
-            var open = new OpenMinHeap();
-            var bestG = new Dictionary<Vector3Int, int>();
-            var cameFrom = new Dictionary<Vector3Int, Vector3Int>();
-            bestG[startSupport] = 0;
-            open.Push(new OpenNode(startSupport, 0, Heuristic(startSupport, targetSupport)));
+            int expansionLimit = Mathf.Clamp(
+                settings.maximumExpandedNodes,
+                1,
+                MaximumExpandedNodeLimit);
+            reusableWorkspace ??= new PathSearchWorkspace();
+            PathSearchWorkspace workspace = reusableWorkspace;
+            workspace.Reset(expansionLimit);
+            int startIndex = workspace.GetOrAddRecord(startSupport, out _);
+            ref NodeRecord startRecord = ref workspace.GetRecord(startIndex);
+            startRecord.G = 0;
+            workspace.Push(new OpenNode(
+                startIndex,
+                0,
+                Heuristic(startSupport, targetSupport)));
 
-            while (open.Count > 0 && expandedNodeCount < settings.maximumExpandedNodes)
+            while (workspace.OpenCount > 0 && expandedNodeCount < expansionLimit)
             {
-                OpenNode current = open.Pop();
-                if (!bestG.TryGetValue(current.Position, out int knownG)
-                    || current.G != knownG)
+                OpenNode current = workspace.Pop();
+                ref NodeRecord currentRecord =
+                    ref workspace.GetRecord(current.RecordIndex);
+                if (current.G != currentRecord.G)
                 {
                     continue;
                 }
 
-                if (current.Position == targetSupport)
+                if (currentRecord.Position == targetSupport)
                 {
-                    ReconstructPath(cameFrom, current.Position, path);
+                    ReconstructPath(workspace, current.RecordIndex, path);
                     return true;
                 }
 
                 expandedNodeCount++;
+                Vector3Int currentPosition = currentRecord.Position;
                 for (int i = 0; i < HorizontalDirections.Length; i++)
                 {
                     if (!TryResolveTransition(
                             query,
                             shape,
                             settings,
-                            current.Position,
+                            currentPosition,
                             HorizontalDirections[i],
                             out Vector3Int neighbour,
                             out int stepCost))
@@ -258,21 +366,65 @@ namespace Supernova.MinecraftCaves.Creatures
                         continue;
                     }
 
-                    int tentativeG = current.G + stepCost;
-                    if (bestG.TryGetValue(neighbour, out int previousG)
-                        && tentativeG >= previousG)
-                    {
-                        continue;
-                    }
+                    QueueNeighbour(
+                        workspace,
+                        current.RecordIndex,
+                        current.G,
+                        neighbour,
+                        stepCost,
+                        targetSupport);
+                }
 
-                    bestG[neighbour] = tentativeG;
-                    cameFrom[neighbour] = current.Position;
-                    float f = tentativeG + Heuristic(neighbour, targetSupport);
-                    open.Push(new OpenNode(neighbour, tentativeG, f));
+                if (query is ICreatureTraversalLinkQuery linkQuery)
+                {
+                    reusableTraversalLinks ??=
+                        new List<CreatureTraversalLink>();
+                    linkQuery.GetTraversalLinks(
+                        currentPosition,
+                        reusableTraversalLinks);
+                    for (int i = 0; i < reusableTraversalLinks.Count; i++)
+                    {
+                        CreatureTraversalLink link =
+                            reusableTraversalLinks[i];
+                        if (!IsTraversalLinkAllowed(link, settings)
+                            || !IsStandable(
+                                query,
+                                shape,
+                                link.ToSupport))
+                        {
+                            continue;
+                        }
+
+                        QueueNeighbour(
+                            workspace,
+                            current.RecordIndex,
+                            current.G,
+                            link.ToSupport,
+                            link.MovementCost,
+                            targetSupport);
+                    }
                 }
             }
 
             return false;
+        }
+
+        public static bool IsTraversalLinkAllowed(
+            CreatureTraversalLink link,
+            CreatureNavigationSettings settings)
+        {
+            if (settings == null
+                || link.MovementCost > settings.maximumSingleMoveCost
+                || link.HorizontalDistanceInVoxels
+                    > settings.maximumTraversalHorizontalDistance)
+            {
+                return false;
+            }
+
+            return link.VerticalDeltaInVoxels >= 0
+                ? link.VerticalDeltaInVoxels
+                    <= settings.maximumTraversalJumpHeight
+                : -link.VerticalDeltaInVoxels <= settings.safeFallHeight;
         }
 
         private static bool IsKnownAir(ICreatureVoxelQuery query, Vector3Int voxel)
@@ -293,98 +445,237 @@ namespace Supernova.MinecraftCaves.Creatures
         }
 
 
-        private static float Heuristic(Vector3Int from, Vector3Int to)
+        private static int Heuristic(Vector3Int from, Vector3Int to)
         {
-            return Vector3.Distance(from, to);
+            Vector3Int delta = to - from;
+            return Mathf.Abs(delta.x) + Mathf.Abs(delta.y) + Mathf.Abs(delta.z);
+        }
+
+        private static void QueueNeighbour(
+            PathSearchWorkspace workspace,
+            int currentIndex,
+            int currentG,
+            Vector3Int neighbour,
+            int stepCost,
+            Vector3Int targetSupport)
+        {
+            int tentativeG = currentG + stepCost;
+            int neighbourIndex = workspace.GetOrAddRecord(
+                neighbour,
+                out bool wasAdded);
+            ref NodeRecord neighbourRecord =
+                ref workspace.GetRecord(neighbourIndex);
+            if (!wasAdded && tentativeG >= neighbourRecord.G)
+            {
+                return;
+            }
+
+            neighbourRecord.G = tentativeG;
+            neighbourRecord.ParentIndex = currentIndex;
+            int f = tentativeG + Heuristic(neighbour, targetSupport);
+            workspace.Push(new OpenNode(neighbourIndex, tentativeG, f));
         }
 
         private static void ReconstructPath(
-            IReadOnlyDictionary<Vector3Int, Vector3Int> cameFrom,
-            Vector3Int current,
+            PathSearchWorkspace workspace,
+            int currentIndex,
             List<Vector3Int> path)
         {
-            path.Add(current);
-            while (cameFrom.TryGetValue(current, out Vector3Int previous))
+            while (currentIndex >= 0)
             {
-                current = previous;
-                path.Add(current);
+                NodeRecord current = workspace.GetRecord(currentIndex);
+                path.Add(current.Position);
+                currentIndex = current.ParentIndex;
             }
 
             path.Reverse();
         }
 
+        private struct NodeRecord
+        {
+            public Vector3Int Position;
+            public int G;
+            public int ParentIndex;
+        }
+
         private readonly struct OpenNode
         {
-            public OpenNode(Vector3Int position, int g, float f)
+            public OpenNode(int recordIndex, int g, int f)
             {
-                Position = position;
+                RecordIndex = recordIndex;
                 G = g;
                 F = f;
             }
 
-            public Vector3Int Position { get; }
+            public int RecordIndex { get; }
             public int G { get; }
-            public float F { get; }
+            public int F { get; }
         }
 
-        private sealed class OpenMinHeap
+        private sealed class PathSearchWorkspace
         {
-            private readonly List<OpenNode> items = new List<OpenNode>();
+            private NodeRecord[] records = Array.Empty<NodeRecord>();
+            private int[] buckets = Array.Empty<int>();
+            private int[] bucketGenerations = Array.Empty<int>();
+            private OpenNode[] openHeap = Array.Empty<OpenNode>();
+            private int recordCount;
+            private int openCount;
+            private int currentGeneration;
 
-            public int Count => items.Count;
+            public int OpenCount => openCount;
+
+            public void Reset(int maximumExpandedNodes)
+            {
+                int maximumRecords = maximumExpandedNodes
+                    * HorizontalDirections.Length * 2 + 1;
+                EnsureCapacity(maximumRecords);
+                if (currentGeneration == int.MaxValue)
+                {
+                    Array.Clear(bucketGenerations, 0, bucketGenerations.Length);
+                    currentGeneration = 1;
+                }
+                else
+                {
+                    currentGeneration++;
+                }
+
+                recordCount = 0;
+                openCount = 0;
+            }
+
+            public int GetOrAddRecord(Vector3Int position, out bool wasAdded)
+            {
+                int mask = buckets.Length - 1;
+                int bucket = Hash(position) & mask;
+                while (bucketGenerations[bucket] == currentGeneration)
+                {
+                    int existingIndex = buckets[bucket] - 1;
+                    if (records[existingIndex].Position == position)
+                    {
+                        wasAdded = false;
+                        return existingIndex;
+                    }
+
+                    bucket = (bucket + 1) & mask;
+                }
+
+                if (recordCount >= records.Length)
+                {
+                    throw new InvalidOperationException(
+                        "Creature path search record capacity was exhausted.");
+                }
+
+                int recordIndex = recordCount++;
+                records[recordIndex] = new NodeRecord
+                {
+                    Position = position,
+                    G = int.MaxValue,
+                    ParentIndex = -1,
+                };
+                buckets[bucket] = recordIndex + 1;
+                bucketGenerations[bucket] = currentGeneration;
+                wasAdded = true;
+                return recordIndex;
+            }
+
+            public ref NodeRecord GetRecord(int index)
+            {
+                return ref records[index];
+            }
 
             public void Push(OpenNode item)
             {
-                items.Add(item);
-                int index = items.Count - 1;
+                if (openCount >= openHeap.Length)
+                {
+                    throw new InvalidOperationException(
+                        "Creature path search open heap capacity was exhausted.");
+                }
+
+                int index = openCount++;
+                openHeap[index] = item;
                 while (index > 0)
                 {
                     int parent = (index - 1) / 2;
-                    if (!ComesBefore(items[index], items[parent]))
+                    if (!ComesBefore(openHeap[index], openHeap[parent]))
                     {
                         break;
                     }
 
-                    (items[index], items[parent]) = (items[parent], items[index]);
+                    (openHeap[index], openHeap[parent]) =
+                        (openHeap[parent], openHeap[index]);
                     index = parent;
                 }
             }
 
             public OpenNode Pop()
             {
-                OpenNode root = items[0];
-                int last = items.Count - 1;
-                items[0] = items[last];
-                items.RemoveAt(last);
+                OpenNode root = openHeap[0];
+                int last = --openCount;
+                openHeap[0] = openHeap[last];
 
                 int index = 0;
-                while (index < items.Count)
+                while (index < openCount)
                 {
                     int left = index * 2 + 1;
                     int right = left + 1;
-                    if (left >= items.Count)
+                    if (left >= openCount)
                     {
                         break;
                     }
 
-                    int best = right < items.Count && ComesBefore(items[right], items[left])
+                    int best = right < openCount
+                        && ComesBefore(openHeap[right], openHeap[left])
                         ? right
                         : left;
-                    if (!ComesBefore(items[best], items[index]))
+                    if (!ComesBefore(openHeap[best], openHeap[index]))
                     {
                         break;
                     }
 
-                    (items[index], items[best]) = (items[best], items[index]);
+                    (openHeap[index], openHeap[best]) =
+                        (openHeap[best], openHeap[index]);
                     index = best;
                 }
 
                 return root;
             }
 
+            private void EnsureCapacity(int maximumRecords)
+            {
+                if (records.Length < maximumRecords)
+                {
+                    records = new NodeRecord[maximumRecords];
+                    openHeap = new OpenNode[maximumRecords];
+                }
+
+                int requiredBuckets = 1;
+                while (requiredBuckets < maximumRecords * 2)
+                {
+                    requiredBuckets <<= 1;
+                }
+                if (buckets.Length < requiredBuckets)
+                {
+                    buckets = new int[requiredBuckets];
+                    bucketGenerations = new int[requiredBuckets];
+                    currentGeneration = 0;
+                }
+            }
+
+            private static int Hash(Vector3Int position)
+            {
+                unchecked
+                {
+                    int hash = 17;
+                    hash = hash * 31 + position.x;
+                    hash = hash * 31 + position.y;
+                    hash = hash * 31 + position.z;
+                    return hash ^ (int)((uint)hash >> 16);
+                }
+            }
+
             private static bool ComesBefore(OpenNode left, OpenNode right)
             {
-                if (!Mathf.Approximately(left.F, right.F))
+                if (left.F != right.F)
                 {
                     return left.F < right.F;
                 }

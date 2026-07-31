@@ -92,5 +92,19 @@ namespace Supernova.Tests
             foreach (TMP_Text label in labels)
                 Assert.That(label.fontSize, Is.GreaterThanOrEqualTo(14f), label.name);
         }
+
+        [Test]
+        public void PausePortrait_UsesConfiguredLayerAndSupportedShader()
+        {
+            int portraitLayer = LayerMask.NameToLayer(UiLayerNames.PausePortrait);
+            Material bodyMaterial = AssetDatabase.LoadAssetAtPath<Material>(
+                ProjectAssetPaths.Ui.PauseBodyMaterial);
+
+            Assert.That(portraitLayer, Is.GreaterThanOrEqualTo(0));
+            Assert.That(bodyMaterial, Is.Not.Null);
+            Assert.That(bodyMaterial.shader, Is.Not.Null);
+            Assert.That(bodyMaterial.shader.isSupported, Is.True);
+            Assert.That(ShaderUtil.GetShaderMessages(bodyMaterial.shader), Is.Empty);
+        }
     }
 }

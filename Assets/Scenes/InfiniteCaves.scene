@@ -22,9 +22,9 @@ RenderSettings:
   m_FogDensity: 0.01
   m_LinearFogStart: 16
   m_LinearFogEnd: 48
-  m_AmbientSkyColor: {r: 0.10786753, g: 0.10916636, b: 0.11320752, a: 1}
-  m_AmbientEquatorColor: {r: 0.075, g: 0.083, b: 0.086, a: 1}
-  m_AmbientGroundColor: {r: 0.011764706, g: 0.011764706, b: 0.011764706, a: 1}
+  m_AmbientSkyColor: {r: 0.2830189, g: 0.28034887, b: 0.28034887, a: 1}
+  m_AmbientEquatorColor: {r: 0.124184184, g: 0.12944506, b: 0.13207549, a: 1}
+  m_AmbientGroundColor: {r: 0.050314426, g: 0.050314426, b: 0.050314426, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
@@ -1387,7 +1387,6 @@ MonoBehaviour:
   viewer: {fileID: 729396773}
   levelConfigurationOverride: {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f,
     type: 2}
-  showRuntimeDiagnostics: 0
   spawnPointSceneStructure: {fileID: 1913240833}
 --- !u!4 &1110579180
 Transform:
@@ -2461,8 +2460,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_RenderShadows: 1
-  m_RequiresDepthTextureOption: 2
-  m_RequiresOpaqueTextureOption: 2
+  m_RequiresDepthTextureOption: 1
+  m_RequiresOpaqueTextureOption: 1
   m_CameraType: 0
   m_Cameras: []
   m_RendererIndex: -1
@@ -3708,11 +3707,6 @@ PrefabInstance:
         type: 3}
       propertyPath: interactionReach
       value: 2
-      objectReference: {fileID: 0}
-    - target: {fileID: 7446013692719600695, guid: aa379a2dda0db0c40b2135fad34d45f3,
-        type: 3}
-      propertyPath: voxelDestructionDelay
-      value: 0.42
       objectReference: {fileID: 0}
     - target: {fileID: 7446013692719600695, guid: aa379a2dda0db0c40b2135fad34d45f3,
         type: 3}

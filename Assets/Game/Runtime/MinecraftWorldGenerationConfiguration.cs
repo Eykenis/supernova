@@ -40,6 +40,7 @@ namespace Supernova.MinecraftCaves
         private MarchingCubesVertexPlacement vertexPlacement =
             MarchingCubesVertexPlacement.DensityInterpolated;
         [SerializeField] private bool generateColliders = true;
+        [SerializeField] private PhysicMaterial terrainPhysicsMaterial;
         [SerializeField] private VoxelTypeCatalog voxelTypeCatalog;
 
         [Header("Punctual Lighting")]
@@ -84,6 +85,7 @@ namespace Supernova.MinecraftCaves
         public float IsoLevel => isoLevel;
         public MarchingCubesVertexPlacement VertexPlacement => vertexPlacement;
         public bool GenerateColliders => generateColliders;
+        public PhysicMaterial TerrainPhysicsMaterial => terrainPhysicsMaterial;
         public VoxelTypeCatalog VoxelTypeCatalog => voxelTypeCatalog;
         public float PunctualLightFalloffPower => Mathf.Clamp(
             punctualLightFalloffPower,

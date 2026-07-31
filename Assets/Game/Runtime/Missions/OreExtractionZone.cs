@@ -11,7 +11,6 @@ namespace Supernova.Missions
         private readonly Dictionary<int, StoredResource> storedResources =
             new Dictionary<int, StoredResource>();
         private MissionGameLoop owner;
-        private int oreUnitValue;
         public int CurrentStoredValue
         {
             get
@@ -26,10 +25,9 @@ namespace Supernova.Missions
             }
         }
 
-        public void Configure(MissionGameLoop missionOwner, int unitValue)
+        public void Configure(MissionGameLoop missionOwner)
         {
             owner = missionOwner;
-            oreUnitValue = Mathf.Max(1, unitValue);
         }
 
         private void OnTriggerEnter(Collider other)
@@ -65,7 +63,7 @@ namespace Supernova.Missions
                 drop.GetInstanceID(),
                 drop.gameObject,
                 null,
-                drop.VoxelCount * oreUnitValue,
+                drop.Value,
                 other);
         }
 

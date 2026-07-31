@@ -23,6 +23,9 @@ namespace Supernova.UI
         [SerializeField] private PlayerToolController inventorySourceOverride;
         [SerializeField, Min(0.05f)] private float sourceSearchInterval = 0.5f;
 
+        [Header("Configuration")]
+        [SerializeField] private UiDesignTokens designTokens;
+
         [Header("UGUI View")]
         [SerializeField] private Canvas rootCanvas;
         [SerializeField] private Canvas crosshairCanvas;
@@ -31,6 +34,13 @@ namespace Supernova.UI
         [SerializeField] private Image healthFillImage;
         [SerializeField] private TMP_Text healthValueLabel;
         [SerializeField] private GameObject hotbarRoot;
+        [SerializeField] private HeadingCompass headingCompass;
+
+        [Header("Mission View")]
+        [SerializeField] private Canvas missionOverlayCanvas;
+        [SerializeField] private MissionUiView missionView;
+        [SerializeField] private GameObject missionTimerRoot;
+        [SerializeField] private TMP_Text missionTimerValueLabel;
 
         [Header("Pause Menu")]
         [SerializeField] private Canvas pauseCanvas;
@@ -63,23 +73,34 @@ namespace Supernova.UI
         private float displayedCurrentHealth = float.NaN;
         private float displayedMaximumHealth = float.NaN;
         private int displayedSlotIndex = -1;
+        private MinecraftCaveGenerationStage displayedLoadingStage =
+            (MinecraftCaveGenerationStage)(-1);
+        private int displayedLoadingPercent = -1;
         private bool pauseMenuOpen;
         private float timeScaleBeforePause = 1f;
         private CursorLockMode cursorLockBeforePause;
         private bool cursorVisibleBeforePause;
         private static GameHudController pauseOwner;
+        private static GameHudController runtimeHud;
         private PauseMenuPresentation pausePresentation;
+        private AngledPanelGraphic[] healthSegments = new AngledPanelGraphic[0];
         private readonly Image[] hotbarSlotBackgrounds = new Image[PlayerInventory.SlotCount];
         private readonly Outline[] hotbarSlotOutlines = new Outline[PlayerInventory.SlotCount];
         private readonly TMP_Text[] hotbarItemLabels = new TMP_Text[PlayerInventory.SlotCount];
 
         public Canvas RootCanvas => rootCanvas;
         public Canvas CrosshairCanvas => crosshairCanvas;
+        public HeadingCompass Compass => headingCompass;
         public Canvas PauseCanvas => pauseCanvas;
         public Canvas LoadingCanvas => loadingCanvas;
+        public Canvas MissionOverlayCanvas => missionOverlayCanvas;
+        public MissionUiView MissionView => missionView;
+        public TMP_Text MissionTimerValueLabel => missionTimerValueLabel;
+        public UiDesignTokens DesignTokens => designTokens;
         public bool IsPauseMenuVisible => pausePanel != null && pausePanel.activeSelf;
         public bool IsLoadingVisible => loadingPanel != null && loadingPanel.activeSelf;
-        public IDamageable HealthSource => healthSource;
+        public IDamageable HealthSource =>
+            IsHealthSourceValid(healthSource) ? healthSource : null;
         public PlayerToolController InventorySource => inventorySource;
         public static bool IsPauseMenuOpen => pauseOwner != null && pauseOwner.pauseMenuOpen;
         public bool CanPauseGame =>
@@ -87,6 +108,54 @@ namespace Supernova.UI
             && !IsMainMenuActive()
             && !MissionGameLoop.IsSceneTransitioning
             && !IsLoadingBlockingPause();
+
+        public MissionUiView GetOrCreateMissionView()
+        {
+            if (missionView == null || missionOverlayCanvas == null)
+                EnsureView();
+            return missionView;
+        }
+
+        public void SetMissionTimeRemaining(float timeRemainingSeconds)
+        {
+            if (missionTimerRoot == null || missionTimerValueLabel == null)
+                EnsureView();
+            if (missionTimerRoot == null || missionTimerValueLabel == null)
+                return;
+
+            bool configuredVisible =
+                designTokens == null || designTokens.ShowMissionTimer;
+            missionTimerRoot.SetActive(configuredVisible);
+            if (!configuredVisible)
+                return;
+
+            int totalSeconds = Mathf.Max(0, Mathf.CeilToInt(timeRemainingSeconds));
+            int minutes = totalSeconds / 60;
+            int seconds = totalSeconds % 60;
+            missionTimerValueLabel.text =
+                minutes.ToString("00") + ":" + seconds.ToString("00");
+        }
+
+        public void HideMissionTimer()
+        {
+            if (missionTimerRoot != null)
+                missionTimerRoot.SetActive(false);
+        }
+
+        public void RegisterAsRuntimeHud()
+        {
+            if (runtimeHud != null && runtimeHud != this)
+                runtimeHud.DisableDuplicateHud();
+            runtimeHud = this;
+            enabled = true;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetRuntimeState()
+        {
+            runtimeHud = null;
+            pauseOwner = null;
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateRuntimeHud()
@@ -98,15 +167,25 @@ namespace Supernova.UI
 
         private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            GameHudController existing = null;
+            GameHudController existing = runtimeHud;
+            if (existing == null)
+            {
+                foreach (GameHudController candidate in
+                    FindObjectsOfType<GameHudController>(true))
+                {
+                    if (candidate != null && candidate.gameObject.scene.IsValid())
+                    {
+                        existing = candidate;
+                        break;
+                    }
+                }
+            }
+
             foreach (GameHudController candidate in
                 FindObjectsOfType<GameHudController>(true))
             {
-                if (candidate != null && candidate.gameObject.scene.IsValid())
-                {
-                    existing = candidate;
-                    break;
-                }
+                if (candidate != null && candidate != existing)
+                    candidate.DisableDuplicateHud();
             }
 
             string mainMenuSceneName = GameAssetCatalog.Current != null
@@ -114,7 +193,9 @@ namespace Supernova.UI
                 : string.Empty;
             if (scene.name == mainMenuSceneName)
             {
-                if (existing != null) existing.gameObject.SetActive(false);
+                if (existing != null)
+                    existing.SetGameplayViewVisible(false);
+                EnsureSingleEventSystem(existing != null ? existing.transform : null);
                 return;
             }
 
@@ -122,17 +203,21 @@ namespace Supernova.UI
             {
                 GameObject hudObject = new GameObject("Game HUD");
                 DontDestroyOnLoad(hudObject);
-                hudObject.AddComponent<GameHudController>();
+                existing = hudObject.AddComponent<GameHudController>();
+                existing.RegisterAsRuntimeHud();
             }
-            else if (!existing.gameObject.activeSelf)
+            else
             {
-                existing.gameObject.SetActive(true);
+                existing.SetGameplayViewVisible(true);
             }
+
+            EnsureSingleEventSystem(existing.transform);
         }
 
 
         private void Awake()
         {
+            ResolveConfiguration();
             loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
             EnsureView();
             BindHealthSource(healthSourceOverride as IDamageable);
@@ -158,6 +243,12 @@ namespace Supernova.UI
                 inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
         }
 
+        private void OnDestroy()
+        {
+            if (runtimeHud == this)
+                runtimeHud = null;
+        }
+
         private void Update()
         {
             if (pauseMenuOpen && !CanPauseGame)
@@ -168,8 +259,10 @@ namespace Supernova.UI
                 TogglePauseMenu();
             }
 
-            if (healthSource == null && Time.unscaledTime >= nextSourceSearchTime)
+            if (!IsHealthSourceValid(healthSource)
+                && Time.unscaledTime >= nextSourceSearchTime)
             {
+                healthSource = null;
                 nextSourceSearchTime = Time.unscaledTime + sourceSearchInterval;
                 BindHealthSource(FindPlayerHealthSource());
             }
@@ -270,10 +363,46 @@ namespace Supernova.UI
             return FindObjectOfType<MainMenuController>(true) != null;
         }
 
+        private void SetGameplayViewVisible(bool visible)
+        {
+            EnsureView();
+            if (!visible)
+                ResumeGame();
+
+            if (rootCanvas != null)
+                rootCanvas.gameObject.SetActive(visible);
+            if (crosshairCanvas != null)
+            {
+                crosshairCanvas.gameObject.SetActive(
+                    visible && (designTokens == null || designTokens.ShowCrosshair));
+            }
+            if (loadingCanvas != null)
+                loadingCanvas.gameObject.SetActive(visible);
+            if (pauseCanvas != null)
+                pauseCanvas.gameObject.SetActive(visible);
+
+            if (!visible)
+                return;
+
+            loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
+            nextSourceSearchTime = 0f;
+            nextInventorySourceSearchTime = 0f;
+            nextEquipmentSourceSearchTime = 0f;
+            nextWorldSourceSearchTime = 0f;
+            IDamageable configuredHealthSource =
+                healthSourceOverride as IDamageable;
+            BindHealthSource(IsHealthSourceValid(configuredHealthSource)
+                ? configuredHealthSource
+                : FindPlayerHealthSource());
+            RefreshNow();
+        }
+
         public void BindLoadingSource(MinecraftCaveInfiniteWorld source)
         {
             loadingSource = source;
             nextWorldSourceSearchTime = 0f;
+            displayedLoadingStage = (MinecraftCaveGenerationStage)(-1);
+            displayedLoadingPercent = -1;
             RefreshLoadingView();
         }
 
@@ -299,6 +428,9 @@ namespace Supernova.UI
 
         public void RefreshNow()
         {
+            if (!IsHealthSourceValid(healthSource))
+                healthSource = null;
+
             if (presenter != null && healthSource == null)
             {
                 presenter.SetHealthVisible(false);
@@ -346,6 +478,8 @@ namespace Supernova.UI
                 loadingPanel.SetActive(true);
                 if (loadingFadeGroup != null) loadingFadeGroup.alpha = 1f;
                 if (loadingContentGroup != null) loadingContentGroup.alpha = 0f;
+                displayedLoadingStage = (MinecraftCaveGenerationStage)(-1);
+                displayedLoadingPercent = -1;
             }
             else if (!Application.isPlaying && !loadingRequestedVisible)
             {
@@ -365,10 +499,36 @@ namespace Supernova.UI
                 anchorMax.x = progress;
                 loadingFill.anchorMax = anchorMax;
             }
-            if (loadingStatusLabel != null)
-                loadingStatusLabel.text = GetLoadingStageLabel(loadingSource.GenerationStage);
-            if (loadingProgressLabel != null)
-                loadingProgressLabel.text = $"{Mathf.RoundToInt(progress * 100f)}%";
+            MinecraftCaveGenerationStage stage = loadingSource.GenerationStage;
+            if (loadingStatusLabel != null && stage != displayedLoadingStage)
+            {
+                displayedLoadingStage = stage;
+                loadingStatusLabel.text = GetLoadingStageLabel(stage);
+            }
+
+            int progressPercent = Mathf.RoundToInt(progress * 100f);
+            if (loadingProgressLabel != null
+                && progressPercent != displayedLoadingPercent)
+            {
+                displayedLoadingPercent = progressPercent;
+                loadingProgressLabel.SetText("{0}%", progressPercent);
+            }
+        }
+
+        private void DisableDuplicateHud()
+        {
+            ResumeGame();
+            if (rootCanvas != null)
+                rootCanvas.gameObject.SetActive(false);
+            if (crosshairCanvas != null)
+                crosshairCanvas.gameObject.SetActive(false);
+            if (pauseCanvas != null)
+                pauseCanvas.gameObject.SetActive(false);
+            if (loadingCanvas != null)
+                loadingCanvas.gameObject.SetActive(false);
+            if (missionOverlayCanvas != null)
+                missionOverlayCanvas.gameObject.SetActive(false);
+            enabled = false;
         }
 
         private void AnimateLoading()
@@ -447,6 +607,7 @@ namespace Supernova.UI
         [ContextMenu("Rebuild Default UGUI View")]
         public void RebuildDefaultView()
         {
+            ResolveConfiguration();
             for (int i = transform.childCount - 1; i >= 0; i--)
             {
                 GameObject child = transform.GetChild(i).gameObject;
@@ -455,15 +616,18 @@ namespace Supernova.UI
             }
 
             BuildDefaultView();
+            BuildMissionView();
             BuildLoadingView();
             BuildPauseView();
             SciFiUiSkin.ApplyGameHud(transform);
+            ApplyReferenceHudLayout();
             CreatePresenter();
             RefreshNow();
         }
 
         private void EnsureView()
         {
+            ResolveConfiguration();
             CacheViewReferences();
             if (rootCanvas == null || crosshairCanvas == null || healthPanel == null || healthFill == null
                 || healthFillImage == null || healthValueLabel == null)
@@ -473,6 +637,15 @@ namespace Supernova.UI
             else if (hotbarRoot == null)
             {
                 BuildHotbarView((RectTransform)rootCanvas.transform);
+            }
+            if (headingCompass == null)
+                BuildCompassView();
+            bool missionViewNeedsUpgrade =
+                transform.Find(UiHierarchyPaths.Mission.Timer) == null;
+            if (missionView == null || missionOverlayCanvas == null
+                || missionViewNeedsUpgrade)
+            {
+                BuildMissionView();
             }
             if (loadingCanvas == null || loadingFadeGroup == null || loadingContentGroup == null
                 || loadingPanel == null || loadingSpinner == null
@@ -491,6 +664,7 @@ namespace Supernova.UI
             }
 
             SciFiUiSkin.ApplyGameHud(transform);
+            ApplyReferenceHudLayout();
             CreatePresenter();
             RefreshLoadingView();
         }
@@ -564,11 +738,37 @@ namespace Supernova.UI
 
             Transform hotbar = transform.Find(UiHierarchyPaths.Hud.Hotbar);
             if (hotbarRoot == null && hotbar != null) hotbarRoot = hotbar.gameObject;
+
+            Transform compass = transform.Find(UiHierarchyPaths.Hud.Compass);
+            if (headingCompass == null && compass != null)
+                headingCompass = compass.GetComponent<HeadingCompass>();
+            if (headingCompass != null)
+                headingCompass.Configure(null, designTokens);
+
+            Transform missionRoot = transform.Find(UiHierarchyPaths.Mission.Root);
+            if (missionView == null && missionRoot != null)
+                missionView = missionRoot.GetComponent<MissionUiView>();
+
+            Transform missionOverlay = transform.Find(
+                UiHierarchyPaths.Mission.OverlayCanvas);
+            if (missionOverlayCanvas == null && missionOverlay != null)
+                missionOverlayCanvas = missionOverlay.GetComponent<Canvas>();
+
+            Transform missionTimer = transform.Find(
+                UiHierarchyPaths.Mission.Timer);
+            if (missionTimerRoot == null && missionTimer != null)
+                missionTimerRoot = missionTimer.gameObject;
+            Transform missionTimerValue = transform.Find(
+                UiHierarchyPaths.Mission.TimerValue);
+            if (missionTimerValueLabel == null && missionTimerValue != null)
+                missionTimerValueLabel =
+                    missionTimerValue.GetComponent<TMP_Text>();
+
             if (hotbar == null) return;
 
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
-                Transform slot = hotbar.Find($"Slot {i + 1}");
+                Transform slot = hotbar.Find(UiHierarchyPaths.Hud.SlotName(i + 1));
                 if (slot == null) continue;
                 hotbarSlotBackgrounds[i] = slot.GetComponent<Image>();
                 hotbarSlotOutlines[i] = slot.GetComponent<Outline>();
@@ -580,9 +780,19 @@ namespace Supernova.UI
         private void CreatePresenter()
         {
             presenter = new GameHudPresenter(
-                healthPanel, healthFill, healthFillImage, healthValueLabel);
+                healthPanel,
+                healthFill,
+                healthFillImage,
+                healthValueLabel,
+                healthSegments,
+                designTokens);
             hotbarPresenter = new HotbarPresenter(
-                hotbarSlotBackgrounds, hotbarSlotOutlines, hotbarItemLabels);
+                hotbarSlotBackgrounds,
+                hotbarSlotOutlines,
+                hotbarItemLabels,
+                designTokens);
+            displayedCurrentHealth = float.NaN;
+            displayedMaximumHealth = float.NaN;
             displayedSlotIndex = -1;
         }
 
@@ -591,18 +801,19 @@ namespace Supernova.UI
             RectTransform rootRect = CreateRect(UiHierarchyPaths.Hud.RootCanvas, transform);
             rootCanvas = rootRect.gameObject.AddComponent<Canvas>();
             rootCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            rootCanvas.sortingOrder = 100;
+            rootCanvas.sortingOrder = designTokens != null
+                ? designTokens.HudSortingOrder
+                : 100;
 
             CanvasScaler scaler = rootRect.gameObject.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            ApplyCanvasPolicy(rootRect.gameObject, scaler);
 
             RectTransform crosshairRoot = CreateRect(UiHierarchyPaths.Hud.CrosshairCanvas, transform);
             crosshairCanvas = crosshairRoot.gameObject.AddComponent<Canvas>();
             crosshairCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            crosshairCanvas.sortingOrder = 101;
+            crosshairCanvas.sortingOrder = designTokens != null
+                ? designTokens.CrosshairSortingOrder
+                : 101;
             crosshairCanvas.pixelPerfect = true;
 
             CanvasScaler crosshairScaler = crosshairRoot.gameObject.AddComponent<CanvasScaler>();
@@ -660,6 +871,229 @@ namespace Supernova.UI
             healthFillImage.raycastTarget = false;
 
             BuildHotbarView(rootRect);
+            BuildCompassView();
+            healthPanel.SetActive(designTokens == null || designTokens.ShowHealth);
+            hotbarRoot.SetActive(designTokens == null || designTokens.ShowHotbar);
+            crosshairRoot.gameObject.SetActive(
+                designTokens == null || designTokens.ShowCrosshair);
+        }
+
+        private void ResolveConfiguration()
+        {
+            if (designTokens == null && GameAssetCatalog.Current != null)
+                designTokens = GameAssetCatalog.Current.UI.DesignTokens;
+        }
+
+        private void BuildMissionView()
+        {
+            Transform existingMission = transform.Find(UiHierarchyPaths.Mission.Root);
+            if (existingMission != null)
+            {
+                if (Application.isPlaying) Destroy(existingMission.gameObject);
+                else DestroyImmediate(existingMission.gameObject);
+            }
+
+            Transform existingOverlay = transform.Find(
+                UiHierarchyPaths.Mission.OverlayCanvas);
+            if (existingOverlay != null)
+            {
+                if (Application.isPlaying) Destroy(existingOverlay.gameObject);
+                else DestroyImmediate(existingOverlay.gameObject);
+            }
+
+            RectTransform missionRoot = CreateRect(
+                "Mission",
+                (RectTransform)rootCanvas.transform);
+            missionRoot.anchorMin = Vector2.zero;
+            missionRoot.anchorMax = Vector2.one;
+            missionRoot.offsetMin = Vector2.zero;
+            missionRoot.offsetMax = Vector2.zero;
+
+            TMP_Text objective = CreateText(
+                "Objective",
+                missionRoot,
+                string.Empty,
+                TextAlignmentOptions.TopLeft);
+            SetAnchoredRect(
+                (RectTransform)objective.transform,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                designTokens != null
+                    ? designTokens.MissionObjectivePosition
+                    : new Vector2(30f, -30f),
+                designTokens != null
+                    ? designTokens.MissionObjectiveSize
+                    : new Vector2(600f, 160f));
+            objective.fontSize = designTokens != null
+                ? designTokens.MissionObjectiveFontSize
+                : 28f;
+            objective.color = designTokens != null
+                ? designTokens.TextPrimary
+                : new Color(0.82f, 0.96f, 1f);
+            objective.enableWordWrapping = true;
+            objective.gameObject.SetActive(
+                designTokens == null || designTokens.ShowMissionObjective);
+
+            TMP_Text prompt = CreateText(
+                "Prompt",
+                missionRoot,
+                string.Empty,
+                TextAlignmentOptions.Bottom);
+            SetAnchoredRect(
+                (RectTransform)prompt.transform,
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                designTokens != null
+                    ? designTokens.MissionPromptPosition
+                    : new Vector2(0f, 112f),
+                designTokens != null
+                    ? designTokens.MissionPromptSize
+                    : new Vector2(1100f, 70f));
+            prompt.fontSize = designTokens != null
+                ? designTokens.MissionPromptFontSize
+                : 25f;
+            prompt.color = designTokens != null
+                ? designTokens.TextPrimary
+                : new Color(0.82f, 0.96f, 1f);
+            prompt.enableWordWrapping = true;
+            prompt.gameObject.SetActive(
+                designTokens == null || designTokens.ShowMissionPrompt);
+
+            RectTransform timer = CreateRect("Mission Timer", missionRoot);
+            SetAnchoredRect(
+                timer,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                designTokens != null
+                    ? designTokens.MissionTimerPosition
+                    : new Vector2(0f, -92f),
+                designTokens != null
+                    ? designTokens.MissionTimerSize
+                    : new Vector2(180f, 62f));
+            missionTimerRoot = timer.gameObject;
+
+            RectTransform timerRule = CreateRect("Rule", timer);
+            SetAnchoredRect(
+                timerRule,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -2f),
+                new Vector2(112f, 2f));
+            Image timerRuleImage = timerRule.gameObject.AddComponent<Image>();
+            Color timerColor = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            timerRuleImage.color =
+                new Color(timerColor.r, timerColor.g, timerColor.b, 0.52f);
+            timerRuleImage.raycastTarget = false;
+
+            TMP_Text timerCaption = CreateText(
+                "Caption",
+                timer,
+                "TIME REMAINING",
+                TextAlignmentOptions.Center);
+            SetAnchoredRect(
+                (RectTransform)timerCaption.transform,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -14f),
+                new Vector2(180f, 16f));
+            timerCaption.fontSize = 9f;
+            timerCaption.characterSpacing = 7f;
+            timerCaption.color =
+                new Color(timerColor.r, timerColor.g, timerColor.b, 0.65f);
+
+            missionTimerValueLabel = CreateText(
+                "Value",
+                timer,
+                "00:00",
+                TextAlignmentOptions.Center);
+            SetAnchoredRect(
+                (RectTransform)missionTimerValueLabel.transform,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -35f),
+                new Vector2(180f, 34f));
+            missionTimerValueLabel.fontSize = designTokens != null
+                ? designTokens.MissionTimerFontSize
+                : 28f;
+            missionTimerValueLabel.characterSpacing = 2f;
+            missionTimerValueLabel.color = timerColor;
+            timer.gameObject.SetActive(false);
+
+            RectTransform overlayRoot = CreateRect(
+                UiHierarchyPaths.Mission.OverlayCanvas,
+                transform);
+            missionOverlayCanvas = overlayRoot.gameObject.AddComponent<Canvas>();
+            missionOverlayCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            missionOverlayCanvas.sortingOrder = designTokens != null
+                ? designTokens.MissionOverlaySortingOrder
+                : 900;
+            CanvasScaler overlayScaler =
+                overlayRoot.gameObject.AddComponent<CanvasScaler>();
+            ApplyCanvasPolicy(overlayRoot.gameObject, overlayScaler);
+            overlayRoot.gameObject.AddComponent<GraphicRaycaster>();
+
+            RectTransform result = CreateRect("Mission Result", overlayRoot);
+            result.anchorMin = Vector2.zero;
+            result.anchorMax = Vector2.one;
+            result.offsetMin = Vector2.zero;
+            result.offsetMax = Vector2.zero;
+            Image resultBackdrop = result.gameObject.AddComponent<Image>();
+            resultBackdrop.color = designTokens != null
+                ? designTokens.MissionResultBackdrop
+                : new Color(0.015f, 0.025f, 0.035f, 0.96f);
+
+            TMP_Text resultText = CreateText(
+                "Result Text",
+                result,
+                string.Empty,
+                TextAlignmentOptions.Center);
+            RectTransform resultTextRect = (RectTransform)resultText.transform;
+            resultTextRect.anchorMin = Vector2.zero;
+            resultTextRect.anchorMax = Vector2.one;
+            Vector2 resultPadding = designTokens != null
+                ? designTokens.MissionResultPadding
+                : new Vector2(200f, 100f);
+            resultTextRect.offsetMin = resultPadding;
+            resultTextRect.offsetMax = -resultPadding;
+            resultText.fontSize = designTokens != null
+                ? designTokens.MissionResultFontSize
+                : 42f;
+            resultText.color = designTokens != null
+                ? designTokens.TextPrimary
+                : new Color(0.82f, 0.96f, 1f);
+            resultText.enableWordWrapping = true;
+            result.gameObject.SetActive(false);
+
+            RectTransform fadeRect = CreateRect("Scene Fade", overlayRoot);
+            fadeRect.anchorMin = Vector2.zero;
+            fadeRect.anchorMax = Vector2.one;
+            fadeRect.offsetMin = Vector2.zero;
+            fadeRect.offsetMax = Vector2.zero;
+            Image fadeImage = fadeRect.gameObject.AddComponent<Image>();
+            fadeImage.color = designTokens != null
+                ? designTokens.SceneFadeColor
+                : Color.black;
+            CanvasGroup fade = fadeRect.gameObject.AddComponent<CanvasGroup>();
+            fade.alpha = 0f;
+            fade.blocksRaycasts = true;
+            fadeRect.gameObject.SetActive(false);
+
+            missionView = missionRoot.gameObject.AddComponent<MissionUiView>();
+            missionView.Configure(
+                objective,
+                prompt,
+                result.gameObject,
+                resultText,
+                fade,
+                designTokens);
         }
 
         private void BuildLoadingView()
@@ -674,12 +1108,11 @@ namespace Supernova.UI
             RectTransform loadingRoot = CreateRect(UiHierarchyPaths.Loading.Canvas, transform);
             loadingCanvas = loadingRoot.gameObject.AddComponent<Canvas>();
             loadingCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            loadingCanvas.sortingOrder = 1000;
+            loadingCanvas.sortingOrder = designTokens != null
+                ? designTokens.LoadingSortingOrder
+                : 1000;
             CanvasScaler scaler = loadingRoot.gameObject.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            ApplyCanvasPolicy(loadingRoot.gameObject, scaler);
 
             RectTransform panel = CreateRect("Loading Panel", loadingRoot);
             panel.anchorMin = Vector2.zero;
@@ -800,12 +1233,11 @@ namespace Supernova.UI
             RectTransform pauseRoot = CreateRect(UiHierarchyPaths.Pause.Canvas, transform);
             pauseCanvas = pauseRoot.gameObject.AddComponent<Canvas>();
             pauseCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            pauseCanvas.sortingOrder = 1100;
+            pauseCanvas.sortingOrder = designTokens != null
+                ? designTokens.PauseSortingOrder
+                : 1100;
             CanvasScaler scaler = pauseRoot.gameObject.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-            scaler.matchWidthOrHeight = 0.5f;
+            ApplyCanvasPolicy(pauseRoot.gameObject, scaler);
             pauseRoot.gameObject.AddComponent<GraphicRaycaster>();
 
             RectTransform panel = CreateRect("Pause Panel", pauseRoot);
@@ -931,17 +1363,231 @@ namespace Supernova.UI
             resumeLabel.fontSize = 18f;
             resumeLabel.characterSpacing = 2f;
 
-            EnsureEventSystem();
+            EnsureSingleEventSystem(transform);
             pausePanel.SetActive(pauseMenuOpen);
         }
 
-        private void EnsureEventSystem()
+        public static EventSystem EnsureSingleEventSystem(Transform fallbackParent)
         {
-            if (EventSystem.current != null) return;
-            GameObject eventSystemObject = new GameObject("EventSystem");
-            eventSystemObject.transform.SetParent(transform, false);
-            eventSystemObject.AddComponent<EventSystem>();
-            eventSystemObject.AddComponent<StandaloneInputModule>();
+            EventSystem[] eventSystems = FindObjectsOfType<EventSystem>(true);
+            EventSystem selected = EventSystem.current;
+            if (selected == null || !selected.isActiveAndEnabled)
+            {
+                selected = null;
+                for (int i = 0; i < eventSystems.Length; i++)
+                {
+                    if (eventSystems[i] != null && eventSystems[i].isActiveAndEnabled)
+                    {
+                        selected = eventSystems[i];
+                        break;
+                    }
+                }
+            }
+
+            if (selected == null)
+            {
+                for (int i = 0; i < eventSystems.Length; i++)
+                {
+                    if (eventSystems[i] != null
+                        && eventSystems[i].gameObject.activeInHierarchy)
+                    {
+                        selected = eventSystems[i];
+                        break;
+                    }
+                }
+            }
+
+            if (selected == null)
+            {
+                GameObject eventSystemObject = new GameObject("EventSystem");
+                if (fallbackParent != null && fallbackParent.gameObject.activeInHierarchy)
+                    eventSystemObject.transform.SetParent(fallbackParent, false);
+                selected = eventSystemObject.AddComponent<EventSystem>();
+                eventSystemObject.AddComponent<StandaloneInputModule>();
+                eventSystems = FindObjectsOfType<EventSystem>(true);
+            }
+
+            selected.enabled = true;
+            BaseInputModule selectedInputModule = selected.GetComponent<BaseInputModule>();
+            if (selectedInputModule == null)
+                selectedInputModule = selected.gameObject.AddComponent<StandaloneInputModule>();
+            selectedInputModule.enabled = true;
+
+            for (int i = 0; i < eventSystems.Length; i++)
+            {
+                EventSystem candidate = eventSystems[i];
+                if (candidate == null || candidate == selected)
+                    continue;
+
+                candidate.enabled = false;
+                BaseInputModule[] inputModules = candidate.GetComponents<BaseInputModule>();
+                for (int moduleIndex = 0; moduleIndex < inputModules.Length; moduleIndex++)
+                    inputModules[moduleIndex].enabled = false;
+            }
+
+            return selected;
+        }
+
+        private void BuildCompassView()
+        {
+            if (rootCanvas == null)
+                return;
+
+            Transform existing = transform.Find(UiHierarchyPaths.Hud.Compass);
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+
+            Color primary = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            Vector2 position = designTokens != null
+                ? designTokens.CompassPosition
+                : new Vector2(0f, -12f);
+            Vector2 size = designTokens != null
+                ? designTokens.CompassSize
+                : new Vector2(720f, 72f);
+
+            RectTransform compass = CreateRect(
+                UiHierarchyPaths.Hud.CompassName,
+                rootCanvas.transform);
+            SetAnchoredRect(
+                compass,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                position,
+                size);
+
+            Image backdrop = compass.gameObject.AddComponent<Image>();
+            backdrop.color = new Color(0f, 0f, 0f, 0.08f);
+            backdrop.raycastTarget = false;
+
+            RectTransform viewport = CreateRect(
+                UiHierarchyPaths.Hud.CompassViewportName,
+                compass);
+            SetAnchoredRect(
+                viewport,
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -2f),
+                new Vector2(-20f, 50f));
+            viewport.gameObject.AddComponent<RectMask2D>();
+
+            RectTransform ticks = CreateRect(
+                UiHierarchyPaths.Hud.CompassTicksName,
+                viewport);
+            SetAnchoredRect(
+                ticks,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 1f),
+                Vector2.zero,
+                Vector2.zero);
+
+            for (int i = 0; i < HeadingCompass.TickViewCount; i++)
+            {
+                RectTransform tick = CreateRect(
+                    UiHierarchyPaths.Hud.CompassTickName(i + 1),
+                    ticks);
+                SetAnchoredRect(
+                    tick,
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0.5f, 1f),
+                    Vector2.zero,
+                    new Vector2(54f, 48f));
+                tick.gameObject.AddComponent<CanvasGroup>();
+
+                RectTransform line = CreateRect(
+                    UiHierarchyPaths.Hud.CompassTickLine,
+                    tick);
+                SetAnchoredRect(
+                    line,
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0f, -1f),
+                    new Vector2(1f, 6f));
+                Image lineImage = line.gameObject.AddComponent<Image>();
+                lineImage.color =
+                    new Color(primary.r, primary.g, primary.b, 0.82f);
+                lineImage.raycastTarget = false;
+
+                TMP_Text label = CreateText(
+                    UiHierarchyPaths.Hud.CompassTickLabel,
+                    tick,
+                    string.Empty,
+                    TextAlignmentOptions.Top);
+                SetAnchoredRect(
+                    (RectTransform)label.transform,
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0.5f, 1f),
+                    new Vector2(0f, -18f),
+                    new Vector2(54f, 24f));
+                label.fontSize = 10f;
+                label.fontStyle = FontStyles.Bold;
+                label.color = primary;
+            }
+
+            RectTransform marker = CreateRect(
+                UiHierarchyPaths.Hud.CompassBearingMarkerName,
+                compass);
+            SetAnchoredRect(
+                marker,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -1f),
+                new Vector2(2f, 18f));
+            Image markerImage = marker.gameObject.AddComponent<Image>();
+            Color accent = designTokens != null
+                ? designTokens.Accent
+                : primary;
+            markerImage.color = accent;
+            markerImage.raycastTarget = false;
+
+            RectTransform bearingRule = CreateRect(
+                UiHierarchyPaths.Hud.CompassBearingRuleName,
+                compass);
+            SetAnchoredRect(
+                bearingRule,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -47f),
+                new Vector2(68f, 2f));
+            Image ruleImage = bearingRule.gameObject.AddComponent<Image>();
+            ruleImage.color =
+                new Color(primary.r, primary.g, primary.b, 0.72f);
+            ruleImage.raycastTarget = false;
+
+            TMP_Text heading = CreateText(
+                UiHierarchyPaths.Hud.CompassHeadingName,
+                compass,
+                "000\u00B0",
+                TextAlignmentOptions.Center);
+            SetAnchoredRect(
+                (RectTransform)heading.transform,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -50f),
+                new Vector2(92f, 20f));
+            heading.fontSize = 11f;
+            heading.fontStyle = FontStyles.Bold;
+            heading.characterSpacing = 2f;
+            heading.color =
+                new Color(primary.r, primary.g, primary.b, 0.78f);
+
+            headingCompass = compass.gameObject.AddComponent<HeadingCompass>();
+            headingCompass.Configure(null, designTokens);
+            compass.gameObject.SetActive(
+                designTokens == null || designTokens.ShowCompass);
         }
 
         private void BuildHotbarView(RectTransform rootRect)
@@ -953,7 +1599,9 @@ namespace Supernova.UI
 
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
-                RectTransform slot = CreateRect($"Slot {i + 1}", hotbar);
+                RectTransform slot = CreateRect(
+                    UiHierarchyPaths.Hud.SlotName(i + 1),
+                    hotbar);
                 SetAnchoredRect(slot, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
                     new Vector2(0f, 0.5f), new Vector2(i * 56f, 0f), new Vector2(52f, 52f));
 
@@ -981,7 +1629,9 @@ namespace Supernova.UI
                         ? "MAGNET"
                         : i == 2
                             ? "FLASHLIGHT"
-                            : string.Empty;
+                            : i == 3
+                                ? "RIFLE"
+                                : string.Empty;
                 TMP_Text item = CreateText("Item", slot, itemText, TextAlignmentOptions.Center);
                 SetAnchoredRect((RectTransform)item.transform, Vector2.zero, Vector2.one,
                     new Vector2(0.5f, 0.5f), new Vector2(3f, -6f), new Vector2(-6f, -16f));
@@ -991,6 +1641,379 @@ namespace Supernova.UI
             }
         }
 
+        private void ApplyReferenceHudLayout()
+        {
+            Color primary = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            Color surfaceColor = designTokens != null
+                ? designTokens.HudSurface
+                : new Color(0.035f, 0.045f, 0.055f, 0.84f);
+            Color muted = designTokens != null
+                ? designTokens.HudMuted
+                : new Color(0.96f, 0.98f, 1f, 0.2f);
+            Color shadow = designTokens != null
+                ? designTokens.HudShadow
+                : new Color(0f, 0f, 0f, 0.72f);
+            Vector2 healthPosition = designTokens != null
+                ? designTokens.HudHealthPosition
+                : new Vector2(48f, 42f);
+            Vector2 healthSize = designTokens != null
+                ? designTokens.HudHealthSize
+                : new Vector2(372f, 104f);
+            Vector2 hotbarPosition = designTokens != null
+                ? designTokens.HudHotbarPosition
+                : new Vector2(-46f, 42f);
+            Vector2 hotbarSize = designTokens != null
+                ? designTokens.HudHotbarSize
+                : new Vector2(640f, 78f);
+            float healthTilt = designTokens != null
+                ? designTokens.HudHealthTiltDegrees
+                : 3.5f;
+            float hotbarTilt = designTokens != null
+                ? designTokens.HudHotbarTiltDegrees
+                : -3.5f;
+            bool healthReverseSlant = designTokens != null
+                && designTokens.HudHealthReverseSlant;
+            bool hotbarReverseSlant = designTokens == null
+                || designTokens.HudHotbarReverseSlant;
+            float slant = designTokens != null
+                ? designTokens.HudElementSlant
+                : 9f;
+            float depth = designTokens != null
+                ? designTokens.HudExtrusionDepth
+                : 5f;
+
+            RectTransform panel = healthPanel != null
+                ? healthPanel.transform as RectTransform
+                : null;
+            if (panel != null)
+            {
+                SetAnchoredRect(
+                    panel,
+                    Vector2.zero,
+                    Vector2.zero,
+                    Vector2.zero,
+                    healthPosition,
+                    healthSize);
+                panel.localRotation = Quaternion.Euler(0f, 0f, healthTilt);
+                ClearLegacyPlate(panel);
+
+                TMP_Text title = panel.Find(
+                    UiHierarchyPaths.Hud.HealthHeaderTitle)?.GetComponent<TMP_Text>();
+                TMP_Text value = panel.Find(
+                    UiHierarchyPaths.Hud.HealthHeaderValue)?.GetComponent<TMP_Text>();
+                RectTransform header = panel.Find(
+                    UiHierarchyPaths.Hud.HealthHeader) as RectTransform;
+                if (header != null)
+                {
+                    SetAnchoredRect(
+                        header,
+                        new Vector2(0f, 1f),
+                        new Vector2(1f, 1f),
+                        new Vector2(0.5f, 1f),
+                        new Vector2(2f, -2f),
+                        new Vector2(-4f, 48f));
+                }
+                if (title != null)
+                {
+                    title.text = "HEALTH";
+                    title.fontSize = 14f;
+                    title.characterSpacing = 10f;
+                    title.color = new Color(primary.r, primary.g, primary.b, 0.72f);
+                    title.alignment = TextAlignmentOptions.TopLeft;
+                }
+                if (value != null)
+                {
+                    value.fontSize = 24f;
+                    value.characterSpacing = 2f;
+                    value.color = primary;
+                    value.alignment = TextAlignmentOptions.BottomLeft;
+                }
+
+                RectTransform track = panel.Find(
+                    UiHierarchyPaths.Hud.HealthTrack) as RectTransform;
+                if (track != null)
+                {
+                    SetAnchoredRect(
+                        track,
+                        new Vector2(0f, 0f),
+                        new Vector2(1f, 0f),
+                        new Vector2(0.5f, 0f),
+                        new Vector2(2f, 2f),
+                        new Vector2(-4f, 42f));
+                    Image trackImage = track.GetComponent<Image>();
+                    if (trackImage != null)
+                        trackImage.color = Color.clear;
+                    if (healthFillImage != null)
+                        healthFillImage.color = Color.clear;
+
+                    int segmentCount = designTokens != null
+                        ? designTokens.HudHealthSegmentCount
+                        : 8;
+                    EnsureHealthSegments(
+                        track,
+                        Mathf.Max(3, segmentCount),
+                        Mathf.Max(24f, healthSize.x - 4f),
+                        slant,
+                        depth,
+                        primary,
+                        muted,
+                        shadow,
+                        healthReverseSlant);
+                }
+            }
+
+            RectTransform hotbar = hotbarRoot != null
+                ? hotbarRoot.transform as RectTransform
+                : null;
+            if (hotbar != null)
+            {
+                SetAnchoredRect(
+                    hotbar,
+                    new Vector2(1f, 0f),
+                    new Vector2(1f, 0f),
+                    new Vector2(1f, 0f),
+                    hotbarPosition,
+                    hotbarSize);
+                hotbar.localRotation = Quaternion.Euler(0f, 0f, hotbarTilt);
+
+                const float slotGap = 6f;
+                float slotWidth = Mathf.Max(
+                    38f,
+                    (hotbarSize.x - (PlayerInventory.SlotCount - 1) * slotGap)
+                    / PlayerInventory.SlotCount);
+                float slotHeight = Mathf.Max(48f, hotbarSize.y - 8f);
+                for (int i = 0; i < PlayerInventory.SlotCount; i++)
+                {
+                    RectTransform slot = hotbar.Find(
+                        UiHierarchyPaths.Hud.SlotName(i + 1)) as RectTransform;
+                    if (slot == null)
+                        continue;
+
+                    SetAnchoredRect(
+                        slot,
+                        new Vector2(0f, 0.5f),
+                        new Vector2(0f, 0.5f),
+                        new Vector2(0f, 0.5f),
+                        new Vector2(i * (slotWidth + slotGap), i * 0.35f),
+                        new Vector2(slotWidth, slotHeight));
+                    ClearLegacyPlate(slot);
+
+                    AngledPanelGraphic angledSurface = EnsureAngledSurface(slot);
+                    if (angledSurface != null)
+                    {
+                        angledSurface.Configure(
+                            slant,
+                            depth,
+                            surfaceColor,
+                            shadow,
+                            new Color(primary.r, primary.g, primary.b, 0.25f),
+                            hotbarReverseSlant);
+                    }
+
+                    TMP_Text key = slot.Find(
+                        UiHierarchyPaths.Hud.Key)?.GetComponent<TMP_Text>();
+                    if (key != null)
+                    {
+                        RectTransform keyRect = (RectTransform)key.transform;
+                        SetAnchoredRect(
+                            keyRect,
+                            Vector2.zero,
+                            Vector2.one,
+                            new Vector2(0.5f, 0.5f),
+                            new Vector2(7f, -3f),
+                            new Vector2(-14f, -8f));
+                        key.fontSize = 10f;
+                        key.color = new Color(primary.r, primary.g, primary.b, 0.62f);
+                        key.alignment = TextAlignmentOptions.TopLeft;
+                    }
+
+                    TMP_Text item = slot.Find(
+                        UiHierarchyPaths.Hud.Item)?.GetComponent<TMP_Text>();
+                    if (item != null)
+                    {
+                        RectTransform itemRect = (RectTransform)item.transform;
+                        SetAnchoredRect(
+                            itemRect,
+                            Vector2.zero,
+                            Vector2.one,
+                            new Vector2(0.5f, 0.5f),
+                            new Vector2(4f, -9f),
+                            new Vector2(-8f, -18f));
+                        item.fontSize = 8f;
+                        item.characterSpacing = 1f;
+                        item.color = primary;
+                        item.alignment = TextAlignmentOptions.Center;
+                    }
+                }
+            }
+
+            RectTransform crosshair = transform.Find(
+                UiHierarchyPaths.Hud.Crosshair) as RectTransform;
+            if (crosshair != null)
+            {
+                crosshair.sizeDelta = new Vector2(12f, 12f);
+                StyleCrosshairBar(crosshair, UiHierarchyPaths.Hud.Horizontal,
+                    new Vector2(12f, 2f), primary);
+                StyleCrosshairBar(crosshair, UiHierarchyPaths.Hud.Vertical,
+                    new Vector2(2f, 12f), primary);
+                StyleCrosshairBar(crosshair, UiHierarchyPaths.Decoration.Center,
+                    new Vector2(2f, 2f), primary);
+            }
+        }
+
+        private void EnsureHealthSegments(
+            RectTransform track,
+            int segmentCount,
+            float availableWidth,
+            float slant,
+            float depth,
+            Color active,
+            Color inactive,
+            Color shadow,
+            bool reverseSlant)
+        {
+            Transform existingRoot = track.Find(
+                UiHierarchyPaths.Hud.HealthSegmentsName);
+            RectTransform segmentRoot = existingRoot as RectTransform;
+            if (segmentRoot == null)
+            {
+                segmentRoot = CreateRect(
+                    UiHierarchyPaths.Hud.HealthSegmentsName,
+                    track);
+            }
+
+            segmentRoot.anchorMin = Vector2.zero;
+            segmentRoot.anchorMax = Vector2.one;
+            segmentRoot.pivot = new Vector2(0.5f, 0.5f);
+            segmentRoot.offsetMin = Vector2.zero;
+            segmentRoot.offsetMax = Vector2.zero;
+            segmentRoot.SetAsLastSibling();
+
+            for (int i = 0; i < segmentRoot.childCount; i++)
+                segmentRoot.GetChild(i).gameObject.SetActive(false);
+
+            healthSegments = new AngledPanelGraphic[segmentCount];
+            const float segmentGap = 6f;
+            float segmentWidth = Mathf.Max(
+                12f,
+                (availableWidth - (segmentCount - 1) * segmentGap) / segmentCount);
+            for (int i = 0; i < segmentCount; i++)
+            {
+                string segmentName = UiHierarchyPaths.Hud.HealthSegmentPrefix + (i + 1);
+                RectTransform segment = segmentRoot.Find(segmentName) as RectTransform;
+                if (segment == null)
+                    segment = CreateAngledRect(segmentName, segmentRoot);
+
+                segment.gameObject.SetActive(true);
+                SetAnchoredRect(
+                    segment,
+                    new Vector2(0f, 0.5f),
+                    new Vector2(0f, 0.5f),
+                    new Vector2(0f, 0.5f),
+                    new Vector2(i * (segmentWidth + segmentGap), 0f),
+                    new Vector2(segmentWidth, 36f));
+
+                EnsureCanvasRenderer(segment);
+                AngledPanelGraphic graphic = segment.GetComponent<AngledPanelGraphic>();
+                if (graphic == null)
+                    graphic = segment.gameObject.AddComponent<AngledPanelGraphic>();
+                graphic.Configure(
+                    slant,
+                    depth,
+                    active,
+                    shadow,
+                    Color.Lerp(inactive, active, 0.48f),
+                    reverseSlant);
+                healthSegments[i] = graphic;
+            }
+        }
+
+        private static AngledPanelGraphic EnsureAngledSurface(RectTransform parent)
+        {
+            RectTransform rect = parent.Find(
+                UiHierarchyPaths.Hud.AngledSurface) as RectTransform;
+            if (rect == null)
+                rect = CreateAngledRect(
+                    UiHierarchyPaths.Hud.AngledSurface,
+                    parent);
+
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.offsetMin = new Vector2(1f, 1f);
+            rect.offsetMax = new Vector2(-1f, -1f);
+            rect.SetAsFirstSibling();
+
+            EnsureCanvasRenderer(rect);
+            AngledPanelGraphic graphic = rect.GetComponent<AngledPanelGraphic>();
+            if (graphic == null)
+                graphic = rect.gameObject.AddComponent<AngledPanelGraphic>();
+            return graphic;
+        }
+
+        private static void EnsureCanvasRenderer(RectTransform rect)
+        {
+            if (rect == null || rect.GetComponent<CanvasRenderer>() != null)
+                return;
+
+            AngledPanelGraphic existingGraphic =
+                rect.GetComponent<AngledPanelGraphic>();
+            bool reenableGraphic = existingGraphic != null && existingGraphic.enabled;
+            if (reenableGraphic)
+                existingGraphic.enabled = false;
+            rect.gameObject.AddComponent<CanvasRenderer>();
+            if (reenableGraphic)
+                existingGraphic.enabled = true;
+        }
+
+        private static RectTransform CreateAngledRect(
+            string objectName,
+            Transform parent)
+        {
+            GameObject child = new GameObject(
+                objectName,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(AngledPanelGraphic));
+            RectTransform rect = child.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            rect.localScale = Vector3.one;
+            return rect;
+        }
+
+        private static void ClearLegacyPlate(RectTransform rect)
+        {
+            Image image = rect.GetComponent<Image>();
+            if (image != null)
+                image.color = Color.clear;
+            Outline outline = rect.GetComponent<Outline>();
+            if (outline != null)
+                outline.effectColor = Color.clear;
+            Transform frame = rect.Find(UiHierarchyPaths.Decoration.Frame);
+            if (frame != null)
+                frame.gameObject.SetActive(false);
+        }
+
+        private static void StyleCrosshairBar(
+            RectTransform root,
+            string childPath,
+            Vector2 size,
+            Color color)
+        {
+            RectTransform rect = root.Find(childPath) as RectTransform;
+            if (rect == null)
+                return;
+            rect.sizeDelta = size;
+            Image image = rect.GetComponent<Image>();
+            if (image != null)
+                image.color = color;
+            Outline outline = rect.GetComponent<Outline>();
+            if (outline != null)
+                outline.effectColor = new Color(0f, 0f, 0f, 0.78f);
+        }
+
         private static RectTransform CreateRect(string objectName, Transform parent)
         {
             GameObject child = new GameObject(objectName, typeof(RectTransform));
@@ -998,6 +2021,14 @@ namespace Supernova.UI
             rect.SetParent(parent, false);
             rect.localScale = Vector3.one;
             return rect;
+        }
+
+        private void ApplyCanvasPolicy(GameObject canvasObject, CanvasScaler scaler)
+        {
+            UiCanvasPolicy policy = canvasObject.GetComponent<UiCanvasPolicy>();
+            if (policy == null)
+                policy = canvasObject.AddComponent<UiCanvasPolicy>();
+            policy.SetDesignTokens(designTokens);
         }
 
         private static void CreateCrosshairBar(string objectName, RectTransform parent, Vector2 size)
@@ -1075,6 +2106,12 @@ namespace Supernova.UI
             return fallback;
         }
 
+        private static bool IsHealthSourceValid(IDamageable source)
+        {
+            if (source == null) return false;
+            return !(source is Object unityObject) || unityObject != null;
+        }
+
         private static PlayerToolController FindPlayerInventorySource()
         {
             Camera mainCamera = Camera.main;
@@ -1101,38 +2138,72 @@ namespace Supernova.UI
     /// <summary>Presentation-only adapter for the ten hotbar slots.</summary>
     public sealed class HotbarPresenter
     {
-        private static readonly Color IdleFrame =
-            new Color(0.36f, 0.89f, 0.98f, 0.46f);
-        private static readonly Color SelectedFrame =
-            new Color(0.95f, 0.78f, 0.22f, 1f);
-
         private readonly Image[] backgrounds;
         private readonly Outline[] outlines;
         private readonly Image[] frames;
+        private readonly AngledPanelGraphic[] angledSurfaces;
         private readonly TMP_Text[] itemLabels;
+        private readonly TMP_Text[] keyLabels;
+        private readonly Color primary;
+        private readonly Color surface;
+        private readonly Color shadow;
+        private readonly PlayerInventoryItem[] displayedItems =
+            new PlayerInventoryItem[PlayerInventory.SlotCount];
+        private int selectedSlotIndex = -1;
 
         public HotbarPresenter(Image[] backgrounds, Outline[] outlines, TMP_Text[] itemLabels)
+            : this(backgrounds, outlines, itemLabels, null)
+        {
+        }
+
+        public HotbarPresenter(
+            Image[] backgrounds,
+            Outline[] outlines,
+            TMP_Text[] itemLabels,
+            UiDesignTokens designTokens)
         {
             this.backgrounds = backgrounds;
             this.outlines = outlines;
             this.itemLabels = itemLabels;
+            primary = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            surface = designTokens != null
+                ? designTokens.HudSurface
+                : new Color(0.035f, 0.045f, 0.055f, 0.84f);
+            shadow = designTokens != null
+                ? designTokens.HudShadow
+                : new Color(0f, 0f, 0f, 0.72f);
             frames = new Image[PlayerInventory.SlotCount];
+            angledSurfaces = new AngledPanelGraphic[PlayerInventory.SlotCount];
+            keyLabels = new TMP_Text[PlayerInventory.SlotCount];
             for (int i = 0; i < frames.Length; i++)
             {
                 if (backgrounds == null || i >= backgrounds.Length || backgrounds[i] == null)
                     continue;
                 Transform frame = backgrounds[i].transform.Find(UiHierarchyPaths.Decoration.Frame);
                 if (frame != null)
+                {
                     frames[i] = frame.GetComponent<Image>();
+                    frame.gameObject.SetActive(false);
+                }
+                Transform angled = backgrounds[i].transform.Find(
+                    UiHierarchyPaths.Hud.AngledSurface);
+                if (angled != null)
+                    angledSurfaces[i] = angled.GetComponent<AngledPanelGraphic>();
+                Transform key = backgrounds[i].transform.Find(UiHierarchyPaths.Hud.Key);
+                if (key != null)
+                    keyLabels[i] = key.GetComponent<TMP_Text>();
             }
             SetItemLabels();
         }
 
-        public void SetSelectedSlot(int selectedSlotIndex)
+        public void SetSelectedSlot(int selectedIndex)
         {
+            selectedSlotIndex = selectedIndex;
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
-                bool selected = i == selectedSlotIndex;
+                bool selected = i == selectedIndex;
                 if (backgrounds != null && i < backgrounds.Length && backgrounds[i] != null)
                     backgrounds[i].color = Color.clear;
                 if (outlines != null && i < outlines.Length && outlines[i] != null)
@@ -1140,9 +2211,13 @@ namespace Supernova.UI
                     outlines[i].effectColor = Color.clear;
                 }
                 if (frames[i] != null)
+                    frames[i].gameObject.SetActive(false);
+                if (angledSurfaces[i] != null)
                 {
-                    frames[i].color = selected ? SelectedFrame : IdleFrame;
+                    angledSurfaces[i].SetFrontColor(selected ? primary : surface);
+                    angledSurfaces[i].SetDepthColor(shadow);
                 }
+                ApplyLabelColor(i, selected);
             }
         }
 
@@ -1159,15 +2234,38 @@ namespace Supernova.UI
                 PlayerInventoryItem item = source != null
                     ? source.GetItemAtSlot(i)
                     : PlayerInventory.GetDefaultItemAtSlot(i);
+                if (displayedItems[i] == item)
+                    continue;
+
+                displayedItems[i] = item;
                 itemLabels[i].text = GetItemLabel(item);
                 itemLabels[i].fontSize =
-                    item == PlayerInventoryItem.Flashlight ? 7f : 9f;
+                    item == PlayerInventoryItem.Flashlight
+                        || item == PlayerInventoryItem.SolidGun
+                            ? 7f
+                            : 9f;
+                ApplyLabelColor(i, i == selectedSlotIndex);
             }
         }
 
         private void SetItemLabels()
         {
             SetInventory(null);
+        }
+
+        private void ApplyLabelColor(int index, bool selected)
+        {
+            Color labelColor = selected
+                ? new Color(0.025f, 0.03f, 0.035f, 1f)
+                : primary;
+            if (itemLabels != null && index < itemLabels.Length && itemLabels[index] != null)
+                itemLabels[index].color = labelColor;
+            if (keyLabels != null && index < keyLabels.Length && keyLabels[index] != null)
+            {
+                keyLabels[index].color = selected
+                    ? new Color(0.025f, 0.03f, 0.035f, 0.68f)
+                    : new Color(primary.r, primary.g, primary.b, 0.62f);
+            }
         }
 
         private static string GetItemLabel(PlayerInventoryItem item)
@@ -1180,6 +2278,14 @@ namespace Supernova.UI
                     return "MAGNET";
                 case PlayerInventoryItem.Flashlight:
                     return "FLASHLIGHT";
+                case PlayerInventoryItem.Gun:
+                    return "GUN";
+                case PlayerInventoryItem.SMG:
+                    return "SMG";
+                case PlayerInventoryItem.SolidGun:
+                    return "SOLIDGUN";
+                case PlayerInventoryItem.Cart:
+                    return "CART";
                 default:
                     return string.Empty;
             }
@@ -1193,17 +2299,48 @@ namespace Supernova.UI
         private readonly RectTransform healthFill;
         private readonly Image healthFillImage;
         private readonly TMP_Text healthValueLabel;
+        private readonly AngledPanelGraphic[] healthSegments;
+        private readonly Color primary;
+        private readonly Color muted;
+        private readonly Color danger;
 
         public GameHudPresenter(
             GameObject healthPanel,
             RectTransform healthFill,
             Image healthFillImage,
             TMP_Text healthValueLabel)
+            : this(
+                healthPanel,
+                healthFill,
+                healthFillImage,
+                healthValueLabel,
+                null,
+                null)
+        {
+        }
+
+        public GameHudPresenter(
+            GameObject healthPanel,
+            RectTransform healthFill,
+            Image healthFillImage,
+            TMP_Text healthValueLabel,
+            AngledPanelGraphic[] healthSegments,
+            UiDesignTokens designTokens)
         {
             this.healthPanel = healthPanel;
             this.healthFill = healthFill;
             this.healthFillImage = healthFillImage;
             this.healthValueLabel = healthValueLabel;
+            this.healthSegments = healthSegments;
+            primary = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            muted = designTokens != null
+                ? designTokens.HudMuted
+                : new Color(0.96f, 0.98f, 1f, 0.2f);
+            danger = designTokens != null
+                ? designTokens.HudDanger
+                : new Color(0.92f, 0.18f, 0.14f, 1f);
         }
 
         public void SetHealthVisible(bool visible)
@@ -1227,14 +2364,38 @@ namespace Supernova.UI
 
             if (healthFillImage != null)
             {
-                healthFillImage.color = Color.Lerp(
-                    new Color(0.86f, 0.18f, 0.14f),
-                    new Color(0.21f, 0.8f, 0.38f),
-                    normalized);
+                healthFillImage.color = healthSegments != null
+                    && healthSegments.Length > 0
+                        ? Color.clear
+                        : Color.Lerp(danger, primary, normalized);
+            }
+
+            if (healthSegments != null && healthSegments.Length > 0)
+            {
+                int activeCount = normalized <= 0f
+                    ? 0
+                    : Mathf.Clamp(
+                        Mathf.CeilToInt(normalized * healthSegments.Length),
+                        1,
+                        healthSegments.Length);
+                Color activeColor = normalized <= 0.25f ? danger : primary;
+                for (int i = 0; i < healthSegments.Length; i++)
+                {
+                    if (healthSegments[i] != null)
+                    {
+                        healthSegments[i].SetFrontColor(
+                            i < activeCount ? activeColor : muted);
+                    }
+                }
             }
 
             if (healthValueLabel != null)
-                healthValueLabel.text = $"{Mathf.CeilToInt(current)} / {Mathf.CeilToInt(maximum)}";
+            {
+                healthValueLabel.SetText(
+                    "{0} / {1}",
+                    Mathf.CeilToInt(current),
+                    Mathf.CeilToInt(maximum));
+            }
         }
     }
 }

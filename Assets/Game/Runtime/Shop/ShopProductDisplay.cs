@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using Supernova.UI;
 using UnityEngine;
@@ -15,12 +14,29 @@ namespace Supernova.Shop
     {
         private const float LabelPadding = 0.25f;
 
-        private readonly List<MeshRenderer> solidRenderers =
-            new List<MeshRenderer>();
-        private readonly List<MeshRenderer> wireframeRenderers =
-            new List<MeshRenderer>();
-        private readonly List<Mesh> generatedWireframeMeshes =
-            new List<Mesh>();
+        private sealed class RendererPresentation
+        {
+            public RendererPresentation(
+                MeshRenderer renderer,
+                Material[] solidMaterials,
+                Material[] wireframeMaterials)
+            {
+                Renderer = renderer;
+                SolidMaterials = solidMaterials;
+                WireframeMaterials = wireframeMaterials;
+                SolidShadowCastingMode = renderer.shadowCastingMode;
+                SolidReceivesShadows = renderer.receiveShadows;
+            }
+
+            public MeshRenderer Renderer { get; }
+            public Material[] SolidMaterials { get; }
+            public Material[] WireframeMaterials { get; }
+            public ShadowCastingMode SolidShadowCastingMode { get; }
+            public bool SolidReceivesShadows { get; }
+        }
+
+        private readonly List<RendererPresentation> renderers =
+            new List<RendererPresentation>();
 
         private ShopProductProfile profile;
         private Camera worldCamera;
@@ -35,17 +51,20 @@ namespace Supernova.Shop
         public bool IsTargeted => isTargeted;
         public bool IsOwned =>
             profile != null && PlayerEconomy.IsProductOwned(profile);
-        public int SolidRendererCount => solidRenderers.Count;
-        public int WireframeRendererCount => wireframeRenderers.Count;
-        public bool IsShowingSolid => HasEnabledRenderer(solidRenderers);
+        public int SolidRendererCount => renderers.Count;
+        public int WireframeRendererCount => renderers.Count;
+        public bool IsShowingSolid =>
+            IsOwned && HasEnabledRenderer();
         public bool IsShowingWireframe =>
-            HasEnabledRenderer(wireframeRenderers);
+            profile != null && !IsOwned && HasEnabledRenderer();
 
         private void OnEnable()
         {
             PlayerEconomy.CreditsChanged += HandleCreditsChanged;
             PlayerEconomy.ItemOwnershipChanged +=
                 HandleItemOwnershipChanged;
+            PlayerEconomy.UpgradeOwnershipChanged +=
+                HandleUpgradeOwnershipChanged;
             RefreshView();
         }
 
@@ -54,6 +73,8 @@ namespace Supernova.Shop
             PlayerEconomy.CreditsChanged -= HandleCreditsChanged;
             PlayerEconomy.ItemOwnershipChanged -=
                 HandleItemOwnershipChanged;
+            PlayerEconomy.UpgradeOwnershipChanged -=
+                HandleUpgradeOwnershipChanged;
         }
 
         private void LateUpdate()
@@ -64,26 +85,6 @@ namespace Supernova.Shop
             Camera camera = ResolveCamera();
             if (camera != null)
                 labelCanvasRect.rotation = camera.transform.rotation;
-        }
-
-        private void OnDestroy()
-        {
-            DestroyGeneratedWireframeMeshes();
-        }
-
-        private void DestroyGeneratedWireframeMeshes()
-        {
-            for (int i = 0; i < generatedWireframeMeshes.Count; i++)
-            {
-                Mesh mesh = generatedWireframeMeshes[i];
-                if (mesh == null)
-                    continue;
-                if (Application.isPlaying)
-                    Destroy(mesh);
-                else
-                    DestroyImmediate(mesh);
-            }
-            generatedWireframeMeshes.Clear();
         }
 
         public void Configure(
@@ -112,28 +113,19 @@ namespace Supernova.Shop
                 return;
 
             bool owned = PlayerEconomy.IsProductOwned(profile);
-            for (int i = 0; i < solidRenderers.Count; i++)
-            {
-                if (solidRenderers[i] != null)
-                    solidRenderers[i].enabled = owned;
-            }
-            for (int i = 0; i < wireframeRenderers.Count; i++)
-            {
-                if (wireframeRenderers[i] != null)
-                    wireframeRenderers[i].enabled = !owned;
-            }
+            ApplyRendererState(owned);
 
             if (label == null)
                 return;
 
             if (owned)
             {
-                label.text = "已拥有";
+                label.text = "OWNED";
                 label.color = WorldValueTextStyle.OwnedColor;
             }
             else
             {
-                label.text = $"${profile.Price}\n按 E 购买";
+                label.text = $"${profile.Price}\nPRESS E TO BUY";
                 label.color = PlayerEconomy.CanAfford(profile)
                     ? WorldValueTextStyle.ValueColor
                     : WorldValueTextStyle.LossColor;
@@ -151,6 +143,7 @@ namespace Supernova.Shop
                 transform,
                 false);
             modelInstance.name = profile.DisplayName + " Display";
+            PrepareModelInstance();
             Transform modelTransform = modelInstance.transform;
             modelTransform.localPosition = profile.DisplayLocalPosition;
             modelTransform.localRotation =
@@ -159,8 +152,7 @@ namespace Supernova.Shop
 
             MeshRenderer[] renderers =
                 modelInstance.GetComponentsInChildren<MeshRenderer>(true);
-            solidRenderers.AddRange(renderers);
-            BuildWireframes();
+            CacheRendererPresentations(renderers);
 
             Bounds localBounds = CalculateLocalBounds(renderers);
             BoxCollider target = gameObject.AddComponent<BoxCollider>();
@@ -170,11 +162,28 @@ namespace Supernova.Shop
             BuildLabel(localBounds);
         }
 
+        private void PrepareModelInstance()
+        {
+            Rigidbody[] bodies =
+                modelInstance.GetComponentsInChildren<Rigidbody>(true);
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                Rigidbody body = bodies[i];
+                body.velocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+                body.useGravity = false;
+                body.isKinematic = true;
+            }
+
+            Collider[] colliders =
+                modelInstance.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+                colliders[i].enabled = false;
+        }
+
         private void ClearGeneratedView()
         {
-            DestroyGeneratedWireframeMeshes();
-            solidRenderers.Clear();
-            wireframeRenderers.Clear();
+            renderers.Clear();
             if (TargetCollider != null)
             {
                 if (Application.isPlaying)
@@ -202,92 +211,52 @@ namespace Supernova.Shop
             }
         }
 
-        private void BuildWireframes()
+        private void CacheRendererPresentations(
+            MeshRenderer[] modelRenderers)
         {
-            MeshFilter[] filters =
-                modelInstance.GetComponentsInChildren<MeshFilter>(true);
-            for (int i = 0; i < filters.Length; i++)
+            for (int i = 0; i < modelRenderers.Length; i++)
             {
-                MeshFilter sourceFilter = filters[i];
-                MeshRenderer sourceRenderer =
-                    sourceFilter.GetComponent<MeshRenderer>();
-                Mesh sourceMesh = sourceFilter.sharedMesh;
-                if (sourceRenderer == null || sourceMesh == null)
+                MeshRenderer renderer = modelRenderers[i];
+                if (renderer == null)
                     continue;
 
-                Mesh wireframeMesh = CreateWireframeMesh(sourceMesh);
-                if (wireframeMesh == null)
-                    continue;
+                Material[] solidMaterials = renderer.sharedMaterials;
+                Material[] wireframeMaterials =
+                    new Material[solidMaterials.Length];
+                for (int materialIndex = 0;
+                     materialIndex < wireframeMaterials.Length;
+                     materialIndex++)
+                {
+                    wireframeMaterials[materialIndex] =
+                        profile.WireframeMaterial;
+                }
 
-                var wireframeObject = new GameObject(
-                    sourceFilter.gameObject.name + " Wireframe",
-                    typeof(MeshFilter),
-                    typeof(MeshRenderer));
-                wireframeObject.layer = sourceFilter.gameObject.layer;
-                Transform wireframeTransform = wireframeObject.transform;
-                wireframeTransform.SetParent(sourceFilter.transform, false);
-                wireframeTransform.localPosition = Vector3.zero;
-                wireframeTransform.localRotation = Quaternion.identity;
-                wireframeTransform.localScale = Vector3.one;
-
-                wireframeObject.GetComponent<MeshFilter>().sharedMesh =
-                    wireframeMesh;
-                MeshRenderer wireframeRenderer =
-                    wireframeObject.GetComponent<MeshRenderer>();
-                wireframeRenderer.sharedMaterial =
-                    profile.WireframeMaterial;
-                wireframeRenderer.shadowCastingMode =
-                    ShadowCastingMode.Off;
-                wireframeRenderer.receiveShadows = false;
-
-                generatedWireframeMeshes.Add(wireframeMesh);
-                wireframeRenderers.Add(wireframeRenderer);
+                renderers.Add(new RendererPresentation(
+                    renderer,
+                    solidMaterials,
+                    wireframeMaterials));
             }
         }
 
-        private static Mesh CreateWireframeMesh(Mesh source)
+        private void ApplyRendererState(bool owned)
         {
-            int[] triangles = source.triangles;
-            if (triangles == null || triangles.Length < 3)
-                return null;
-
-            var edges = new HashSet<ulong>();
-            var lineIndices = new List<int>(triangles.Length * 2);
-            for (int i = 0; i + 2 < triangles.Length; i += 3)
+            for (int i = 0; i < renderers.Count; i++)
             {
-                AddEdge(triangles[i], triangles[i + 1], edges, lineIndices);
-                AddEdge(triangles[i + 1], triangles[i + 2], edges, lineIndices);
-                AddEdge(triangles[i + 2], triangles[i], edges, lineIndices);
+                RendererPresentation presentation = renderers[i];
+                MeshRenderer renderer = presentation.Renderer;
+                if (renderer == null)
+                    continue;
+
+                renderer.enabled = true;
+                renderer.sharedMaterials = owned
+                    ? presentation.SolidMaterials
+                    : presentation.WireframeMaterials;
+                renderer.shadowCastingMode = owned
+                    ? presentation.SolidShadowCastingMode
+                    : ShadowCastingMode.Off;
+                renderer.receiveShadows = owned
+                    && presentation.SolidReceivesShadows;
             }
-
-            var mesh = new Mesh
-            {
-                name = source.name + " Shop Wireframe"
-            };
-            mesh.indexFormat = source.indexFormat;
-            mesh.vertices = source.vertices;
-            mesh.SetIndices(
-                lineIndices.ToArray(),
-                MeshTopology.Lines,
-                0,
-                true);
-            return mesh;
-        }
-
-        private static void AddEdge(
-            int a,
-            int b,
-            ISet<ulong> edges,
-            ICollection<int> lineIndices)
-        {
-            uint minimum = (uint)Math.Min(a, b);
-            uint maximum = (uint)Math.Max(a, b);
-            ulong edgeKey = ((ulong)minimum << 32) | maximum;
-            if (!edges.Add(edgeKey))
-                return;
-
-            lineIndices.Add(a);
-            lineIndices.Add(b);
         }
 
         private Bounds CalculateLocalBounds(Renderer[] renderers)
@@ -392,16 +361,30 @@ namespace Supernova.Shop
             Gameplay.PlayerInventoryItem item,
             bool owned)
         {
-            if (profile != null && profile.GrantedItem == item)
+            if (profile != null
+                && profile.GrantType == ShopProductGrantType.InventoryItem
+                && profile.GrantedItem == item)
                 RefreshView();
         }
 
-        private static bool HasEnabledRenderer(
-            IList<MeshRenderer> renderers)
+        private void HandleUpgradeOwnershipChanged(
+            Gameplay.PlayerUpgrade upgrade,
+            bool owned)
+        {
+            if (profile != null
+                && profile.GrantType == ShopProductGrantType.Upgrade
+                && profile.GrantedUpgrade == upgrade)
+            {
+                RefreshView();
+            }
+        }
+
+        private bool HasEnabledRenderer()
         {
             for (int i = 0; i < renderers.Count; i++)
             {
-                if (renderers[i] != null && renderers[i].enabled)
+                MeshRenderer renderer = renderers[i].Renderer;
+                if (renderer != null && renderer.enabled)
                     return true;
             }
 

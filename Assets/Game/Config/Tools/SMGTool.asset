@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6eac2d1eb75025b4dbb255c6dd3e15d9, type: 3}
+  m_Name: SMGTool
+  m_EditorClassIdentifier: 
+  item: 6
+  primaryAction: 4
+  animationTriggerMode: 2
+  primaryActionAnimation: {fileID: 7400000, guid: 62ccd6c799699674987c243dced84b13,
+    type: 2}
+  heldModelPrefab: {fileID: 7990082711621402459, guid: b67f7b29530d48745b17be8e0644c4e3,
+    type: 3}
+  heldModelMountStrategy: 1
+  allowMovementWhileUsing: 1
+  actionTriggerDelay: 0
+  actionCyclePeriod: 0.083333336
+  actionIsPeriodic: 1
+  projectilePrefab: {fileID: 0}
+  throwSpeed: 1
+  upwardThrowSpeed: 1.5
+  throwSpinSpeed: 1
+  throwForwardOffset: 0.75
+  firearmProjectilePrefab: {fileID: 1140100000000000001, guid: 9e5474d4c7324c2388c63589056fb642,
+    type: 3}
+  projectileSpeed: 70
+  initialAmmunition: 180
+  muzzleFlashPrefab: {fileID: 124018, guid: d44add1712ec4899b64012a6a0a56d44, type: 3}
+  muzzleFlashLifetime: 0.75
+  miningPower: 1
+  miningEvenHitMultiplier: 4
+  miningPropagationDivisor: 2
+  miningRadius: 0.55
+  miningDepth: 0.75
+  miningFalloffExponent: 1.5
+  miningMinimumPowerFraction: 0.25
+  miningMaxAffectedSamples: 24

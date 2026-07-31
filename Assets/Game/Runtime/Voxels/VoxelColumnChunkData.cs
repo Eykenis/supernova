@@ -103,6 +103,48 @@ namespace Supernova.Voxels
             return new VoxelSample(densities[index], types[index]);
         }
 
+        internal VoxelSample GetSampleUnchecked(
+            int localX,
+            int localY,
+            int localZ)
+        {
+            int index = ToIndex(localX, localY, localZ);
+            return new VoxelSample(densities[index], types[index]);
+        }
+
+        internal void CopySampleRowTo(
+            int localY,
+            int localZ,
+            VoxelSample[] destination,
+            int destinationIndex)
+        {
+            if ((uint)localY >= Height || (uint)localZ >= Depth)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(localY),
+                    $"Sample row ({localY}, {localZ}) is outside "
+                    + $"0..{Height - 1}, 0..{Depth - 1}.");
+            }
+            if (destination == null)
+            {
+                throw new ArgumentNullException(nameof(destination));
+            }
+            if (destinationIndex < 0
+                || destinationIndex > destination.Length - Width)
+            {
+                throw new ArgumentOutOfRangeException(nameof(destinationIndex));
+            }
+
+            int sourceIndex = ToIndex(0, localY, localZ);
+            for (int x = 0; x < Width; x++)
+            {
+                int index = sourceIndex + x;
+                destination[destinationIndex + x] = new VoxelSample(
+                    densities[index],
+                    types[index]);
+            }
+        }
+
         public VoxelTypeId GetType(int localX, int localY, int localZ)
         {
             ValidateCoordinates(localX, localY, localZ);

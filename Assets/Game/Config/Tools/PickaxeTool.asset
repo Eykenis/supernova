@@ -19,7 +19,21 @@ MonoBehaviour:
     type: 2}
   heldModelPrefab: {fileID: 1392316285209212, guid: 869385138ceeb3c4e9ed5f72da8d50d7,
     type: 3}
-  allowMovementWhileUsing: 0
+  heldModelMountStrategy: 0
+  allowMovementWhileUsing: 1
+  actionTriggerDelay: 0.42
+  actionCyclePeriod: 1.06
+  actionIsPeriodic: 1
+  projectilePrefab: {fileID: 0}
+  throwSpeed: 8
+  upwardThrowSpeed: 1.5
+  throwSpinSpeed: 8
+  throwForwardOffset: 0.75
+  firearmProjectilePrefab: {fileID: 0}
+  projectileSpeed: 180
+  initialAmmunition: 120
+  muzzleFlashPrefab: {fileID: 0}
+  muzzleFlashLifetime: 0.75
   miningPower: 1
   miningEvenHitMultiplier: 4
   miningPropagationDivisor: 2

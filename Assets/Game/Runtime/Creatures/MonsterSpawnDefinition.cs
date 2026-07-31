@@ -8,10 +8,10 @@ namespace Supernova.MinecraftCaves.Creatures
     public sealed class MonsterSpawnDefinition : ScriptableObject
     {
         [SerializeField] private GameObject prefab;
-        [Tooltip("Chance for each large-scale spawn cell to contain this monster group.")]
+        [Tooltip("Chance for each placement attempt in a generated chunk.")]
         [SerializeField, Range(0f, 1f)] private float spawnChance = 0.65f;
-        [Tooltip("Surface placement attempts for each member of the group.")]
-        [SerializeField, Min(1)] private int attemptsPerChunk = 4;
+        [Tooltip("Surface placement attempts per chunk and for each group member.")]
+        [SerializeField, Min(1)] private int attemptsPerChunk = 2;
         [SerializeField, Min(1)] private int minimumGroupSize = 3;
         [SerializeField, Min(1)] private int maximumGroupSize = 5;
         [SerializeField, Min(0f)] private float groupRadiusInVoxels = 8f;

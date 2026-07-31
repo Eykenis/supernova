@@ -1,13 +1,16 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using Supernova.MinecraftCaves.Creatures;
 using Supernova.Shop;
+using Supernova.UI;
 using Supernova.Voxels;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using Type = System.Type;
 using UnityAnimatorController = UnityEditor.Animations.AnimatorController;
 
 namespace Supernova.Tests
@@ -65,7 +68,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerInventory_UsesTenSlotsWithThreeConfiguredTools()
+        public void PlayerInventory_UsesTenSlotsWithSevenConfiguredTools()
         {
             var inventory = new PlayerInventory();
 
@@ -73,12 +76,308 @@ namespace Supernova.Tests
             Assert.That(inventory.GetItemAtSlot(0), Is.EqualTo(PlayerInventoryItem.Pickaxe));
             Assert.That(inventory.GetItemAtSlot(1), Is.EqualTo(PlayerInventoryItem.Magnet));
             Assert.That(inventory.GetItemAtSlot(2), Is.EqualTo(PlayerInventoryItem.Flashlight));
-            for (int i = 3; i < PlayerInventory.SlotCount; i++)
+            Assert.That(inventory.GetItemAtSlot(3), Is.EqualTo(PlayerInventoryItem.Rifle));
+            Assert.That(inventory.GetItemAtSlot(4), Is.EqualTo(PlayerInventoryItem.SolidGun));
+            Assert.That(inventory.GetItemAtSlot(5), Is.EqualTo(PlayerInventoryItem.SMG));
+            Assert.That(inventory.GetItemAtSlot(6), Is.EqualTo(PlayerInventoryItem.Cart));
+            for (int i = 7; i < PlayerInventory.SlotCount; i++)
                 Assert.That(inventory.GetItemAtSlot(i), Is.EqualTo(PlayerInventoryItem.Empty));
 
             Assert.That(inventory.SelectSlot(9), Is.True);
             Assert.That(inventory.SelectedSlotIndex, Is.EqualTo(9));
             Assert.That(inventory.SelectedItem, Is.EqualTo(PlayerInventoryItem.Empty));
+        }
+
+        [Test]
+        public void RifleTool_UsesFourthSlotAndConfiguredAnimationStateMachine()
+        {
+            PlayerToolDefinition rifle =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.RifleTool);
+            GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                ProjectAssetPaths.Prefabs.Player);
+            UnityAnimatorController controller =
+                AssetDatabase.LoadAssetAtPath<UnityAnimatorController>(
+                    ProjectAssetPaths.Animations.PlayerController);
+
+            Assert.That(rifle, Is.Not.Null);
+            Assert.That(rifle.Item, Is.EqualTo(PlayerInventoryItem.Rifle));
+            Assert.That(
+                rifle.PrimaryAction,
+                Is.EqualTo(PlayerToolPrimaryAction.FireRifle));
+            Assert.That(
+                rifle.AnimationTriggerMode,
+                Is.EqualTo(PlayerToolAnimationTriggerMode.Continuous));
+            Assert.That(rifle.PrimaryActionAnimation, Is.Not.Null);
+            Assert.That(rifle.HeldModelPrefab, Is.Not.Null);
+            Assert.That(
+                rifle.HeldModelMountStrategy,
+                Is.EqualTo(HeldToolMountStrategy.Rifle));
+            Assert.That(rifle.AllowMovementWhileUsing, Is.True);
+            Assert.That(rifle.FirearmProjectilePrefab, Is.Not.Null);
+            Assert.That(rifle.ProjectileSpeed, Is.GreaterThan(0f));
+            Assert.That(rifle.RoundsPerSecond, Is.EqualTo(8f));
+            Assert.That(rifle.FirearmAnimationSpeedMultiplier, Is.EqualTo(0.8f));
+            Assert.That(rifle.InitialAmmunition, Is.GreaterThan(0));
+            Assert.That(rifle.MuzzleFlashPrefab, Is.Not.Null);
+            Assert.That(
+                playerPrefab.GetComponent<PlayerToolController>()
+                    .GetDefinition(PlayerInventoryItem.Rifle),
+                Is.SameAs(rifle));
+
+            AnimatorControllerLayer rifleLayer = controller.layers.Single(
+                layer => layer.name == "Rifle Locomotion Layer");
+            string[] stateNames = rifleLayer.stateMachine.states
+                .Select(child => child.state.name)
+                .ToArray();
+            CollectionAssert.AreEquivalent(
+                new[] { "Rifle Idle", "Rifle Move" },
+                stateNames);
+            Assert.That(rifleLayer.defaultWeight, Is.Zero);
+
+            AnimatorControllerLayer rifleArmsLayer = controller.layers.Single(
+                layer => layer.name == "Rifle Arms Layer");
+            Assert.That(rifleArmsLayer.defaultWeight, Is.Zero);
+            Assert.That(
+                rifleArmsLayer.blendingMode,
+                Is.EqualTo(AnimatorLayerBlendingMode.Override));
+            Assert.That(rifleArmsLayer.avatarMask, Is.Not.Null);
+            Assert.That(
+                rifleArmsLayer.avatarMask.GetHumanoidBodyPartActive(
+                    AvatarMaskBodyPart.Body),
+                Is.False,
+                "Crouch and jump keep ownership of the torso and legs.");
+            Assert.That(
+                rifleArmsLayer.avatarMask.GetHumanoidBodyPartActive(
+                    AvatarMaskBodyPart.LeftArm),
+                Is.True);
+            Assert.That(
+                rifleArmsLayer.avatarMask.GetHumanoidBodyPartActive(
+                    AvatarMaskBodyPart.RightArm),
+                Is.True);
+            AnimatorState rifleArms = rifleArmsLayer.stateMachine.states
+                .Single(child => child.state.name == "Rifle Arms")
+                .state;
+            Assert.That(rifleArms.motion, Is.SameAs(
+                rifleLayer.stateMachine.states.Single(
+                    child => child.state.name == "Rifle Idle").state.motion));
+        }
+
+        [Test]
+        public void RifleAmmunitionInventory_ConsumesOneRoundPerShot()
+        {
+            var ammunition = new PlayerAmmunitionInventory();
+            ammunition.Initialize(PlayerInventoryItem.Rifle, 2);
+
+            Assert.That(ammunition.TryConsume(PlayerInventoryItem.Rifle), Is.True);
+            Assert.That(ammunition.Get(PlayerInventoryItem.Rifle), Is.EqualTo(1));
+            Assert.That(ammunition.TryConsume(PlayerInventoryItem.Rifle), Is.True);
+            Assert.That(ammunition.TryConsume(PlayerInventoryItem.Rifle), Is.False);
+            Assert.That(ammunition.Get(PlayerInventoryItem.Rifle), Is.Zero);
+        }
+
+        [Test]
+        public void RifleAnimationSpeedMultiplier_UsesConfiguredActionPeriod()
+        {
+            PlayerToolDefinition rifle =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(
+                    rifle,
+                    "primaryAction",
+                    PlayerToolPrimaryAction.FireRifle);
+                SetPrivateField(rifle, "actionCyclePeriod", 0.2f);
+                Assert.That(
+                    rifle.FirearmAnimationSpeedMultiplier,
+                    Is.EqualTo(0.5f));
+
+                SetPrivateField(rifle, "actionCyclePeriod", 0.05f);
+                Assert.That(
+                    rifle.FirearmAnimationSpeedMultiplier,
+                    Is.EqualTo(2f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(rifle);
+            }
+        }
+
+        [Test]
+        public void ToolActionTiming_ExposesIndependentDelayAndPeriod()
+        {
+            PlayerToolDefinition definition =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(definition, "actionTriggerDelay", 0.4f);
+                SetPrivateField(definition, "actionCyclePeriod", 0.1f);
+                SetPrivateField(definition, "actionIsPeriodic", true);
+
+                Assert.That(definition.ActionTriggerDelay, Is.EqualTo(0.4f));
+                Assert.That(definition.ActionCyclePeriod, Is.EqualTo(0.1f));
+                Assert.That(definition.ActionIsPeriodic, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        [Test]
+        public void RifleProjectile_IsFastContinuousAndConfiguredToDestroyOnImpact()
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                ProjectAssetPaths.Prefabs.RifleProjectile);
+            Assert.That(prefab, Is.Not.Null);
+            BallisticProjectile configured =
+                prefab.GetComponent<BallisticProjectile>();
+            Assert.That(configured, Is.Not.Null);
+            Assert.That(prefab.GetComponent<Rigidbody>(), Is.Not.Null);
+            Assert.That(prefab.GetComponent<Collider>(), Is.Not.Null);
+
+            GameObject instance = Object.Instantiate(prefab);
+            objects.Add(instance);
+            BallisticProjectile projectile =
+                instance.GetComponent<BallisticProjectile>();
+            Vector3 velocity = Vector3.forward * 180f;
+            projectile.Launch(velocity, null);
+
+            Assert.That(projectile.Body.velocity, Is.EqualTo(velocity));
+            Assert.That(projectile.Body.useGravity, Is.False);
+            Assert.That(
+                projectile.Body.collisionDetectionMode,
+                Is.EqualTo(CollisionDetectionMode.ContinuousDynamic));
+            Assert.That(
+                projectile.CalculateTreasureImpulse(velocity),
+                Is.EqualTo(
+                    velocity
+                    * projectile.Body.mass
+                    * projectile.TreasureImpulseMultiplier));
+
+            Material projectileMaterial = AssetDatabase.LoadAssetAtPath<Material>(
+                ProjectAssetPaths.Materials.RifleProjectile);
+            Assert.That(projectileMaterial, Is.Not.Null);
+            Assert.That(projectileMaterial.shader, Is.Not.Null);
+            Assert.That(
+                projectileMaterial.shader.name,
+                Is.EqualTo("Universal Render Pipeline/Unlit"));
+            Assert.That(projectileMaterial.shader.isSupported, Is.True);
+        }
+
+        [Test]
+        public void RifleMuzzleFlash_UsesOnlyProjectOwnedDependencies()
+        {
+            GameObject effect = AssetDatabase.LoadAssetAtPath<GameObject>(
+                ProjectAssetPaths.Prefabs.MuzzleFlash);
+            GameObject rifle = AssetDatabase.LoadAssetAtPath<GameObject>(
+                ProjectAssetPaths.Prefabs.Smg);
+
+            Assert.That(effect, Is.Not.Null);
+            Assert.That(effect.GetComponentsInChildren<ParticleSystem>(true),
+                Is.Not.Empty);
+            Assert.That(effect.GetComponentInChildren<Light>(true), Is.Not.Null);
+            Assert.That(rifle, Is.Not.Null);
+            Assert.That(
+                rifle.GetComponentInChildren<WeaponMuzzle>(true),
+                Is.Not.Null);
+
+            string[] materialPaths =
+            {
+                ProjectAssetPaths.Materials.MuzzleFlashFlame,
+                ProjectAssetPaths.Materials.MuzzleFlashCore,
+                ProjectAssetPaths.Materials.MuzzleFlashSecondary,
+                ProjectAssetPaths.Materials.MuzzleFlashSmoke,
+                ProjectAssetPaths.Materials.MuzzleFlashDistortion,
+            };
+            for (int i = 0; i < materialPaths.Length; i++)
+            {
+                string path = materialPaths[i];
+                Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                Assert.That(material, Is.Not.Null, path);
+                Assert.That(material.shader, Is.Not.Null, path);
+                Assert.That(material.shader.isSupported, Is.True, path);
+                if (i < 3)
+                {
+                    Assert.That(
+                        material.shader.name,
+                        Is.EqualTo("Universal Render Pipeline/Particles/Unlit"),
+                        path);
+                }
+            }
+
+            string[] dependencies = AssetDatabase.GetDependencies(
+                ProjectAssetPaths.Prefabs.MuzzleFlash,
+                true);
+            Assert.That(
+                dependencies,
+                Has.None.Contains("/3rd/"),
+                "The production muzzle flash must not reference its source package.");
+        }
+
+        [Test]
+        public void ProductionRifleAnimations_CreateIndependentValidHumanoidAvatars()
+        {
+            string[] paths =
+            {
+                ProjectAssetPaths.ThirdParty.RifleIdle,
+                ProjectAssetPaths.ThirdParty.RifleMove,
+                ProjectAssetPaths.ThirdParty.RifleFire,
+            };
+
+            foreach (string path in paths)
+            {
+                ModelImporter importer = AssetImporter.GetAtPath(path)
+                    as ModelImporter;
+                Avatar avatar = AssetDatabase.LoadAllAssetsAtPath(path)
+                    .OfType<Avatar>()
+                    .FirstOrDefault();
+
+                Assert.That(importer, Is.Not.Null, path);
+                Assert.That(
+                    importer.animationType,
+                    Is.EqualTo(ModelImporterAnimationType.Human),
+                    path);
+                Assert.That(
+                    importer.avatarSetup,
+                    Is.EqualTo(ModelImporterAvatarSetup.CreateFromThisModel),
+                    path);
+                Assert.That(importer.sourceAvatar, Is.Null, path);
+                Assert.That(avatar, Is.Not.Null, path);
+                Assert.That(avatar.isHuman, Is.True, path);
+                Assert.That(avatar.isValid, Is.True, path);
+            }
+        }
+
+        [Test]
+        public void RifleAction_UsesArmsOnlyToolLayerEvenWhenStanding()
+        {
+            GameObject playerObject = Create("Player");
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            PlayerToolDefinition rifle =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(
+                    rifle,
+                    "primaryAction",
+                    PlayerToolPrimaryAction.FireRifle);
+                SetPrivateField(player, "activeToolDefinition", rifle);
+                SetPrivateField(player, "toolUpperBodyLayerIndex", 3);
+                SetPrivateField(player, "crouchToolArmsLayerIndex", 5);
+
+                MethodInfo resolveLayer = typeof(VoxelPlayerController).GetMethod(
+                    "ResolveToolActionLayerIndex",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(resolveLayer, Is.Not.Null);
+                Assert.That(resolveLayer.Invoke(player, null), Is.EqualTo(5),
+                    "Rifle fire must exclude Body and Root curves in every stance.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(rifle);
+            }
         }
 
         [Test]
@@ -247,9 +546,42 @@ namespace Supernova.Tests
             Assert.That(
                 pickaxe.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
+            Assert.That(pickaxe.ActionTriggerDelay, Is.EqualTo(0.42f));
+            Assert.That(pickaxe.ActionCyclePeriod, Is.EqualTo(0.75f));
+            Assert.That(pickaxe.ActionIsPeriodic, Is.True);
             Assert.That(
                 magnet.PrimaryAction,
                 Is.EqualTo(PlayerToolPrimaryAction.AttractCart));
+            Assert.That(magnet.ActionIsPeriodic, Is.False);
+        }
+
+        [Test]
+        public void ToolAssets_ConfigureIndependentGameplayTiming()
+        {
+            PlayerToolDefinition flashlight =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.FlashlightTool);
+            PlayerToolDefinition rifle =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.RifleTool);
+            PlayerToolDefinition smg =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.SmgTool);
+            PlayerToolDefinition solidGun =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.SolidGunTool);
+
+            Assert.That(flashlight.ActionTriggerDelay, Is.GreaterThanOrEqualTo(0f));
+            Assert.That(flashlight.ActionCyclePeriod, Is.EqualTo(0.35f));
+            Assert.That(flashlight.ActionIsPeriodic, Is.False);
+            Assert.That(rifle.ActionCyclePeriod, Is.EqualTo(0.125f));
+            Assert.That(rifle.ActionIsPeriodic, Is.True);
+            Assert.That(smg.ActionCyclePeriod, Is.EqualTo(1f / 12f).Within(0.0001f));
+            Assert.That(smg.ActionIsPeriodic, Is.True);
+            Assert.That(
+                solidGun.ActionCyclePeriod,
+                Is.EqualTo(1f / 1.5f).Within(0.0001f));
+            Assert.That(solidGun.ActionIsPeriodic, Is.True);
         }
 
         [Test]
@@ -265,6 +597,9 @@ namespace Supernova.Tests
             Assert.That(pickaxe, Is.Not.Null);
             Assert.That(pickaxe.HeldModelPrefab, Is.Not.Null);
             Assert.That(pickaxe.HeldModelPrefab.name, Is.EqualTo("pickaxe01"));
+            Assert.That(
+                pickaxe.HeldModelMountStrategy,
+                Is.EqualTo(HeldToolMountStrategy.SingleHand));
             Assert.That(magnet, Is.Not.Null);
             Assert.That(magnet.HeldModelPrefab, Is.Null);
         }
@@ -320,6 +655,56 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void RifleMount_UsesDedicatedHandChildAndPreservesPrefabRootPose()
+        {
+            GameObject playerObject = Create("Player");
+            PlayerToolController inventory =
+                playerObject.AddComponent<PlayerToolController>();
+            GameObject handMountObject = Create("Tool Model Mount");
+            handMountObject.transform.SetParent(playerObject.transform);
+            GameObject rifleModel = Create("Rifle Model Prefab");
+            rifleModel.transform.localPosition = new Vector3(0.1f, -0.2f, 0.3f);
+            rifleModel.transform.localRotation = Quaternion.Euler(12f, 23f, 34f);
+            rifleModel.transform.localScale = new Vector3(2f, 3f, 4f);
+            PlayerToolDefinition rifle =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(rifle, "item", PlayerInventoryItem.Rifle);
+                SetPrivateField(rifle, "heldModelPrefab", rifleModel);
+                SetPrivateField(
+                    rifle,
+                    "heldModelMountStrategy",
+                    HeldToolMountStrategy.Rifle);
+                SetPrivateField(
+                    inventory,
+                    "toolModelMount",
+                    handMountObject.transform);
+
+                MethodInfo applyModel = typeof(PlayerToolController).GetMethod(
+                    "ApplyEquippedToolModel",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(applyModel, Is.Not.Null);
+                applyModel.Invoke(inventory, new object[] { rifle });
+
+                Transform equipped = inventory.EquippedToolModel.transform;
+                Assert.That(equipped.parent.name, Is.EqualTo("Rifle Model Mount"));
+                Assert.That(
+                    equipped.parent.parent,
+                    Is.SameAs(handMountObject.transform));
+                Assert.That(equipped.localPosition, Is.EqualTo(rifleModel.transform.localPosition));
+                Assert.That(
+                    Quaternion.Angle(equipped.localRotation, rifleModel.transform.localRotation),
+                    Is.LessThan(0.001f));
+                Assert.That(equipped.localScale, Is.EqualTo(rifleModel.transform.localScale));
+            }
+            finally
+            {
+                Object.DestroyImmediate(rifle);
+            }
+        }
+
+        [Test]
         public void InventorySelection_EnablesMagnetOnlyForSlotTwo()
         {
             GameObject playerObject = Create("Player");
@@ -356,6 +741,51 @@ namespace Supernova.Tests
             Assert.That(player.ReceiveDamage(lethal), Is.True);
             Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.Dead));
             Assert.That(player.IsAlive, Is.False);
+        }
+
+        [Test]
+        public void PlayerDamage_ReleasesAnimationLayersThatCoverHitReaction()
+        {
+            RuntimeAnimatorController runtimeController =
+                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+                    ProjectAssetPaths.Animations.PlayerController);
+            GameObject playerObject = Create("Player");
+            playerObject.AddComponent<CharacterController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            GameObject visual = Create("Visual");
+            visual.transform.SetParent(playerObject.transform);
+            Animator animator = visual.AddComponent<Animator>();
+            animator.runtimeAnimatorController = runtimeController;
+            player.SetAnimator(animator);
+            animator.Update(0f);
+
+            string[] coveringLayers =
+            {
+                "Rifle Locomotion Layer",
+                "Rifle Arms Layer",
+                "Tool UpperBody Layer",
+                "Crouch Tool Arms Layer",
+            };
+            foreach (string layerName in coveringLayers)
+            {
+                int layerIndex = animator.GetLayerIndex(layerName);
+                Assert.That(layerIndex, Is.GreaterThanOrEqualTo(0));
+                animator.SetLayerWeight(layerIndex, 1f);
+            }
+
+            var hit = new DamageInfo(
+                10f, null, Vector3.zero, Vector3.forward);
+            Assert.That(player.ReceiveDamage(hit), Is.True);
+            Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.Hurt));
+
+            foreach (string layerName in coveringLayers)
+            {
+                int layerIndex = animator.GetLayerIndex(layerName);
+                Assert.That(animator.GetLayerWeight(layerIndex),
+                    Is.Zero.Within(0.001f),
+                    layerName + " must release the full-body hit reaction.");
+            }
         }
 
         [Test]
@@ -422,7 +852,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerAnimator_CrouchUsesMaskedLowerBodyLayerSoUpperBodyStaysFree()
+        public void PlayerAnimator_CrouchUsesFullBodyBaseStatesWithFootIk()
         {
             UnityAnimatorController controller = AssetDatabase.LoadAssetAtPath<UnityAnimatorController>(
                 ProjectAssetPaths.Animations.PlayerController);
@@ -442,25 +872,51 @@ namespace Supernova.Tests
             AnimatorControllerLayer lowerBodyLayer = null;
             foreach (AnimatorControllerLayer layer in controller.layers)
                 if (layer.name == "LowerBody Layer") lowerBodyLayer = layer;
-            Assert.That(lowerBodyLayer, Is.Not.Null,
-                "Crouch must live on its own masked layer so it never overrides the upper body.");
-            Assert.That(lowerBodyLayer.avatarMask, Is.Not.Null);
-            Assert.That(lowerBodyLayer.blendingMode, Is.EqualTo(AnimatorLayerBlendingMode.Override));
-            Assert.That(lowerBodyLayer.defaultWeight, Is.Zero,
-                "Layer must start at weight 0; VoxelPlayerController drives it at runtime.");
+            Assert.That(lowerBodyLayer, Is.Null,
+                "A lower-body-only crouch separates the hips from the torso and can lift the feet.");
 
-            AnimatorState crouchIdle = FindAnimatorState(lowerBodyLayer.stateMachine, "CrouchIdle");
-            AnimatorState crouchMove = FindAnimatorState(lowerBodyLayer.stateMachine, "CrouchMove");
+            AnimatorStateMachine baseLayerMachine = controller.layers[0].stateMachine;
+            AnimatorState crouchIdle = FindAnimatorState(baseLayerMachine, "Crouch Idle");
+            AnimatorState crouchMove = FindAnimatorState(baseLayerMachine, "Crouch Move");
             Assert.That(crouchIdle, Is.Not.Null);
             Assert.That(crouchMove, Is.Not.Null);
             Assert.That(crouchIdle.motion, Is.Not.Null);
             Assert.That(crouchMove.motion, Is.Not.Null);
+            Assert.That(crouchIdle.iKOnFeet, Is.True);
+            Assert.That(crouchMove.iKOnFeet, Is.True);
 
-            AnimatorStateMachine baseLayerMachine = controller.layers[0].stateMachine;
-            Assert.That(FindAnimatorState(baseLayerMachine, "Crouch Idle"), Is.Null,
-                "Crouch must no longer live on the unmasked Base Layer.");
-            Assert.That(FindAnimatorState(baseLayerMachine, "Crouch Move"), Is.Null,
-                "Crouch must no longer live on the unmasked Base Layer.");
+            AnimatorControllerLayer crouchArmsLayer = null;
+            foreach (AnimatorControllerLayer layer in controller.layers)
+                if (layer.name == "Crouch Arms Locomotion Layer") crouchArmsLayer = layer;
+            Assert.That(crouchArmsLayer, Is.Not.Null);
+            Assert.That(crouchArmsLayer.defaultWeight, Is.Zero);
+            Assert.That(crouchArmsLayer.blendingMode, Is.EqualTo(AnimatorLayerBlendingMode.Override));
+            Assert.That(crouchArmsLayer.avatarMask, Is.Not.Null);
+            Assert.That(
+                crouchArmsLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Body),
+                Is.False,
+                "The full-body crouch keeps ownership of the torso and grounded feet.");
+            Assert.That(
+                crouchArmsLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm),
+                Is.True);
+            Assert.That(
+                crouchArmsLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm),
+                Is.True);
+            Assert.That(
+                crouchArmsLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftLeg),
+                Is.False);
+
+            AnimatorState standingIdle = FindAnimatorState(baseLayerMachine, "Idle");
+            AnimatorState crouchArmsIdle = FindAnimatorState(
+                crouchArmsLayer.stateMachine,
+                "Standing Arms Idle");
+            Assert.That(crouchArmsIdle, Is.Not.Null);
+            Assert.That(crouchArmsIdle.motion, Is.SameAs(standingIdle.motion));
+            Assert.That(crouchArmsIdle.transitions, Is.Empty,
+                "Crouch walking must not switch or animate the arms.");
+            Assert.That(
+                FindAnimatorState(crouchArmsLayer.stateMachine, "Standing Arms Walk"),
+                Is.Null);
         }
 
         [Test]
@@ -481,12 +937,78 @@ namespace Supernova.Tests
                     && parameter.type == AnimatorControllerParameterType.Bool));
             Assert.That(
                 controller.parameters,
+                Has.Some.Matches<AnimatorControllerParameter>(parameter =>
+                    parameter.name == "ToolActionSpeed"
+                    && parameter.type == AnimatorControllerParameterType.Float
+                    && Mathf.Approximately(parameter.defaultFloat, 1f)));
+            Assert.That(
+                controller.parameters,
                 Has.None.Matches<AnimatorControllerParameter>(parameter =>
                     parameter.name == "Mine"));
 
-            AnimatorStateMachine baseLayerMachine = controller.layers[0].stateMachine;
+            AnimatorControllerLayer toolLayer = null;
+            foreach (AnimatorControllerLayer layer in controller.layers)
+                if (layer.name == "Tool UpperBody Layer") toolLayer = layer;
+            Assert.That(toolLayer, Is.Not.Null);
+            Assert.That(toolLayer.avatarMask, Is.Not.Null);
+            Assert.That(toolLayer.blendingMode, Is.EqualTo(AnimatorLayerBlendingMode.Override));
+            Assert.That(toolLayer.defaultWeight, Is.Zero,
+                "The runtime raises this layer only while a tool action is active.");
+            Assert.That(
+                toolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Body),
+                Is.True);
+            Assert.That(
+                toolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm),
+                Is.True);
+            Assert.That(
+                toolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm),
+                Is.True);
+            Assert.That(
+                toolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftLeg),
+                Is.False);
+            Assert.That(
+                toolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightLeg),
+                Is.False);
+
+            AnimatorControllerLayer crouchToolLayer = null;
+            foreach (AnimatorControllerLayer layer in controller.layers)
+                if (layer.name == "Crouch Tool Arms Layer") crouchToolLayer = layer;
+            Assert.That(crouchToolLayer, Is.Not.Null);
+            Assert.That(crouchToolLayer.avatarMask, Is.Not.Null);
+            Assert.That(crouchToolLayer.defaultWeight, Is.Zero);
+            Assert.That(
+                crouchToolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Body),
+                Is.False,
+                "Crouched tools must preserve the full-body crouch torso.");
+            Assert.That(
+                crouchToolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.Head),
+                Is.False);
+            Assert.That(
+                crouchToolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftArm),
+                Is.True);
+            Assert.That(
+                crouchToolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.RightArm),
+                Is.True);
+            Assert.That(
+                crouchToolLayer.avatarMask.GetHumanoidBodyPartActive(AvatarMaskBodyPart.LeftLeg),
+                Is.False);
+            Assert.That(
+                FindAnimatorState(crouchToolLayer.stateMachine, "Tool Primary Action"),
+                Is.Not.Null);
+            Assert.That(
+                FindAnimatorState(crouchToolLayer.stateMachine, "Tool Continuous Action"),
+                Is.Not.Null);
+            AnimatorState crouchContinuousAction = FindAnimatorState(
+                crouchToolLayer.stateMachine,
+                "Tool Continuous Action");
+            Assert.That(crouchContinuousAction.speedParameterActive, Is.True);
+            Assert.That(
+                crouchContinuousAction.speedParameter,
+                Is.EqualTo("ToolActionSpeed"));
+
+            AnimatorStateMachine toolMachine = toolLayer.stateMachine;
             AnimatorState toolAction = FindAnimatorState(
-                baseLayerMachine,
+                toolMachine,
                 "Tool Primary Action");
             Assert.That(toolAction, Is.Not.Null);
             Assert.That(toolAction.motion, Is.Not.Null);
@@ -496,12 +1018,24 @@ namespace Supernova.Tests
             Assert.That(toolAction.transitions[0].exitTime, Is.EqualTo(0.7f));
             Assert.That(toolAction.transitions[0].duration, Is.EqualTo(0.2f));
             Assert.That(toolAction.transitions[0].conditions, Is.Empty);
+            AssertPeriodicToolActionCanRestart(toolMachine, toolAction);
+
+            AnimatorState crouchToolAction = FindAnimatorState(
+                crouchToolLayer.stateMachine,
+                "Tool Primary Action");
+            AssertPeriodicToolActionCanRestart(
+                crouchToolLayer.stateMachine,
+                crouchToolAction);
 
             AnimatorState continuousAction = FindAnimatorState(
-                baseLayerMachine,
+                toolMachine,
                 "Tool Continuous Action");
             Assert.That(continuousAction, Is.Not.Null);
             Assert.That(continuousAction.motion, Is.Not.Null);
+            Assert.That(continuousAction.speedParameterActive, Is.True);
+            Assert.That(
+                continuousAction.speedParameter,
+                Is.EqualTo("ToolActionSpeed"));
             Assert.That(
                 continuousAction.motion.name,
                 Is.EqualTo("ToolPrimaryActionPlaceholder"));
@@ -516,24 +1050,85 @@ namespace Supernova.Tests
                 Is.EqualTo(AnimatorConditionMode.IfNot));
 
             bool hasContinuousEntry = false;
-            foreach (AnimatorStateTransition transition in baseLayerMachine.anyStateTransitions)
+            foreach (AnimatorStateTransition transition in toolMachine.anyStateTransitions)
             {
                 if (transition.destinationState != continuousAction) continue;
                 hasContinuousEntry = true;
                 Assert.That(transition.canTransitionToSelf, Is.False);
             }
             Assert.That(hasContinuousEntry, Is.True);
+            AnimatorStateMachine baseLayerMachine = controller.layers[0].stateMachine;
+            Assert.That(FindAnimatorState(baseLayerMachine, "Tool Primary Action"), Is.Null);
+            Assert.That(FindAnimatorState(baseLayerMachine, "Tool Continuous Action"), Is.Null);
             Assert.That(FindAnimatorState(baseLayerMachine, "Mine"), Is.Null);
         }
 
+        private static void AssertPeriodicToolActionCanRestart(
+            AnimatorStateMachine stateMachine,
+            AnimatorState actionState)
+        {
+            bool hasPeriodicEntry = false;
+            foreach (AnimatorStateTransition transition
+                in stateMachine.anyStateTransitions)
+            {
+                if (transition.destinationState != actionState) continue;
+                hasPeriodicEntry = true;
+                Assert.That(
+                    transition.canTransitionToSelf,
+                    Is.True,
+                    "Periodic mining triggers must restart the current swing.");
+            }
+
+            Assert.That(hasPeriodicEntry, Is.True);
+        }
+
         [Test]
-        public void PeriodicToolCycle_WaitsForConfiguredAnimatorStateToFinish()
+        public void ToolCycleTimers_AreTrackedPerDefinition()
+        {
+            GameObject playerObject = Create("Player");
+            playerObject.AddComponent<CharacterController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            PlayerToolDefinition coolingDown =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            PlayerToolDefinition ready =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            MethodInfo cycleReady = typeof(VoxelPlayerController).GetMethod(
+                "IsToolActionCycleReady",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            FieldInfo cycleTimesField = typeof(VoxelPlayerController).GetField(
+                "nextToolActionCycleTimes",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(cycleReady, Is.Not.Null);
+            Assert.That(cycleTimesField, Is.Not.Null);
+            try
+            {
+                var cycleTimes =
+                    (Dictionary<PlayerToolDefinition, float>)
+                    cycleTimesField.GetValue(player);
+                cycleTimes[coolingDown] = Time.time + 10f;
+                cycleTimes[ready] = Time.time - 1f;
+
+                Assert.That(
+                    cycleReady.Invoke(player, new object[] { coolingDown }),
+                    Is.False);
+                Assert.That(
+                    cycleReady.Invoke(player, new object[] { ready }),
+                    Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(coolingDown);
+                Object.DestroyImmediate(ready);
+            }
+        }
+
+        [Test]
+        public void ToolUpperBodyLayer_ReturnsWeightToZeroAfterActionFinishes()
         {
             RuntimeAnimatorController runtimeController =
                 AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
                     ProjectAssetPaths.Animations.PlayerController);
-            Assert.That(runtimeController, Is.Not.Null);
-
             GameObject playerObject = Create("Player");
             playerObject.AddComponent<CharacterController>();
             VoxelPlayerController player =
@@ -545,27 +1140,30 @@ namespace Supernova.Tests
             player.SetAnimator(animator);
             animator.Update(0f);
 
-            MethodInfo cycleComplete = typeof(VoxelPlayerController).GetMethod(
-                "IsPeriodicToolActionCycleComplete",
+            int layerIndex = animator.GetLayerIndex("Tool UpperBody Layer");
+            Assert.That(layerIndex, Is.GreaterThanOrEqualTo(0));
+            MethodInfo trigger = typeof(VoxelPlayerController).GetMethod(
+                "TriggerToolActionAnimation",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(cycleComplete, Is.Not.Null);
-            SetPrivateField(player, "nextAttackTime", Time.time + 10f);
+            MethodInfo tickLayer = typeof(VoxelPlayerController).GetMethod(
+                "TickToolUpperBodyLayerBlend",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(trigger, Is.Not.Null);
+            Assert.That(tickLayer, Is.Not.Null);
 
-            animator.SetTrigger("ToolAction");
+            trigger.Invoke(player, null);
             animator.Update(0.05f);
-            Assert.That(cycleComplete.Invoke(player, null), Is.False);
+            tickLayer.Invoke(player, new object[] { 0.05f });
+            Assert.That(animator.GetLayerWeight(layerIndex), Is.GreaterThan(0f));
 
-            bool completed = false;
-            for (int i = 0; i < 40 && !completed; i++)
+            for (int i = 0; i < 50; i++)
             {
                 animator.Update(0.05f);
-                completed = (bool)cycleComplete.Invoke(player, null);
+                tickLayer.Invoke(player, new object[] { 0.05f });
             }
 
-            Assert.That(
-                completed,
-                Is.True,
-                "The next mining cycle should unlock when the tool animation exits.");
+            Assert.That(animator.GetLayerWeight(layerIndex), Is.Zero.Within(0.001f),
+                "Inactive tool layers must release their last pose back to locomotion.");
         }
 
         [Test]
@@ -588,6 +1186,106 @@ namespace Supernova.Tests
 
             Assert.That(player.CurrentHealth, Is.LessThan(player.MaximumHealth));
             Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.Hurt));
+        }
+
+        [Test]
+        public void CreatureCollisionDamage_UsesSharedMassNormalizedImpulseRule()
+        {
+            GameObject creatureObject = Create("Creature");
+            Rigidbody body = creatureObject.AddComponent<Rigidbody>();
+            body.mass = 1f;
+            creatureObject.AddComponent<CapsuleCollider>();
+            CreatureBehaviorAgent creature =
+                creatureObject.AddComponent<CreatureBehaviorAgent>();
+
+            const float impulse = 5f;
+            float damage = creature.ApplyCollisionImpulse(impulse);
+
+            float expectedDamage = CollisionImpulseDamage.CalculateDamage(
+                creature.MaximumHealth,
+                impulse,
+                creature.CollisionFragility,
+                creature.MinimumDamageImpulse,
+                creature.DamagePercentagePerSquaredImpulse,
+                body.mass);
+            Assert.That(
+                creature.MinimumDamageImpulse,
+                Is.GreaterThan(
+                    CollisionImpulseDamage.DefaultMinimumDamageImpulse));
+            Assert.That(damage, Is.EqualTo(expectedDamage).Within(0.0001f));
+            Assert.That(
+                creature.CurrentHealth,
+                Is.EqualTo(creature.MaximumHealth - expectedDamage)
+                    .Within(0.0001f));
+
+            creature.RestoreFullHealth();
+            body.mass = 10f;
+            Assert.That(creature.ApplyCollisionImpulse(8f), Is.Zero);
+        }
+
+        [Test]
+        public void CreatureHealthBar_ShowsForDamageAndCrosshairAim()
+        {
+            GameObject creatureObject = Create("Creature");
+            creatureObject.transform.position =
+                new Vector3(10000f, 10000f, 10000f);
+            creatureObject.AddComponent<CapsuleCollider>();
+            CreatureBehaviorAgent creature =
+                creatureObject.AddComponent<CreatureBehaviorAgent>();
+            MonsterHealthBar healthBar =
+                creatureObject.GetComponent<MonsterHealthBar>();
+
+            Assert.That(healthBar, Is.Not.Null);
+            Assert.That(
+                healthBar.WorldCanvas.renderMode,
+                Is.EqualTo(RenderMode.WorldSpace));
+            Assert.That(healthBar.IsVisible, Is.False);
+
+            creature.ReceiveDamage(new DamageInfo(
+                15f,
+                null,
+                creatureObject.transform.position,
+                Vector3.forward));
+            Assert.That(healthBar.IsVisible, Is.True);
+            Assert.That(
+                healthBar.FillImage.rectTransform.anchorMax.x,
+                Is.EqualTo(0.75f).Within(0.0001f));
+            Assert.That(healthBar.FillImage.color.r, Is.EqualTo(1f));
+            Assert.That(healthBar.FillImage.color.g, Is.LessThan(0.2f));
+            Assert.That(
+                healthBar.WorldCanvas.transform.position.y,
+                Is.GreaterThan(creatureObject.transform.position.y));
+
+            creature.RestoreFullHealth();
+            healthBar.enabled = false;
+            healthBar.enabled = true;
+            SetPrivateField(
+                healthBar,
+                "visibleUntil",
+                float.NegativeInfinity);
+            Assert.That(healthBar.IsVisible, Is.False);
+
+            GameObject cameraObject = Create("Aim Camera");
+            cameraObject.tag = "MainCamera";
+            cameraObject.transform.position =
+                creatureObject.transform.position + Vector3.back * 5f;
+            cameraObject.transform.forward = Vector3.forward;
+            Camera aimCamera = cameraObject.AddComponent<Camera>();
+            Physics.SyncTransforms();
+
+            Type aimQuery = typeof(MonsterHealthBar).Assembly.GetType(
+                "Supernova.UI.MonsterCrosshairAimQuery");
+            Assert.That(aimQuery, Is.Not.Null);
+            SetStaticField(aimQuery, "lastQueryFrame", -1);
+            SetStaticField(aimQuery, "aimedMonster", null);
+            SetStaticField(aimQuery, "viewCamera", aimCamera);
+            MethodInfo lateUpdate = typeof(MonsterHealthBar).GetMethod(
+                "LateUpdate",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(lateUpdate, Is.Not.Null);
+            lateUpdate.Invoke(healthBar, null);
+
+            Assert.That(healthBar.IsVisible, Is.True);
         }
 
         [Test]
@@ -689,6 +1387,15 @@ namespace Supernova.Tests
                 name, BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null);
             field.SetValue(target, value);
+        }
+
+        private static void SetStaticField(Type type, string name, object value)
+        {
+            FieldInfo field = type.GetField(
+                name,
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null);
+            field.SetValue(null, value);
         }
 
         private static AnimatorState FindAnimatorState(

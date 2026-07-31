@@ -5,22 +5,23 @@ namespace Supernova.MinecraftCaves
 {
     /// <summary>
     /// Opens a sliding door when the player approaches and closes it after the player
-    /// moves away. The authored Animator is disabled because this component owns the
-    /// door leaf pose and keeps its collider synchronized with the visible mesh.
+    /// moves away. The Animator owns the door pose; this component only selects the
+    /// playback direction.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class ProximitySlidingDoor : MonoBehaviour
     {
+        private static readonly int PlaybackSpeed =
+            Animator.StringToHash("PlaybackSpeed");
+
         [SerializeField] private Transform doorLeaf;
+        [SerializeField] private Animator doorAnimator;
         [SerializeField] private Transform player;
-        [SerializeField] private Vector3 openLocalOffset = new Vector3(0f, -3f, 0f);
         [SerializeField, Min(0.1f)] private float openingDistance = 1.8f;
         [SerializeField, Min(0.1f)] private float closingDistance = 3f;
-        [SerializeField, Min(0.1f)] private float travelSpeed = 3.5f;
         [Tooltip("Once opened, this door stays open for the rest of the scene.")]
         [SerializeField] private bool stayOpenAfterFirstOpen;
 
-        private Vector3 closedLocalPosition;
         private Vector3 activationLocalPosition;
         private CharacterController playerController;
         private AudioSource doorAudio;
@@ -30,6 +31,7 @@ namespace Supernova.MinecraftCaves
 
         public bool IsOpenRequested => openRequested;
         public Transform DoorLeaf => doorLeaf;
+        public Animator DoorAnimator => doorAnimator;
         public bool StayOpenAfterFirstOpen => stayOpenAfterFirstOpen;
 
         private void Awake()
@@ -45,23 +47,20 @@ namespace Supernova.MinecraftCaves
         public void Configure(
             Transform leaf,
             Transform playerTransform,
-            Vector3 localOpenOffset,
             float openDistance,
-            float closeDistance,
-            float speed)
+            float closeDistance)
         {
             doorLeaf = leaf;
+            doorAnimator = leaf != null ? leaf.GetComponent<Animator>() : null;
             player = playerTransform;
-            openLocalOffset = localOpenOffset;
             openingDistance = Mathf.Max(0.1f, openDistance);
             closingDistance = Mathf.Max(openingDistance + 0.1f, closeDistance);
-            travelSpeed = Mathf.Max(0.1f, speed);
             initialized = false;
             playerController = null;
             EnsureInitialized();
         }
 
-        public void Tick(float deltaTime)
+        public void Tick(float unusedDeltaTime)
         {
             if (!EnsureInitialized())
             {
@@ -85,34 +84,34 @@ namespace Supernova.MinecraftCaves
             {
                 if (!stayOpenAfterFirstOpen && distance >= closingDistance)
                 {
-                    openRequested = false;
+                    SetOpenRequested(false);
                     PlayDoorSound();
                 }
             }
             else if (distance <= openingDistance)
             {
-                openRequested = true;
+                SetOpenRequested(true);
                 hasOpened = true;
                 PlayDoorSound();
             }
 
             if (stayOpenAfterFirstOpen && hasOpened)
             {
-                openRequested = true;
+                SetOpenRequested(true);
             }
-
-            Vector3 target = closedLocalPosition
-                + (openRequested ? openLocalOffset : Vector3.zero);
-            doorLeaf.localPosition = Vector3.MoveTowards(
-                doorLeaf.localPosition,
-                target,
-                travelSpeed * Mathf.Max(0f, deltaTime));
         }
 
         public void SetStayOpenAfterFirstOpen(bool value)
         {
             stayOpenAfterFirstOpen = value;
-            if (value && hasOpened) openRequested = true;
+            if (value && hasOpened) SetOpenRequested(true);
+        }
+
+        public void CloseForLaunch()
+        {
+            stayOpenAfterFirstOpen = false;
+            SetOpenRequested(false);
+            enabled = false;
         }
 
         private bool EnsureInitialized()
@@ -124,10 +123,10 @@ namespace Supernova.MinecraftCaves
 
             if (doorLeaf == null)
             {
-                Animator childAnimator = GetComponentInChildren<Animator>(true);
-                if (childAnimator != null)
+                doorAnimator = GetComponentInChildren<Animator>(true);
+                if (doorAnimator != null)
                 {
-                    doorLeaf = childAnimator.transform;
+                    doorLeaf = doorAnimator.transform;
                 }
             }
 
@@ -136,13 +135,22 @@ namespace Supernova.MinecraftCaves
                 return false;
             }
 
-            Animator animator = doorLeaf.GetComponent<Animator>();
-            if (animator != null)
+            if (doorAnimator == null)
             {
-                animator.enabled = false;
+                doorAnimator = doorLeaf.GetComponent<Animator>();
             }
 
-            closedLocalPosition = doorLeaf.localPosition;
+            if (doorAnimator == null
+                || doorAnimator.runtimeAnimatorController == null)
+            {
+                return false;
+            }
+
+            doorAnimator.enabled = true;
+            doorAnimator.applyRootMotion = false;
+            doorAnimator.Play(0, 0, 0f);
+            doorAnimator.Update(0f);
+            doorAnimator.SetFloat(PlaybackSpeed, 0f);
             Collider doorCollider = doorLeaf.GetComponent<Collider>();
             Vector3 activationWorldPosition = doorCollider != null
                 ? doorCollider.bounds.center
@@ -153,6 +161,20 @@ namespace Supernova.MinecraftCaves
             closingDistance = Mathf.Max(openingDistance + 0.1f, closingDistance);
             initialized = true;
             return true;
+        }
+
+        private void SetOpenRequested(bool value)
+        {
+            if (openRequested == value)
+            {
+                return;
+            }
+
+            openRequested = value;
+            if (doorAnimator != null)
+            {
+                doorAnimator.SetFloat(PlaybackSpeed, value ? 1f : -1f);
+            }
         }
 
         private void PlayDoorSound()
@@ -187,7 +209,6 @@ namespace Supernova.MinecraftCaves
         {
             openingDistance = Mathf.Max(0.1f, openingDistance);
             closingDistance = Mathf.Max(openingDistance + 0.1f, closingDistance);
-            travelSpeed = Mathf.Max(0.1f, travelSpeed);
         }
     }
 }

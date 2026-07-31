@@ -317,8 +317,10 @@ Chunk 完全相同的 Marching Cubes 拓扑、密度插值和类型边界 inset�
 - 名称、`VoxelTypeId` 和包含的体素数量被保留；
 - 小型矿脉使用凸 MeshCollider；超过凸网格三角形限制时使用复合 BoxCollider，
   但渲染网格始终是原始矿脉网格；
+- 每个 `VoxelOreFeatureDefinition` 可配置 `Ore Unit Value`。掉落矿脉的初始价值为
+  `Ore Unit Value × 连通矿脉体素数量`，不由关卡配置统一定价；
 - 每个 `VoxelOreFeatureDefinition` 可配置 `Mass Density`。生成刚体的质量严格为
-  `Mass Density × 连通矿脉体素数量`，默认矿石配置为每体素 `10kg`；
+  `Mass Density × 连通矿脉体素数量`；
 - 整片矿脉的样本随后统一变为空气，所有受影响 Chunk 立即重建；
 - 磁铁可直接通过刚体取得它，无需 `PhysicsAttractable` 标记。
 

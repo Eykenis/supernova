@@ -110,10 +110,103 @@ namespace Supernova.Tests
                 "Even a trigger Collider must push the camera forward.");
         }
 
+        [Test]
+        public void CrouchArmPitch_RotatesArmTowardPlayerForward()
+        {
+            player = new GameObject("Player");
+            GameObject upperArm = new GameObject("UpperArm");
+            upperArm.transform.SetParent(player.transform);
+            GameObject hand = new GameObject("Hand");
+            hand.transform.SetParent(upperArm.transform);
+            hand.transform.localPosition = Vector3.down;
+
+            MethodInfo method = typeof(PerspectiveCameraController).GetMethod(
+                "ApplyArmForwardRotation",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            method.Invoke(
+                null,
+                new object[] { upperArm.transform, player.transform.right, 12f });
+
+            Assert.That(hand.transform.position.z, Is.GreaterThan(0f),
+                "The crouch correction must move a hanging arm toward player forward.");
+        }
+
+        [Test]
+        public void FirstPersonPitch_RotatesArmChainByExactCameraPitch()
+        {
+            player = new GameObject("Player");
+            GameObject spine = new GameObject("Spine");
+            spine.transform.SetParent(player.transform);
+            GameObject chest = new GameObject("Chest");
+            chest.transform.SetParent(spine.transform);
+            GameObject upperChest = new GameObject("UpperChest");
+            upperChest.transform.SetParent(chest.transform);
+            GameObject upperArm = new GameObject("UpperArm");
+            upperArm.transform.SetParent(upperChest.transform);
+            GameObject leftHand = new GameObject("LeftHand");
+            leftHand.transform.SetParent(upperArm.transform);
+            GameObject rifleMount = new GameObject("Rifle Model Mount");
+            rifleMount.transform.SetParent(leftHand.transform);
+
+            GameObject cameraObject = new GameObject("Camera");
+            cameraObject.transform.SetParent(player.transform);
+            Camera camera = cameraObject.AddComponent<Camera>();
+            PerspectiveCameraController controller =
+                player.AddComponent<PerspectiveCameraController>();
+            controller.Bind(player.transform, null, camera, new Renderer[0]);
+            controller.SetMode(PlayerViewMode.FirstPerson, true);
+
+            SetPrivateField(controller, "animatedSpine", spine.transform);
+            SetPrivateField(controller, "animatedChest", chest.transform);
+            SetPrivateField(controller, "animatedUpperChest", upperChest.transform);
+            SetPrivateField(controller, "animatedLeftUpperArm", upperArm.transform);
+
+            const float pitch = 84f;
+            controller.SetLookPitch(pitch);
+            typeof(PerspectiveCameraController).GetMethod(
+                    "UpdateUpperBodyPose",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(controller, null);
+
+            Vector3 expectedForward = Quaternion.AngleAxis(
+                pitch,
+                player.transform.right) * player.transform.forward;
+            Assert.That(
+                Vector3.Angle(upperArm.transform.forward, expectedForward),
+                Is.LessThan(0.01f),
+                "First-person arms must receive the full camera pitch, including the "
+                + "rotation not inherited through the torso chain.");
+            Assert.That(
+                GetPrivateField<float>(controller, "smoothedUpperBodyPitch"),
+                Is.EqualTo(pitch).Within(0.001f),
+                "First-person bone pitch must not lag behind the camera.");
+            Assert.That(
+                Vector3.Angle(rifleMount.transform.forward, expectedForward),
+                Is.LessThan(0.01f),
+                "A left-hand rifle mount must inherit the arm's exact camera pitch.");
+        }
+
         private static void InvokeLateUpdate(PerspectiveCameraController controller)
         {
             typeof(PerspectiveCameraController).GetMethod(
                 "LateUpdate", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(controller, null);
+        }
+
+        private static void SetPrivateField<T>(object target, string name, T value)
+        {
+            typeof(PerspectiveCameraController).GetField(
+                    name,
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(target, value);
+        }
+
+        private static T GetPrivateField<T>(object target, string name)
+        {
+            return (T)typeof(PerspectiveCameraController).GetField(
+                    name,
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(target);
         }
 
         private PerspectiveCameraController CreateController()

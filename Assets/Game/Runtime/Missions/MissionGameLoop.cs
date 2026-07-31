@@ -2,10 +2,10 @@ using System.Collections;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
 using Supernova.Shop;
+using Supernova.UI;
 using Supernova.Voxels;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 namespace Supernova.Missions
 {
@@ -13,23 +13,21 @@ namespace Supernova.Missions
     [DisallowMultipleComponent]
     public sealed class MissionGameLoop : MonoBehaviour
     {
-        private const float SceneFadeOutSeconds = 0.65f;
-        private const float SceneFadeInSeconds = 0.55f;
+        private const int DebugCreditGrant = 100;
         private static MissionGameLoop instance;
-        private static Font missionFont;
 
         private LevelConfiguration definition;
         private MissionRun run;
-        private Canvas canvas;
-        private CanvasGroup fade;
-        private Text objectiveText;
-        private Text promptText;
-        private Text resultText;
-        private GameObject resultPanel;
+        private GameHudController gameUi;
+        private MissionUiView missionUi;
         private bool transitioning;
         private bool caveSetup;
         private int configuredSceneHandle = int.MinValue;
         private OreExtractionZone extractionZone;
+        private int displayedObjectiveSeconds = int.MinValue;
+        private int displayedObjectiveStoredValue = int.MinValue;
+        private int displayedObjectiveRequiredValue = int.MinValue;
+        private string displayedObjectiveMissionName;
 
         public MissionRun CurrentRun => run;
         public int Credits => PlayerEconomy.Credits;
@@ -97,6 +95,16 @@ namespace Supernova.Missions
 
         private void Update()
         {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (Input.GetKeyDown(KeyCode.F1))
+            {
+                PlayerEconomy.AddCredits(DebugCreditGrant);
+                SetPrompt(
+                    "DEBUG +$" + DebugCreditGrant
+                    + "    BALANCE: $" + Credits);
+            }
+#endif
+
             Scene activeScene = SceneManager.GetActiveScene();
             if (activeScene.IsValid() && activeScene.handle != configuredSceneHandle)
                 ConfigureScene(activeScene);
@@ -110,16 +118,16 @@ namespace Supernova.Missions
                 if (run.IsFinished) ShowResult();
             }
 
-            if (resultPanel != null && resultPanel.activeSelf
+            if (missionUi != null && missionUi.IsResultVisible
                 && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Space)))
             {
                 ReturnHome();
             }
         }
 
-        public void BeginFirstMission()
+        public bool BeginFirstMission()
         {
-            BeginLevel(definition);
+            return BeginLevel(definition);
         }
 
         public bool BeginLevel(LevelConfiguration level)
@@ -134,6 +142,7 @@ namespace Supernova.Missions
             run = new MissionRun(
                 definition.TimeLimitSeconds,
                 definition.RequiredFunds);
+            InvalidateObjectiveCache();
             StartCoroutine(LoadWithFade(CaveSceneName));
             return true;
         }
@@ -141,7 +150,7 @@ namespace Supernova.Missions
         public void DeliverOre(int value)
         {
             run?.AddDeliveredValue(value);
-            SetPrompt("资源已回收  +" + Mathf.Max(0, value));
+            SetPrompt("COLLECTED  +" + Mathf.Max(0, value));
             RefreshObjective();
         }
 
@@ -156,13 +165,14 @@ namespace Supernova.Missions
 
         public void NotifyStoredValueChanged(int value)
         {
-            SetPrompt("CELL 仓储价值  $" + Mathf.Max(0, value));
+            SetPrompt("TOTAL STORED VALUE: $" + Mathf.Max(0, value));
             RefreshObjective();
         }
 
         public void SetPrompt(string message)
         {
-            if (promptText != null) promptText.text = message;
+            EnsureUi();
+            missionUi?.SetPrompt(message);
         }
 
         private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -174,20 +184,39 @@ namespace Supernova.Missions
         {
             if (!scene.IsValid() || scene.handle == configuredSceneHandle) return;
             configuredSceneHandle = scene.handle;
+            InvalidateObjectiveCache();
             EnsureUi();
-            resultPanel.SetActive(false);
+            missionUi.HideResult();
             caveSetup = false;
             extractionZone = null;
             if (scene.name == HomeSceneName) SetupHome();
             else if (scene.name == CaveSceneName)
-                SetPrompt("正在部署 CELL 与矿车…");
+            {
+                EnsureRunForDirectCaveEntry();
+                gameUi?.SetMissionTimeRemaining(run.TimeRemaining);
+                SetPrompt("");
+            }
+        }
+
+        private void EnsureRunForDirectCaveEntry()
+        {
+            if (run != null || definition == null)
+                return;
+
+            run = new MissionRun(
+                definition.TimeLimitSeconds,
+                definition.RequiredFunds);
+            InvalidateObjectiveCache();
         }
 
         private void SetupHome()
         {
             CreateCellTrigger(FindCell(), true);
-            objectiveText.text = "HOME · 飞船基地\n进入 CELL 降落舱开始第一关";
-            promptText.text = "商店已开放    余额  $" + Credits;
+            gameUi?.HideMissionTimer();
+            missionUi.SetObjective(
+                "SHIP BASE\n");
+            missionUi.SetPrompt(
+                "SHOP ONLINE    BALANCE: $" + Credits);
         }
 
         private void TrySetupCave()
@@ -233,7 +262,6 @@ namespace Supernova.Missions
                 levelDoors[i].SetStayOpenAfterFirstOpen(true);
             }
             caveSetup = true;
-            SetPrompt("用 MAGNET 搬运矿石 · 点击把手牵引矿车 · 回到 CELL 按 E 提前撤离");
             RefreshObjective();
         }
 
@@ -260,7 +288,7 @@ namespace Supernova.Missions
             if (!home)
             {
                 extractionZone = triggerObject.AddComponent<OreExtractionZone>();
-                extractionZone.Configure(this, OreUnitValue);
+                extractionZone.Configure(this);
             }
         }
 
@@ -286,30 +314,37 @@ namespace Supernova.Missions
 
         private void ShowResult()
         {
-            if (run == null || resultPanel.activeSelf) return;
+            EnsureUi();
+            if (run == null || missionUi.IsResultVisible) return;
             Time.timeScale = 0f;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
-            resultPanel.SetActive(true);
+            string message;
             switch (run.Outcome)
             {
                 case MissionOutcome.Success:
                     int reward = run.ExcessValue;
                     PlayerEconomy.AddCredits(reward);
-                    resultText.text = "任务完成\n\n已带回 $" + run.DeliveredValue
-                        + "\n超额资源归你所有  +$" + reward
-                        + "\n\n按 ENTER 返回 HOME";
+                    message = "MISSION COMPLETE"
+                        + "\n\nCOLLECTED $" + run.DeliveredValue
+                        + "\nBALANCE INCREASED $" + reward
+                        + "\n\nPRESS ENTER TO RETURN";
                     break;
                 case MissionOutcome.LostInCaves:
-                    resultText.text = "LOST IN CAVES\n\n撤离窗口已经关闭。"
-                        + "\n你迷失在矿洞深处。\n\n按 ENTER 返回 HOME";
+                    message = "MISSION FAILED"
+                        + "\n\nEVACUATION WINDOW CLOSED."
+                        + "\nYOU ARE LOST IN THE CAVES."
+                        + "\n\nPRESS ENTER TO RETURN";
                     break;
                 default:
-                    resultText.text = "任务失败\n\n你因没有开采足够的资源而被解雇了"
-                        + "\n已带回 $" + run.DeliveredValue + " / $" + run.RequiredValue
-                        + "\n\n按 ENTER 返回 HOME";
+                    message = "MISSION FAILED"
+                        + "\n\nINSUFFICIENT RESOURCES COLLECTED"
+                        + "\nCOLLECTED $" + run.DeliveredValue
+                        + " / $" + run.RequiredValue
+                        + "\n\nPRESS ENTER TO RETURN";
                     break;
             }
+            missionUi.ShowResult(message);
         }
 
         private void ReturnHome()
@@ -321,134 +356,132 @@ namespace Supernova.Missions
 
         private IEnumerator LoadWithFade(string sceneName)
         {
+            EnsureUi();
+            CanvasGroup fade = missionUi.SceneFade;
             transitioning = true;
-            if (!fade.gameObject.activeSelf)
+            try
             {
-                fade.alpha = 0f;
+                if (fade != null)
+                {
+                    if (!fade.gameObject.activeSelf)
+                        fade.alpha = 0f;
+                    fade.gameObject.SetActive(true);
+                    fade.blocksRaycasts = true;
+                    Canvas.ForceUpdateCanvases();
+                    yield return null;
+                    yield return FadeTo(
+                        fade,
+                        1f,
+                        missionUi.FadeOutSeconds);
+                }
+
+                yield return new WaitForEndOfFrame();
+                AsyncOperation operation = SceneManager.LoadSceneAsync(sceneName);
+                while (operation != null && !operation.isDone)
+                    yield return null;
+
+                EnsureUi();
+                CanvasGroup activeFade = missionUi.SceneFade;
+                if (activeFade != null)
+                {
+                    if (activeFade != fade)
+                    {
+                        activeFade.alpha = 1f;
+                        activeFade.gameObject.SetActive(true);
+                    }
+                    fade = activeFade;
+                    yield return FadeTo(
+                        fade,
+                        0f,
+                        missionUi.FadeInSeconds);
+                }
             }
-            fade.gameObject.SetActive(true);
-            fade.blocksRaycasts = true;
-            Canvas.ForceUpdateCanvases();
-            yield return null;
-            yield return FadeTo(1f, SceneFadeOutSeconds);
-            yield return new WaitForEndOfFrame();
-            AsyncOperation operation = SceneManager.LoadSceneAsync(sceneName);
-            while (operation != null && !operation.isDone) yield return null;
-            yield return FadeTo(0f, SceneFadeInSeconds);
-            fade.gameObject.SetActive(false);
-            transitioning = false;
+            finally
+            {
+                if (fade != null)
+                    fade.gameObject.SetActive(false);
+                transitioning = false;
+            }
         }
 
-        private IEnumerator FadeTo(float target, float duration)
+        private static IEnumerator FadeTo(
+            CanvasGroup fade,
+            float target,
+            float duration)
         {
             float start = fade.alpha;
             float elapsed = 0f;
-            while (elapsed < duration)
+            while (fade != null && elapsed < duration)
             {
                 elapsed += Time.unscaledDeltaTime;
                 fade.alpha = Mathf.Lerp(start, target, Mathf.Clamp01(elapsed / duration));
                 yield return null;
             }
-            fade.alpha = target;
+            if (fade != null)
+                fade.alpha = target;
         }
 
         private void RefreshObjective()
         {
-            if (run == null || objectiveText == null) return;
+            if (run == null) return;
+            EnsureUi();
+            if (missionUi == null) return;
             int seconds = Mathf.CeilToInt(run.TimeRemaining);
-            objectiveText.text = "LEVEL 01 · " + MissionName
-                + "\n撤离倒计时  " + (seconds / 60).ToString("00") + ":"
-                + (seconds % 60).ToString("00")
-                + "\nCELL 仓储  $"
-                + (extractionZone != null ? extractionZone.CurrentStoredValue : 0)
-                + " / $" + run.RequiredValue;
+            if (seconds != displayedObjectiveSeconds)
+                gameUi?.SetMissionTimeRemaining(run.TimeRemaining);
+            int storedValue = extractionZone != null
+                ? extractionZone.CurrentStoredValue
+                : 0;
+            int requiredValue = run.RequiredValue;
+            string missionName = MissionName;
+            if (seconds == displayedObjectiveSeconds
+                && storedValue == displayedObjectiveStoredValue
+                && requiredValue == displayedObjectiveRequiredValue
+                && missionName == displayedObjectiveMissionName)
+            {
+                return;
+            }
+
+            displayedObjectiveSeconds = seconds;
+            displayedObjectiveStoredValue = storedValue;
+            displayedObjectiveRequiredValue = requiredValue;
+            displayedObjectiveMissionName = missionName;
+            missionUi.SetObjective("LEVEL 01 · " + missionName
+                + "\nCOLLECTED  $"
+                + storedValue
+                + " / $" + requiredValue);
+        }
+
+        private void InvalidateObjectiveCache()
+        {
+            displayedObjectiveSeconds = int.MinValue;
+            displayedObjectiveStoredValue = int.MinValue;
+            displayedObjectiveRequiredValue = int.MinValue;
+            displayedObjectiveMissionName = null;
         }
 
         private void EnsureUi()
         {
-            if (canvas != null) return;
-            GameObject canvasObject = new GameObject(
-                "Mission UI", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-            canvasObject.transform.SetParent(transform, false);
-            canvas = canvasObject.GetComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 900;
-            CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            if (missionUi != null) return;
 
-            objectiveText = CreateText("Objective", canvas.transform, 28, TextAnchor.UpperLeft);
-            SetRect(objectiveText.rectTransform, new Vector2(30f, -30f),
-                new Vector2(600f, 160f), new Vector2(0f, 1f));
-            promptText = CreateText("Prompt", canvas.transform, 25, TextAnchor.LowerCenter);
-            SetRect(promptText.rectTransform, new Vector2(0f, 35f),
-                new Vector2(1100f, 70f), new Vector2(0.5f, 0f));
+            gameUi = GetComponentInChildren<GameHudController>(true);
+            if (gameUi == null)
+            {
+                GameObject gameUiObject = new GameObject("Game UI");
+                gameUiObject.transform.SetParent(transform, false);
+                gameUi = gameUiObject.AddComponent<GameHudController>();
+            }
 
-            resultPanel = new GameObject("Mission Result", typeof(Image));
-            resultPanel.transform.SetParent(canvas.transform, false);
-            resultPanel.GetComponent<Image>().color = new Color(0.015f, 0.025f, 0.035f, 0.96f);
-            Stretch(resultPanel.GetComponent<RectTransform>());
-            resultText = CreateText("Result Text", resultPanel.transform, 42, TextAnchor.MiddleCenter);
-            Stretch(resultText.rectTransform);
-            resultText.rectTransform.offsetMin = new Vector2(200f, 100f);
-            resultText.rectTransform.offsetMax = new Vector2(-200f, -100f);
-            resultPanel.SetActive(false);
-
-            GameObject fadeObject = new GameObject("Scene Fade", typeof(Image), typeof(CanvasGroup));
-            fadeObject.transform.SetParent(canvas.transform, false);
-            fadeObject.GetComponent<Image>().color = Color.black;
-            Stretch(fadeObject.GetComponent<RectTransform>());
-            fade = fadeObject.GetComponent<CanvasGroup>();
-            fade.alpha = 0f;
-            fade.blocksRaycasts = true;
-            fadeObject.SetActive(false);
+            gameUi.RegisterAsRuntimeHud();
+            missionUi = gameUi.GetOrCreateMissionView();
+            if (missionUi == null)
+            {
+                Debug.LogError(
+                    "The unified game UI did not provide its mission view.",
+                    gameUi);
+            }
         }
 
-        private static Text CreateText(string name, Transform parent, int size, TextAnchor alignment)
-        {
-            GameObject textObject = new GameObject(name, typeof(Text), typeof(Outline));
-            textObject.transform.SetParent(parent, false);
-            Text text = textObject.GetComponent<Text>();
-            text.font = GetUiFont();
-            text.fontSize = size;
-            text.alignment = alignment;
-            text.color = new Color(0.82f, 0.96f, 1f);
-            text.horizontalOverflow = HorizontalWrapMode.Wrap;
-            text.verticalOverflow = VerticalWrapMode.Overflow;
-            Outline outline = textObject.GetComponent<Outline>();
-            outline.effectColor = new Color(0f, 0f, 0f, 0.8f);
-            outline.effectDistance = new Vector2(2f, -2f);
-            return text;
-        }
-
-        private static Font GetUiFont()
-        {
-            if (missionFont != null) return missionFont;
-            missionFont = GameAssetCatalog.Current != null
-                ? GameAssetCatalog.Current.Missions.UiFont
-                : null;
-            return missionFont;
-        }
-
-        private static void SetRect(
-            RectTransform rect, Vector2 position, Vector2 size, Vector2 pivot)
-        {
-            rect.anchorMin = pivot;
-            rect.anchorMax = pivot;
-            rect.pivot = pivot;
-            rect.anchoredPosition = position;
-            rect.sizeDelta = size;
-        }
-
-        private static void Stretch(RectTransform rect)
-        {
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-        }
-
-        private int OreUnitValue => definition != null ? definition.OreUnitValue : 1;
         private string MissionName => definition != null
             ? definition.DisplayName
             : string.Empty;

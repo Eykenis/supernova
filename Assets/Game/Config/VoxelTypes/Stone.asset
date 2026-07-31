@@ -15,4 +15,4 @@ MonoBehaviour:
   type: 2
   displayName: Stone
   durability: 1
-  material: {fileID: 0}
+  material: {fileID: 2100000, guid: 4fb96bd1bb811f14ba2851e36c6b13f0, type: 2}

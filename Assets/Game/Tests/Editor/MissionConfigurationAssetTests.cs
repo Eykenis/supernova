@@ -37,7 +37,6 @@ namespace Supernova.Tests
             Assert.That(level.HasCompleteGenerationConfiguration, Is.True);
             Assert.That(level.TimeLimitSeconds, Is.EqualTo(300f));
             Assert.That(level.RequiredFunds, Is.EqualTo(100));
-            Assert.That(level.OreUnitValue, Is.EqualTo(10));
             Assert.That(level.HomeSceneName, Is.EqualTo("Home"));
             Assert.That(level.CaveSceneName, Is.EqualTo("InfiniteCaves"));
         }

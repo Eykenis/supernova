@@ -50,6 +50,10 @@ public static class GameAssetCatalogBuilder
             serialized,
             "ui.mainMenuPrefab",
             ProjectAssetPaths.Prefabs.MainMenu);
+        SetReference<UiDesignTokens>(
+            serialized,
+            "ui.designTokens",
+            ProjectAssetPaths.Config.UiDesignTokens);
         SetReference<PausePortraitSettings>(
             serialized,
             "ui.pausePortraitSettings",

@@ -3,16 +3,19 @@ using UnityEngine;
 namespace Supernova.Gameplay
 {
     /// <summary>
-    /// Toggles cart towing when the player clicks a CartHandle. Cart towing is
-    /// available independently of the selected tool and preserves the cart's
-    /// world-space offset and orientation relative to the moving player.
+    /// Toggles cart towing when the Cart tool is enabled and the player clicks
+    /// a CartHandle. The tow preserves the cart's world-space offset and
+    /// orientation relative to the moving player.
     /// </summary>
     [DefaultExecutionOrder(-300)]
     [DisallowMultipleComponent]
     public sealed class FirstPersonCartAttractor : MonoBehaviour
     {
+        public const float AttractionModuleUpgradeForce = 400f;
+
         [Header("Interaction")]
         [SerializeField] private bool deviceEnabled = true;
+        [SerializeField] private bool cartTowEnabled;
         [SerializeField] private PerspectiveCameraController perspectiveCamera;
         [SerializeField] private Camera viewCamera;
         [SerializeField] private Transform playerRoot;
@@ -29,6 +32,7 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0f)] private float scrollDistancePerStep = 0.35f;
         [Tooltip("Maximum attraction force in newtons. Rigidbody mass determines acceleration.")]
         [SerializeField, Min(0f)] private float attractionForce = 800f;
+        [SerializeField, Min(0f)] private float attractionForceUpgrade;
         [Tooltip("Prevents very light objects from being launched by the magnet.")]
         [SerializeField, Min(0f)] private float maximumAttractionAcceleration = 40f;
         [Tooltip("Position spring strength. Lower force is used as the object approaches the hold point.")]
@@ -59,11 +63,13 @@ namespace Supernova.Gameplay
         private Quaternion heldTargetRotation;
         private bool hasHeldTargetRotation;
         private Vector3 cartTowWorldOffset;
+        private Vector3 cartHandleLocalDirection;
         private float magnetHeightOffset;
         private float magnetPickupHeight;
         private int cartTowClickConsumedFrame = -1;
 
         public bool DeviceEnabled => deviceEnabled;
+        public bool CartTowEnabled => cartTowEnabled;
         public bool IsHolding => heldBody != null;
         public bool IsTowingCart => heldHandle != null && heldBody != null;
         public bool IsRotatingHeldObject => IsHolding
@@ -81,11 +87,26 @@ namespace Supernova.Gameplay
         public ValuableObject HeldValuableObject => heldValuableObject;
         public bool IsActionActive => magnetActionActive;
         public float HoldDistance => holdDistance;
-        public float AttractionForce => attractionForce;
+        public float BaseAttractionForce => Mathf.Max(0f, attractionForce);
+        public float AttractionForce =>
+            BaseAttractionForce + Mathf.Max(0f, attractionForceUpgrade);
         public float CartHandleAcquisitionDistance => cartHandleAcquisitionDistance;
         public bool CanOperate => deviceEnabled && CanOperateInFirstPerson;
+        public bool CanTowCart => cartTowEnabled && CanOperateInFirstPerson;
         public bool ConsumesPrimaryAction => isActiveAndEnabled
-            && CanOperate;
+            && (CanOperate || CanTowCart);
+
+        public void SetAttractionForceUpgrade(float forceBonus)
+        {
+            attractionForceUpgrade = Mathf.Max(0f, forceBonus);
+        }
+
+        public void SetCartTowEnabled(bool value)
+        {
+            cartTowEnabled = value;
+            if (!cartTowEnabled && IsTowingCart)
+                EndHandleTow();
+        }
 
         private void Awake()
         {
@@ -129,7 +150,7 @@ namespace Supernova.Gameplay
         public bool BeginHandleTow()
         {
             ResolveReferences();
-            if (!isActiveAndEnabled || !CanOperateInFirstPerson)
+            if (!isActiveAndEnabled || !CanTowCart)
             {
                 return false;
             }
@@ -236,7 +257,7 @@ namespace Supernova.Gameplay
                 return;
             }
             bool canContinue = IsTowingCart
-                ? CanOperateInFirstPerson
+                ? CanTowCart
                 : CanOperate;
             if (!canContinue || heldBody.isKinematic)
             {
@@ -260,22 +281,28 @@ namespace Supernova.Gameplay
                 ? playerController.velocity
                 : Vector3.zero;
             Vector3 bodyVelocity = heldBody.velocity;
-            Vector3 force = CalculateAttractionForce(
-                error,
-                targetVelocity - bodyVelocity);
-            if (!IsTowingCart)
-            {
-                force = Vector3.ClampMagnitude(
-                    force,
-                    heldBody.mass * Mathf.Max(0f, maximumAttractionAcceleration));
-                force = LimitMagnetLiftForce(
-                    force,
-                    heldBody.worldCenterOfMass.y);
-            }
+            Vector3 relativeVelocity = targetVelocity - bodyVelocity;
+            Vector3 force = IsTowingCart
+                ? CalculateAttractionForce(error, relativeVelocity)
+                : CalculateMagnetAttractionForce(
+                    error,
+                    relativeVelocity,
+                    heldBody.worldCenterOfMass.y,
+                    heldBody.mass);
             heldBody.AddForceAtPosition(force, handlePosition, ForceMode.Force);
 
             if (hasHeldTargetRotation)
             {
+                if (IsTowingCart)
+                {
+                    Vector3 directionToPlayer =
+                        playerRoot.position - heldBody.worldCenterOfMass;
+                    heldTargetRotation = CalculateCartTowTargetRotation(
+                        heldTargetRotation,
+                        cartHandleLocalDirection,
+                        directionToPlayer);
+                }
+
                 heldBody.AddTorque(
                     CalculateOrientationTorque(
                         heldBody.rotation,
@@ -288,7 +315,7 @@ namespace Supernova.Gameplay
             Vector3 positionError,
             Vector3 relativeVelocity)
         {
-            float forceLimit = Mathf.Max(0f, attractionForce);
+            float forceLimit = AttractionForce;
             if (forceLimit <= 0f)
             {
                 return Vector3.zero;
@@ -297,6 +324,66 @@ namespace Supernova.Gameplay
             Vector3 force = positionError * Mathf.Max(0f, positionSpring);
             force += relativeVelocity * Mathf.Max(0f, forceDamping);
             return Vector3.ClampMagnitude(force, forceLimit);
+        }
+
+        private Quaternion CalculateCartTowTargetRotation(
+            Quaternion currentTargetRotation,
+            Vector3 handleLocalDirection,
+            Vector3 directionToPlayer)
+        {
+            Vector3 currentHandleDirection =
+                currentTargetRotation * handleLocalDirection;
+            currentHandleDirection =
+                Vector3.ProjectOnPlane(currentHandleDirection, Vector3.up);
+            directionToPlayer =
+                Vector3.ProjectOnPlane(directionToPlayer, Vector3.up);
+            if (currentHandleDirection.sqrMagnitude < 0.0001f
+                || directionToPlayer.sqrMagnitude < 0.0001f)
+            {
+                return currentTargetRotation;
+            }
+
+            float yaw = Vector3.SignedAngle(
+                currentHandleDirection,
+                directionToPlayer,
+                Vector3.up);
+            return Quaternion.AngleAxis(yaw, Vector3.up)
+                * currentTargetRotation;
+        }
+
+        private Vector3 CalculateMagnetAttractionForce(
+            Vector3 positionError,
+            Vector3 relativeVelocity,
+            float currentBodyHeight,
+            float bodyMass)
+        {
+            float spring = Mathf.Max(0f, positionSpring);
+            float damping = Mathf.Max(0f, forceDamping);
+            Vector3 force = positionError * spring
+                + relativeVelocity * damping;
+            float maximumLiftForce = CalculateMaximumLiftForce(
+                currentBodyHeight);
+            float requestedVerticalSpring = positionError.y * spring;
+            if (requestedVerticalSpring > maximumLiftForce)
+            {
+                // Once lift is saturated, normal damping would be clipped away by
+                // the lift cap. Retain only the part that removes upward kinetic
+                // energy, and never let damping exceed the available lift while
+                // the object is falling.
+                float upwardMotionDamping = Mathf.Min(
+                    0f,
+                    relativeVelocity.y * damping);
+                force.y = maximumLiftForce + upwardMotionDamping;
+            }
+
+            force = Vector3.ClampMagnitude(
+                force,
+                AttractionForce);
+            force = Vector3.ClampMagnitude(
+                force,
+                Mathf.Max(0f, bodyMass)
+                    * Mathf.Max(0f, maximumAttractionAcceleration));
+            return LimitMagnetLiftForce(force, currentBodyHeight);
         }
 
         private Vector3 LimitMagnetLiftForce(
@@ -377,6 +464,7 @@ namespace Supernova.Gameplay
             heldBody = null;
             heldValuableObject = null;
             cartTowWorldOffset = Vector3.zero;
+            cartHandleLocalDirection = Vector3.zero;
             magnetHeightOffset = 0f;
             magnetPickupHeight = 0f;
         }
@@ -440,6 +528,11 @@ namespace Supernova.Gameplay
             hasHeldTargetRotation = true;
             cartTowWorldOffset =
                 focusedHandle.AttachmentPoint.position - playerRoot.position;
+            Vector3 handleDirection =
+                focusedHandle.AttachmentPoint.position
+                - focusedBody.worldCenterOfMass;
+            cartHandleLocalDirection =
+                Quaternion.Inverse(focusedBody.rotation) * handleDirection;
             focusedBody.WakeUp();
             return true;
         }
@@ -554,6 +647,8 @@ namespace Supernova.Gameplay
             holdDistance = Mathf.Clamp(holdDistance, minimumHoldDistance, maximumHoldDistance);
             scrollDistancePerStep = Mathf.Max(0f, scrollDistancePerStep);
             attractionForce = Mathf.Max(0f, attractionForce);
+            attractionForceUpgrade =
+                Mathf.Max(0f, attractionForceUpgrade);
             maximumAttractionAcceleration =
                 Mathf.Max(0f, maximumAttractionAcceleration);
             positionSpring = Mathf.Max(0f, positionSpring);

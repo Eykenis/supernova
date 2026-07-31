@@ -18,6 +18,7 @@ MonoBehaviour:
   ui:
     mainMenuPrefab: {fileID: 6511628367817102686, guid: d725abd71f6ceb24b8a0f1cd750651c6,
       type: 3}
+    designTokens: {fileID: 11400000, guid: f9e24d221d6abf146a14516bf46287b9, type: 2}
     pausePortraitSettings: {fileID: 11400000, guid: 710d17134a320164fa6a2b6bc9d5c195,
       type: 2}
     pauseBodyMaterial: {fileID: 2100000, guid: 64fdf5e060ce1a64da8714edd5c7a4ff, type: 2}

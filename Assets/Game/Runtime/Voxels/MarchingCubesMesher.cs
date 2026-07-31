@@ -314,9 +314,9 @@ namespace Supernova.Voxels
         // boundary, the two surfaces are moved slightly toward their owning samples,
         // leaving a small seam instead of two coincident, z-fighting surfaces.
         private const float TypeBoundaryInset = 0.05f;
-        private static VoxelSample[] sampleCache;
-        private static readonly List<VoxelTypeId> ActiveTypes = new List<VoxelTypeId>();
-        private static readonly HashSet<VoxelTypeId> ActiveTypeSet = new HashSet<VoxelTypeId>();
+        [ThreadStatic] private static VoxelSample[] sampleCache;
+        [ThreadStatic] private static List<VoxelTypeId> activeTypes;
+        [ThreadStatic] private static HashSet<VoxelTypeId> activeTypeSet;
 
         public static VoxelMeshData Build(
             VoxelVolume volume,
@@ -480,6 +480,192 @@ namespace Supernova.Voxels
                 vertexPlacement);
         }
 
+        internal static int GetCapturedColumnSectionSampleCount(int height)
+        {
+            if (height <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(height));
+            }
+
+            return (VoxelColumnChunkData.Width + 1)
+                * (height + 1)
+                * (VoxelColumnChunkData.Depth + 1);
+        }
+
+        internal static void CaptureColumnSectionSamples(
+            InfiniteVoxelWorld world,
+            Vector3Int columnCoordinate,
+            int startY,
+            int height,
+            float isoLevel,
+            VoxelSample[] samples,
+            VoxelTypeId? outsideType = null,
+            VoxelTypeId? verticalOutsideType = null)
+        {
+            if (world == null)
+            {
+                throw new ArgumentNullException(nameof(world));
+            }
+            ValidateColumnSection(startY, height);
+            int requiredSampleCount = GetCapturedColumnSectionSampleCount(height);
+            if (samples == null || samples.Length < requiredSampleCount)
+            {
+                throw new ArgumentException(
+                    $"Sample buffer must contain at least {requiredSampleCount} entries.",
+                    nameof(samples));
+            }
+
+            int sampleCountX = VoxelColumnChunkData.Width + 1;
+            int sampleCountY = height + 1;
+            int sampleCountZ = VoxelColumnChunkData.Depth + 1;
+            float outsideDensity = isoLevel + 1f;
+            VoxelColumnChunkData current = GetColumnDataOrNull(
+                world,
+                columnCoordinate.x,
+                columnCoordinate.z);
+            VoxelColumnChunkData positiveX = GetColumnDataOrNull(
+                world,
+                columnCoordinate.x + 1,
+                columnCoordinate.z);
+            VoxelColumnChunkData positiveZ = GetColumnDataOrNull(
+                world,
+                columnCoordinate.x,
+                columnCoordinate.z + 1);
+            VoxelColumnChunkData positiveXPositiveZ = GetColumnDataOrNull(
+                world,
+                columnCoordinate.x + 1,
+                columnCoordinate.z + 1);
+
+            for (int z = 0; z < sampleCountZ; z++)
+            {
+                bool crossesPositiveZBoundary = z == VoxelColumnChunkData.Depth;
+                int localZ = crossesPositiveZBoundary ? 0 : z;
+                VoxelColumnChunkData rowColumn = crossesPositiveZBoundary
+                    ? positiveZ
+                    : current;
+                VoxelColumnChunkData boundaryColumn = crossesPositiveZBoundary
+                    ? positiveXPositiveZ
+                    : positiveX;
+                for (int y = 0; y < sampleCountY; y++)
+                {
+                    int worldY = startY + y;
+                    bool worldYInBounds = InfiniteVoxelWorld.IsWorldYInBounds(worldY);
+                    VoxelTypeId fallbackType = worldYInBounds
+                        ? outsideType ?? VoxelTypeId.Default
+                        : verticalOutsideType ?? outsideType ?? VoxelTypeId.Default;
+                    var outsideSample = new VoxelSample(
+                        outsideDensity,
+                        fallbackType);
+                    int rowStart = sampleCountX * (y + sampleCountY * z);
+                    if (!worldYInBounds)
+                    {
+                        FillSampleRange(
+                            samples,
+                            rowStart,
+                            sampleCountX,
+                            outsideSample);
+                        continue;
+                    }
+
+                    if (rowColumn != null)
+                    {
+                        rowColumn.CopySampleRowTo(
+                            worldY,
+                            localZ,
+                            samples,
+                            rowStart);
+                    }
+                    else
+                    {
+                        FillSampleRange(
+                            samples,
+                            rowStart,
+                            VoxelColumnChunkData.Width,
+                            outsideSample);
+                    }
+
+                    samples[rowStart + VoxelColumnChunkData.Width] =
+                        boundaryColumn != null
+                            ? boundaryColumn.GetSampleUnchecked(0, worldY, localZ)
+                            : outsideSample;
+                }
+            }
+        }
+
+        private static VoxelColumnChunkData GetColumnDataOrNull(
+            InfiniteVoxelWorld world,
+            int columnX,
+            int columnZ)
+        {
+            return world.TryGetChunk(
+                new Vector2Int(columnX, columnZ),
+                out InfiniteVoxelChunk chunk)
+                    ? chunk.Data
+                    : null;
+        }
+
+        private static void FillSampleRange(
+            VoxelSample[] samples,
+            int startIndex,
+            int count,
+            VoxelSample sample)
+        {
+            int endIndex = startIndex + count;
+            for (int index = startIndex; index < endIndex; index++)
+            {
+                samples[index] = sample;
+            }
+        }
+
+        internal static VoxelMeshData BuildCapturedColumnSection(
+            VoxelSample[] samples,
+            int height,
+            float isoLevel,
+            float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement)
+        {
+            if (samples == null)
+            {
+                throw new ArgumentNullException(nameof(samples));
+            }
+            if (voxelSize <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(voxelSize),
+                    "Voxel size must be positive.");
+            }
+
+            int expectedSampleCount = GetCapturedColumnSectionSampleCount(height);
+            if (samples.Length < expectedSampleCount)
+            {
+                throw new ArgumentException(
+                    "Captured sample count does not match the requested section height.",
+                    nameof(samples));
+            }
+
+            return BuildSampledGrid(
+                samples,
+                VoxelColumnChunkData.Width,
+                height,
+                VoxelColumnChunkData.Depth,
+                isoLevel,
+                voxelSize,
+                vertexPlacement);
+        }
+
+        private static void ValidateColumnSection(int startY, int height)
+        {
+            if (startY < 0
+                || height <= 0
+                || startY + height > VoxelColumnChunkData.Height)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(startY),
+                    $"Mesh section {startY}..{startY + height} is outside "
+                    + $"0..{VoxelColumnChunkData.Height}.");
+            }
+        }
+
         /// <summary>
         /// Rebuilds one connected component of a voxel type in terrain-local world
         /// coordinates. The same polygonisation and vertex placement as Chunk meshes
@@ -581,8 +767,6 @@ namespace Supernova.Voxels
                     "Voxel size must be positive.");
             }
 
-            var meshData = new VoxelMeshData();
-            var edgeVertexIndices = new int[12];
             int sampleCountX = cellCountX + 1;
             int sampleCountY = cellCountY + 1;
             int sampleCountZ = cellCountZ + 1;
@@ -592,8 +776,6 @@ namespace Supernova.Voxels
                 sampleCache = new VoxelSample[sampleCount];
             }
 
-            ActiveTypes.Clear();
-            ActiveTypeSet.Clear();
             for (int z = 0; z < sampleCountZ; z++)
             {
                 for (int y = 0; y < sampleCountY; y++)
@@ -601,14 +783,63 @@ namespace Supernova.Voxels
                     int rowStart = sampleCountX * (y + sampleCountY * z);
                     for (int x = 0; x < sampleCountX; x++)
                     {
-                        VoxelSample voxel = sample(x, y, z);
-                        sampleCache[rowStart + x] = voxel;
-                        if (!requestedType.HasValue
-                            && voxel.IsSolid(isoLevel)
-                            && ActiveTypeSet.Add(voxel.Type))
-                        {
-                            ActiveTypes.Add(voxel.Type);
-                        }
+                        sampleCache[rowStart + x] = sample(x, y, z);
+                    }
+                }
+            }
+
+            return BuildSampledGrid(
+                sampleCache,
+                cellCountX,
+                cellCountY,
+                cellCountZ,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                requestedType,
+                vertexOffset);
+        }
+
+        private static VoxelMeshData BuildSampledGrid(
+            VoxelSample[] samples,
+            int cellCountX,
+            int cellCountY,
+            int cellCountZ,
+            float isoLevel,
+            float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement,
+            VoxelTypeId? requestedType = null,
+            Vector3 vertexOffset = default)
+        {
+            var meshData = new VoxelMeshData();
+            var edgePositions = new Vector3[12];
+            var edgeSmoothingGroups = new int[12];
+            var projectedEdgeVertexIndices =
+                new int[VoxelMeshData.ProjectedEdgeCacheSize];
+            int sampleCountX = cellCountX + 1;
+            int sampleCountY = cellCountY + 1;
+            int sampleCountZ = cellCountZ + 1;
+
+            if (activeTypes == null)
+            {
+                activeTypes = new List<VoxelTypeId>();
+            }
+            if (activeTypeSet == null)
+            {
+                activeTypeSet = new HashSet<VoxelTypeId>();
+            }
+            activeTypes.Clear();
+            activeTypeSet.Clear();
+            if (!requestedType.HasValue)
+            {
+                int sampleCount = sampleCountX * sampleCountY * sampleCountZ;
+                for (int i = 0; i < sampleCount; i++)
+                {
+                    VoxelSample voxel = samples[i];
+                    if (voxel.IsSolid(isoLevel)
+                        && activeTypeSet.Add(voxel.Type))
+                    {
+                        activeTypes.Add(voxel.Type);
                     }
                 }
             }
@@ -622,7 +853,7 @@ namespace Supernova.Voxels
                         for (int x = 0; x < cellCountX; x++)
                         {
                             PolygoniseCell(
-                                sampleCache,
+                                samples,
                                 sampleCountX,
                                 sampleCountY,
                                 x,
@@ -633,7 +864,9 @@ namespace Supernova.Voxels
                                 voxelSize,
                                 vertexPlacement,
                                 vertexOffset,
-                                edgeVertexIndices,
+                                edgePositions,
+                                edgeSmoothingGroups,
+                                projectedEdgeVertexIndices,
                                 meshData);
                         }
                     }
@@ -641,8 +874,8 @@ namespace Supernova.Voxels
             }
             else
             {
-                ActiveTypes.Sort();
-                foreach (VoxelTypeId type in ActiveTypes)
+                activeTypes.Sort();
+                foreach (VoxelTypeId type in activeTypes)
                 {
                     for (int z = 0; z < cellCountZ; z++)
                     {
@@ -651,7 +884,7 @@ namespace Supernova.Voxels
                             for (int x = 0; x < cellCountX; x++)
                             {
                                 PolygoniseCell(
-                                    sampleCache,
+                                    samples,
                                     sampleCountX,
                                     sampleCountY,
                                     x,
@@ -662,7 +895,9 @@ namespace Supernova.Voxels
                                     voxelSize,
                                     vertexPlacement,
                                     vertexOffset,
-                                    edgeVertexIndices,
+                                    edgePositions,
+                                    edgeSmoothingGroups,
+                                    projectedEdgeVertexIndices,
                                     meshData);
                             }
                         }
@@ -670,6 +905,7 @@ namespace Supernova.Voxels
                 }
             }
 
+            meshData.PrepareForUpload();
             return meshData;
         }
 
@@ -687,7 +923,9 @@ namespace Supernova.Voxels
             float voxelSize,
             MarchingCubesVertexPlacement vertexPlacement,
             Vector3 vertexOffset,
-            int[] edgeVertexIndices,
+            Vector3[] edgePositions,
+            int[] edgeSmoothingGroups,
+            int[] projectedEdgeVertexIndices,
             VoxelMeshData output)
         {
             int cubeIndex = 0;
@@ -712,42 +950,121 @@ namespace Supernova.Voxels
                 return;
             }
 
-            for (int edge = 0; edge < edgeVertexIndices.Length; edge++)
+            for (int edge = 0; edge < edgeSmoothingGroups.Length; edge++)
             {
-                edgeVertexIndices[edge] = -1;
+                edgeSmoothingGroups[edge] = -1;
+            }
+            for (int vertex = 0; vertex < projectedEdgeVertexIndices.Length; vertex++)
+            {
+                projectedEdgeVertexIndices[vertex] = -1;
             }
 
             Vector3 cellOrigin = vertexOffset
                 + new Vector3(cellX, cellY, cellZ) * voxelSize;
-            for (int tableIndex = 0; tableIndex < 16; tableIndex++)
+            for (int tableIndex = 0; tableIndex < 16; tableIndex += 3)
             {
-                int edge = TriangleTable[cubeIndex, tableIndex];
-                if (edge < 0)
+                int firstEdge = TriangleTable[cubeIndex, tableIndex];
+                if (firstEdge < 0)
                 {
                     break;
                 }
 
-                int vertexIndex = edgeVertexIndices[edge];
-                if (vertexIndex < 0)
-                {
-                    vertexIndex = output.Vertices.Count;
-                    output.Vertices.Add(
-                        cellOrigin + GetEdgePosition(
-                            samples,
-                            sampleCountX,
-                            sampleCountY,
-                            cellX,
-                            cellY,
-                            cellZ,
-                            edge,
-                            targetType,
-                            isoLevel,
-                            vertexPlacement) * voxelSize);
-                    edgeVertexIndices[edge] = vertexIndex;
-                }
+                int secondEdge = TriangleTable[cubeIndex, tableIndex + 1];
+                int thirdEdge = TriangleTable[cubeIndex, tableIndex + 2];
+                PrepareEdge(
+                    samples,
+                    sampleCountX,
+                    sampleCountY,
+                    cellX,
+                    cellY,
+                    cellZ,
+                    firstEdge,
+                    targetType,
+                    isoLevel,
+                    voxelSize,
+                    vertexPlacement,
+                    cellOrigin,
+                    edgePositions,
+                    edgeSmoothingGroups,
+                    output);
+                PrepareEdge(
+                    samples,
+                    sampleCountX,
+                    sampleCountY,
+                    cellX,
+                    cellY,
+                    cellZ,
+                    secondEdge,
+                    targetType,
+                    isoLevel,
+                    voxelSize,
+                    vertexPlacement,
+                    cellOrigin,
+                    edgePositions,
+                    edgeSmoothingGroups,
+                    output);
+                PrepareEdge(
+                    samples,
+                    sampleCountX,
+                    sampleCountY,
+                    cellX,
+                    cellY,
+                    cellZ,
+                    thirdEdge,
+                    targetType,
+                    isoLevel,
+                    voxelSize,
+                    vertexPlacement,
+                    cellOrigin,
+                    edgePositions,
+                    edgeSmoothingGroups,
+                    output);
 
-                output.AddTriangleIndex(targetType, vertexIndex);
+                output.AddFaceProjectedTriangle(
+                    targetType,
+                    firstEdge,
+                    secondEdge,
+                    thirdEdge,
+                    edgePositions,
+                    edgeSmoothingGroups,
+                    projectedEdgeVertexIndices);
             }
+        }
+
+        private static void PrepareEdge(
+            VoxelSample[] samples,
+            int sampleCountX,
+            int sampleCountY,
+            int cellX,
+            int cellY,
+            int cellZ,
+            int edge,
+            VoxelTypeId targetType,
+            float isoLevel,
+            float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement,
+            Vector3 cellOrigin,
+            Vector3[] edgePositions,
+            int[] edgeSmoothingGroups,
+            VoxelMeshData output)
+        {
+            if (edgeSmoothingGroups[edge] >= 0)
+            {
+                return;
+            }
+
+            edgePositions[edge] = cellOrigin + GetEdgePosition(
+                samples,
+                sampleCountX,
+                sampleCountY,
+                cellX,
+                cellY,
+                cellZ,
+                edge,
+                targetType,
+                isoLevel,
+                vertexPlacement) * voxelSize;
+            edgeSmoothingGroups[edge] = output.CreateSmoothingGroup();
         }
 
         private static Vector3 GetEdgePosition(

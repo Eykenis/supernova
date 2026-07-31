@@ -57,10 +57,12 @@ namespace Supernova.Gameplay
         }
 
         // Collision impulse is divided by this object's mass before damage is
-        // evaluated. The resulting specific impulse is approximately the
-        // collision-induced velocity change in metres per second.
-        public const float DefaultMinimumDamageImpulse = 1f;
-        public const float DefaultValueLossPercentagePerSquaredImpulse = 0.03f;
+        // evaluated. The resulting specific impulse approximates the velocity
+        // change caused by the collision.
+        public const float DefaultMinimumDamageImpulse =
+            CollisionImpulseDamage.DefaultMinimumDamageImpulse;
+        public const float DefaultValueLossPercentagePerSquaredImpulse =
+            CollisionImpulseDamage.DefaultDamagePercentagePerSquaredImpulse;
 
         [SerializeField, Min(0)] private int initialValue;
         [SerializeField, Min(0)] private int currentValue;
@@ -134,16 +136,21 @@ namespace Supernova.Gameplay
                 return 0;
             }
 
+            float absoluteImpulseMagnitude = Mathf.Max(0f, impulseMagnitude);
             Rigidbody body = GetComponent<Rigidbody>();
             float mass = body != null ? Mathf.Max(0.0001f, body.mass) : 1f;
-            float specificImpulseMagnitude =
-                Mathf.Max(0f, impulseMagnitude) / mass;
+            float damagingMassNormalizedImpulse =
+                CollisionImpulseDamage.CalculateDamagingSpecificImpulse(
+                    absoluteImpulseMagnitude,
+                    MinimumDamageImpulse,
+                    mass);
             int lostValue = CalculateValueLoss(
                 InitialValue,
-                specificImpulseMagnitude,
+                absoluteImpulseMagnitude,
                 Fragility,
                 MinimumDamageImpulse,
-                ValueLossPercentagePerSquaredImpulse);
+                ValueLossPercentagePerSquaredImpulse,
+                mass);
             if (lostValue <= 0)
             {
                 return 0;
@@ -161,7 +168,7 @@ namespace Supernova.Gameplay
             ValueLost?.Invoke(actualLoss, collisionPoint);
             if (currentValue == 0)
             {
-                Break(collisionPoint, specificImpulseMagnitude);
+                Break(collisionPoint, damagingMassNormalizedImpulse);
             }
             return actualLoss;
         }
@@ -188,27 +195,36 @@ namespace Supernova.Gameplay
 
         public static int CalculateValueLoss(
             int objectInitialValue,
-            float specificImpulseMagnitude,
+            float absoluteImpulseMagnitude,
             float objectFragility,
             float damageImpulseThreshold = DefaultMinimumDamageImpulse,
             float lossPercentagePerSquaredImpulse =
-                DefaultValueLossPercentagePerSquaredImpulse)
+                DefaultValueLossPercentagePerSquaredImpulse,
+            float objectMass = 1f)
         {
-            float damagingImpulse = Mathf.Max(
-                0f,
-                specificImpulseMagnitude
-                    - Mathf.Max(0f, damageImpulseThreshold));
-            float loss = damagingImpulse
-                * damagingImpulse
-                * Mathf.Clamp01(objectFragility)
-                * Mathf.Max(0f, lossPercentagePerSquaredImpulse)
-                * Mathf.Max(0, objectInitialValue);
+            float loss = CollisionImpulseDamage.CalculateDamage(
+                objectInitialValue,
+                absoluteImpulseMagnitude,
+                objectFragility,
+                damageImpulseThreshold,
+                lossPercentagePerSquaredImpulse,
+                objectMass);
             return loss > 0f ? Mathf.CeilToInt(loss) : 0;
         }
 
         private void OnCollisionEnter(Collision collision)
         {
             if (collision == null)
+            {
+                return;
+            }
+
+            // BallisticProjectile calculates and forwards its momentum through
+            // TreasurePickup. Skipping the generic callback prevents the same
+            // firearm hit from reducing treasure value twice.
+            if (collision.collider != null
+                && collision.collider.GetComponentInParent<BallisticProjectile>()
+                    != null)
             {
                 return;
             }
@@ -257,11 +273,6 @@ namespace Supernova.Gameplay
                     ^ Mathf.RoundToInt(collisionPoint.y * 127f)
                     ^ Mathf.RoundToInt(collisionPoint.z * 521f)));
             TrySpawnBreakEffect(context);
-
-            if (body != null)
-            {
-                Destroy(body);
-            }
 
             Collider[] colliders = GetComponentsInChildren<Collider>(true);
             for (int i = 0; i < colliders.Length; i++)

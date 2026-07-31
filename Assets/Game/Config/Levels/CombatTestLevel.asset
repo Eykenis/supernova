@@ -19,6 +19,5 @@ MonoBehaviour:
   treasureGeneration: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
   timeLimitSeconds: 300
   requiredFunds: 100
-  oreUnitValue: 10
   caveSceneName: CombatTest
   homeSceneName: Home

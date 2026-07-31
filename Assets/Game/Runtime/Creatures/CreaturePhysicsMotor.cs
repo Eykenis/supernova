@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Supernova.MinecraftCaves.Creatures
 {
@@ -9,6 +10,23 @@ namespace Supernova.MinecraftCaves.Creatures
             Vector3 horizontalDirection,
             Vector3 worldUp,
             int riseInVoxels)
+            : this(
+                id,
+                horizontalDirection,
+                worldUp,
+                riseInVoxels,
+                false,
+                default)
+        {
+        }
+
+        private CreatureMovementCommand(
+            int id,
+            Vector3 horizontalDirection,
+            Vector3 worldUp,
+            int riseInVoxels,
+            bool isTraversalLink,
+            Vector3 targetWorldPosition)
         {
             Id = id;
             HorizontalDirection = Vector3.ProjectOnPlane(
@@ -16,12 +34,31 @@ namespace Supernova.MinecraftCaves.Creatures
                 worldUp).normalized;
             WorldUp = worldUp.normalized;
             RiseInVoxels = Mathf.Max(0, riseInVoxels);
+            IsTraversalLink = isTraversalLink;
+            TargetWorldPosition = targetWorldPosition;
+        }
+
+        public static CreatureMovementCommand TraverseTo(
+            int id,
+            Vector3 horizontalDirection,
+            Vector3 worldUp,
+            Vector3 targetWorldPosition)
+        {
+            return new CreatureMovementCommand(
+                id,
+                horizontalDirection,
+                worldUp,
+                0,
+                true,
+                targetWorldPosition);
         }
 
         public int Id { get; }
         public Vector3 HorizontalDirection { get; }
         public Vector3 WorldUp { get; }
         public int RiseInVoxels { get; }
+        public bool IsTraversalLink { get; }
+        public Vector3 TargetWorldPosition { get; }
         public bool ShouldJump => RiseInVoxels > 0;
     }
 
@@ -29,8 +66,12 @@ namespace Supernova.MinecraftCaves.Creatures
     public sealed class CreaturePhysicsMotor : MonoBehaviour
     {
         [SerializeField] private Rigidbody body;
-        [SerializeField, Min(0.01f)] private float movementSpeed = 1.26f;
-        [SerializeField, Min(0.01f)] private float maximumHorizontalAcceleration = 15.12f;
+        [FormerlySerializedAs("movementSpeed")]
+        [Tooltip("Maximum speed along the commanded movement direction.")]
+        [SerializeField, Min(0.01f)] private float maximumHorizontalSpeed = 1.26f;
+        [FormerlySerializedAs("maximumHorizontalAcceleration")]
+        [Tooltip("Continuous force applied along the commanded movement direction.")]
+        [SerializeField, Min(0.01f)] private float movementForce = 15.12f;
         [SerializeField, Min(0.01f)] private float voxelSize = 0.42f;
         [SerializeField, Min(1f)] private float jumpVelocityMultiplier = 1.1f;
         [SerializeField, Min(1f)] private float turnSpeedInDegrees = 540f;
@@ -58,8 +99,8 @@ namespace Supernova.MinecraftCaves.Creatures
         {
             body = rigidbody;
             voxelSize = Mathf.Max(0.01f, worldVoxelSize);
-            movementSpeed = voxelSize * 3f;
-            maximumHorizontalAcceleration = voxelSize * 36f;
+            maximumHorizontalSpeed = voxelSize * 3f;
+            movementForce = voxelSize * 36f;
         }
 
         public void Submit(in CreatureMovementCommand value)
@@ -100,10 +141,14 @@ namespace Supernova.MinecraftCaves.Creatures
             Vector3 up = hasCommand && command.WorldUp.sqrMagnitude > 0.5f
                 ? command.WorldUp
                 : hasFacing ? facingUp : Vector3.up;
-            Vector3 desiredHorizontalVelocity = hasCommand
-                ? command.HorizontalDirection * movementSpeed
-                : Vector3.zero;
-            ApplyHorizontalVelocity(desiredHorizontalVelocity, up);
+            bool isTraversal = hasCommand && command.IsTraversalLink;
+            if (!isTraversal)
+            {
+                Vector3 movementDirection = hasCommand
+                    ? command.HorizontalDirection
+                    : Vector3.zero;
+                ApplyHorizontalForce(movementDirection, up);
+            }
 
             Vector3 turnDirection = hasCommand
                 ? command.HorizontalDirection
@@ -114,21 +159,45 @@ namespace Supernova.MinecraftCaves.Creatures
                 return;
             }
 
-            if (command.ShouldJump && command.Id != lastJumpCommandId)
+            if (command.Id == lastJumpCommandId)
+            {
+                return;
+            }
+
+            if (command.IsTraversalLink)
+            {
+                ApplyTraversalImpulse(command.TargetWorldPosition, up);
+                lastJumpCommandId = command.Id;
+            }
+            else if (command.ShouldJump)
             {
                 ApplyJumpImpulse(command.RiseInVoxels, up);
                 lastJumpCommandId = command.Id;
             }
         }
 
-        private void ApplyHorizontalVelocity(Vector3 desiredVelocity, Vector3 up)
+        private void ApplyHorizontalForce(Vector3 direction, Vector3 up)
         {
+            if (direction.sqrMagnitude < 0.0001f)
+            {
+                return;
+            }
+
             Vector3 currentHorizontalVelocity = Vector3.ProjectOnPlane(body.velocity, up);
-            Vector3 velocityChange = desiredVelocity - currentHorizontalVelocity;
-            float maximumChange = maximumHorizontalAcceleration * Time.fixedDeltaTime;
-            body.AddForce(
-                Vector3.ClampMagnitude(velocityChange, maximumChange),
-                ForceMode.VelocityChange);
+            float speedInMovementDirection =
+                Vector3.Dot(currentHorizontalVelocity, direction);
+            float remainingSpeed =
+                maximumHorizontalSpeed - speedInMovementDirection;
+            if (remainingSpeed <= 0f)
+            {
+                return;
+            }
+
+            float fixedDeltaTime = Mathf.Max(Time.fixedDeltaTime, 0.0001f);
+            float forceWithoutOvershoot =
+                remainingSpeed * body.mass / fixedDeltaTime;
+            float appliedForce = Mathf.Min(movementForce, forceWithoutOvershoot);
+            body.AddForce(direction * appliedForce, ForceMode.Force);
         }
 
         private void ApplyJumpImpulse(int riseInVoxels, Vector3 up)
@@ -144,6 +213,40 @@ namespace Supernova.MinecraftCaves.Creatures
             float currentSpeed = Vector3.Dot(body.velocity, up);
             body.AddForce(
                 up * Mathf.Max(0f, targetSpeed - currentSpeed),
+                ForceMode.VelocityChange);
+        }
+
+        private void ApplyTraversalImpulse(Vector3 targetWorldPosition, Vector3 up)
+        {
+            Vector3 displacement = targetWorldPosition - body.position;
+            float verticalDisplacement = Vector3.Dot(displacement, up);
+            Vector3 horizontalDisplacement =
+                Vector3.ProjectOnPlane(displacement, up);
+            float gravity = Mathf.Abs(Vector3.Dot(Physics.gravity, -up));
+            if (gravity < 0.01f)
+            {
+                gravity = 9.81f;
+            }
+
+            float requestedApex = Mathf.Max(0f, verticalDisplacement)
+                + voxelSize * 0.75f;
+            float verticalSpeed =
+                Mathf.Sqrt(2f * gravity * requestedApex)
+                * jumpVelocityMultiplier;
+            float actualApex =
+                verticalSpeed * verticalSpeed / (2f * gravity);
+            float ascentTime = verticalSpeed / gravity;
+            float descentDistance =
+                Mathf.Max(0.01f, actualApex - verticalDisplacement);
+            float descentTime =
+                Mathf.Sqrt(2f * descentDistance / gravity);
+            float flightTime = Mathf.Max(
+                Time.fixedDeltaTime,
+                ascentTime + descentTime);
+            Vector3 targetVelocity =
+                horizontalDisplacement / flightTime + up * verticalSpeed;
+            body.AddForce(
+                targetVelocity - body.velocity,
                 ForceMode.VelocityChange);
         }
 

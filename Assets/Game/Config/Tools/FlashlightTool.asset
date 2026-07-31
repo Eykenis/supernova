@@ -15,18 +15,26 @@ MonoBehaviour:
   item: 3
   primaryAction: 3
   animationTriggerMode: 0
-  primaryActionAnimation: {fileID: 7400000, guid: 89a3527a255c7c742bc515e47351fbf1,
+  primaryActionAnimation: {fileID: 7400000, guid: bf09cb92192700342b5f07ada8d665a5,
     type: 2}
   heldModelPrefab: {fileID: 6032594121100484023, guid: 8ec7e27847b671744aa858aed3f7c8c3,
     type: 3}
+  heldModelMountStrategy: 0
   allowMovementWhileUsing: 1
+  actionTriggerDelay: 1
+  actionCyclePeriod: 0.35
+  actionIsPeriodic: 0
   projectilePrefab: {fileID: 7762888090113509500, guid: 31e6be5c396b6fc4580a7706cc1ea32b,
     type: 3}
   throwSpeed: 8
   upwardThrowSpeed: 1.6
   throwSpinSpeed: 7
   throwForwardOffset: 0.8
-  throwCooldown: 0.35
+  firearmProjectilePrefab: {fileID: 0}
+  projectileSpeed: 180
+  initialAmmunition: 120
+  muzzleFlashPrefab: {fileID: 0}
+  muzzleFlashLifetime: 0.75
   miningPower: 1
   miningEvenHitMultiplier: 4
   miningPropagationDivisor: 2

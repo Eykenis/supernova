@@ -21,6 +21,7 @@ namespace Supernova.Infrastructure
     {
         [Header("Views")]
         [SerializeField] private GameObject mainMenuPrefab;
+        [SerializeField] private UiDesignTokens designTokens;
         [SerializeField] private PausePortraitSettings pausePortraitSettings;
 
         [Header("Pause Portrait")]
@@ -41,6 +42,7 @@ namespace Supernova.Infrastructure
         [SerializeField] private Texture2D telemetryBackdrop;
 
         public GameObject MainMenuPrefab => mainMenuPrefab;
+        public UiDesignTokens DesignTokens => designTokens;
         public PausePortraitSettings PausePortraitSettings => pausePortraitSettings;
         public Material PauseBodyMaterial => pauseBodyMaterial;
         public Material PauseBackgroundMaterial => pauseBackgroundMaterial;
@@ -58,6 +60,7 @@ namespace Supernova.Infrastructure
 
         public bool IsComplete =>
             mainMenuPrefab != null
+            && designTokens != null
             && pausePortraitSettings != null
             && pauseBodyMaterial != null
             && pauseBackgroundMaterial != null

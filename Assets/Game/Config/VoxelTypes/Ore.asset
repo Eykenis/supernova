@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 3
   displayName: Ore
-  durability: 8
+  durability: 5
   material: {fileID: 2100000, guid: bacb4a0d1f00adb4cb01f351f4ca302e, type: 2}

@@ -13,8 +13,6 @@ namespace Supernova.Missions
         private bool playerInside;
         private bool sequenceRunning;
         private ProximitySlidingDoor[] proximityDoors;
-        private Transform[] doors;
-        private Vector3[] closedPositions;
 
         public void Configure(MissionGameLoop missionOwner, bool isHome)
         {
@@ -44,9 +42,9 @@ namespace Supernova.Missions
         private IEnumerator HomeLaunchSequence()
         {
             sequenceRunning = true;
-            owner?.SetPrompt("降落舱已锁定 · 舱门关闭");
+            // owner?.SetPrompt("DROP POD LOCKED · HATCH CLOSED");
             for (int i = 0; i < proximityDoors.Length; i++)
-                proximityDoors[i].enabled = false;
+                proximityDoors[i].CloseForLaunch();
             yield return CloseDoors(0.65f);
             yield return new WaitForSeconds(0.35f);
             owner?.BeginFirstMission();
@@ -54,33 +52,13 @@ namespace Supernova.Missions
 
         private IEnumerator CloseDoors(float duration)
         {
-            if (doors == null || doors.Length == 0) yield break;
-            Vector3[] openPositions = new Vector3[doors.Length];
-            for (int i = 0; i < doors.Length; i++) openPositions[i] = doors[i].localPosition;
-            float elapsed = 0f;
-            while (elapsed < duration)
-            {
-                elapsed += Time.deltaTime;
-                float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / duration));
-                for (int i = 0; i < doors.Length; i++)
-                    doors[i].localPosition = Vector3.Lerp(openPositions[i], closedPositions[i], t);
-                yield return null;
-            }
+            yield return new WaitForSeconds(duration);
         }
 
         private void FindDoors()
         {
             proximityDoors = transform.parent
                 .GetComponentsInChildren<ProximitySlidingDoor>(true);
-            var found = new System.Collections.Generic.List<Transform>();
-            for (int i = 0; i < proximityDoors.Length; i++)
-            {
-                Transform leaf = proximityDoors[i].DoorLeaf;
-                if (leaf != null) found.Add(leaf);
-            }
-            doors = found.ToArray();
-            closedPositions = new Vector3[doors.Length];
-            for (int i = 0; i < doors.Length; i++) closedPositions[i] = doors[i].localPosition;
         }
     }
 }

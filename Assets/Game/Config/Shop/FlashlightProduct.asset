@@ -13,12 +13,15 @@ MonoBehaviour:
   m_Name: FlashlightProduct
   m_EditorClassIdentifier: 
   productId: flashlight
-  displayName: "\u7167\u660E\u706F"
+  displayName: FlashLight
   price: 100
+  grantType: 0
   grantedItem: 3
+  grantedUpgrade: 0
+  upgradeValue: 0
   displayPrefab: {fileID: 6032594121100484023, guid: 8ec7e27847b671744aa858aed3f7c8c3,
     type: 3}
-  wireframeMaterial: {fileID: 2100000, guid: 167a107d83597ea45ae0634bf130ba9f, type: 2}
+  wireframeMaterial: {fileID: 2100000, guid: d4804bdf220d93d459c052ca0f2796c7, type: 2}
   displayLocalPosition: {x: 0, y: 0, z: 0}
   displayLocalEulerAngles: {x: 0, y: 90, z: 0}
   displayLocalScale: {x: 3, y: 3, z: 3}

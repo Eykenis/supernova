@@ -2,6 +2,7 @@ using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using Supernova.Missions;
+using Supernova.Voxels;
 using UnityEngine;
 
 namespace Supernova.Tests
@@ -25,7 +26,7 @@ namespace Supernova.Tests
         {
             zoneObject = new GameObject("Extraction");
             OreExtractionZone zone = zoneObject.AddComponent<OreExtractionZone>();
-            zone.Configure(null, 10);
+            zone.Configure(null);
 
             definition = ScriptableObject.CreateInstance<TreasureDefinition>();
             definition.Configure(null, 75, 2f, 1f, 1);
@@ -44,6 +45,28 @@ namespace Supernova.Tests
 
             InvokeTrigger(zone, "OnTriggerExit", collider);
             Assert.That(zone.CurrentStoredValue, Is.Zero);
+        }
+
+        [Test]
+        public void MinedOre_UsesValueStoredOnItsDrop()
+        {
+            zoneObject = new GameObject("Extraction");
+            OreExtractionZone zone = zoneObject.AddComponent<OreExtractionZone>();
+            zone.Configure(null);
+
+            treasureObject = new GameObject("Recovered Ore");
+            treasureObject.AddComponent<Rigidbody>().isKinematic = true;
+            BoxCollider collider = treasureObject.AddComponent<BoxCollider>();
+            MinedOreDrop drop = treasureObject.AddComponent<MinedOreDrop>();
+            drop.Configure(
+                new VoxelTypeId(3),
+                4,
+                new Mesh(),
+                valuePerVoxel: 25);
+
+            InvokeTrigger(zone, "OnTriggerEnter", collider);
+
+            Assert.That(zone.CurrentStoredValue, Is.EqualTo(100));
         }
 
         private static void InvokeTrigger(

@@ -41,8 +41,18 @@ namespace Supernova.Voxels
         private static readonly int ToolActionTrigger = Animator.StringToHash("ToolAction");
         private static readonly int ToolActionContinuousFlag =
             Animator.StringToHash("ToolActionContinuous");
+        private static readonly int ToolActionSpeed =
+            Animator.StringToHash("ToolActionSpeed");
         private static readonly int ToolPrimaryActionState =
-            Animator.StringToHash("Base Layer.Tool Primary Action");
+            Animator.StringToHash("Tool Primary Action");
+        private static readonly int ToolContinuousActionState =
+            Animator.StringToHash("Tool Continuous Action");
+        private static readonly int ToolUpperBodyContinuousActionState =
+            Animator.StringToHash(
+                "Tool UpperBody Layer.Tool Continuous Action");
+        private static readonly int ToolArmsContinuousActionState =
+            Animator.StringToHash(
+                "Crouch Tool Arms Layer.Tool Continuous Action");
         private static readonly int EquipmentLocomotionState =
             Animator.StringToHash("Base Layer.Equipment Locomotion");
         private static readonly int IdleState =
@@ -50,6 +60,12 @@ namespace Supernova.Voxels
         private const string PrimaryActionPlaceholderClipName = "ToolPrimaryActionPlaceholder";
         private const string EquipmentLocomotionPlaceholderClipName =
             "EquipmentLocomotionPlaceholder";
+        private const string RifleLocomotionLayerName =
+            "Rifle Locomotion Layer";
+        private const string RifleArmsLayerName = "Rifle Arms Layer";
+        private const float ToolUpperBodyLayerBlendDuration = 0.12f;
+        private const float CrouchArmsLayerBlendDuration = 0.12f;
+        private const float RifleLocomotionLayerBlendDuration = 0.12f;
 
         [SerializeField] private Transform view;
         [SerializeField] private Animator animator;
@@ -76,10 +92,13 @@ namespace Supernova.Voxels
         private bool hasThirdPersonTargetYaw;
         private float idleSeconds;
         private float stateSeconds;
-        private float nextAttackTime;
-        private float nextProjectileThrowTime;
         private readonly Queue<float> pendingMiningAttackTimes =
             new Queue<float>();
+        private readonly List<ScheduledToolAction> pendingToolActions =
+            new List<ScheduledToolAction>();
+        private readonly Dictionary<PlayerToolDefinition, float>
+            nextToolActionCycleTimes =
+                new Dictionary<PlayerToolDefinition, float>();
         private bool debugFlyMode;
         private bool hasWalkFlag;
         private bool hasJumpFlag;
@@ -94,23 +113,55 @@ namespace Supernova.Voxels
         private bool hasCrouchMoveFlag;
         private bool hasToolActionTrigger;
         private bool hasToolActionContinuousFlag;
+        private bool hasToolActionSpeed;
         private RuntimeAnimatorController baseAnimatorController;
         private AnimatorOverrideController toolAnimatorController;
         private AnimationClip primaryActionPlaceholderClip;
+        private AnimationClip activePrimaryActionAnimation;
         private AnimationClip equipmentLocomotionPlaceholderClip;
         private AnimationClip activeEquipmentLocomotionAnimation;
         private bool equipmentLocomotionAnimationActive;
         private bool equipmentLocomotionExitRequested;
         private PlayerToolDefinition activeToolDefinition;
-        private bool periodicToolAnimationObserved;
+        private PlayerToolController subscribedToolController;
         private int pickaxeStrikeParity;
-        private int lowerBodyLayerIndex = -1;
-        private float lowerBodyLayerTargetWeight;
-        private float lowerBodyLayerWeight;
+        private int crouchArmsLocomotionLayerIndex = -1;
+        private int rifleLocomotionLayerIndex = -1;
+        private int rifleArmsLayerIndex = -1;
+        private int toolUpperBodyLayerIndex = -1;
+        private int crouchToolArmsLayerIndex = -1;
+        private int activeToolActionLayerIndex = -1;
+        private float toolUpperBodyLayerTargetWeight;
+        private float toolUpperBodyLayerWeight;
+        private float crouchToolArmsLayerTargetWeight;
+        private float crouchToolArmsLayerWeight;
+        private float crouchArmsLocomotionLayerWeight;
+        private float rifleLocomotionLayerTargetWeight;
+        private float rifleLocomotionLayerWeight;
+        private float rifleArmsLayerTargetWeight;
+        private float rifleArmsLayerWeight;
+        private bool toolUpperBodyActionObserved;
+
+        private readonly struct ScheduledToolAction
+        {
+            public ScheduledToolAction(
+                PlayerToolDefinition definition,
+                float triggerTime)
+            {
+                Definition = definition;
+                TriggerTime = triggerTime;
+            }
+
+            public PlayerToolDefinition Definition { get; }
+            public float TriggerTime { get; }
+        }
 
         public GameObject Owner => gameObject;
         public float CurrentHealth => vitals != null ? vitals.CurrentHealth : 0f;
         public float MaximumHealth => vitals != null ? vitals.MaximumHealth : Profile.MaximumHealth;
+        public float CrouchPoseWeight => crouchArmsLocomotionLayerWeight;
+        public bool IsRifleSelected => toolController != null
+            && toolController.IsRifleSelected;
         public bool IsAlive => vitals != null && vitals.IsAlive;
         public bool DebugFlyMode => debugFlyMode;
         public Animator CharacterAnimator => animator;
@@ -140,6 +191,11 @@ namespace Supernova.Voxels
         private void OnEnable()
         {
             ResolveReferences();
+            SubscribeToToolSelection();
+            ApplyToolActionAnimation(
+                toolController != null
+                    ? toolController.SelectedDefinition
+                    : null);
             EnsureMotor();
             EnsureStateMachine();
             if (characterController != null) characterController.enabled = !debugFlyMode;
@@ -148,8 +204,11 @@ namespace Supernova.Voxels
 
         private void OnDisable()
         {
+            UnsubscribeFromToolSelection();
             debugFlyMode = false;
             pendingMiningAttackTimes.Clear();
+            pendingToolActions.Clear();
+            nextToolActionCycleTimes.Clear();
             equipmentController?.CancelActiveLocomotionOverride();
             StopEquipmentLocomotionAnimation(false);
             idleSeconds = 0f;
@@ -168,6 +227,7 @@ namespace Supernova.Voxels
             EnsureMotor();
             EnsureStateMachine();
             ApplyPendingMiningAttacksIfReady();
+            ApplyPendingToolActionsIfReady();
             if (characterController == null) return;
 
             if (Input.GetKeyDown(Profile.DebugToggleKey)) SetDebugFlyMode(!debugFlyMode);
@@ -187,7 +247,10 @@ namespace Supernova.Voxels
                 stateMachine.Tick(Time.deltaTime);
             }
 
-            TickLowerBodyLayerBlend(Time.deltaTime);
+            TickCrouchArmsLocomotionLayerBlend(Time.deltaTime);
+            TickRifleLocomotionLayerBlend(Time.deltaTime);
+            TickRifleArmsLayerBlend(Time.deltaTime);
+            TickToolUpperBodyLayerBlend(Time.deltaTime);
             currentState = stateMachine.Current;
             UpdateExpressionAnimation();
         }
@@ -342,7 +405,7 @@ namespace Supernova.Voxels
                 return true;
             }
 
-            if (input.JumpPressed && motor.IsGrounded)
+            if (input.JumpPressed && motor.IsGrounded && !input.CrouchHeld)
             {
                 stateMachine.Change(PlayerCharacterState.Jump);
                 return true;
@@ -430,6 +493,13 @@ namespace Supernova.Voxels
 
         private bool TryUpdateEquipmentLocomotion()
         {
+            if (input.CrouchHeld)
+            {
+                equipmentController?.CancelActiveLocomotionOverride();
+                StopEquipmentLocomotionAnimation(true);
+                return false;
+            }
+
             if (equipmentController == null
                 || !equipmentController.IsLocomotionOverrideActive)
             {
@@ -512,22 +582,21 @@ namespace Supernova.Voxels
             if (hasIdleFlag) animator.SetBool(IdleFlag, idle);
             if (hasCrouchFlag) animator.SetBool(CrouchFlag, crouching);
             if (hasCrouchMoveFlag) animator.SetBool(CrouchMoveFlag, crouchMoving);
-
-            // The lower-body masked layer only carries crouch leg poses; keep it fully
-            // silent while standing so the base layer's own legs show through unmodified.
-            // The actual weight eases toward this target in Update() instead of snapping,
-            // so standing up/crouching down blends instead of popping.
-            if (lowerBodyLayerIndex >= 0)
-                lowerBodyLayerTargetWeight = crouching ? 1f : 0f;
-        }
-
-        private void TickLowerBodyLayerBlend(float deltaTime)
-        {
-            if (lowerBodyLayerIndex < 0 || animator == null || animator.runtimeAnimatorController == null) return;
-            float blendSpeed = 1f / Profile.CrouchBlendDuration;
-            lowerBodyLayerWeight = Mathf.MoveTowards(
-                lowerBodyLayerWeight, lowerBodyLayerTargetWeight, blendSpeed * deltaTime);
-            animator.SetLayerWeight(lowerBodyLayerIndex, lowerBodyLayerWeight);
+            bool rifleSelected = IsRifleSelected;
+            rifleLocomotionLayerTargetWeight = rifleSelected
+                && !jumping
+                && !crouching
+                && (walking
+                    || idle
+                    || activeToolDefinition != null
+                        && activeToolDefinition.PrimaryAction
+                            == PlayerToolPrimaryAction.FireRifle)
+                ? 1f
+                : 0f;
+            rifleArmsLayerTargetWeight = rifleSelected
+                && (jumping || crouching)
+                ? 1f
+                : 0f;
         }
 
         public void SetDebugFlyMode(bool enabled)
@@ -677,9 +746,50 @@ namespace Supernova.Voxels
             hasToolActionContinuousFlag = HasAnimatorParameter(
                 ToolActionContinuousFlag,
                 AnimatorControllerParameterType.Bool);
-            lowerBodyLayerIndex = animator != null && animator.runtimeAnimatorController != null
-                ? animator.GetLayerIndex("LowerBody Layer")
+            hasToolActionSpeed = HasAnimatorParameter(
+                ToolActionSpeed,
+                AnimatorControllerParameterType.Float);
+            if (hasToolActionSpeed) animator.SetFloat(ToolActionSpeed, 1f);
+            crouchArmsLocomotionLayerIndex = animator != null
+                && animator.runtimeAnimatorController != null
+                ? animator.GetLayerIndex("Crouch Arms Locomotion Layer")
                 : -1;
+            rifleLocomotionLayerIndex = animator != null
+                && animator.runtimeAnimatorController != null
+                ? animator.GetLayerIndex(RifleLocomotionLayerName)
+                : -1;
+            rifleArmsLayerIndex = animator != null
+                && animator.runtimeAnimatorController != null
+                ? animator.GetLayerIndex(RifleArmsLayerName)
+                : -1;
+            toolUpperBodyLayerIndex = animator != null && animator.runtimeAnimatorController != null
+                ? animator.GetLayerIndex("Tool UpperBody Layer")
+                : -1;
+            crouchToolArmsLayerIndex = animator != null
+                && animator.runtimeAnimatorController != null
+                ? animator.GetLayerIndex("Crouch Tool Arms Layer")
+                : -1;
+            activeToolActionLayerIndex = -1;
+            toolUpperBodyLayerTargetWeight = 0f;
+            toolUpperBodyLayerWeight = 0f;
+            crouchToolArmsLayerTargetWeight = 0f;
+            crouchToolArmsLayerWeight = 0f;
+            crouchArmsLocomotionLayerWeight = 0f;
+            rifleLocomotionLayerTargetWeight = 0f;
+            rifleLocomotionLayerWeight = 0f;
+            rifleArmsLayerTargetWeight = 0f;
+            rifleArmsLayerWeight = 0f;
+            toolUpperBodyActionObserved = false;
+            if (crouchArmsLocomotionLayerIndex >= 0)
+                animator.SetLayerWeight(crouchArmsLocomotionLayerIndex, 0f);
+            if (rifleLocomotionLayerIndex >= 0)
+                animator.SetLayerWeight(rifleLocomotionLayerIndex, 0f);
+            if (rifleArmsLayerIndex >= 0)
+                animator.SetLayerWeight(rifleArmsLayerIndex, 0f);
+            if (toolUpperBodyLayerIndex >= 0)
+                animator.SetLayerWeight(toolUpperBodyLayerIndex, 0f);
+            if (crouchToolArmsLayerIndex >= 0)
+                animator.SetLayerWeight(crouchToolArmsLayerIndex, 0f);
         }
 
         /// <summary>
@@ -689,7 +799,9 @@ namespace Supernova.Voxels
         private void TriggerToolActionAnimation()
         {
             if (animator == null || animator.runtimeAnimatorController == null) return;
-            if (hasToolActionTrigger) animator.SetTrigger(ToolActionTrigger);
+            if (!hasToolActionTrigger) return;
+            ActivateToolUpperBodyLayer();
+            animator.SetTrigger(ToolActionTrigger);
         }
 
         private void StartConfiguredToolActionAnimation()
@@ -729,25 +841,238 @@ namespace Supernova.Voxels
         private void SetContinuousToolActionAnimation(bool active)
         {
             if (animator == null || animator.runtimeAnimatorController == null) return;
+            SetToolActionAnimationSpeed(active ? activeToolDefinition : null);
+            if (active) ActivateToolUpperBodyLayer();
             if (hasToolActionContinuousFlag)
                 animator.SetBool(ToolActionContinuousFlag, active);
+            if (active
+                && activeToolDefinition != null
+                && activeToolDefinition.PrimaryAction
+                    == PlayerToolPrimaryAction.FireRifle)
+            {
+                EnterRifleContinuousActionImmediately();
+            }
+        }
+
+        private void SetToolActionAnimationSpeed(PlayerToolDefinition definition)
+        {
+            if (!hasToolActionSpeed || animator == null) return;
+            float multiplier = definition != null
+                ? definition.FirearmAnimationSpeedMultiplier
+                : 1f;
+            animator.SetFloat(ToolActionSpeed, multiplier);
+        }
+
+        private void EnterRifleContinuousActionImmediately()
+        {
+            if (activeToolActionLayerIndex < 0) return;
+            int stateHash = activeToolActionLayerIndex == crouchToolArmsLayerIndex
+                ? ToolArmsContinuousActionState
+                : ToolUpperBodyContinuousActionState;
+            animator.Play(stateHash, activeToolActionLayerIndex, 0f);
+        }
+
+        private void ActivateToolUpperBodyLayer()
+        {
+            activeToolActionLayerIndex = ResolveToolActionLayerIndex();
+            if (activeToolActionLayerIndex < 0) return;
+            toolUpperBodyActionObserved = false;
+            toolUpperBodyLayerTargetWeight = activeToolActionLayerIndex
+                == toolUpperBodyLayerIndex ? 1f : 0f;
+            crouchToolArmsLayerTargetWeight = activeToolActionLayerIndex
+                == crouchToolArmsLayerIndex ? 1f : 0f;
+        }
+
+        private void TickCrouchArmsLocomotionLayerBlend(float deltaTime)
+        {
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || crouchArmsLocomotionLayerIndex < 0)
+            {
+                return;
+            }
+
+            float targetWeight = input.CrouchHeld
+                && motor != null
+                && motor.IsGrounded
+                ? 1f
+                : 0f;
+            float blendSpeed = 1f / CrouchArmsLayerBlendDuration;
+            crouchArmsLocomotionLayerWeight = Mathf.MoveTowards(
+                crouchArmsLocomotionLayerWeight,
+                targetWeight,
+                blendSpeed * deltaTime);
+            animator.SetLayerWeight(
+                crouchArmsLocomotionLayerIndex,
+                crouchArmsLocomotionLayerWeight);
+        }
+
+        private void TickRifleLocomotionLayerBlend(float deltaTime)
+        {
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || rifleLocomotionLayerIndex < 0)
+            {
+                return;
+            }
+
+            float blendSpeed = 1f / RifleLocomotionLayerBlendDuration;
+            rifleLocomotionLayerWeight = Mathf.MoveTowards(
+                rifleLocomotionLayerWeight,
+                rifleLocomotionLayerTargetWeight,
+                blendSpeed * deltaTime);
+            animator.SetLayerWeight(
+                rifleLocomotionLayerIndex,
+                rifleLocomotionLayerWeight);
+        }
+
+        private void TickRifleArmsLayerBlend(float deltaTime)
+        {
+            if (animator == null
+                || animator.runtimeAnimatorController == null
+                || rifleArmsLayerIndex < 0)
+            {
+                return;
+            }
+
+            float blendSpeed = 1f / RifleLocomotionLayerBlendDuration;
+            rifleArmsLayerWeight = Mathf.MoveTowards(
+                rifleArmsLayerWeight,
+                rifleArmsLayerTargetWeight,
+                blendSpeed * deltaTime);
+            animator.SetLayerWeight(rifleArmsLayerIndex, rifleArmsLayerWeight);
+        }
+
+        private void TickToolUpperBodyLayerBlend(float deltaTime)
+        {
+            if (animator == null
+                || animator.runtimeAnimatorController == null)
+            {
+                return;
+            }
+
+            int desiredLayerIndex = ResolveToolActionLayerIndex();
+            if (activeToolActionLayerIndex >= 0
+                && desiredLayerIndex >= 0
+                && desiredLayerIndex != activeToolActionLayerIndex
+                && IsToolActionStateActive(desiredLayerIndex))
+            {
+                activeToolActionLayerIndex = desiredLayerIndex;
+                toolUpperBodyLayerTargetWeight = activeToolActionLayerIndex
+                    == toolUpperBodyLayerIndex ? 1f : 0f;
+                crouchToolArmsLayerTargetWeight = activeToolActionLayerIndex
+                    == crouchToolArmsLayerIndex ? 1f : 0f;
+            }
+
+            bool actionActive = activeToolActionLayerIndex >= 0
+                && IsToolActionStateActive(activeToolActionLayerIndex);
+            if (actionActive)
+            {
+                toolUpperBodyActionObserved = true;
+            }
+            else if (toolUpperBodyActionObserved)
+            {
+                toolUpperBodyActionObserved = false;
+                toolUpperBodyLayerTargetWeight = 0f;
+                crouchToolArmsLayerTargetWeight = 0f;
+                activeToolActionLayerIndex = -1;
+            }
+
+            float blendSpeed = 1f / ToolUpperBodyLayerBlendDuration;
+            toolUpperBodyLayerWeight = Mathf.MoveTowards(
+                toolUpperBodyLayerWeight,
+                toolUpperBodyLayerTargetWeight,
+                blendSpeed * deltaTime);
+            crouchToolArmsLayerWeight = Mathf.MoveTowards(
+                crouchToolArmsLayerWeight,
+                crouchToolArmsLayerTargetWeight,
+                blendSpeed * deltaTime);
+            if (toolUpperBodyLayerIndex >= 0)
+                animator.SetLayerWeight(toolUpperBodyLayerIndex, toolUpperBodyLayerWeight);
+            if (crouchToolArmsLayerIndex >= 0)
+                animator.SetLayerWeight(crouchToolArmsLayerIndex, crouchToolArmsLayerWeight);
+        }
+
+        private int ResolveToolActionLayerIndex()
+        {
+            bool crouching = input.CrouchHeld
+                && motor != null
+                && motor.IsGrounded;
+            PlayerToolDefinition definition = activeToolDefinition != null
+                ? activeToolDefinition
+                : toolController != null
+                    ? toolController.SelectedDefinition
+                    : null;
+            bool rifleAction = definition != null
+                && definition.PrimaryAction == PlayerToolPrimaryAction.FireRifle;
+            return (crouching || rifleAction) && crouchToolArmsLayerIndex >= 0
+                ? crouchToolArmsLayerIndex
+                : toolUpperBodyLayerIndex;
+        }
+
+        private bool IsToolActionStateActive(int layerIndex)
+        {
+            AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(layerIndex);
+            if (IsToolUpperBodyActionState(current)) return true;
+            return animator.IsInTransition(layerIndex)
+                && IsToolUpperBodyActionState(
+                    animator.GetNextAnimatorStateInfo(layerIndex));
+        }
+
+        private static bool IsToolUpperBodyActionState(AnimatorStateInfo state)
+        {
+            return state.shortNameHash == ToolPrimaryActionState
+                || state.shortNameHash == ToolContinuousActionState;
         }
 
         private bool CanStartToolAction(PlayerToolDefinition definition)
         {
-            if (definition == null || !definition.HasPrimaryAction) return false;
+            if (definition == null
+                || !definition.HasPrimaryAction
+                || !IsToolActionCycleReady(definition))
+            {
+                return false;
+            }
+
             switch (definition.PrimaryAction)
             {
                 case PlayerToolPrimaryAction.MineVoxel:
-                    return IsPeriodicToolActionCycleComplete();
+                    return true;
                 case PlayerToolPrimaryAction.AttractCart:
                     return cartAttractor != null && cartAttractor.CanOperate;
                 case PlayerToolPrimaryAction.ThrowPersistentLight:
-                    return definition.ProjectilePrefab != null
-                        && Time.time >= nextProjectileThrowTime;
+                    return definition.ProjectilePrefab != null;
+                case PlayerToolPrimaryAction.FireRifle:
+                    return definition.FirearmProjectilePrefab != null
+                        && toolController != null
+                        && toolController.GetAmmunition(definition.Item)
+                            > CountPendingToolActions(definition);
+                case PlayerToolPrimaryAction.TowCart:
+                    // FirstPersonCartAttractor handles towing as a click
+                    // toggle before the held-action state machine runs.
+                    return false;
                 default:
                     return false;
             }
+        }
+
+        private bool IsToolActionCycleReady(PlayerToolDefinition definition)
+        {
+            return definition != null
+                && (!nextToolActionCycleTimes.TryGetValue(
+                        definition,
+                        out float nextCycleTime)
+                    || Time.time >= nextCycleTime);
+        }
+
+        private int CountPendingToolActions(PlayerToolDefinition definition)
+        {
+            int count = 0;
+            for (int i = 0; i < pendingToolActions.Count; i++)
+            {
+                if (pendingToolActions[i].Definition == definition) count++;
+            }
+            return count;
         }
 
         private void ApplyToolActionAnimation(PlayerToolDefinition definition)
@@ -759,8 +1084,44 @@ namespace Supernova.Voxels
                 return;
             }
 
+            if (activePrimaryActionAnimation == definition.PrimaryActionAnimation)
+                return;
+
             toolAnimatorController[PrimaryActionPlaceholderClipName] =
                 definition.PrimaryActionAnimation;
+            activePrimaryActionAnimation = definition.PrimaryActionAnimation;
+        }
+
+        private void SubscribeToToolSelection()
+        {
+            if (subscribedToolController == toolController) return;
+            UnsubscribeFromToolSelection();
+            subscribedToolController = toolController;
+            if (subscribedToolController != null)
+            {
+                subscribedToolController.SelectionChanged +=
+                    HandleToolSelectionChanged;
+            }
+        }
+
+        private void UnsubscribeFromToolSelection()
+        {
+            if (subscribedToolController != null)
+            {
+                subscribedToolController.SelectionChanged -=
+                    HandleToolSelectionChanged;
+                subscribedToolController = null;
+            }
+        }
+
+        private void HandleToolSelectionChanged(
+            int slotIndex,
+            PlayerInventoryItem item)
+        {
+            ApplyToolActionAnimation(
+                toolController != null
+                    ? toolController.SelectedDefinition
+                    : null);
         }
 
         private void StartEquipmentLocomotionAnimation(AnimationClip animation)
@@ -913,6 +1274,7 @@ namespace Supernova.Voxels
             baseAnimatorController = null;
             toolAnimatorController = null;
             primaryActionPlaceholderClip = null;
+            activePrimaryActionAnimation = null;
             equipmentLocomotionPlaceholderClip = null;
             activeEquipmentLocomotionAnimation = null;
             equipmentLocomotionAnimationActive = false;
@@ -1012,18 +1374,7 @@ namespace Supernova.Voxels
             StartConfiguredToolActionAnimation();
 
             if (activeToolDefinition == null) return;
-            switch (activeToolDefinition.PrimaryAction)
-            {
-                case PlayerToolPrimaryAction.MineVoxel:
-                    TriggerMineSwing();
-                    break;
-                case PlayerToolPrimaryAction.AttractCart:
-                    cartAttractor?.BeginAttraction();
-                    break;
-                case PlayerToolPrimaryAction.ThrowPersistentLight:
-                    ThrowConfiguredProjectile(activeToolDefinition);
-                    break;
-            }
+            StartToolActionCycle(activeToolDefinition);
         }
 
         private void ExitToolAction()
@@ -1031,42 +1382,114 @@ namespace Supernova.Voxels
             if (activeToolDefinition != null
                 && activeToolDefinition.PrimaryAction == PlayerToolPrimaryAction.AttractCart)
             {
+                RemovePendingToolActions(activeToolDefinition);
                 cartAttractor?.EndAttraction();
             }
             StopConfiguredToolActionAnimation();
             activeToolDefinition = null;
         }
 
-        // One mining cycle starts the configured animation and schedules its impact.
-        // The next cycle waits for that Animator state to finish, so the visual and
-        // gameplay cadence share the same source of truth.
-        private void TriggerMineSwing()
+        private bool StartToolActionCycle(PlayerToolDefinition definition)
         {
-            periodicToolAnimationObserved = false;
+            if (!CanStartToolAction(definition)) return false;
+
             TriggerPeriodicToolActionAnimation();
-            ScheduleMiningAttack(Profile.VoxelDestructionDelay);
-            bool isPickaxe = activeToolDefinition != null
-                && activeToolDefinition.Item == PlayerInventoryItem.Pickaxe;
+            float triggerTime = Time.time + definition.ActionTriggerDelay;
+            bool scheduled = definition.PrimaryAction
+                == PlayerToolPrimaryAction.MineVoxel
+                    ? ScheduleMiningToolAction(definition)
+                    : ScheduleToolAction(definition, triggerTime);
+            if (!scheduled) return false;
+
+            nextToolActionCycleTimes[definition] =
+                Time.time + definition.ActionCyclePeriod;
+            return true;
+        }
+
+        private bool ScheduleMiningToolAction(PlayerToolDefinition definition)
+        {
+            float delay = definition.ActionTriggerDelay;
+            ScheduleMiningAttack(delay);
+            bool isPickaxe = definition.Item == PlayerInventoryItem.Pickaxe;
             int strikeNumber = isPickaxe ? pickaxeStrikeParity + 1 : 1;
-            VoxelMiningBrushSettings brush = activeToolDefinition != null
-                ? activeToolDefinition.GetMiningBrushForStrike(strikeNumber)
-                : VoxelMiningBrushSettings.SingleVoxel;
+            VoxelMiningBrushSettings brush =
+                definition.GetMiningBrushForStrike(strikeNumber);
             bool scheduled = voxelInteractor != null
                 && voxelInteractor.TryScheduleMineAtCrosshair(
-                    Profile.VoxelDestructionDelay,
+                    delay,
                     brush);
             if (scheduled && isPickaxe)
             {
                 pickaxeStrikeParity ^= 1;
             }
 
-            AnimationClip clip = activeToolDefinition != null
-                ? activeToolDefinition.PrimaryActionAnimation
-                : null;
-            float fallbackDuration = clip != null
-                ? Mathf.Max(0.02f, clip.length)
-                : Profile.MineInterval;
-            nextAttackTime = Time.time + fallbackDuration;
+            // Empty swings remain valid action cycles because their delayed melee
+            // overlap can still hit a creature or a rigidbody in front of the player.
+            return true;
+        }
+
+        private bool ScheduleToolAction(
+            PlayerToolDefinition definition,
+            float triggerTime)
+        {
+            pendingToolActions.Add(
+                new ScheduledToolAction(definition, triggerTime));
+            ApplyPendingToolActionsIfReady();
+            return true;
+        }
+
+        private void ApplyPendingToolActionsIfReady()
+        {
+            while (true)
+            {
+                int dueIndex = -1;
+                float earliestTime = float.PositiveInfinity;
+                for (int i = 0; i < pendingToolActions.Count; i++)
+                {
+                    ScheduledToolAction pending = pendingToolActions[i];
+                    if (pending.TriggerTime > Time.time
+                        || pending.TriggerTime >= earliestTime)
+                    {
+                        continue;
+                    }
+
+                    earliestTime = pending.TriggerTime;
+                    dueIndex = i;
+                }
+
+                if (dueIndex < 0) return;
+                PlayerToolDefinition definition =
+                    pendingToolActions[dueIndex].Definition;
+                pendingToolActions.RemoveAt(dueIndex);
+                ExecuteConfiguredToolAction(definition);
+            }
+        }
+
+        private void RemovePendingToolActions(PlayerToolDefinition definition)
+        {
+            for (int i = pendingToolActions.Count - 1; i >= 0; i--)
+            {
+                if (pendingToolActions[i].Definition == definition)
+                    pendingToolActions.RemoveAt(i);
+            }
+        }
+
+        private bool ExecuteConfiguredToolAction(
+            PlayerToolDefinition definition)
+        {
+            if (definition == null) return false;
+            switch (definition.PrimaryAction)
+            {
+                case PlayerToolPrimaryAction.AttractCart:
+                    return cartAttractor != null
+                        && cartAttractor.BeginAttraction();
+                case PlayerToolPrimaryAction.ThrowPersistentLight:
+                    return ThrowConfiguredProjectile(definition) != null;
+                case PlayerToolPrimaryAction.FireRifle:
+                    return FireConfiguredProjectile(definition) != null;
+                default:
+                    return false;
+            }
         }
 
         private void TickToolAction(float deltaTime)
@@ -1083,69 +1506,98 @@ namespace Supernova.Voxels
             TickLocomotion(deltaTime, activeToolDefinition.AllowMovementWhileUsing);
             bool actionHeld = input.PrimaryActionHeld;
             if (!actionHeld
-                && (activeToolDefinition.PrimaryAction != PlayerToolPrimaryAction.MineVoxel
-                    || stateSeconds >= Profile.AttackDuration))
+                && stateSeconds >= activeToolDefinition.ActionTriggerDelay)
             {
                 SelectGroundOrAirState();
                 return;
             }
 
-            switch (activeToolDefinition.PrimaryAction)
+            if (activeToolDefinition.PrimaryAction
+                == PlayerToolPrimaryAction.AttractCart)
             {
-                case PlayerToolPrimaryAction.MineVoxel:
-                    TickMiningToolAction(actionHeld);
-                    return;
-                case PlayerToolPrimaryAction.AttractCart:
-                    TickAttractorToolAction();
-                    return;
-                case PlayerToolPrimaryAction.ThrowPersistentLight:
-                    return;
-                default:
-                    SelectGroundOrAirState();
+                TickAttractorToolAction();
+                if (stateMachine.Current != PlayerCharacterState.ToolAction)
                     return;
             }
-        }
 
-        private void TickMiningToolAction(bool actionHeld)
-        {
-            if (actionHeld && IsPeriodicToolActionCycleComplete()) TriggerMineSwing();
-        }
-
-        private bool IsPeriodicToolActionCycleComplete()
-        {
-            if (animator == null
-                || animator.runtimeAnimatorController == null
-                || !hasToolActionTrigger)
+            if (actionHeld
+                && activeToolDefinition.ActionIsPeriodic
+                && IsToolActionCycleReady(activeToolDefinition)
+                && !StartToolActionCycle(activeToolDefinition))
             {
-                return Time.time >= nextAttackTime;
+                SelectGroundOrAirState();
             }
-
-            AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
-            bool animationIsPlaying = current.fullPathHash == ToolPrimaryActionState;
-            if (animator.IsInTransition(0))
-            {
-                AnimatorStateInfo next = animator.GetNextAnimatorStateInfo(0);
-                animationIsPlaying |= next.fullPathHash == ToolPrimaryActionState;
-            }
-
-            if (animationIsPlaying)
-            {
-                periodicToolAnimationObserved = true;
-                return false;
-            }
-
-            return periodicToolAnimationObserved || Time.time >= nextAttackTime;
         }
 
         private void TickAttractorToolAction()
         {
-            if (cartAttractor == null || !cartAttractor.IsActionActive)
+            if (cartAttractor == null)
             {
+                SelectGroundOrAirState();
+                return;
+            }
+
+            if (!cartAttractor.IsActionActive)
+            {
+                if (CountPendingToolActions(activeToolDefinition) > 0) return;
                 SelectGroundOrAirState();
                 return;
             }
 
             cartAttractor.TickAttraction(input.AttractionDistanceSteps);
+        }
+
+        private BallisticProjectile FireConfiguredProjectile(
+            PlayerToolDefinition definition)
+        {
+            if (definition == null
+                || definition.FirearmProjectilePrefab == null
+                || toolController == null
+                || !toolController.TryConsumeAmmunition(definition.Item))
+            {
+                return null;
+            }
+
+            Transform aimOrigin = view != null ? view : transform;
+            Vector3 forward = aimOrigin.forward.sqrMagnitude > 0.0001f
+                ? aimOrigin.forward.normalized
+                : transform.forward;
+            Transform muzzle = toolController.EquippedWeaponMuzzle;
+            Vector3 position = muzzle != null
+                ? muzzle.position
+                : aimOrigin.position + forward * 0.75f;
+            Quaternion rotation = Quaternion.LookRotation(
+                forward,
+                aimOrigin.up.sqrMagnitude > 0.0001f
+                    ? aimOrigin.up
+                    : Vector3.up);
+
+            BallisticProjectile projectile = Instantiate(
+                definition.FirearmProjectilePrefab,
+                position,
+                rotation);
+            projectile.name = definition.FirearmProjectilePrefab.name;
+            projectile.Launch(forward * definition.ProjectileSpeed, gameObject);
+            IgnoreOwnerCollisions(projectile);
+            SpawnMuzzleFlash(definition, position, rotation, muzzle);
+            return projectile;
+        }
+
+        private static void SpawnMuzzleFlash(
+            PlayerToolDefinition definition,
+            Vector3 position,
+            Quaternion rotation,
+            Transform muzzle)
+        {
+            if (definition.MuzzleFlashPrefab == null) return;
+
+            GameObject effect = Instantiate(
+                definition.MuzzleFlashPrefab,
+                position,
+                rotation);
+            effect.name = definition.MuzzleFlashPrefab.name;
+            if (muzzle != null) effect.transform.SetParent(muzzle, true);
+            Destroy(effect, definition.MuzzleFlashLifetime);
         }
 
         private PersistentLightProjectile ThrowConfiguredProjectile(
@@ -1170,11 +1622,10 @@ namespace Supernova.Voxels
                     + Vector3.up * definition.UpwardThrowSpeed,
                 Random.onUnitSphere * definition.ThrowSpinSpeed);
             IgnoreOwnerCollisions(projectile);
-            nextProjectileThrowTime = Time.time + definition.ThrowCooldown;
             return projectile;
         }
 
-        private void IgnoreOwnerCollisions(PersistentLightProjectile projectile)
+        private void IgnoreOwnerCollisions(Component projectile)
         {
             if (projectile == null) return;
             Collider[] ownerColliders = GetComponentsInChildren<Collider>(true);
@@ -1201,12 +1652,14 @@ namespace Supernova.Voxels
             stateSeconds = 0f;
             if (animator != null && hasHitFlag) animator.SetTrigger(HitFlag);
             SetAnimationState(false, motor != null && !motor.IsGrounded, false);
+            SuppressOverrideAnimationLayers();
         }
 
         private void TickHurt(float deltaTime)
         {
             stateSeconds += deltaTime;
             TickLocomotion(deltaTime, false);
+            SuppressOverrideAnimationLayers();
             if (stateSeconds >= Profile.HurtDuration) SelectGroundOrAirState();
         }
 
@@ -1220,12 +1673,38 @@ namespace Supernova.Voxels
         {
             if (animator != null && hasDieFlag) animator.SetTrigger(DieFlag);
             SetAnimationState(false, false, false);
+            SuppressOverrideAnimationLayers();
         }
 
         private void TickDead(float deltaTime)
         {
             TickLocomotion(deltaTime, false);
             SetAnimationState(false, false, false);
+            SuppressOverrideAnimationLayers();
+        }
+
+        private void SuppressOverrideAnimationLayers()
+        {
+            rifleLocomotionLayerTargetWeight = 0f;
+            rifleLocomotionLayerWeight = 0f;
+            rifleArmsLayerTargetWeight = 0f;
+            rifleArmsLayerWeight = 0f;
+            toolUpperBodyLayerTargetWeight = 0f;
+            toolUpperBodyLayerWeight = 0f;
+            crouchToolArmsLayerTargetWeight = 0f;
+            crouchToolArmsLayerWeight = 0f;
+
+            if (animator == null || animator.runtimeAnimatorController == null)
+                return;
+
+            if (rifleLocomotionLayerIndex >= 0)
+                animator.SetLayerWeight(rifleLocomotionLayerIndex, 0f);
+            if (rifleArmsLayerIndex >= 0)
+                animator.SetLayerWeight(rifleArmsLayerIndex, 0f);
+            if (toolUpperBodyLayerIndex >= 0)
+                animator.SetLayerWeight(toolUpperBodyLayerIndex, 0f);
+            if (crouchToolArmsLayerIndex >= 0)
+                animator.SetLayerWeight(crouchToolArmsLayerIndex, 0f);
         }
 
 

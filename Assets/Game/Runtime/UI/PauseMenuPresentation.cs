@@ -65,6 +65,20 @@ namespace Supernova.UI
         private Material bodyMaterial;
         private Material backgroundMaterial;
         private readonly List<Material> faceDetailMaterials = new List<Material>();
+        private readonly List<PortraitRendererProxy> portraitRendererProxies =
+            new List<PortraitRendererProxy>();
+        private bool portraitRenderCallbackRegistered;
+        private int portraitLayer = -1;
+        private int portraitLayerMask;
+
+        private sealed class PortraitRendererProxy
+        {
+            public Renderer Source;
+            public SkinnedMeshRenderer SkinnedSource;
+            public Transform ProxyTransform;
+            public MeshRenderer ProxyRenderer;
+            public Mesh BakedMesh;
+        }
 
         public void BindEquipment(PlayerEquipmentController source)
         {
@@ -99,6 +113,7 @@ namespace Supernova.UI
                 portraitCamera.enabled = false;
             if (portraitAnimator != null)
                 portraitAnimator.enabled = false;
+            SetPortraitProxiesVisible(false);
         }
 
         private void OnDisable()
@@ -108,6 +123,7 @@ namespace Supernova.UI
 
         private void OnDestroy()
         {
+            UnregisterPortraitRenderCallback();
             if (backSlotButton != null)
                 backSlotButton.onClick.RemoveListener(ToggleBackEquipment);
             if (portraitCamera != null)
@@ -132,6 +148,12 @@ namespace Supernova.UI
                     Destroy(faceDetailMaterials[i]);
             }
             faceDetailMaterials.Clear();
+            for (int i = 0; i < portraitRendererProxies.Count; i++)
+            {
+                if (portraitRendererProxies[i].BakedMesh != null)
+                    Destroy(portraitRendererProxies[i].BakedMesh);
+            }
+            portraitRendererProxies.Clear();
         }
 
         private void Update()
@@ -366,6 +388,17 @@ namespace Supernova.UI
             renderStage.hideFlags = HideFlags.DontSave;
             DontDestroyOnLoad(renderStage);
             renderStage.transform.position = new Vector3(5000f, -5000f, 5000f);
+            portraitLayer = LayerMask.NameToLayer(UiLayerNames.PausePortrait);
+            if (portraitLayer < 0)
+            {
+                Debug.LogError(
+                    $"The required UI layer '{UiLayerNames.PausePortrait}' is missing.");
+                Destroy(renderStage);
+                renderStage = null;
+                return;
+            }
+            portraitLayerMask = 1 << portraitLayer;
+            renderStage.layer = portraitLayer;
 
             portraitInstance = Instantiate(prefab, renderStage.transform);
             portraitInstance.name = "Aki Pause Portrait";
@@ -380,10 +413,25 @@ namespace Supernova.UI
                 portraitAnimator.updateMode = AnimatorUpdateMode.UnscaledTime;
                 portraitAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
             }
+            ConfigurePortraitCloth();
 
-            ApplySilhouetteMaterials();
+            CreatePortraitRendererProxies();
             CreatePortraitCamera();
             portraitImage.texture = portraitTexture;
+        }
+
+        private void ConfigurePortraitCloth()
+        {
+            MagicaCloth2.MagicaCloth[] clothComponents =
+                portraitInstance.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true);
+            for (int i = 0; i < clothComponents.Length; i++)
+            {
+                if (clothComponents[i] != null)
+                {
+                    clothComponents[i].SerializeData.updateMode =
+                        MagicaCloth2.ClothUpdateMode.Unscaled;
+                }
+            }
         }
 
         private void SelectNextPose()
@@ -418,45 +466,142 @@ namespace Supernova.UI
             portraitAnimator.runtimeAnimatorController = CreatePoseController();
         }
 
-        private void ApplySilhouetteMaterials()
+        private void CreatePortraitRendererProxies()
         {
             Renderer[] renderers = portraitInstance.GetComponentsInChildren<Renderer>(true);
             for (int rendererIndex = 0; rendererIndex < renderers.Length; rendererIndex++)
             {
-                Renderer targetRenderer = renderers[rendererIndex];
-                if (targetRenderer.name.ToLowerInvariant().Contains("helmet"))
+                Renderer sourceRenderer = renderers[rendererIndex];
+                sourceRenderer.forceRenderingOff = true;
+                if (sourceRenderer.name.IndexOf(
+                        "helmet",
+                        System.StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    // The source visor is a closed transparent shell. A solid-color replacement
-                    // would cover the face, so the whole helmet dissolves into the portrait field.
-                    targetRenderer.enabled = false;
                     continue;
                 }
 
-                Material[] sourceMaterials = targetRenderer.sharedMaterials;
-                Material[] silhouetteMaterials = new Material[sourceMaterials.Length];
-                for (int materialIndex = 0; materialIndex < sourceMaterials.Length; materialIndex++)
+                GameObject proxyObject = new GameObject(
+                    "Pause Silhouette - " + sourceRenderer.name,
+                    typeof(MeshFilter),
+                    typeof(MeshRenderer));
+                proxyObject.layer = portraitLayer;
+                proxyObject.transform.SetParent(renderStage.transform, false);
+                MeshFilter proxyFilter = proxyObject.GetComponent<MeshFilter>();
+                MeshRenderer proxyRenderer = proxyObject.GetComponent<MeshRenderer>();
+                proxyRenderer.sharedMaterials = CreateSilhouetteMaterials(sourceRenderer);
+                proxyRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                proxyRenderer.receiveShadows = false;
+                proxyRenderer.forceRenderingOff = true;
+
+                var proxy = new PortraitRendererProxy
                 {
-                    Material sourceMaterial = sourceMaterials[materialIndex];
-                    string materialName = sourceMaterial != null
-                        ? sourceMaterial.name
-                        : string.Empty;
-                    if (IsFaceDetailPart(materialName))
+                    Source = sourceRenderer,
+                    SkinnedSource = sourceRenderer as SkinnedMeshRenderer,
+                    ProxyTransform = proxyObject.transform,
+                    ProxyRenderer = proxyRenderer
+                };
+
+                if (proxy.SkinnedSource != null)
+                {
+                    proxy.SkinnedSource.updateWhenOffscreen = true;
+                    proxy.BakedMesh = new Mesh
                     {
-                        silhouetteMaterials[materialIndex] =
-                            CreateFaceDetailMaterial(sourceMaterial, materialName);
-                    }
-                    else
-                    {
-                        silhouetteMaterials[materialIndex] =
-                            IsBackgroundPart(targetRenderer.name, materialName)
-                                ? backgroundMaterial
-                                : bodyMaterial;
-                    }
+                        name = "Pause Silhouette Mesh - " + sourceRenderer.name
+                    };
+                    proxy.BakedMesh.MarkDynamic();
+                    proxyFilter.sharedMesh = proxy.BakedMesh;
+                }
+                else
+                {
+                    MeshFilter sourceFilter = sourceRenderer.GetComponent<MeshFilter>();
+                    proxyFilter.sharedMesh = sourceFilter != null
+                        ? sourceFilter.sharedMesh
+                        : null;
                 }
 
-                targetRenderer.sharedMaterials = silhouetteMaterials;
-                targetRenderer.shadowCastingMode = ShadowCastingMode.Off;
-                targetRenderer.receiveShadows = false;
+                portraitRendererProxies.Add(proxy);
+            }
+
+            UpdatePortraitRendererProxies(false);
+        }
+
+        private Material[] CreateSilhouetteMaterials(Renderer sourceRenderer)
+        {
+            Material[] sourceMaterials = sourceRenderer.sharedMaterials;
+            int materialCount = Mathf.Max(sourceMaterials.Length, GetSubMeshCount(sourceRenderer));
+            materialCount = Mathf.Max(1, materialCount);
+            Material[] silhouetteMaterials = new Material[materialCount];
+            for (int materialIndex = 0; materialIndex < materialCount; materialIndex++)
+            {
+                Material sourceMaterial = materialIndex < sourceMaterials.Length
+                    ? sourceMaterials[materialIndex]
+                    : null;
+                string materialName = sourceMaterial != null
+                    ? sourceMaterial.name
+                    : string.Empty;
+                if (IsFaceDetailPart(materialName))
+                {
+                    silhouetteMaterials[materialIndex] =
+                        CreateFaceDetailMaterial(sourceMaterial, materialName);
+                }
+                else
+                {
+                    silhouetteMaterials[materialIndex] =
+                        IsBackgroundPart(sourceRenderer.name, materialName)
+                            ? backgroundMaterial
+                            : bodyMaterial;
+                }
+            }
+
+            return silhouetteMaterials;
+        }
+
+        private static int GetSubMeshCount(Renderer targetRenderer)
+        {
+            if (targetRenderer is SkinnedMeshRenderer skinnedRenderer)
+            {
+                return skinnedRenderer.sharedMesh != null
+                    ? skinnedRenderer.sharedMesh.subMeshCount
+                    : 0;
+            }
+
+            MeshFilter meshFilter = targetRenderer.GetComponent<MeshFilter>();
+            return meshFilter != null && meshFilter.sharedMesh != null
+                ? meshFilter.sharedMesh.subMeshCount
+                : 0;
+        }
+
+        private void UpdatePortraitRendererProxies(bool visible)
+        {
+            for (int i = 0; i < portraitRendererProxies.Count; i++)
+            {
+                PortraitRendererProxy proxy = portraitRendererProxies[i];
+                if (proxy.Source == null || proxy.ProxyRenderer == null)
+                    continue;
+
+                bool sourceVisible = proxy.Source.enabled
+                    && proxy.Source.gameObject.activeInHierarchy;
+                if (proxy.SkinnedSource != null && proxy.BakedMesh != null && sourceVisible)
+                {
+                    proxy.SkinnedSource.BakeMesh(proxy.BakedMesh);
+                    proxy.BakedMesh.RecalculateBounds();
+                }
+
+                proxy.ProxyTransform.SetPositionAndRotation(
+                    proxy.Source.transform.position,
+                    proxy.Source.transform.rotation);
+                proxy.ProxyTransform.localScale = proxy.Source.transform.lossyScale;
+                proxy.ProxyRenderer.forceRenderingOff = !visible || !sourceVisible;
+            }
+        }
+
+        private void SetPortraitProxiesVisible(bool visible)
+        {
+            for (int i = 0; i < portraitRendererProxies.Count; i++)
+            {
+                MeshRenderer proxyRenderer = portraitRendererProxies[i].ProxyRenderer;
+                if (proxyRenderer != null)
+                    proxyRenderer.forceRenderingOff = !visible;
             }
         }
 
@@ -537,6 +682,9 @@ namespace Supernova.UI
             portraitCamera.allowHDR = false;
             portraitCamera.allowMSAA = true;
             portraitCamera.targetTexture = portraitTexture;
+            portraitCamera.cullingMask = portraitLayerMask;
+            RegisterPortraitRenderCallback();
+            ExcludePortraitLayerFromOtherCameras();
 
             Bounds bounds = GetPortraitBounds();
             float distance = Mathf.Max(3.5f,
@@ -548,6 +696,63 @@ namespace Supernova.UI
             portraitCameraBasePosition = portraitCamera.transform.position;
             portraitCameraBaseRotation = portraitCamera.transform.rotation;
             portraitCameraBaseFieldOfView = portraitCamera.fieldOfView;
+        }
+
+        private void ExcludePortraitLayerFromOtherCameras()
+        {
+            if (portraitLayerMask == 0)
+                return;
+
+            Camera[] cameras = FindObjectsOfType<Camera>(true);
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                if (cameras[i] != null && cameras[i] != portraitCamera)
+                    cameras[i].cullingMask &= ~portraitLayerMask;
+            }
+        }
+
+        private void RegisterPortraitRenderCallback()
+        {
+            if (portraitRenderCallbackRegistered)
+                return;
+
+            RenderPipelineManager.beginCameraRendering += HandleBeginCameraRendering;
+            RenderPipelineManager.endCameraRendering += HandleEndCameraRendering;
+            portraitRenderCallbackRegistered = true;
+        }
+
+        private void UnregisterPortraitRenderCallback()
+        {
+            if (!portraitRenderCallbackRegistered)
+                return;
+
+            RenderPipelineManager.beginCameraRendering -= HandleBeginCameraRendering;
+            RenderPipelineManager.endCameraRendering -= HandleEndCameraRendering;
+            portraitRenderCallbackRegistered = false;
+        }
+
+        private void HandleBeginCameraRendering(
+            ScriptableRenderContext context,
+            Camera renderingCamera)
+        {
+            if (portraitInstance == null)
+                return;
+
+            if (renderingCamera == portraitCamera)
+                UpdatePortraitRendererProxies(true);
+            else
+            {
+                renderingCamera.cullingMask &= ~portraitLayerMask;
+                SetPortraitProxiesVisible(false);
+            }
+        }
+
+        private void HandleEndCameraRendering(
+            ScriptableRenderContext context,
+            Camera renderingCamera)
+        {
+            if (renderingCamera == portraitCamera)
+                SetPortraitProxiesVisible(false);
         }
 
         private Bounds GetPortraitBounds()

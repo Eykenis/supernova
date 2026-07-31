@@ -221,10 +221,9 @@ MonoBehaviour:
     safeFallHeight: 3
     maximumJumpHeight: 1
     maximumSingleMoveCost: 200
-    maximumExpandedNodes: 8192
+    maximumExpandedNodes: 512
   pursuitReplanInterval: 1
   wanderRetryInterval: 8
-  wanderRejectionAttempts: 16
   wanderVerticalSearch: 8
   solidDensityThreshold: 0
   arrivalToleranceInVoxels: 0.999
@@ -238,6 +237,9 @@ MonoBehaviour:
   attackCooldown: 0.9
   hurtDuration: 0.3
   attackImpulse: 1.5
+  collisionFragility: 0.5
+  minimumDamageImpulse: 3
+  damagePercentagePerSquaredImpulse: 0.03
   drawDebug: 1
   currentState: 0
   lastExpandedNodeCount: 0

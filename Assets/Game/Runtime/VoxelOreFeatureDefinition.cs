@@ -34,7 +34,9 @@ namespace Supernova.MinecraftCaves
         [SerializeField, Range(0f, 1f)]
         private float discardChanceOnAirExposure = 0.5f;
 
-        [Header("Mined Rigidbody")]
+        [Header("Mined Ore")]
+        [Tooltip("Funds contributed by each recovered voxel of this ore.")]
+        [SerializeField, Min(1)] private int oreUnitValue = 10;
         [Tooltip("Rigidbody mass contributed by each voxel in the connected ore vein.")]
         [SerializeField, Min(0.001f)] private float massDensity = 10f;
         [Tooltip("Fraction of damaging collision impulse converted into lost value.")]
@@ -54,6 +56,7 @@ namespace Supernova.MinecraftCaves
         public int Size => size;
         public float DiscardChanceOnAirExposure =>
             discardChanceOnAirExposure;
+        public int OreUnitValue => Mathf.Max(1, oreUnitValue);
         public float MassDensity => Mathf.Max(0.001f, massDensity);
         public float Fragility => Mathf.Clamp01(fragility);
 
@@ -70,7 +73,8 @@ namespace Supernova.MinecraftCaves
             int veinSize,
             float airExposureDiscardChance,
             float rigidbodyMassDensity = 10f,
-            float minedFragility = 0.25f)
+            float minedFragility = 0.25f,
+            int minedOreUnitValue = 10)
         {
             resultVoxelType = result;
             replaceableVoxelTypes = replaceable != null
@@ -86,6 +90,7 @@ namespace Supernova.MinecraftCaves
             size = Mathf.Clamp(veinSize, 1, 64);
             discardChanceOnAirExposure =
                 Mathf.Clamp01(airExposureDiscardChance);
+            oreUnitValue = Mathf.Max(1, minedOreUnitValue);
             massDensity = Mathf.Max(0.001f, rigidbodyMassDensity);
             fragility = Mathf.Clamp01(minedFragility);
         }
@@ -154,6 +159,7 @@ namespace Supernova.MinecraftCaves
             size = Mathf.Clamp(size, 1, 64);
             discardChanceOnAirExposure =
                 Mathf.Clamp01(discardChanceOnAirExposure);
+            oreUnitValue = Mathf.Max(1, oreUnitValue);
             massDensity = Mathf.Max(0.001f, massDensity);
             fragility = Mathf.Clamp01(fragility);
         }

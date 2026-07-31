@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.MinecraftCaves;
 using Supernova.MinecraftCaves.Creatures;
-using Supernova.Missions;
+using Supernova.Voxels;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -23,7 +24,8 @@ namespace Supernova.Tests
                 AssetDatabase.LoadAssetAtPath<MonsterSpawnTable>(TablePath);
             Assert.That(table, Is.Not.Null);
             Assert.That(table.MaximumActiveMonsters, Is.GreaterThan(0));
-            Assert.That(table.SpawnCellSizeInChunks, Is.GreaterThanOrEqualTo(3));
+            Assert.That(table.MaximumMonsterSpawnsPerFrame, Is.EqualTo(1));
+            Assert.That(table.SecondsBetweenMonsterGroups, Is.EqualTo(0.75f));
             Assert.That(table.Monsters, Is.Not.Empty);
             CollectionAssert.AreEquivalent(
                 new[] { "Cactus Mob", "Skeleton", "Skeleton Giant" },
@@ -33,6 +35,7 @@ namespace Supernova.Tests
             {
                 Assert.That(definition, Is.Not.Null);
                 Assert.That(definition.Prefab, Is.Not.Null);
+                Assert.That(definition.AttemptsPerChunk, Is.EqualTo(2));
                 Assert.That(definition.MinimumGroupSize, Is.GreaterThanOrEqualTo(2));
                 Assert.That(
                     definition.MaximumGroupSize,
@@ -135,58 +138,129 @@ namespace Supernova.Tests
             }
         }
 
-        [TestCase(0, 6, 0)]
-        [TestCase(5, 6, 0)]
-        [TestCase(6, 6, 1)]
-        [TestCase(-1, 6, -1)]
-        [TestCase(-6, 6, -1)]
-        [TestCase(-7, 6, -2)]
-        public void SpawnCellCoordinates_UseFloorDivision(
-            int value,
-            int divisor,
-            int expected)
+        [TestCase(0, 0, true)]
+        [TestCase(1, 0, true)]
+        [TestCase(-1, 1, true)]
+        [TestCase(2, 0, false)]
+        [TestCase(0, -2, false)]
+        public void MonsterSpawnChunkExclusion_CoversSpawnChunkAndNeighbors(
+            int xOffset,
+            int zOffset,
+            bool expected)
         {
             MethodInfo method = typeof(MinecraftCaveInfiniteWorld).GetMethod(
-                "FloorDivide",
+                "IsMonsterSpawnChunkExcluded",
                 BindingFlags.Static | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
+            var playerSpawnChunk = new Vector3Int(10, 0, -4);
+            var candidateChunk = playerSpawnChunk
+                + new Vector3Int(xOffset, 0, zOffset);
+
             Assert.That(
-                method.Invoke(null, new object[] { value, divisor }),
+                method.Invoke(
+                    null,
+                    new object[] { candidateChunk, playerSpawnChunk }),
                 Is.EqualTo(expected));
         }
 
-        [Test]
-        public void SpawnExclusion_UsesConfiguredMonsterRadius()
+        [TestCase(2, -3)]
+        [TestCase(-2, 3)]
+        public void NaturalSpawnSampling_UsesRequestedChunkInterior(
+            int chunkX,
+            int chunkZ)
         {
-            MonsterSpawnTable table =
-                AssetDatabase.LoadAssetAtPath<MonsterSpawnTable>(TablePath);
-            LevelConfiguration level =
-                AssetDatabase.LoadAssetAtPath<LevelConfiguration>(
-                    ProjectAssetPaths.Config.FirstLevel);
-            Assert.That(table, Is.Not.Null);
-            Assert.That(level, Is.Not.Null);
+            MethodInfo createRandom =
+                typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                    "CreateNaturalSpawnRandom",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+            MethodInfo sampleAttempt =
+                typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                    "SampleNaturalSpawnAttempt",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(createRandom, Is.Not.Null);
+            Assert.That(sampleAttempt, Is.Not.Null);
 
+            var column = new Vector3Int(chunkX, 0, chunkZ);
+            var random = (System.Random)createRandom.Invoke(
+                null,
+                new object[] { 18731, column, 1, 0 });
+            for (int index = 0; index < 32; index++)
+            {
+                object attempt = sampleAttempt.Invoke(
+                    null,
+                    new object[] { random, column });
+                System.Type attemptType = attempt.GetType();
+                int x = (int)attemptType.GetProperty("X").GetValue(attempt);
+                int z = (int)attemptType.GetProperty("Z").GetValue(attempt);
+                int startY = (int)attemptType
+                    .GetProperty("StartY")
+                    .GetValue(attempt);
+                double spawnRoll = (double)attemptType
+                    .GetProperty("SpawnRoll")
+                    .GetValue(attempt);
+
+                Assert.That(
+                    x,
+                    Is.InRange(
+                        chunkX * VoxelColumnChunkData.Width + 1,
+                        (chunkX + 1) * VoxelColumnChunkData.Width - 2));
+                Assert.That(
+                    z,
+                    Is.InRange(
+                        chunkZ * VoxelColumnChunkData.Depth + 1,
+                        (chunkZ + 1) * VoxelColumnChunkData.Depth - 2));
+                Assert.That(
+                    startY,
+                    Is.InRange(2, VoxelColumnChunkData.Height - 4));
+                Assert.That(spawnRoll, Is.InRange(0d, 1d));
+            }
+        }
+
+        [Test]
+        public void LivingMonsterCount_IgnoresDisabledAgents()
+        {
             var worldObject = new GameObject("World");
+            var activeObject = new GameObject("Active Monster");
+            var disabledComponentObject =
+                new GameObject("Disabled Component Monster");
+            var inactiveObject = new GameObject("Inactive Monster");
             try
             {
                 MinecraftCaveInfiniteWorld world =
                     worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
-                Assert.That(world.ApplyLevelConfiguration(level), Is.True);
-                Assert.That(level.MonsterGeneration, Is.SameAs(table));
-                SetField(
-                    world,
-                    "targetSpawnWorldPosition",
-                    new Vector3(10f, 4f, 10f));
+                CreatureBehaviorAgent active =
+                    activeObject.AddComponent<CreatureBehaviorAgent>();
+                CreatureBehaviorAgent disabledComponent =
+                    disabledComponentObject.AddComponent<CreatureBehaviorAgent>();
+                CreatureBehaviorAgent inactive =
+                    inactiveObject.AddComponent<CreatureBehaviorAgent>();
+                disabledComponent.enabled = false;
+                inactiveObject.SetActive(false);
 
-                Assert.That(
-                    IsExcluded(world, new Vector3(15f, 100f, 10f)),
-                    Is.True);
-                Assert.That(
-                    IsExcluded(world, new Vector3(30f, 4f, 10f)),
-                    Is.False);
+                FieldInfo activeMonstersField =
+                    typeof(MinecraftCaveInfiniteWorld).GetField(
+                        "activeMonsters",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                MethodInfo countLivingMonsters =
+                    typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                        "CountLivingMonsters",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(activeMonstersField, Is.Not.Null);
+                Assert.That(countLivingMonsters, Is.Not.Null);
+
+                var monsters =
+                    (List<CreatureBehaviorAgent>)activeMonstersField.GetValue(world);
+                monsters.Add(active);
+                monsters.Add(disabledComponent);
+                monsters.Add(inactive);
+
+                Assert.That(countLivingMonsters.Invoke(world, null), Is.EqualTo(1));
             }
             finally
             {
+                Object.DestroyImmediate(inactiveObject);
+                Object.DestroyImmediate(disabledComponentObject);
+                Object.DestroyImmediate(activeObject);
                 Object.DestroyImmediate(worldObject);
             }
         }
@@ -217,24 +291,5 @@ namespace Supernova.Tests
             }
         }
 
-        private static bool IsExcluded(
-            MinecraftCaveInfiniteWorld world,
-            Vector3 position)
-        {
-            MethodInfo method = typeof(MinecraftCaveInfiniteWorld).GetMethod(
-                "IsInsideMonsterSpawnExclusion",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(method, Is.Not.Null);
-            return (bool)method.Invoke(world, new object[] { position });
-        }
-
-        private static void SetField(object target, string name, object value)
-        {
-            FieldInfo field = target.GetType().GetField(
-                name,
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(field, Is.Not.Null);
-            field.SetValue(target, value);
-        }
     }
 }

@@ -49,6 +49,23 @@ namespace Supernova.Gameplay
             }
         }
 
+        /// <summary>
+        /// Applies one firearm impact to both the treasure's physical body and
+        /// its existing collision-value-loss calculation.
+        /// </summary>
+        public int ApplyProjectileImpulse(Vector3 impulse, Vector3 point)
+        {
+            Rigidbody body = GetComponent<Rigidbody>();
+            if (body != null && !body.isKinematic)
+            {
+                body.AddForceAtPosition(impulse, point, ForceMode.Impulse);
+            }
+
+            return Valuable != null
+                ? Valuable.ApplyCollisionImpulse(impulse.magnitude, point)
+                : 0;
+        }
+
         public bool TrySpawnBreakEffect(
             ValuableObject.BreakContext context)
         {

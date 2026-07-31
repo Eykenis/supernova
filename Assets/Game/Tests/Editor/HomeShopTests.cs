@@ -48,25 +48,78 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void FlashlightProduct_HasPriceAndConfiguredDisplayAssets()
+        public void PlayerOwnedItems_SerializesInventoryAndUpgradesTogether()
         {
-            ShopProductProfile profile =
-                LoadFlashlightProduct();
-            PlayerToolDefinition tool =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.FlashlightTool);
+            var ownedItems = new PlayerOwnedItems();
 
-            Assert.That(profile.IsConfigured, Is.True);
-            Assert.That(profile.ProductId, Is.EqualTo("flashlight"));
-            Assert.That(profile.DisplayName, Is.EqualTo("照明灯"));
-            Assert.That(profile.Price, Is.EqualTo(100));
             Assert.That(
-                profile.GrantedItem,
-                Is.EqualTo(PlayerInventoryItem.Flashlight));
+                ownedItems.SetOwned(PlayerInventoryItem.Gun, true),
+                Is.True);
             Assert.That(
-                profile.DisplayPrefab,
-                Is.SameAs(tool.HeldModelPrefab));
-            Assert.That(profile.WireframeMaterial, Is.Not.Null);
+                ownedItems.SetOwned(PlayerUpgrade.AttractionModule, true),
+                Is.True);
+
+            string json = JsonUtility.ToJson(ownedItems);
+            var restored = JsonUtility.FromJson<PlayerOwnedItems>(json);
+            Assert.That(restored.Owns(PlayerInventoryItem.Gun), Is.True);
+            Assert.That(
+                restored.Owns(PlayerUpgrade.AttractionModule),
+                Is.True);
+        }
+
+        [Test]
+        public void ShopProducts_AreAllConfigured()
+        {
+            ShopProductProfile[] products = LoadProducts();
+
+            Assert.That(products, Has.Length.EqualTo(6));
+            Assert.That(
+                products.Select(product => product.ProductId),
+                Is.EquivalentTo(new[]
+                {
+                    "gun",
+                    "smg",
+                    "flashlight",
+                    "solid-gun",
+                    "attraction-module",
+                    "cart",
+                }));
+            Assert.That(
+                products.All(product => product.IsConfigured),
+                Is.True);
+            Assert.That(
+                products.All(product =>
+                    product.WireframeMaterial != null
+                    && AssetDatabase.GetAssetPath(
+                        product.WireframeMaterial)
+                    == ProjectAssetPaths.Materials.ShopGeometryWireframe),
+                Is.True);
+
+            ShopProductProfile upgrade = products.Single(product =>
+                product.GrantType == ShopProductGrantType.Upgrade);
+            Assert.That(
+                upgrade.GrantedUpgrade,
+                Is.EqualTo(PlayerUpgrade.AttractionModule));
+            Assert.That(upgrade.UpgradeValue, Is.EqualTo(400f));
+
+            ShopProductProfile cart = products.Single(product =>
+                product.ProductId == "cart");
+            Assert.That(cart.Price, Is.EqualTo(250));
+            Assert.That(
+                cart.GrantedItem,
+                Is.EqualTo(PlayerInventoryItem.Cart));
+            Assert.That(
+                AssetDatabase.GetAssetPath(cart.DisplayPrefab),
+                Is.EqualTo(ProjectAssetPaths.ThirdParty.EmptyCart));
+
+            PlayerToolDefinition cartTool =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.CartTool);
+            Assert.That(cartTool, Is.Not.Null);
+            Assert.That(cartTool.Item, Is.EqualTo(PlayerInventoryItem.Cart));
+            Assert.That(
+                cartTool.PrimaryAction,
+                Is.EqualTo(PlayerToolPrimaryAction.TowCart));
         }
 
         [Test]
@@ -119,6 +172,101 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void CartPurchase_UnlocksSeventhToolSlot()
+        {
+            ShopProductProfile profile = LoadProducts().Single(product =>
+                product.ProductId == "cart");
+            string creditsKey = PlayerEconomy.CreditsPreferenceKey;
+            string ownershipKey =
+                PlayerEconomy.GetItemOwnershipPreferenceKey(
+                    PlayerInventoryItem.Cart);
+            bool hadCredits = PlayerPrefs.HasKey(creditsKey);
+            bool hadOwnership = PlayerPrefs.HasKey(ownershipKey);
+            int previousCredits = PlayerPrefs.GetInt(creditsKey, 0);
+            int previousOwnership = PlayerPrefs.GetInt(ownershipKey, 0);
+
+            try
+            {
+                PlayerPrefs.SetInt(creditsKey, profile.Price);
+                PlayerPrefs.DeleteKey(ownershipKey);
+                var inventory = new PlayerInventory(
+                    6,
+                    PlayerEconomy.IsItemOwned);
+
+                Assert.That(
+                    inventory.GetItemAtSlot(6),
+                    Is.EqualTo(PlayerInventoryItem.Empty));
+                Assert.That(
+                    PlayerEconomy.TryPurchase(profile),
+                    Is.EqualTo(ShopPurchaseResult.Purchased));
+                Assert.That(
+                    inventory.SetItemOwned(
+                        PlayerInventoryItem.Cart,
+                        PlayerEconomy.IsItemOwned(
+                            PlayerInventoryItem.Cart)),
+                    Is.True);
+                Assert.That(
+                    inventory.GetItemAtSlot(6),
+                    Is.EqualTo(PlayerInventoryItem.Cart));
+                Assert.That(PlayerEconomy.Credits, Is.Zero);
+            }
+            finally
+            {
+                RestorePreference(
+                    creditsKey,
+                    hadCredits,
+                    previousCredits);
+                RestorePreference(
+                    ownershipKey,
+                    hadOwnership,
+                    previousOwnership);
+                PlayerPrefs.Save();
+            }
+        }
+
+        [Test]
+        public void UpgradePurchase_PersistsAttractionModuleOwnership()
+        {
+            ShopProductProfile profile = LoadProducts().Single(product =>
+                product.GrantType == ShopProductGrantType.Upgrade);
+            string creditsKey = PlayerEconomy.CreditsPreferenceKey;
+            string ownershipKey =
+                PlayerEconomy.GetUpgradeOwnershipPreferenceKey(
+                    PlayerUpgrade.AttractionModule);
+            bool hadCredits = PlayerPrefs.HasKey(creditsKey);
+            bool hadOwnership = PlayerPrefs.HasKey(ownershipKey);
+            int previousCredits = PlayerPrefs.GetInt(creditsKey, 0);
+            int previousOwnership = PlayerPrefs.GetInt(ownershipKey, 0);
+
+            try
+            {
+                PlayerPrefs.SetInt(creditsKey, profile.Price);
+                PlayerPrefs.DeleteKey(ownershipKey);
+
+                Assert.That(
+                    PlayerEconomy.TryPurchase(profile),
+                    Is.EqualTo(ShopPurchaseResult.Purchased));
+                Assert.That(PlayerEconomy.Credits, Is.Zero);
+                Assert.That(
+                    PlayerEconomy.IsUpgradeOwned(
+                        PlayerUpgrade.AttractionModule),
+                    Is.True);
+            }
+            finally
+            {
+                RestorePreference(
+                    creditsKey,
+                    hadCredits,
+                    previousCredits);
+                RestorePreference(
+                    ownershipKey,
+                    hadOwnership,
+                    previousOwnership);
+                PlayerPrefs.Save();
+            }
+        }
+
+        [Test]
         public void ProductDisplay_MatchesTreasureTextStyleAndOwnershipRenderMode()
         {
             ShopProductProfile profile =
@@ -141,21 +289,36 @@ namespace Supernova.Tests
             Assert.That(
                 display.WireframeRendererCount,
                 Is.GreaterThan(0));
+            MeshRenderer[] renderers =
+                displayObject.GetComponentsInChildren<MeshRenderer>(true);
+            Assert.That(
+                renderers.Length,
+                Is.EqualTo(display.SolidRendererCount));
+            Assert.That(
+                renderers.Any(renderer =>
+                    renderer.gameObject.name.EndsWith(" Wireframe")),
+                Is.False,
+                "Wireframe presentation must not create duplicate renderers.");
 
             if (display.IsOwned)
             {
-                Assert.That(display.Label.text, Is.EqualTo("已拥有"));
+                Assert.That(display.Label.text, Is.EqualTo("OWNED"));
                 Assert.That(
                     display.Label.color,
                     Is.EqualTo(WorldValueTextStyle.OwnedColor));
                 Assert.That(display.IsShowingSolid, Is.True);
                 Assert.That(display.IsShowingWireframe, Is.False);
+                Assert.That(
+                    renderers.Any(renderer =>
+                        renderer.sharedMaterials.Any(material =>
+                            material != profile.WireframeMaterial)),
+                    Is.True);
             }
             else
             {
                 Assert.That(
                     display.Label.text,
-                    Is.EqualTo("$100\n按 E 购买"));
+                    Is.EqualTo("$100\nPRESS E TO BUY"));
                 Assert.That(
                     display.Label.color,
                     Is.EqualTo(PlayerEconomy.CanAfford(profile)
@@ -163,11 +326,42 @@ namespace Supernova.Tests
                         : WorldValueTextStyle.LossColor));
                 Assert.That(display.IsShowingSolid, Is.False);
                 Assert.That(display.IsShowingWireframe, Is.True);
+                Assert.That(
+                    renderers.All(renderer =>
+                        renderer.sharedMaterials.All(material =>
+                            material == profile.WireframeMaterial)),
+                    Is.True);
             }
         }
 
         [Test]
-        public void HomeScene_HasNearbyShopAnchorWithoutCustomShopModel()
+        public void CartProductDisplay_DisablesPrefabPhysics()
+        {
+            ShopProductProfile profile = LoadProducts().Single(product =>
+                product.ProductId == "cart");
+            displayObject = new GameObject("Cart Product Display Test");
+            ShopProductDisplay display =
+                displayObject.AddComponent<ShopProductDisplay>();
+
+            display.Configure(profile);
+
+            Rigidbody[] bodies =
+                displayObject.GetComponentsInChildren<Rigidbody>(true);
+            Collider[] colliders =
+                displayObject.GetComponentsInChildren<Collider>(true);
+            Assert.That(bodies, Is.Not.Empty);
+            Assert.That(
+                bodies.All(body => body.isKinematic && !body.useGravity),
+                Is.True);
+            Assert.That(
+                colliders
+                    .Where(collider => collider != display.TargetCollider)
+                    .All(collider => !collider.enabled),
+                Is.True);
+        }
+
+        [Test]
+        public void HomeScene_HasSixProductAnchorsWithoutCustomShopModel()
         {
             Scene homeScene =
                 SceneManager.GetSceneByPath(ProjectAssetPaths.Scenes.Home);
@@ -185,23 +379,16 @@ namespace Supernova.Tests
                 GameObject shop = roots.FirstOrDefault(
                     root => root.name
                         == ProjectAssetPaths.LookupNames.HomeShopRoot);
-                GameObject player = roots.FirstOrDefault(
-                    root => root.name == "Player");
 
                 Assert.That(shop, Is.Not.Null);
-                Assert.That(player, Is.Not.Null);
+                HomeShopController[] controllers =
+                    shop.GetComponentsInChildren<HomeShopController>(true);
+                Assert.That(controllers, Has.Length.EqualTo(6));
                 Assert.That(
-                    shop.GetComponent<HomeShopController>(),
-                    Is.Not.Null);
-                Assert.That(
-                    shop.GetComponent<HomeShopController>()
-                        .ProductProfile,
-                    Is.SameAs(LoadFlashlightProduct()));
-                Assert.That(
-                    Vector3.Distance(
-                        shop.transform.position,
-                        player.transform.position),
-                    Is.LessThan(5f));
+                    controllers.Select(controller =>
+                        controller.ProductProfile.ProductId),
+                    Is.EquivalentTo(LoadProducts().Select(product =>
+                        product.ProductId)));
                 Assert.That(
                     shop.GetComponentsInChildren<Renderer>(true),
                     Is.Empty,
@@ -221,6 +408,26 @@ namespace Supernova.Tests
                     ProjectAssetPaths.Config.FlashlightProduct);
             Assert.That(profile, Is.Not.Null);
             return profile;
+        }
+
+        private static ShopProductProfile[] LoadProducts()
+        {
+            string[] paths =
+            {
+                ProjectAssetPaths.Config.GunProduct,
+                ProjectAssetPaths.Config.SmgProduct,
+                ProjectAssetPaths.Config.FlashlightProduct,
+                ProjectAssetPaths.Config.SolidGunProduct,
+                ProjectAssetPaths.Config.AttractionModuleProduct,
+                ProjectAssetPaths.Config.CartProduct,
+            };
+            return paths.Select(path =>
+            {
+                ShopProductProfile profile =
+                    AssetDatabase.LoadAssetAtPath<ShopProductProfile>(path);
+                Assert.That(profile, Is.Not.Null, path);
+                return profile;
+            }).ToArray();
         }
 
         private static void RestorePreference(

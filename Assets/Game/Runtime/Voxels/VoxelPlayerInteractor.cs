@@ -23,10 +23,10 @@ namespace Supernova.Voxels
         [SerializeField] private Camera viewCamera;
         [SerializeField] private MonoBehaviour terrain;
         [SerializeField] private VoxelMiningImpactEffect miningImpactEffect;
-        [SerializeField] private FirstPersonCartAttractor cartAttractor;
         private PlayerProfile profile;
         private int raycastMask;
         private bool hasPendingMine;
+        private SolidVoxelPrototype pendingMinePlatform;
         private Vector3Int pendingMineVoxel;
         private Vector3 pendingMineDirection;
         private Vector3 pendingMinePoint;
@@ -64,34 +64,6 @@ namespace Supernova.Voxels
             }
 
             ApplyPendingMineIfReady();
-
-            TryGetTarget(
-                out _,
-                out _,
-                out Vector3Int placeVoxel,
-                out bool canPlace,
-                out _,
-                out _,
-                out _);
-
-            if (Cursor.lockState != CursorLockMode.Locked)
-            {
-                return;
-            }
-
-            bool magnetConsumesRightMouse = cartAttractor != null
-                && cartAttractor.IsAdjustingHeldObjectHeight;
-            if (Input.GetMouseButtonDown(1)
-                && !magnetConsumesRightMouse
-                && canPlace)
-            {
-                Terrain.TrySetVoxelAndRebuild(
-                    placeVoxel.x,
-                    placeVoxel.y,
-                    placeVoxel.z,
-                    1f,
-                    VoxelTypeId.Default);
-            }
         }
 
         public bool TryScheduleMineAtCrosshair(float delay)
@@ -116,7 +88,7 @@ namespace Supernova.Voxels
                 return false;
             }
 
-            if (!TryGetTarget(
+            bool foundVoxel = TryGetTarget(
                     out Vector3Int removeVoxel,
                     out bool canRemove,
                     out _,
@@ -124,9 +96,31 @@ namespace Supernova.Voxels
                     out Vector3 mineDirection,
                     out Vector3 hitPoint,
                     out Vector3 hitNormal)
-                || !canRemove)
+                && canRemove;
+            bool foundPlatform = TryGetPlatformTarget(
+                out SolidVoxelPrototype platform,
+                out RaycastHit platformHit);
+            if (!foundVoxel && !foundPlatform)
             {
                 return false;
+            }
+
+            if (foundPlatform
+                && (!foundVoxel
+                    || platformHit.distance * platformHit.distance
+                        <= (hitPoint - viewCamera.transform.position)
+                            .sqrMagnitude))
+            {
+                float platformDelay = Mathf.Max(0f, delay);
+                if (platformDelay <= 0f)
+                    return platform.DestroyByMining();
+
+                pendingMinePlatform = platform;
+                pendingMinePoint = platformHit.point;
+                pendingMineNormal = platformHit.normal;
+                pendingMineTime = Time.time + platformDelay;
+                hasPendingMine = true;
+                return true;
             }
 
             float clampedDelay = Mathf.Max(0f, delay);
@@ -162,6 +156,25 @@ namespace Supernova.Voxels
         {
             result = default;
             ResolveReferences();
+            if (TryGetPlatformTarget(
+                    out SolidVoxelPrototype platform,
+                    out RaycastHit platformHit)
+                && (!TryGetTarget(
+                        out _,
+                        out bool comparedCanRemove,
+                        out _,
+                        out _,
+                        out _,
+                        out Vector3 comparedPoint,
+                        out _)
+                    || !comparedCanRemove
+                    || platformHit.distance * platformHit.distance
+                        <= (comparedPoint - viewCamera.transform.position)
+                            .sqrMagnitude))
+            {
+                return platform.DestroyByMining();
+            }
+
             if (!TryGetTarget(
                     out Vector3Int removeVoxel,
                     out bool canRemove,
@@ -200,6 +213,25 @@ namespace Supernova.Voxels
         {
             result = default;
             ResolveReferences();
+            if (TryGetPlatformTarget(
+                    out SolidVoxelPrototype platform,
+                    out RaycastHit platformHit)
+                && (!TryGetTarget(
+                        out _,
+                        out bool comparedCanRemove,
+                        out _,
+                        out _,
+                        out _,
+                        out Vector3 comparedPoint,
+                        out _)
+                    || !comparedCanRemove
+                    || platformHit.distance * platformHit.distance
+                        <= (comparedPoint - viewCamera.transform.position)
+                            .sqrMagnitude))
+            {
+                return platform.DestroyByMining();
+            }
+
             if (!TryGetTarget(
                     out Vector3Int removeVoxel,
                     out bool canRemove,
@@ -233,6 +265,14 @@ namespace Supernova.Voxels
         {
             if (!hasPendingMine || Time.time < pendingMineTime) return;
             hasPendingMine = false;
+            SolidVoxelPrototype platform = pendingMinePlatform;
+            pendingMinePlatform = null;
+            if (platform != null)
+            {
+                platform.DestroyByMining();
+                return;
+            }
+
             IVoxelTerrain voxelTerrain = Terrain;
             if (voxelTerrain != null)
             {
@@ -255,6 +295,7 @@ namespace Supernova.Voxels
         private void OnDisable()
         {
             hasPendingMine = false;
+            pendingMinePlatform = null;
         }
 
         private bool TryGetTarget(
@@ -337,6 +378,43 @@ namespace Supernova.Voxels
                 false,
                 out placeVoxel);
             return canRemove || canPlace;
+        }
+
+        private bool TryGetPlatformTarget(
+            out SolidVoxelPrototype platform,
+            out RaycastHit platformHit)
+        {
+            platform = null;
+            platformHit = default;
+            if (viewCamera == null)
+                return false;
+
+            RaycastHit[] hits = Physics.RaycastAll(
+                new Ray(
+                    viewCamera.transform.position,
+                    viewCamera.transform.forward),
+                Profile.InteractionReach,
+                raycastMask,
+                QueryTriggerInteraction.Ignore);
+            if (hits.Length == 0)
+                return false;
+
+            System.Array.Sort(
+                hits,
+                (a, b) => a.distance.CompareTo(b.distance));
+            for (int i = 0; i < hits.Length; i++)
+            {
+                SolidVoxelPrototype candidate =
+                    hits[i].collider.GetComponentInParent<
+                        SolidVoxelPrototype>();
+                if (candidate == null)
+                    continue;
+
+                platform = candidate;
+                platformHit = hits[i];
+                return true;
+            }
+            return false;
         }
 
         private static bool TryResolveCellSample(
@@ -483,10 +561,6 @@ namespace Supernova.Voxels
             if (miningImpactEffect == null)
             {
                 miningImpactEffect = GetComponent<VoxelMiningImpactEffect>();
-            }
-            if (cartAttractor == null)
-            {
-                cartAttractor = GetComponent<FirstPersonCartAttractor>();
             }
         }
 

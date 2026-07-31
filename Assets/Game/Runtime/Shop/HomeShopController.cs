@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Supernova.Shop
 {
-    /// <summary>Crosshair interaction for the single-product Home shop test stand.</summary>
+    /// <summary>Crosshair interaction for one product stand in the Home shop.</summary>
     [DisallowMultipleComponent]
     public sealed class HomeShopController : MonoBehaviour
     {
@@ -85,7 +85,7 @@ namespace Supernova.Shop
             if (productDisplay == null)
             {
                 Transform existing =
-                    transform.Find("Lighting Product");
+                    transform.Find("Shop Product");
                 GameObject productObject;
                 if (existing != null)
                 {
@@ -93,7 +93,7 @@ namespace Supernova.Shop
                 }
                 else
                 {
-                    productObject = new GameObject("Lighting Product");
+                    productObject = new GameObject("Shop Product");
                     productObject.transform.SetParent(transform, false);
                 }
 
@@ -138,17 +138,17 @@ namespace Supernova.Shop
             {
                 case ShopPurchaseResult.Purchased:
                     missionLoop.SetPrompt(
-                        "照明灯购买成功    余额  $"
+                        "PURCHASE COMPLETE    BALANCE  $"
                         + PlayerEconomy.Credits);
                     break;
                 case ShopPurchaseResult.InsufficientFunds:
                     missionLoop.SetPrompt(
-                        "余额不足    当前余额  $"
+                        "INSUFFICIENT FUNDS    BALANCE  $"
                         + PlayerEconomy.Credits);
                     break;
                 default:
                     missionLoop.SetPrompt(
-                        "商店已开放    余额  $"
+                        "SHOP ONLINE    BALANCE  $"
                         + PlayerEconomy.Credits);
                     break;
             }

@@ -19,3 +19,6 @@ MonoBehaviour:
     type: 3}
   heldModelPrefab: {fileID: 0}
   allowMovementWhileUsing: 1
+  actionTriggerDelay: 0
+  actionCyclePeriod: 0.02
+  actionIsPeriodic: 0

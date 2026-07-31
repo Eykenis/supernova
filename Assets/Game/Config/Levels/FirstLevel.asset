@@ -13,12 +13,11 @@ MonoBehaviour:
   m_Name: FirstLevel
   m_EditorClassIdentifier: 
   levelNumber: 1
-  displayName: FIRST DESCENT
+  displayName: Level 1
   worldGeneration: {fileID: 11400000, guid: aae73aa900a741345aad2a073c4a6054, type: 2}
   monsterGeneration: {fileID: 11400000, guid: 09d92db632bafda4096a3f8350baafa2, type: 2}
   treasureGeneration: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
-  timeLimitSeconds: 300
-  requiredFunds: 100
-  oreUnitValue: 10
+  timeLimitSeconds: 600
+  requiredFunds: 200
   caveSceneName: InfiniteCaves
   homeSceneName: Home

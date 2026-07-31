@@ -44,12 +44,6 @@ namespace Supernova.Gameplay
 
         [Header("Voxel interaction")]
         [SerializeField, Min(0.1f)] private float interactionReach = 3f;
-        [Tooltip("Delay from starting the attack animation until the targeted voxel receives the mining hit.")]
-        [SerializeField, Min(0f)] private float voxelDestructionDelay = 0.05f;
-        [Tooltip("Minimum time between consecutive mining hits while holding the mouse button.")]
-        [SerializeField, Min(0.02f)] private float mineInterval = 0.22f;
-        [Tooltip("Cooldown applied when a mining swing hits nothing, so an empty swing does not block the next attempt.")]
-        [SerializeField, Min(0.02f)] private float mineWhiffCooldown = 0.08f;
         [Tooltip("Pull the mining ray origin back by this distance so blocks pressed against the camera can still be hit.")]
         [SerializeField, Min(0f)] private float mineRayBackstep = 0.35f;
 
@@ -84,9 +78,6 @@ namespace Supernova.Gameplay
         public KeyCode RecoverKey => recoverKey;
         public float KocchiDistance => Mathf.Max(0f, kocchiDistance);
         public float InteractionReach => Mathf.Max(0.1f, interactionReach);
-        public float VoxelDestructionDelay => Mathf.Max(0f, voxelDestructionDelay);
-        public float MineInterval => Mathf.Max(0.02f, mineInterval);
-        public float MineWhiffCooldown => Mathf.Max(0.02f, mineWhiffCooldown);
         public float MineRayBackstep => Mathf.Max(0f, mineRayBackstep);
         public KeyCode DebugToggleKey => debugToggleKey;
         public float DebugFlySpeed => Mathf.Max(0f, debugFlySpeed);

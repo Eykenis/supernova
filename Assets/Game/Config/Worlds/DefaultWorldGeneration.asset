@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   generationMode: 0
   superflatStoneHeight: 10
-  worldSeed: 114514
+  worldSeed: 666
   settings:
     cheeseFrequency: 0.001
     cheeseThreshold: 0.02
@@ -37,7 +37,7 @@ MonoBehaviour:
     containerHalfExtent: 0.91
     cutawayPlane: -0.24
   placeViewerInCave: 1
-  maxConcurrentGenerationJobs: 4
+  maxConcurrentGenerationJobs: 1
   meshesBuiltPerFrame: 1
   oreDepthProbability:
     shallowMultiplier: 0.25
@@ -55,6 +55,8 @@ MonoBehaviour:
   isoLevel: 0
   vertexPlacement: 1
   generateColliders: 1
+  terrainPhysicsMaterial: {fileID: 13400000, guid: 1ebb110c1601c1344b39f1140bac3c92,
+    type: 2}
   voxelTypeCatalog: {fileID: 11400000, guid: 2edfe535d7218ed4795d6c3a36fedea1, type: 2}
   punctualLightFalloffPower: 0.55
   punctualLightAttenuationLimit: 1.5

@@ -119,13 +119,27 @@ namespace Supernova.UI
             if (root == null)
                 return;
 
+            ApplyTypography(root);
             RectTransform health = FindRect(root, UiHierarchyPaths.Hud.HealthPanel);
             if (health != null)
             {
-                StylePanel(health, GetHudPanelFrame(), Surface,
-                    new Color(Accent.r, Accent.g, Accent.b, 0.68f));
-                SetTextColor(health, UiHierarchyPaths.Hud.HealthHeaderTitle, Accent);
-                SetTextColor(health, UiHierarchyPaths.Hud.HealthHeaderValue, TextPrimary);
+                Image image = health.GetComponent<Image>();
+                if (image != null)
+                    image.color = Color.clear;
+                Outline outline = health.GetComponent<Outline>();
+                if (outline != null)
+                    outline.effectColor = Color.clear;
+                Transform frame = health.Find(UiHierarchyPaths.Decoration.Frame);
+                if (frame != null)
+                    frame.gameObject.SetActive(false);
+                SetTextColor(
+                    health,
+                    UiHierarchyPaths.Hud.HealthHeaderTitle,
+                    new Color(1f, 1f, 1f, 0.72f));
+                SetTextColor(
+                    health,
+                    UiHierarchyPaths.Hud.HealthHeaderValue,
+                    Color.white);
                 SetImageColor(health, UiHierarchyPaths.Hud.HealthTrack, Color.clear);
             }
 
@@ -140,24 +154,27 @@ namespace Supernova.UI
                     Image image = slot.GetComponent<Image>();
                     if (image != null)
                         image.color = Color.clear;
-                    EnsureFrame(slot, GetSlotCleanFrame(),
-                        new Color(Accent.r, Accent.g, Accent.b, 0.48f),
-                        new Vector2(-1f, -1f), new Vector2(1f, 1f));
+                    Transform frame = slot.Find(UiHierarchyPaths.Decoration.Frame);
+                    if (frame != null)
+                        frame.gameObject.SetActive(false);
                 }
             }
 
             RectTransform crosshair = FindRect(root, UiHierarchyPaths.Hud.Crosshair);
             if (crosshair != null)
             {
-                SetImageColor(crosshair, UiHierarchyPaths.Hud.Horizontal, Accent);
-                SetImageColor(crosshair, UiHierarchyPaths.Hud.Vertical, Accent);
+                SetImageColor(crosshair, UiHierarchyPaths.Hud.Horizontal, Color.white);
+                SetImageColor(crosshair, UiHierarchyPaths.Hud.Vertical, Color.white);
                 EnsureCenterDot(crosshair);
+                SetImageColor(
+                    crosshair,
+                    UiHierarchyPaths.Decoration.Center,
+                    Color.white);
             }
 
             ApplyLoading(root);
             RectTransform pausePanel = FindRect(root, UiHierarchyPaths.Pause.Panel);
             ApplyPauseMenu(pausePanel);
-            ApplyTypography(root);
         }
 
         public static void ApplyPauseMenu(Transform pausePanel)

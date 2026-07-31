@@ -27,17 +27,44 @@ namespace Supernova.UI
         public static class Hud
         {
             public const string RootCanvas = "HUD Canvas";
+            public const string CompassName = "Compass";
+            public const string CompassViewportName = "Viewport";
+            public const string CompassTicksName = "Ticks";
+            public const string CompassHeadingName = "Current Heading";
+            public const string CompassBearingMarkerName = "Bearing Marker";
+            public const string CompassBearingRuleName = "Bearing Rule";
+            public const string Compass = RootCanvas + "/" + CompassName;
+            public const string CompassViewport =
+                Compass + "/" + CompassViewportName;
+            public const string CompassTicks =
+                CompassViewport + "/" + CompassTicksName;
+            public const string CompassHeading =
+                Compass + "/" + CompassHeadingName;
+            public const string CompassBearingMarker =
+                Compass + "/" + CompassBearingMarkerName;
+            public const string CompassBearingRule =
+                Compass + "/" + CompassBearingRuleName;
+            public const string CompassTickLine = "Line";
+            public const string CompassTickLabel = "Label";
+            public const string CompassTickPrefix = "Tick ";
             public const string HealthPanel = "HUD Canvas/Health Panel";
             public const string HealthFill = "HUD Canvas/Health Panel/Track/Fill";
             public const string HealthTitle = "HUD Canvas/Health Panel/Header/Title";
             public const string HealthValue = "HUD Canvas/Health Panel/Header/Value";
+            public const string HealthHeader = "Header";
             public const string HealthTrack = "Track";
+            public const string HealthSegmentsName = "Segments";
+            public const string HealthSegments =
+                HealthPanel + "/" + HealthTrack + "/" + HealthSegmentsName;
+            public const string HealthSegmentPrefix = "Segment ";
             public const string Hotbar = "HUD Canvas/Hotbar";
             public const string CrosshairCanvas = "Crosshair Canvas";
             public const string Crosshair = "Crosshair Canvas/Crosshair";
             public const string Horizontal = "Horizontal";
             public const string Vertical = "Vertical";
             public const string Item = "Item";
+            public const string Key = "Key";
+            public const string AngledSurface = "Angled Surface";
             public const string HealthHeaderTitle = "Header/Title";
             public const string HealthHeaderValue = "Header/Value";
             public const string HealthFrame = HealthPanel + "/" + Decoration.Frame;
@@ -46,22 +73,47 @@ namespace Supernova.UI
 
             public static string HotbarSlot(int oneBasedIndex)
             {
-                return Hotbar + "/Slot " + oneBasedIndex;
+                return Hotbar + "/" + SlotName(oneBasedIndex);
+            }
+
+            public static string SlotName(int oneBasedIndex)
+            {
+                return "Slot " + oneBasedIndex;
             }
 
             public static string SlotItem(int oneBasedIndex)
             {
-                return "Slot " + oneBasedIndex + "/" + Item;
+                return SlotName(oneBasedIndex) + "/" + Item;
             }
 
             public static string SlotKey(int oneBasedIndex)
             {
-                return "Slot " + oneBasedIndex + "/Key";
+                return SlotName(oneBasedIndex) + "/" + Key;
             }
 
             public static string SlotFrame(int oneBasedIndex)
             {
-                return "Slot " + oneBasedIndex + "/" + Decoration.Frame;
+                return SlotName(oneBasedIndex) + "/" + Decoration.Frame;
+            }
+
+            public static string SlotAngledSurface(int oneBasedIndex)
+            {
+                return SlotName(oneBasedIndex) + "/" + AngledSurface;
+            }
+
+            public static string HotbarSlotAngledSurface(int oneBasedIndex)
+            {
+                return HotbarSlot(oneBasedIndex) + "/" + AngledSurface;
+            }
+
+            public static string HealthSegment(int oneBasedIndex)
+            {
+                return HealthSegments + "/" + HealthSegmentPrefix + oneBasedIndex;
+            }
+
+            public static string CompassTickName(int oneBasedIndex)
+            {
+                return CompassTickPrefix + oneBasedIndex.ToString("00");
             }
 
             public static string HotbarSlotFrame(int oneBasedIndex)
@@ -119,11 +171,47 @@ namespace Supernova.UI
             public const string Core = "Core";
         }
 
+        public static class Mission
+        {
+            public const string Root = "HUD Canvas/Mission";
+            public const string Objective = Root + "/Objective";
+            public const string Prompt = Root + "/Prompt";
+            public const string Timer = Root + "/Mission Timer";
+            public const string TimerCaption = Timer + "/Caption";
+            public const string TimerValue = Timer + "/Value";
+            public const string TimerRule = Timer + "/Rule";
+            public const string OverlayCanvas = "Mission Overlay Canvas";
+            public const string ResultPanel =
+                OverlayCanvas + "/Mission Result";
+            public const string ResultText =
+                ResultPanel + "/Result Text";
+            public const string SceneFade =
+                OverlayCanvas + "/Scene Fade";
+        }
+
+        public static class SpawnIndicator
+        {
+            public const string RuntimeRoot = "Spawn Point Indicator UI";
+            public const string CanvasName = "Spawn Indicator Canvas";
+            public const string MarkerName = "Marker";
+            public const string ArrowName = "Arrow";
+            public const string DistanceName = "Distance";
+            public const string Canvas = CanvasName;
+            public const string Marker = Canvas + "/" + MarkerName;
+            public const string Arrow = Marker + "/" + ArrowName;
+            public const string Distance = Marker + "/" + DistanceName;
+        }
+
         public static class Decoration
         {
             public const string Frame = "__SciFi Frame";
             public const string Telemetry = "__SciFi Telemetry";
             public const string Center = "__SciFi Center";
         }
+    }
+
+    public static class UiLayerNames
+    {
+        public const string PausePortrait = "Pause Portrait";
     }
 }

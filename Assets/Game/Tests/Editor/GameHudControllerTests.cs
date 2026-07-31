@@ -5,6 +5,7 @@ using Supernova.MinecraftCaves;
 using Supernova.UI;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace Supernova.Tests
@@ -14,6 +15,7 @@ namespace Supernova.Tests
         private GameObject hudObject;
         private GameObject sourceObject;
         private GameObject menuObject;
+        private GameObject eventSystemObject;
 
         [TearDown]
         public void TearDown()
@@ -21,6 +23,7 @@ namespace Supernova.Tests
             if (hudObject != null) Object.DestroyImmediate(hudObject);
             if (sourceObject != null) Object.DestroyImmediate(sourceObject);
             if (menuObject != null) Object.DestroyImmediate(menuObject);
+            if (eventSystemObject != null) Object.DestroyImmediate(eventSystemObject);
         }
 
         [Test]
@@ -33,33 +36,137 @@ namespace Supernova.Tests
 
             Assert.That(hudObject.GetComponentInChildren<Canvas>(), Is.Not.Null);
             Assert.That(hudObject.GetComponentInChildren<CanvasScaler>(), Is.Not.Null);
+            Assert.That(controller.MissionView, Is.Not.Null);
+            Assert.That(controller.MissionOverlayCanvas, Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Mission.Objective),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Mission.SceneFade),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Mission.TimerValue)
+                    ?.GetComponent<TMP_Text>(),
+                Is.Not.Null);
+            RectTransform missionTimer =
+                (RectTransform)hudObject.transform.Find(
+                    UiHierarchyPaths.Mission.Timer);
+            Assert.That(missionTimer.anchorMin, Is.EqualTo(new Vector2(0.5f, 1f)));
+            Assert.That(missionTimer.anchoredPosition, Is.EqualTo(
+                new Vector2(0f, -92f)));
+            HeadingCompass compass = hudObject.transform.Find(
+                UiHierarchyPaths.Hud.Compass)?.GetComponent<HeadingCompass>();
+            Assert.That(compass, Is.Not.Null);
+            Assert.That(controller.Compass, Is.SameAs(compass));
+            RectTransform compassRect = (RectTransform)compass.transform;
+            Assert.That(compassRect.anchorMin, Is.EqualTo(new Vector2(0.5f, 1f)));
+            Assert.That(compassRect.anchorMax, Is.EqualTo(new Vector2(0.5f, 1f)));
+            Assert.That(compassRect.anchoredPosition, Is.EqualTo(
+                new Vector2(0f, -12f)));
+            Transform compassTicks = hudObject.transform.Find(
+                UiHierarchyPaths.Hud.CompassTicks);
+            Assert.That(compassTicks, Is.Not.Null);
+            Assert.That(compassTicks.childCount, Is.EqualTo(
+                HeadingCompass.TickViewCount));
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Hud.CompassHeading)
+                    ?.GetComponent<TMP_Text>(),
+                Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.CrosshairHorizontal)?.GetComponent<Image>(), Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.CrosshairVertical)?.GetComponent<Image>(), Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.HealthPanel), Is.Not.Null);
             Assert.That(
-                hudObject.transform.Find(UiHierarchyPaths.Hud.HealthFrame)
-                    ?.GetComponent<Image>(),
+                hudObject.transform.Find(UiHierarchyPaths.Hud.HealthSegment(1))
+                    ?.GetComponent<AngledPanelGraphic>(),
                 Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.HealthFill)?.GetComponent<Image>(), Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.HealthValue)?.GetComponent<TMP_Text>(), Is.Not.Null);
             RectTransform healthPanel =
                 (RectTransform)hudObject.transform.Find(UiHierarchyPaths.Hud.HealthPanel);
-            Assert.That(healthPanel.anchorMin, Is.EqualTo(Vector2.one));
-            Assert.That(healthPanel.anchorMax, Is.EqualTo(Vector2.one));
-            Assert.That(healthPanel.pivot, Is.EqualTo(Vector2.one));
-            Assert.That(healthPanel.anchoredPosition, Is.EqualTo(new Vector2(-24f, -24f)));
+            Assert.That(healthPanel.anchorMin, Is.EqualTo(Vector2.zero));
+            Assert.That(healthPanel.anchorMax, Is.EqualTo(Vector2.zero));
+            Assert.That(healthPanel.pivot, Is.EqualTo(Vector2.zero));
+            Assert.That(healthPanel.anchoredPosition, Is.EqualTo(new Vector2(48f, 42f)));
+            Assert.That(healthPanel.localEulerAngles.z, Is.EqualTo(3.5f).Within(0.01f));
+            bool healthReverse = hudObject.transform.Find(
+                UiHierarchyPaths.Hud.HealthSegment(1))
+                .GetComponent<AngledPanelGraphic>().Reverse;
+            for (int i = 2; i <= 8; i++)
+            {
+                Assert.That(
+                    hudObject.transform.Find(
+                        UiHierarchyPaths.Hud.HealthSegment(i))
+                        .GetComponent<AngledPanelGraphic>().Reverse,
+                    Is.EqualTo(healthReverse),
+                    "Every health segment must use one consistent slant direction.");
+            }
             Transform hotbar = hudObject.transform.Find(UiHierarchyPaths.Hud.Hotbar);
             Assert.That(hotbar, Is.Not.Null);
             Assert.That(hotbar.childCount, Is.EqualTo(PlayerInventory.SlotCount));
+            RectTransform hotbarRect = (RectTransform)hotbar;
+            Assert.That(hotbarRect.anchorMin, Is.EqualTo(new Vector2(1f, 0f)));
+            Assert.That(hotbarRect.anchorMax, Is.EqualTo(new Vector2(1f, 0f)));
+            Assert.That(hotbarRect.pivot, Is.EqualTo(new Vector2(1f, 0f)));
             Assert.That(hotbar.Find(UiHierarchyPaths.Hud.SlotItem(1))?.GetComponent<TMP_Text>().text, Is.EqualTo("PICKAXE"));
             Assert.That(hotbar.Find(UiHierarchyPaths.Hud.SlotItem(2))?.GetComponent<TMP_Text>().text, Is.EqualTo("MAGNET"));
             Assert.That(
                 hotbar.Find(UiHierarchyPaths.Hud.SlotItem(3))?.GetComponent<TMP_Text>().text,
                 Is.EqualTo("FLASHLIGHT"));
+            Assert.That(
+                hotbar.Find(UiHierarchyPaths.Hud.SlotItem(4))?.GetComponent<TMP_Text>().text,
+                Is.EqualTo("RIFLE"));
+            Assert.That(
+                hotbar.Find(UiHierarchyPaths.Hud.SlotItem(5))?.GetComponent<TMP_Text>().text,
+                Is.EqualTo("SOLID GUN"));
+            Assert.That(
+                hotbar.Find(UiHierarchyPaths.Hud.SlotItem(6))?.GetComponent<TMP_Text>().text,
+                Is.EqualTo("SMG"));
             Assert.That(hotbar.Find(UiHierarchyPaths.Hud.SlotKey(10))?.GetComponent<TMP_Text>().text, Is.EqualTo("0"));
             Assert.That(
-                hotbar.Find(UiHierarchyPaths.Hud.SlotFrame(1))?.GetComponent<Image>(),
+                hotbar.Find(UiHierarchyPaths.Hud.SlotAngledSurface(1))
+                    ?.GetComponent<AngledPanelGraphic>(),
                 Is.Not.Null);
+            bool hotbarReverse = hotbar.Find(
+                UiHierarchyPaths.Hud.SlotAngledSurface(1))
+                .GetComponent<AngledPanelGraphic>().Reverse;
+            for (int i = 2; i <= PlayerInventory.SlotCount; i++)
+            {
+                Assert.That(
+                    hotbar.Find(UiHierarchyPaths.Hud.SlotAngledSurface(i))
+                        .GetComponent<AngledPanelGraphic>().Reverse,
+                    Is.EqualTo(hotbarReverse),
+                    "Every item slot must use one consistent slant direction.");
+            }
+            Assert.That(
+                ((RectTransform)hotbar).localEulerAngles.z,
+                Is.EqualTo(356.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void Compass_FormatsCardinalsAndTracksWrappedHeading()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller = hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+
+            HeadingCompass compass = controller.Compass;
+            compass.RefreshHeading(90f);
+
+            Transform ticks = hudObject.transform.Find(
+                UiHierarchyPaths.Hud.CompassTicks);
+            TMP_Text centeredLabel = ticks.GetChild(
+                    HeadingCompass.TickViewCount / 2)
+                .Find(UiHierarchyPaths.Hud.CompassTickLabel)
+                .GetComponent<TMP_Text>();
+            TMP_Text heading = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.CompassHeading)
+                .GetComponent<TMP_Text>();
+
+            Assert.That(centeredLabel.text, Is.EqualTo("E"));
+            Assert.That(heading.text, Is.EqualTo("090\u00B0"));
+            Assert.That(HeadingCompass.GetHeadingLabel(315), Is.EqualTo("NW"));
+            Assert.That(HeadingCompass.NormalizeHeading(-1f),
+                Is.EqualTo(359f).Within(0.001f));
         }
 
         [Test]
@@ -95,6 +202,28 @@ namespace Supernova.Tests
             controller.ResumeGame();
             Assert.That(controller.IsPauseMenuVisible, Is.False);
             Assert.That(GameHudController.IsPauseMenuOpen, Is.False);
+        }
+
+        [Test]
+        public void RebuildDefaultView_ReusesSceneEventSystem()
+        {
+            eventSystemObject = new GameObject(
+                "Scene EventSystem",
+                typeof(EventSystem),
+                typeof(StandaloneInputModule));
+            EventSystem sceneEventSystem = eventSystemObject.GetComponent<EventSystem>();
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller = hudObject.AddComponent<GameHudController>();
+
+            controller.RebuildDefaultView();
+
+            Assert.That(
+                GameHudController.EnsureSingleEventSystem(hudObject.transform),
+                Is.SameAs(sceneEventSystem));
+            Assert.That(
+                hudObject.GetComponentsInChildren<EventSystem>(true),
+                Is.Empty,
+                "The HUD must reuse the scene input system instead of creating a second one.");
         }
 
         [Test]
@@ -171,6 +300,67 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void GameplayVisibility_KeepsTransitionOverlayAlive()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+            MethodInfo setVisible = typeof(GameHudController).GetMethod(
+                "SetGameplayViewVisible",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(setVisible, Is.Not.Null);
+
+            setVisible.Invoke(controller, new object[] { false });
+
+            Assert.That(hudObject.activeSelf, Is.True);
+            Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.False);
+            Assert.That(
+                controller.MissionOverlayCanvas.gameObject.activeSelf,
+                Is.True,
+                "The persistent overlay must remain renderable during scene fades.");
+
+            setVisible.Invoke(controller, new object[] { true });
+
+            Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.True);
+            Assert.That(controller.PauseCanvas.gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void GameplayVisibility_RebindsDestroyedHealthSourceToCurrentPlayer()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+
+            GameObject previousPlayer = new GameObject("Previous Player");
+            FakeDamageable previousHealth =
+                previousPlayer.AddComponent<FakeDamageable>();
+            previousHealth.SetHealth(100f, 100f);
+            controller.BindHealthSource(previousHealth);
+            Object.DestroyImmediate(previousPlayer);
+
+            sourceObject = new GameObject("Current Player");
+            sourceObject.AddComponent<CharacterController>();
+            FakeDamageable currentHealth =
+                sourceObject.AddComponent<FakeDamageable>();
+            currentHealth.SetHealth(70f, 100f);
+
+            MethodInfo setVisible = typeof(GameHudController).GetMethod(
+                "SetGameplayViewVisible",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(setVisible, Is.Not.Null);
+            setVisible.Invoke(controller, new object[] { true });
+
+            Assert.That(controller.HealthSource, Is.SameAs(currentHealth));
+            TMP_Text value = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HealthValue)
+                .GetComponent<TMP_Text>();
+            Assert.That(value.text, Is.EqualTo("70 / 100"));
+        }
+
+        [Test]
         public void Presenter_UpdatesHealthTextAndFillPercentage()
         {
             hudObject = new GameObject("Game HUD");
@@ -204,13 +394,15 @@ namespace Supernova.Tests
 
             Image first = hudObject.transform.Find(UiHierarchyPaths.Hud.HotbarSlot(1)).GetComponent<Image>();
             Image second = hudObject.transform.Find(UiHierarchyPaths.Hud.HotbarSlot(2)).GetComponent<Image>();
-            Image firstFrame = hudObject.transform.Find(
-                UiHierarchyPaths.Hud.HotbarSlotFrame(1)).GetComponent<Image>();
-            Image secondFrame = hudObject.transform.Find(
-                UiHierarchyPaths.Hud.HotbarSlotFrame(2)).GetComponent<Image>();
+            AngledPanelGraphic firstSurface = hudObject.transform.Find(
+                UiHierarchyPaths.Hud.HotbarSlotAngledSurface(1))
+                .GetComponent<AngledPanelGraphic>();
+            AngledPanelGraphic secondSurface = hudObject.transform.Find(
+                UiHierarchyPaths.Hud.HotbarSlotAngledSurface(2))
+                .GetComponent<AngledPanelGraphic>();
             Assert.That(first.color, Is.EqualTo(Color.clear));
             Assert.That(second.color, Is.EqualTo(Color.clear));
-            Assert.That(secondFrame.color, Is.Not.EqualTo(firstFrame.color));
+            Assert.That(secondSurface.color, Is.Not.EqualTo(firstSurface.color));
             Assert.That(controller.InventorySource, Is.SameAs(inventory));
         }
     }

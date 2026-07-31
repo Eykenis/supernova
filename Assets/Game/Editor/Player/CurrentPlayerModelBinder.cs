@@ -24,17 +24,22 @@ namespace Supernova.EditorTools.PlayerSetup
         private const string CrouchMoveStateName = "Crouch Move";
 
         [InitializeOnLoadMethod]
-        private static void ScheduleCrouchControllerUpgrade()
+        private static void ScheduleAnimatorControllerUpgrade()
         {
-            EditorApplication.delayCall += UpgradeCrouchController;
+            EditorApplication.delayCall += UpgradeAnimatorController;
         }
 
-        private static void UpgradeCrouchController()
+        internal static void UpgradeAnimatorController()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) return;
             UnityAnimatorController controller =
                 AssetDatabase.LoadAssetAtPath<UnityAnimatorController>(ControllerPath);
-            if (controller == null || !ConfigureCrouchStates(controller)) return;
+            if (controller == null) return;
+
+            bool changed = ConfigureCrouchStates(controller);
+            changed |= ConfigureRifleLocomotionLayer(controller);
+            changed |= ConfigureToolUpperBodyLayer(controller);
+            if (!changed) return;
 
             EditorUtility.SetDirty(controller);
             AssetDatabase.SaveAssets();
@@ -131,7 +136,11 @@ namespace Supernova.EditorTools.PlayerSetup
                 };
                 controller.AddParameter(copy);
             }
-            EnsureParameter(controller, "Mine", AnimatorControllerParameterType.Trigger);
+            EnsureParameter(controller, "ToolAction", AnimatorControllerParameterType.Trigger);
+            EnsureParameter(
+                controller,
+                "ToolActionContinuous",
+                AnimatorControllerParameterType.Bool);
             EnsureParameter(controller, "Hit", AnimatorControllerParameterType.Trigger);
             EnsureParameter(controller, "Die", AnimatorControllerParameterType.Trigger);
             EnsureParameter(controller, "Recover", AnimatorControllerParameterType.Trigger);
@@ -190,24 +199,12 @@ namespace Supernova.EditorTools.PlayerSetup
                 ? idleState
                 : baseMachine.defaultState;
             ConfigureCrouchStates(controller);
+            ConfigureRifleLocomotionLayer(controller);
 
-            AnimatorState mine = baseMachine.AddState("Mine", new Vector3(720f, 40f));
-            mine.motion = null;
             AnimatorState hit = baseMachine.AddState("Hit", new Vector3(720f, 200f));
             hit.motion = null;
             AnimatorState die = baseMachine.AddState("Die", new Vector3(940f, 200f));
             die.motion = null;
-
-            AnimatorStateTransition mineAny = baseMachine.AddAnyStateTransition(mine);
-            mineAny.hasExitTime = false;
-            mineAny.canTransitionToSelf = false;
-            mineAny.duration = 0.06f;
-            mineAny.AddCondition(AnimatorConditionMode.If, 0f, "Mine");
-            AnimatorStateTransition mineExit = mine.AddTransition(idle);
-            mineExit.hasExitTime = true;
-            mineExit.exitTime = 0.7f;
-            mineExit.hasFixedDuration = false;
-            mineExit.duration = 0.2f;
 
             AnimatorStateTransition hitAny = baseMachine.AddAnyStateTransition(hit);
             hitAny.hasExitTime = false;
@@ -225,6 +222,8 @@ namespace Supernova.EditorTools.PlayerSetup
             dieAny.duration = 0.05f;
             dieAny.AddCondition(AnimatorConditionMode.If, 0f, "Die");
 
+            ConfigureToolUpperBodyLayer(controller);
+
             EditorUtility.SetDirty(controller);
             return controller;
         }
@@ -240,13 +239,147 @@ namespace Supernova.EditorTools.PlayerSetup
         }
 
         private const string LowerBodyLayerName = "LowerBody Layer";
-        private const string LowerBodyMaskPath = ProjectAssetPaths.ThirdParty.LowerBodyMask;
+        private const string CrouchArmsLocomotionLayerName =
+            "Crouch Arms Locomotion Layer";
+        private const string RifleLocomotionLayerName =
+            "Rifle Locomotion Layer";
+        private const string RifleArmsLayerName = "Rifle Arms Layer";
+        private const string ToolUpperBodyLayerName = "Tool UpperBody Layer";
+        private const string CrouchToolArmsLayerName = "Crouch Tool Arms Layer";
+        private const string CrouchArmsIdleStateName = "Standing Arms Idle";
+        private const string ToolInactiveStateName = "Tool Inactive";
+        private const string ToolPrimaryStateName = "Tool Primary Action";
+        private const string ToolContinuousStateName = "Tool Continuous Action";
+        private const string ToolUpperBodyMaskPath =
+            ProjectAssetPaths.Animations.ToolUpperBodyMask;
+        private const string CrouchToolArmsMaskPath =
+            ProjectAssetPaths.Animations.CrouchToolArmsMask;
+        private const string ToolPrimaryActionClipPath =
+            ProjectAssetPaths.Animations.ToolPrimaryActionPlaceholder;
         private const string CrouchIdleClipPath = ProjectAssetPaths.Animations.CrouchIdle;
         private const string CrouchMoveClipPath = ProjectAssetPaths.Animations.CrouchMove;
+        private const string RifleIdleStateName = "Rifle Idle";
+        private const string RifleMoveStateName = "Rifle Move";
+        private const string RifleArmsStateName = "Rifle Arms";
 
-        // Crouch lives on its own masked layer (legs/feet only) so it never overrides
-        // the upper body: the player can still swing a tool while crouched. The layer's
-        // runtime weight is toggled by VoxelPlayerController, not by animator transitions.
+        private static bool ConfigureRifleLocomotionLayer(
+            UnityAnimatorController controller)
+        {
+            AnimationClip idleClip = LoadEmbeddedClip(
+                ProjectAssetPaths.ThirdParty.RifleIdle);
+            AnimationClip moveClip = LoadEmbeddedClip(
+                ProjectAssetPaths.ThirdParty.RifleMove);
+            if (idleClip == null || moveClip == null)
+            {
+                Debug.LogWarning(
+                    "Rifle locomotion clips are not imported yet; the rifle layer will "
+                    + "be built after the rifle importer finishes.");
+                return false;
+            }
+
+            bool changed = false;
+            int layerIndex = FindLayerIndex(controller, RifleLocomotionLayerName);
+            if (layerIndex < 0)
+            {
+                controller.AddLayer(RifleLocomotionLayerName);
+                layerIndex = controller.layers.Length - 1;
+                changed = true;
+            }
+
+            AnimatorControllerLayer[] layers = controller.layers;
+            AnimatorControllerLayer layer = layers[layerIndex];
+            AnimatorStateMachine machine = layer.stateMachine;
+            AnimatorState idle = FindState(machine, RifleIdleStateName);
+            AnimatorState move = FindState(machine, RifleMoveStateName);
+            bool locomotionLayerIsCurrent = idle != null
+                && move != null
+                && machine.states.Length == 2
+                && idle.motion == idleClip
+                && move.motion == moveClip
+                && idle.iKOnFeet
+                && move.iKOnFeet
+                && HasBooleanTransition(idle, move, "walkFlag", true)
+                && HasBooleanTransition(move, idle, "walkFlag", false)
+                && machine.defaultState == idle
+                && layer.avatarMask == null
+                && layer.blendingMode == AnimatorLayerBlendingMode.Override
+                && Mathf.Approximately(layer.defaultWeight, 0f);
+            if (!locomotionLayerIsCurrent)
+            {
+                ClearStateMachine(machine);
+                idle = machine.AddState(RifleIdleStateName, new Vector3(260f, 120f));
+                idle.motion = idleClip;
+                idle.iKOnFeet = true;
+                move = machine.AddState(RifleMoveStateName, new Vector3(520f, 120f));
+                move.motion = moveClip;
+                move.iKOnFeet = true;
+                machine.defaultState = idle;
+
+                AddConditionTransition(idle, move, "walkFlag", true, 0.12f);
+                AddConditionTransition(move, idle, "walkFlag", false, 0.12f);
+
+                layer.avatarMask = null;
+                layer.blendingMode = AnimatorLayerBlendingMode.Override;
+                layer.defaultWeight = 0f;
+                layers[layerIndex] = layer;
+                controller.layers = layers;
+                changed = true;
+            }
+
+            AvatarMask armsMask = EnsureHumanoidToolMask(
+                CrouchToolArmsMaskPath,
+                "CrouchToolArms",
+                false,
+                false);
+            changed |= EnsureRifleArmsLayer(controller, idleClip, armsMask);
+            changed |= EnsureCustomLayerOrder(controller);
+            return changed;
+        }
+
+        private static bool EnsureRifleArmsLayer(
+            UnityAnimatorController controller,
+            AnimationClip idleClip,
+            AvatarMask armsMask)
+        {
+            int layerIndex = FindLayerIndex(controller, RifleArmsLayerName);
+            if (layerIndex < 0)
+            {
+                controller.AddLayer(RifleArmsLayerName);
+                layerIndex = controller.layers.Length - 1;
+            }
+
+            AnimatorControllerLayer[] layers = controller.layers;
+            AnimatorControllerLayer layer = layers[layerIndex];
+            AnimatorStateMachine machine = layer.stateMachine;
+            AnimatorState arms = FindState(machine, RifleArmsStateName);
+            if (arms != null
+                && arms.motion == idleClip
+                && machine.states.Length == 1
+                && arms.transitions.Length == 0
+                && machine.defaultState == arms
+                && layer.avatarMask == armsMask
+                && layer.blendingMode == AnimatorLayerBlendingMode.Override
+                && Mathf.Approximately(layer.defaultWeight, 0f))
+            {
+                return false;
+            }
+
+            ClearStateMachine(machine);
+            arms = machine.AddState(RifleArmsStateName, new Vector3(260f, 120f));
+            arms.motion = idleClip;
+            arms.iKOnFeet = false;
+            machine.defaultState = arms;
+
+            layer.avatarMask = armsMask;
+            layer.blendingMode = AnimatorLayerBlendingMode.Override;
+            layer.defaultWeight = 0f;
+            layers[layerIndex] = layer;
+            controller.layers = layers;
+            return true;
+        }
+
+        // Crouch is a complete grounded pose on Base Layer. Keeping hips, legs and feet
+        // in one animation prevents a standing torso from lifting the crouched legs.
         private static bool ConfigureCrouchStates(UnityAnimatorController controller)
         {
             bool changed = EnsureParameter(
@@ -258,71 +391,64 @@ namespace Supernova.EditorTools.PlayerSetup
                 "crouchMoveFlag",
                 AnimatorControllerParameterType.Bool);
 
+            int lowerBodyLayerIndex = FindLayerIndex(controller, LowerBodyLayerName);
+            if (lowerBodyLayerIndex >= 0)
+            {
+                controller.RemoveLayer(lowerBodyLayerIndex);
+                changed = true;
+            }
+
             AnimatorStateMachine baseMachine = controller.layers[0].stateMachine;
-            AnimatorState legacyCrouchIdle = FindState(baseMachine, CrouchIdleStateName);
-            AnimatorState legacyCrouchMove = FindState(baseMachine, CrouchMoveStateName);
-            if (legacyCrouchIdle != null)
-            {
-                RemoveAnyStateTransitionsTo(baseMachine, legacyCrouchIdle);
-                baseMachine.RemoveState(legacyCrouchIdle);
-                changed = true;
-            }
-            if (legacyCrouchMove != null)
-            {
-                RemoveAnyStateTransitionsTo(baseMachine, legacyCrouchMove);
-                baseMachine.RemoveState(legacyCrouchMove);
-                changed = true;
-            }
-
-            changed |= EnsureLowerBodyLayer(controller);
-            return changed;
-        }
-
-        private static bool EnsureLowerBodyLayer(UnityAnimatorController controller)
-        {
-            int layerIndex = -1;
-            AnimatorControllerLayer[] layers = controller.layers;
-            for (int i = 0; i < layers.Length; i++)
-                if (layers[i].name == LowerBodyLayerName) layerIndex = i;
-
-            if (layerIndex < 0)
-            {
-                controller.AddLayer(LowerBodyLayerName);
-                layers = controller.layers;
-                layerIndex = layers.Length - 1;
-            }
-
-            AnimatorControllerLayer lowerBodyLayer = layers[layerIndex];
-            AnimatorStateMachine machine = lowerBodyLayer.stateMachine;
-            AnimatorState crouchIdle = FindState(machine, "CrouchIdle");
-            AnimatorState crouchMove = FindState(machine, "CrouchMove");
-            if (crouchIdle != null && crouchMove != null)
-                return false;
-
-            AvatarMask mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(LowerBodyMaskPath);
+            AnimatorState crouchIdle = FindState(baseMachine, CrouchIdleStateName);
+            AnimatorState crouchMove = FindState(baseMachine, CrouchMoveStateName);
             AnimationClip crouchIdleClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(CrouchIdleClipPath);
             AnimationClip crouchMoveClip = AssetDatabase.LoadAssetAtPath<AnimationClip>(CrouchMoveClipPath);
-            if (mask == null || crouchIdleClip == null || crouchMoveClip == null)
+            if (crouchIdleClip == null || crouchMoveClip == null)
             {
                 throw new InvalidOperationException(
-                    "Missing LowerBodyMask.mask or crouch clips required to build the LowerBody Layer.");
+                    "Missing crouch clips required to build full-body Base Layer states.");
+            }
+            if (crouchIdle != null && crouchMove != null
+                && crouchIdle.motion == crouchIdleClip
+                && crouchMove.motion == crouchMoveClip
+                && crouchIdle.iKOnFeet
+                && crouchMove.iKOnFeet)
+            {
+                return changed;
             }
 
-            lowerBodyLayer.avatarMask = mask;
-            lowerBodyLayer.blendingMode = AnimatorLayerBlendingMode.Override;
-            lowerBodyLayer.defaultWeight = 0f;
+            if (crouchIdle != null)
+            {
+                RemoveAnyStateTransitionsTo(baseMachine, crouchIdle);
+                baseMachine.RemoveState(crouchIdle);
+            }
+            if (crouchMove != null)
+            {
+                RemoveAnyStateTransitionsTo(baseMachine, crouchMove);
+                baseMachine.RemoveState(crouchMove);
+            }
 
-            if (crouchIdle == null)
-            {
-                crouchIdle = machine.AddState("CrouchIdle", new Vector3(300f, 620f));
-                crouchIdle.motion = crouchIdleClip;
-            }
-            if (crouchMove == null)
-            {
-                crouchMove = machine.AddState("CrouchMove", new Vector3(560f, 620f));
-                crouchMove.motion = crouchMoveClip;
-            }
-            machine.defaultState = crouchIdle;
+            AnimatorState idle = FindState(baseMachine, "Idle");
+            AnimatorState walk = FindState(baseMachine, "Walk");
+            AnimatorState jump = FindState(baseMachine, "Jump");
+            if (idle == null || walk == null || jump == null)
+                throw new InvalidOperationException("Base locomotion states are incomplete.");
+
+            crouchIdle = baseMachine.AddState(CrouchIdleStateName, new Vector3(720f, 420f));
+            crouchIdle.motion = crouchIdleClip;
+            crouchIdle.iKOnFeet = true;
+            crouchMove = baseMachine.AddState(CrouchMoveStateName, new Vector3(960f, 420f));
+            crouchMove.motion = crouchMoveClip;
+            crouchMove.iKOnFeet = true;
+
+            AnimatorStateTransition idleEntry = baseMachine.AddAnyStateTransition(crouchIdle);
+            ConfigureImmediateTransition(idleEntry);
+            idleEntry.AddCondition(AnimatorConditionMode.If, 0f, "crouchFlag");
+            idleEntry.AddCondition(AnimatorConditionMode.IfNot, 0f, "crouchMoveFlag");
+            AnimatorStateTransition moveEntry = baseMachine.AddAnyStateTransition(crouchMove);
+            ConfigureImmediateTransition(moveEntry);
+            moveEntry.AddCondition(AnimatorConditionMode.If, 0f, "crouchFlag");
+            moveEntry.AddCondition(AnimatorConditionMode.If, 0f, "crouchMoveFlag");
 
             AnimatorStateTransition toMove = crouchIdle.AddTransition(crouchMove);
             ConfigureImmediateTransition(toMove);
@@ -332,9 +458,271 @@ namespace Supernova.EditorTools.PlayerSetup
             ConfigureImmediateTransition(toIdle);
             toIdle.AddCondition(AnimatorConditionMode.IfNot, 0f, "crouchMoveFlag");
 
-            layers[layerIndex] = lowerBodyLayer;
+            AddCrouchExit(crouchIdle, idle, "idleFlag");
+            AddCrouchExit(crouchIdle, walk, "walkFlag");
+            AddCrouchExit(crouchMove, idle, "idleFlag");
+            AddCrouchExit(crouchMove, walk, "walkFlag");
+            AddCrouchExit(crouchIdle, jump, "jumpFlag");
+            AddCrouchExit(crouchMove, jump, "jumpFlag");
+            return true;
+        }
+
+        private static void AddCrouchExit(
+            AnimatorState source,
+            AnimatorState destination,
+            string destinationFlag)
+        {
+            AnimatorStateTransition transition = source.AddTransition(destination);
+            ConfigureImmediateTransition(transition);
+            transition.AddCondition(AnimatorConditionMode.IfNot, 0f, "crouchFlag");
+            transition.AddCondition(AnimatorConditionMode.If, 0f, destinationFlag);
+        }
+
+        // Crouch keeps its grounded full-body pose on Base Layer, then holds the standing
+        // idle arm pose on an arms-only layer. Only tool actions may animate crouched arms.
+        private static bool ConfigureToolUpperBodyLayer(UnityAnimatorController controller)
+        {
+            bool changed = EnsureParameter(
+                controller,
+                "ToolAction",
+                AnimatorControllerParameterType.Trigger);
+            changed |= EnsureParameter(
+                controller,
+                "ToolActionContinuous",
+                AnimatorControllerParameterType.Bool);
+
+            AvatarMask upperBodyMask = EnsureHumanoidToolMask(
+                ToolUpperBodyMaskPath,
+                "ToolUpperBody",
+                true,
+                true);
+            AvatarMask crouchArmsMask = EnsureHumanoidToolMask(
+                CrouchToolArmsMaskPath,
+                "CrouchToolArms",
+                false,
+                false);
+            AnimationClip placeholder = AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                ToolPrimaryActionClipPath);
+            if (placeholder == null)
+            {
+                throw new InvalidOperationException(
+                    "Missing tool primary action placeholder required to build the upper-body layer.");
+            }
+
+            AnimatorStateMachine baseMachine = controller.layers[0].stateMachine;
+            AnimatorState legacyPrimary = FindState(baseMachine, ToolPrimaryStateName);
+            AnimatorState legacyContinuous = FindState(baseMachine, ToolContinuousStateName);
+            if (legacyPrimary != null)
+            {
+                RemoveAnyStateTransitionsTo(baseMachine, legacyPrimary);
+                baseMachine.RemoveState(legacyPrimary);
+                changed = true;
+            }
+            if (legacyContinuous != null)
+            {
+                RemoveAnyStateTransitionsTo(baseMachine, legacyContinuous);
+                baseMachine.RemoveState(legacyContinuous);
+                changed = true;
+            }
+
+            changed |= EnsureToolActionLayer(
+                controller,
+                ToolUpperBodyLayerName,
+                upperBodyMask,
+                placeholder);
+            changed |= EnsureCrouchArmsLocomotionLayer(controller, crouchArmsMask);
+            changed |= EnsureToolActionLayer(
+                controller,
+                CrouchToolArmsLayerName,
+                crouchArmsMask,
+                placeholder);
+            changed |= EnsureCustomLayerOrder(controller);
+            return changed;
+        }
+
+        private static bool EnsureCrouchArmsLocomotionLayer(
+            UnityAnimatorController controller,
+            AvatarMask armsMask)
+        {
+            AnimatorStateMachine baseMachine = controller.layers[0].stateMachine;
+            AnimatorState baseIdle = FindState(baseMachine, "Idle");
+            if (baseIdle == null)
+                throw new InvalidOperationException("Base idle state is required for crouch arms.");
+
+            int layerIndex = FindLayerIndex(controller, CrouchArmsLocomotionLayerName);
+            if (layerIndex < 0)
+            {
+                controller.AddLayer(CrouchArmsLocomotionLayerName);
+                layerIndex = controller.layers.Length - 1;
+            }
+
+            AnimatorControllerLayer[] layers = controller.layers;
+            AnimatorControllerLayer layer = layers[layerIndex];
+            AnimatorStateMachine machine = layer.stateMachine;
+            AnimatorState armsIdle = FindState(machine, CrouchArmsIdleStateName);
+            if (armsIdle != null
+                && armsIdle.motion == baseIdle.motion
+                && machine.states.Length == 1
+                && armsIdle.transitions.Length == 0
+                && machine.defaultState == armsIdle
+                && layer.avatarMask == armsMask
+                && layer.blendingMode == AnimatorLayerBlendingMode.Override
+                && Mathf.Approximately(layer.defaultWeight, 0f))
+            {
+                return false;
+            }
+
+            ClearStateMachine(machine);
+            armsIdle = machine.AddState(CrouchArmsIdleStateName, new Vector3(260f, 120f));
+            armsIdle.motion = baseIdle.motion;
+            armsIdle.iKOnFeet = false;
+            machine.defaultState = armsIdle;
+
+            layer.avatarMask = armsMask;
+            layer.blendingMode = AnimatorLayerBlendingMode.Override;
+            layer.defaultWeight = 0f;
+            layers[layerIndex] = layer;
             controller.layers = layers;
             return true;
+        }
+
+        private static bool EnsureCustomLayerOrder(UnityAnimatorController controller)
+        {
+            string[] desiredOrder =
+            {
+                RifleLocomotionLayerName,
+                CrouchArmsLocomotionLayerName,
+                RifleArmsLayerName,
+                ToolUpperBodyLayerName,
+                CrouchToolArmsLayerName,
+            };
+            List<AnimatorControllerLayer> layers = controller.layers.ToList();
+            List<AnimatorControllerLayer> customLayers = new List<AnimatorControllerLayer>();
+            foreach (string layerName in desiredOrder)
+            {
+                int index = layers.FindIndex(layer => layer.name == layerName);
+                if (index < 0) continue;
+                customLayers.Add(layers[index]);
+                layers.RemoveAt(index);
+            }
+            layers.AddRange(customLayers);
+
+            AnimatorControllerLayer[] current = controller.layers;
+            bool changed = current.Length != layers.Count;
+            for (int i = 0; !changed && i < current.Length; i++)
+                changed = current[i].name != layers[i].name;
+            if (changed) controller.layers = layers.ToArray();
+            return changed;
+        }
+
+        private static bool EnsureToolActionLayer(
+            UnityAnimatorController controller,
+            string layerName,
+            AvatarMask mask,
+            AnimationClip placeholder)
+        {
+            int layerIndex = FindLayerIndex(controller, layerName);
+            if (layerIndex < 0)
+            {
+                controller.AddLayer(layerName);
+                layerIndex = controller.layers.Length - 1;
+            }
+
+            AnimatorControllerLayer[] layers = controller.layers;
+            AnimatorControllerLayer layer = layers[layerIndex];
+            AnimatorStateMachine machine = layer.stateMachine;
+            AnimatorState inactive = FindState(machine, ToolInactiveStateName);
+            AnimatorState primary = FindState(machine, ToolPrimaryStateName);
+            AnimatorState continuous = FindState(machine, ToolContinuousStateName);
+            if (inactive != null && primary != null && continuous != null
+                && layer.avatarMask == mask
+                && layer.blendingMode == AnimatorLayerBlendingMode.Override
+                && Mathf.Approximately(layer.defaultWeight, 0f))
+            {
+                return false;
+            }
+
+            ClearStateMachine(machine);
+            inactive = machine.AddState(ToolInactiveStateName, new Vector3(260f, 180f));
+            inactive.motion = null;
+            inactive.writeDefaultValues = false;
+            primary = machine.AddState(ToolPrimaryStateName, new Vector3(520f, 80f));
+            primary.motion = placeholder;
+            primary.speed = 1.5f;
+            continuous = machine.AddState(ToolContinuousStateName, new Vector3(520f, 280f));
+            continuous.motion = placeholder;
+            continuous.speed = 1.5f;
+            machine.defaultState = inactive;
+
+            AnimatorStateTransition primaryEntry = machine.AddAnyStateTransition(primary);
+            ConfigureImmediateTransition(primaryEntry);
+            primaryEntry.AddCondition(AnimatorConditionMode.If, 0f, "ToolAction");
+            AnimatorStateTransition primaryExit = primary.AddTransition(inactive);
+            primaryExit.hasExitTime = true;
+            primaryExit.exitTime = 0.7f;
+            primaryExit.hasFixedDuration = false;
+            primaryExit.duration = 0.2f;
+
+            AnimatorStateTransition continuousEntry = machine.AddAnyStateTransition(continuous);
+            ConfigureImmediateTransition(continuousEntry);
+            continuousEntry.AddCondition(
+                AnimatorConditionMode.If,
+                0f,
+                "ToolActionContinuous");
+            AnimatorStateTransition continuousExit = continuous.AddTransition(inactive);
+            ConfigureImmediateTransition(continuousExit);
+            continuousExit.AddCondition(
+                AnimatorConditionMode.IfNot,
+                0f,
+                "ToolActionContinuous");
+
+            layer.avatarMask = mask;
+            layer.blendingMode = AnimatorLayerBlendingMode.Override;
+            layer.defaultWeight = 0f;
+            layers[layerIndex] = layer;
+            controller.layers = layers;
+            return true;
+        }
+
+        private static AvatarMask EnsureHumanoidToolMask(
+            string assetPath,
+            string assetName,
+            bool includeBody,
+            bool includeHead)
+        {
+            AvatarMask mask = AssetDatabase.LoadAssetAtPath<AvatarMask>(assetPath);
+            bool created = mask == null;
+            if (created) mask = new AvatarMask { name = assetName };
+            bool changed = false;
+            for (int i = 0; i < (int)AvatarMaskBodyPart.LastBodyPart; i++)
+            {
+                AvatarMaskBodyPart part = (AvatarMaskBodyPart)i;
+                bool active = part == AvatarMaskBodyPart.LeftArm
+                    || part == AvatarMaskBodyPart.RightArm
+                    || part == AvatarMaskBodyPart.LeftFingers
+                    || part == AvatarMaskBodyPart.RightFingers
+                    || part == AvatarMaskBodyPart.LeftHandIK
+                    || part == AvatarMaskBodyPart.RightHandIK
+                    || (includeBody && part == AvatarMaskBodyPart.Body)
+                    || (includeHead && part == AvatarMaskBodyPart.Head);
+                if (mask.GetHumanoidBodyPartActive(part) == active) continue;
+                mask.SetHumanoidBodyPartActive(part, active);
+                changed = true;
+            }
+
+            if (created) AssetDatabase.CreateAsset(mask, assetPath);
+            else if (changed) EditorUtility.SetDirty(mask);
+            return mask;
+        }
+
+        private static int FindLayerIndex(
+            UnityAnimatorController controller,
+            string layerName)
+        {
+            AnimatorControllerLayer[] layers = controller.layers;
+            for (int i = 0; i < layers.Length; i++)
+                if (layers[i].name == layerName) return i;
+            return -1;
         }
 
         private static void RemoveAnyStateTransitionsTo(AnimatorStateMachine machine, AnimatorState target)
@@ -510,6 +898,29 @@ namespace Supernova.EditorTools.PlayerSetup
             transition.hasExitTime = false;
             transition.duration = duration;
             transition.AddCondition(value ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0f, parameter);
+        }
+
+        private static bool HasBooleanTransition(
+            AnimatorState source,
+            AnimatorState destination,
+            string parameter,
+            bool value)
+        {
+            AnimatorConditionMode expectedMode = value
+                ? AnimatorConditionMode.If
+                : AnimatorConditionMode.IfNot;
+            foreach (AnimatorStateTransition transition in source.transitions)
+            {
+                AnimatorCondition[] conditions = transition.conditions;
+                if (transition.destinationState == destination
+                    && conditions.Length == 1
+                    && conditions[0].parameter == parameter
+                    && conditions[0].mode == expectedMode)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static Animator FindActiveHumanoidAnimator(GameObject player)

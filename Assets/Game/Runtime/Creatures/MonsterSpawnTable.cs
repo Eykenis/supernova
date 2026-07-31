@@ -11,27 +11,30 @@ namespace Supernova.MinecraftCaves.Creatures
         [SerializeField] private List<MonsterSpawnDefinition> monsters =
             new List<MonsterSpawnDefinition>();
         [SerializeField, Min(0)] private int maximumActiveMonsters = 32;
-        [SerializeField, Min(0f)] private float spawnExclusionRadius = 12f;
-        [Tooltip("Width of one large-scale monster spawn cell, measured in chunks.")]
-        [SerializeField, Min(3)] private int spawnCellSizeInChunks = 6;
+        [Tooltip("Maximum queued monster instances created during one frame.")]
+        [SerializeField, Min(1)] private int maximumMonsterSpawnsPerFrame = 1;
+        [Tooltip("Minimum unscaled time between starting queued monster groups.")]
+        [SerializeField, Min(0f)] private float secondsBetweenMonsterGroups = 0.75f;
 
         public IReadOnlyList<MonsterSpawnDefinition> Monsters => monsters;
         public int MaximumActiveMonsters => Mathf.Max(0, maximumActiveMonsters);
-        public float SpawnExclusionRadius => Mathf.Max(0f, spawnExclusionRadius);
-        public int SpawnCellSizeInChunks => Mathf.Max(3, spawnCellSizeInChunks);
+        public int MaximumMonsterSpawnsPerFrame =>
+            Mathf.Max(1, maximumMonsterSpawnsPerFrame);
+        public float SecondsBetweenMonsterGroups =>
+            Mathf.Max(0f, secondsBetweenMonsterGroups);
 
         public void Configure(
             IEnumerable<MonsterSpawnDefinition> values,
             int maximumActive,
-            float exclusionRadius,
-            int cellSizeInChunks = 6)
+            int spawnsPerFrame = 1,
+            float groupInterval = 0.75f)
         {
             monsters = values != null
                 ? new List<MonsterSpawnDefinition>(values)
                 : new List<MonsterSpawnDefinition>();
             maximumActiveMonsters = Mathf.Max(0, maximumActive);
-            spawnExclusionRadius = Mathf.Max(0f, exclusionRadius);
-            spawnCellSizeInChunks = Mathf.Max(3, cellSizeInChunks);
+            maximumMonsterSpawnsPerFrame = Mathf.Max(1, spawnsPerFrame);
+            secondsBetweenMonsterGroups = Mathf.Max(0f, groupInterval);
         }
     }
 }

@@ -13,17 +13,21 @@ namespace Supernova.Shop
     }
 
     /// <summary>
-    /// Central persistence boundary for mission credits and purchased inventory items.
+    /// Central persistence boundary for mission credits, inventory items, and upgrades.
     /// </summary>
     public static class PlayerEconomy
     {
         public const string CreditsPreferenceKey = "Supernova.Credits";
         private const string OwnedItemPreferencePrefix =
             "Supernova.OwnedInventoryItem.";
+        private const string OwnedUpgradePreferencePrefix =
+            "Supernova.OwnedUpgrade.";
 
         public static event Action<int> CreditsChanged;
         public static event Action<PlayerInventoryItem, bool>
             ItemOwnershipChanged;
+        public static event Action<PlayerUpgrade, bool>
+            UpgradeOwnershipChanged;
 
         public static int Credits =>
             Mathf.Max(0, PlayerPrefs.GetInt(CreditsPreferenceKey, 0));
@@ -49,7 +53,22 @@ namespace Supernova.Shop
 
         public static bool IsProductOwned(ShopProductProfile product)
         {
-            return product != null && IsItemOwned(product.GrantedItem);
+            if (product == null) return false;
+            return product.GrantType == ShopProductGrantType.Upgrade
+                ? IsUpgradeOwned(product.GrantedUpgrade)
+                : IsItemOwned(product.GrantedItem);
+        }
+
+        public static bool IsUpgradeOwned(PlayerUpgrade upgrade)
+        {
+            return upgrade != PlayerUpgrade.None
+                && PlayerPrefs.GetInt(GetOwnedUpgradeKey(upgrade), 0) != 0;
+        }
+
+        public static string GetUpgradeOwnershipPreferenceKey(
+            PlayerUpgrade upgrade)
+        {
+            return GetOwnedUpgradeKey(upgrade);
         }
 
         public static bool CanAfford(ShopProductProfile product)
@@ -76,11 +95,21 @@ namespace Supernova.Shop
                 return ShopPurchaseResult.InsufficientFunds;
 
             SetCredits(Credits - product.Price, false);
-            PlayerPrefs.SetInt(
-                GetOwnedItemKey(product.GrantedItem),
-                1);
+            if (product.GrantType == ShopProductGrantType.Upgrade)
+                PlayerPrefs.SetInt(
+                    GetOwnedUpgradeKey(product.GrantedUpgrade),
+                    1);
+            else
+                PlayerPrefs.SetInt(
+                    GetOwnedItemKey(product.GrantedItem),
+                    1);
             PlayerPrefs.Save();
-            ItemOwnershipChanged?.Invoke(product.GrantedItem, true);
+            if (product.GrantType == ShopProductGrantType.Upgrade)
+                UpgradeOwnershipChanged?.Invoke(
+                    product.GrantedUpgrade,
+                    true);
+            else
+                ItemOwnershipChanged?.Invoke(product.GrantedItem, true);
             return ShopPurchaseResult.Purchased;
         }
 
@@ -96,6 +125,11 @@ namespace Supernova.Shop
         private static string GetOwnedItemKey(PlayerInventoryItem item)
         {
             return OwnedItemPreferencePrefix + (int)item;
+        }
+
+        private static string GetOwnedUpgradeKey(PlayerUpgrade upgrade)
+        {
+            return OwnedUpgradePreferencePrefix + (int)upgrade;
         }
     }
 }

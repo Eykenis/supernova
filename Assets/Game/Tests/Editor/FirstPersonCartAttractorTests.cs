@@ -21,6 +21,29 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void BeginHandleTow_RequiresCartToolToBeEnabled()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody cart = CreateBody(
+                "Cart",
+                new Vector3(0f, 0f, 1.5f));
+            cart.gameObject.AddComponent<CartHandle>().Configure(cart);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.CartTowEnabled, Is.False);
+            Assert.That(attractor.BeginHandleTow(), Is.False);
+            Assert.That(attractor.IsTowingCart, Is.False);
+        }
+
+        [Test]
         public void BeginHandleTow_AcquiresOnlyCartHandleWithinShortRange()
         {
             GameObject player = Create("Player");
@@ -36,6 +59,7 @@ namespace Supernova.Tests
 
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
+            attractor.SetCartTowEnabled(true);
             Rigidbody nearbyBody = CreateBody(
                 "Nearby Body",
                 new Vector3(0.3f, 0f, 1.25f));
@@ -64,6 +88,7 @@ namespace Supernova.Tests
             perspective.SetMode(PlayerViewMode.FirstPerson, true);
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
+            attractor.SetCartTowEnabled(true);
 
             GameObject cart = Create("Compound Cart");
             Rigidbody body = cart.AddComponent<Rigidbody>();
@@ -95,6 +120,7 @@ namespace Supernova.Tests
             perspective.SetMode(PlayerViewMode.FirstPerson, true);
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
+            attractor.SetCartTowEnabled(true);
 
             GameObject cart = Create("Cart");
             Rigidbody body = cart.AddComponent<Rigidbody>();
@@ -125,6 +151,7 @@ namespace Supernova.Tests
             perspective.SetMode(PlayerViewMode.FirstPerson, true);
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
+            attractor.SetCartTowEnabled(true);
             Rigidbody cart = CreateBody("Distant Cart", new Vector3(0f, 0f, 2.5f));
             cart.gameObject.AddComponent<CartHandle>().Configure(cart);
             Physics.SyncTransforms();
@@ -145,6 +172,7 @@ namespace Supernova.Tests
             perspective.SetMode(PlayerViewMode.FirstPerson, true);
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
+            attractor.SetCartTowEnabled(true);
             Rigidbody cart = CreateBody("Cart", new Vector3(0f, 0f, 1.5f));
             cart.gameObject.AddComponent<CartHandle>().Configure(cart);
             Physics.SyncTransforms();
@@ -160,6 +188,26 @@ namespace Supernova.Tests
                 "CalculateDesiredHoldPosition");
 
             Assert.That(desired, Is.EqualTo(originalTarget + translation));
+        }
+
+        [Test]
+        public void CartTowRotation_PointsActualHandleDirectionTowardPlayer()
+        {
+            GameObject player = Create("Player");
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            Quaternion targetRotation = InvokePrivate<Quaternion>(
+                attractor,
+                "CalculateCartTowTargetRotation",
+                Quaternion.identity,
+                Vector3.back,
+                Vector3.right);
+            Vector3 handleDirection = targetRotation * Vector3.back;
+
+            Assert.That(
+                Vector3.Angle(handleDirection, Vector3.right),
+                Is.LessThan(0.001f));
         }
 
 
@@ -181,6 +229,21 @@ namespace Supernova.Tests
 
             Assert.That(force.magnitude, Is.EqualTo(125f).Within(0.001f));
             Assert.That(force.normalized, Is.EqualTo(Vector3.up));
+        }
+
+        [Test]
+        public void AttractionModule_AddsFourHundredNewtons()
+        {
+            GameObject player = Create("Player");
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            SetPrivateField(attractor, "attractionForce", 800f);
+
+            attractor.SetAttractionForceUpgrade(
+                FirstPersonCartAttractor.AttractionModuleUpgradeForce);
+
+            Assert.That(attractor.BaseAttractionForce, Is.EqualTo(800f));
+            Assert.That(attractor.AttractionForce, Is.EqualTo(1200f));
         }
 
         [Test]
@@ -257,6 +320,7 @@ namespace Supernova.Tests
             perspective.SetMode(PlayerViewMode.FirstPerson, true);
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
+            attractor.SetCartTowEnabled(true);
             Rigidbody body = CreateBody(
                 "Magnet Target",
                 new Vector3(0f, 0f, 1.5f));
@@ -281,6 +345,7 @@ namespace Supernova.Tests
             perspective.SetMode(PlayerViewMode.FirstPerson, true);
             FirstPersonCartAttractor attractor =
                 player.AddComponent<FirstPersonCartAttractor>();
+            attractor.SetCartTowEnabled(true);
             Rigidbody cart = CreateBody("Cart", new Vector3(0f, 0f, 1.5f));
             cart.gameObject.AddComponent<CartHandle>().Configure(cart);
             Physics.SyncTransforms();
@@ -378,6 +443,39 @@ namespace Supernova.Tests
 
             Assert.That(upward, Is.EqualTo(new Vector3(20f, 50f, 30f)));
             Assert.That(downward, Is.EqualTo(new Vector3(20f, -200f, 30f)));
+        }
+
+        [Test]
+        public void SaturatedMagnetLift_DampingRemovesUpwardMotionEnergy()
+        {
+            GameObject player = Create("Player");
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            SetPrivateField(attractor, "baseMaximumLiftForce", 100f);
+            SetPrivateField(attractor, "liftForceFalloffPerMeter", 0f);
+            SetPrivateField(attractor, "positionSpring", 300f);
+            SetPrivateField(attractor, "forceDamping", 90f);
+            SetPrivateField(attractor, "attractionForce", 1000f);
+            SetPrivateField(attractor, "maximumAttractionAcceleration", 1000f);
+            SetPrivateField(attractor, "magnetPickupHeight", 0f);
+
+            Vector3 rising = InvokePrivate<Vector3>(
+                attractor,
+                "CalculateMagnetAttractionForce",
+                Vector3.up * 2f,
+                Vector3.down,
+                0f,
+                1f);
+            Vector3 falling = InvokePrivate<Vector3>(
+                attractor,
+                "CalculateMagnetAttractionForce",
+                Vector3.up * 2f,
+                Vector3.up,
+                0f,
+                1f);
+
+            Assert.That(rising.y, Is.EqualTo(10f).Within(0.001f));
+            Assert.That(falling.y, Is.EqualTo(100f).Within(0.001f));
         }
 
         private static void SetPrivateField(

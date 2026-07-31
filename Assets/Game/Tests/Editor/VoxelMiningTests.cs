@@ -397,7 +397,9 @@ namespace Supernova.Tests
                     0,
                     4,
                     0f,
-                    2.5f);
+                    2.5f,
+                    0.25f,
+                    37);
 
                 GameObject terrainObject = Create("Ore Drop Terrain");
                 MinecraftCaveInfiniteWorld terrain =
@@ -468,6 +470,9 @@ namespace Supernova.Tests
                 Assert.That(drop.VoxelType, Is.EqualTo(ore.TypeId));
                 Assert.That(drop.VoxelCount, Is.EqualTo(component.Count));
                 Assert.That(drop.MassDensity, Is.EqualTo(2.5f));
+                Assert.That(
+                    drop.Value,
+                    Is.EqualTo(37 * component.Count));
                 Assert.That(drop.Mesh, Is.Not.Null);
                 Assert.That(
                     drop.Mesh.vertexCount,
@@ -788,6 +793,9 @@ namespace Supernova.Tests
             Assert.That(
                 pickaxe.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
+            Assert.That(pickaxe.ActionTriggerDelay, Is.EqualTo(0.42f));
+            Assert.That(pickaxe.ActionCyclePeriod, Is.EqualTo(0.75f));
+            Assert.That(pickaxe.ActionIsPeriodic, Is.True);
             Assert.That(pickaxe.MiningBrush.Power, Is.EqualTo(1f));
             Assert.That(pickaxe.MiningEvenHitMultiplier, Is.EqualTo(4f));
             Assert.That(

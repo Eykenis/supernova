@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   prefab: {fileID: 7551938292944909751, guid: 481293727e641894f9139058cbb94b12, type: 3}
   spawnChance: 0.6
-  attemptsPerChunk: 6
-  minimumGroupSize: 3
-  maximumGroupSize: 5
+  attemptsPerChunk: 4
+  minimumGroupSize: 4
+  maximumGroupSize: 7
   groupRadiusInVoxels: 8
   requiredHeadroom: 2.1
   spawnHeightOffset: 0.1

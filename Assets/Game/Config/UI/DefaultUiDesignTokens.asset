@@ -31,3 +31,49 @@ MonoBehaviour:
   displaySize: 76
   quickTransitionSeconds: 0.12
   screenTransitionSeconds: 0.25
+  hudSortingOrder: 100
+  crosshairSortingOrder: 101
+  missionOverlaySortingOrder: 900
+  loadingSortingOrder: 1000
+  pauseSortingOrder: 1100
+  showHealth: 1
+  showHotbar: 1
+  showCrosshair: 1
+  showCompass: 1
+  showMissionObjective: 1
+  showMissionPrompt: 1
+  showMissionTimer: 1
+  compassPosition: {x: 0, y: -12}
+  compassSize: {x: 720, y: 72}
+  compassVisibleDegrees: 105
+  hudHealthPosition: {x: 48, y: 42}
+  hudHealthSize: {x: 372, y: 104}
+  hudHotbarPosition: {x: -46, y: 42}
+  hudHotbarSize: {x: 640, y: 78}
+  hudHealthSegmentCount: 8
+  hudHealthTiltDegrees: 3.5
+  hudHotbarTiltDegrees: -3.5
+  hudHealthReverseSlant: 0
+  hudHotbarReverseSlant: 1
+  hudElementSlant: 9
+  hudExtrusionDepth: 5
+  hudPrimary: {r: 0.96, g: 0.98, b: 1, a: 1}
+  hudSurface: {r: 0.035, g: 0.045, b: 0.055, a: 0.84}
+  hudMuted: {r: 0.96, g: 0.98, b: 1, a: 0.2}
+  hudShadow: {r: 0, g: 0, b: 0, a: 0.72}
+  hudDanger: {r: 0.92, g: 0.18, b: 0.14, a: 1}
+  missionObjectivePosition: {x: 30, y: -30}
+  missionObjectiveSize: {x: 600, y: 160}
+  missionPromptPosition: {x: 0, y: 112}
+  missionPromptSize: {x: 1100, y: 70}
+  missionTimerPosition: {x: 0, y: -92}
+  missionTimerSize: {x: 180, y: 62}
+  missionResultPadding: {x: 200, y: 100}
+  missionObjectiveFontSize: 28
+  missionPromptFontSize: 25
+  missionTimerFontSize: 28
+  missionResultFontSize: 42
+  missionResultBackdrop: {r: 0.015, g: 0.025, b: 0.035, a: 0.96}
+  sceneFadeColor: {r: 0, g: 0, b: 0, a: 1}
+  sceneFadeOutSeconds: 0.65
+  sceneFadeInSeconds: 0.55

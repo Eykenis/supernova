@@ -1,7 +1,7 @@
 using Supernova.Infrastructure;
+using Supernova.Missions;
 using Supernova.UI;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 using ToolkitButton = UnityEngine.UIElements.Button;
@@ -73,7 +73,7 @@ public sealed class MainMenuController : MonoBehaviour
 
         legacyDocument = GetComponent<UIDocument>();
         if (legacyDocument != null) legacyDocument.enabled = false;
-        EnsureEventSystem();
+        GameHudController.EnsureSingleEventSystem(transform);
         return true;
     }
 
@@ -198,7 +198,14 @@ public sealed class MainMenuController : MonoBehaviour
             legacyPlayButton.text = "LOADING CAVES...";
         }
         SetStatus("DESCENT SEQUENCE STARTED");
-        SceneManager.LoadSceneAsync(gameplaySceneName, LoadSceneMode.Single);
+        MissionGameLoop gameLoop = FindObjectOfType<MissionGameLoop>(true);
+        if (gameLoop == null || !gameLoop.BeginFirstMission())
+        {
+            Debug.LogWarning(
+                "Mission game loop was unavailable; loading gameplay without "
+                + "the mission transition.");
+            SceneManager.LoadSceneAsync(gameplaySceneName, LoadSceneMode.Single);
+        }
     }
 
     private void ShowSettings()
@@ -263,14 +270,6 @@ public sealed class MainMenuController : MonoBehaviour
     {
         if (uguiView != null) uguiView.SetStatus(message);
         if (legacyStatusLabel != null) legacyStatusLabel.text = message;
-    }
-
-    private static void EnsureEventSystem()
-    {
-        if (EventSystem.current != null) return;
-        GameObject eventSystemObject = new GameObject("EventSystem");
-        eventSystemObject.AddComponent<EventSystem>();
-        eventSystemObject.AddComponent<StandaloneInputModule>();
     }
 
     private static void QuitGame()

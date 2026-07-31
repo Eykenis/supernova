@@ -47,7 +47,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 883849422808084752}
   serializedVersion: 4
-  m_Mass: 1
+  m_Mass: 2
   m_Drag: 0
   m_AngularDrag: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -119,8 +119,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   body: {fileID: 2754185547975905423}
-  movementSpeed: 1.26
-  maximumHorizontalAcceleration: 99
+  maximumHorizontalSpeed: 2.67
+  movementForce: 99
   voxelSize: 0.42
   jumpVelocityMultiplier: 1.1
   turnSpeedInDegrees: 540
@@ -147,15 +147,16 @@ MonoBehaviour:
   navigation:
     safeFallHeight: 3
     maximumJumpHeight: 1
+    maximumTraversalJumpHeight: 4
+    maximumTraversalHorizontalDistance: 3
     maximumSingleMoveCost: 200
-    maximumExpandedNodes: 8192
+    maximumExpandedNodes: 512
   pursuitReplanInterval: 1
   wanderRetryInterval: 8
-  wanderRejectionAttempts: 16
   wanderVerticalSearch: 8
   solidDensityThreshold: 0
   arrivalToleranceInVoxels: 0.999
-  maximumHealth: 60
+  maximumHealth: 90
   vitals:
     maximumHealth: 100
     currentHealth: 100
@@ -165,6 +166,9 @@ MonoBehaviour:
   attackCooldown: 0.9
   hurtDuration: 0.3
   attackImpulse: 1.5
+  collisionFragility: 0.2
+  minimumDamageImpulse: 7
+  damagePercentagePerSquaredImpulse: 0.02
   drawDebug: 1
   currentState: 0
   lastExpandedNodeCount: 0

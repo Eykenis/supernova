@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Supernova.UI;
+using Supernova.Voxels;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Serialization;
@@ -52,6 +53,8 @@ namespace Supernova.Gameplay
         [SerializeField, Range(0f, 1f)] private float upperChestRotationWeight = 0.26f;
         [SerializeField, Range(0f, 1f)] private float neckRotationWeight = 0.14f;
         [SerializeField, Range(0f, 1f)] private float headRotationWeight = 0.22f;
+        [Tooltip("Additional forward pitch applied to both upper arms while crouching.")]
+        [SerializeField, Range(0f, 45f)] private float crouchArmForwardAngle = 12f;
 
         [Header("Third person")]
         [SerializeField] private Vector3 thirdPersonOffset = new Vector3(0f, 0.18f, -4f);
@@ -79,6 +82,9 @@ namespace Supernova.Gameplay
         private Transform animatedChest;
         private Transform animatedUpperChest;
         private Transform animatedNeck;
+        private Transform animatedLeftUpperArm;
+        private Transform animatedRightUpperArm;
+        private VoxelPlayerController playerController;
         private float smoothedUpperBodyPitch;
         private float smoothedUpperBodyYaw;
         private bool cursorLockRequested;
@@ -170,6 +176,7 @@ namespace Supernova.Gameplay
 
             SetFirstPersonRendererState(currentMode == PlayerViewMode.FirstPerson);
             UpdateUpperBodyPose();
+            UpdateCrouchArmPose();
             SyncFirstPersonShadowProxies();
             if (currentMode == PlayerViewMode.FirstPerson)
             {
@@ -222,6 +229,7 @@ namespace Supernova.Gameplay
             if (root != null)
             {
                 playerRoot = root;
+                playerController = null;
             }
         }
 
@@ -265,6 +273,7 @@ namespace Supernova.Gameplay
             Renderer[] renderersHiddenInFirstPerson)
         {
             playerRoot = root;
+            playerController = null;
             animatedHead = head;
             controlledCamera = camera;
             firstPersonHiddenRenderers = renderersHiddenInFirstPerson;
@@ -652,9 +661,15 @@ namespace Supernova.Gameplay
         {
             bool shouldFollow = rotateUpperBodyWithCamera
                 && (currentMode == PlayerViewMode.FirstPerson || upperBodyFollowInThirdPerson);
-            float targetPitch = shouldFollow
-                ? Mathf.Clamp(lookPitch, -maximumUpperBodyPitch, maximumUpperBodyPitch)
-                : 0f;
+            // The view model must match the camera on this frame; smoothing or the
+            // third-person pitch clamp makes the hands drift at steep view angles.
+            bool strictFirstPersonFollow = shouldFollow
+                && currentMode == PlayerViewMode.FirstPerson;
+            float targetPitch = strictFirstPersonFollow
+                ? lookPitch
+                : shouldFollow
+                    ? Mathf.Clamp(lookPitch, -maximumUpperBodyPitch, maximumUpperBodyPitch)
+                    : 0f;
             float targetYaw = 0f;
             if (shouldFollow && currentMode == PlayerViewMode.ThirdPerson)
             {
@@ -665,9 +680,11 @@ namespace Supernova.Gameplay
                     maximumUpperBodyYaw);
             }
 
-            float smoothFactor = upperBodyRotationSmoothSpeed <= 0f
+            float smoothFactor = strictFirstPersonFollow
                 ? 1f
-                : 1f - Mathf.Exp(-upperBodyRotationSmoothSpeed * Time.deltaTime);
+                : upperBodyRotationSmoothSpeed <= 0f
+                    ? 1f
+                    : 1f - Mathf.Exp(-upperBodyRotationSmoothSpeed * Time.deltaTime);
             smoothedUpperBodyPitch = Mathf.LerpAngle(
                 smoothedUpperBodyPitch,
                 targetPitch,
@@ -682,6 +699,26 @@ namespace Supernova.Gameplay
             ApplyUpperBodyBoneRotation(animatedUpperChest, upperChestRotationWeight);
             ApplyUpperBodyBoneRotation(animatedNeck, neckRotationWeight);
             ApplyUpperBodyBoneRotation(animatedHead, headRotationWeight);
+            ApplyUpperArmViewCorrection(animatedLeftUpperArm);
+            ApplyUpperArmViewCorrection(animatedRightUpperArm);
+        }
+
+        private void ApplyUpperArmViewCorrection(Transform upperArm)
+        {
+            if (upperArm == null) return;
+            float inheritedTorsoWeight = spineRotationWeight
+                + chestRotationWeight
+                + upperChestRotationWeight;
+            float correctionWeight = 1f - inheritedTorsoWeight;
+            if (Mathf.Approximately(correctionWeight, 0f)) return;
+
+            Quaternion pitchRotation = Quaternion.AngleAxis(
+                smoothedUpperBodyPitch * correctionWeight,
+                playerRoot.right);
+            Quaternion yawRotation = Quaternion.AngleAxis(
+                smoothedUpperBodyYaw * correctionWeight,
+                playerRoot.up);
+            upperArm.rotation = yawRotation * pitchRotation * upperArm.rotation;
         }
 
         private void ApplyUpperBodyBoneRotation(Transform bone, float weight)
@@ -696,6 +733,29 @@ namespace Supernova.Gameplay
             bone.rotation = yawRotation * pitchRotation * bone.rotation;
         }
 
+        private void UpdateCrouchArmPose()
+        {
+            if (playerController == null || crouchArmForwardAngle <= 0f) return;
+            if (playerController.IsRifleSelected) return;
+            float forwardAngle = crouchArmForwardAngle
+                * Mathf.Clamp01(playerController.CrouchPoseWeight);
+            if (forwardAngle <= 0f) return;
+
+            ApplyArmForwardRotation(animatedLeftUpperArm, playerRoot.right, forwardAngle);
+            ApplyArmForwardRotation(animatedRightUpperArm, playerRoot.right, forwardAngle);
+        }
+
+        private static void ApplyArmForwardRotation(
+            Transform upperArm,
+            Vector3 playerRight,
+            float angle)
+        {
+            if (upperArm == null || playerRight.sqrMagnitude <= Mathf.Epsilon || angle <= 0f)
+                return;
+            upperArm.rotation = Quaternion.AngleAxis(-angle, playerRight.normalized)
+                * upperArm.rotation;
+        }
+
         private void ResolveUpperBodyBones(Animator animator)
         {
             if (animator == characterAnimator) return;
@@ -704,11 +764,15 @@ namespace Supernova.Gameplay
             animatedChest = null;
             animatedUpperChest = null;
             animatedNeck = null;
+            animatedLeftUpperArm = null;
+            animatedRightUpperArm = null;
             if (characterAnimator == null || !characterAnimator.isHuman) return;
             animatedSpine = characterAnimator.GetBoneTransform(HumanBodyBones.Spine);
             animatedChest = characterAnimator.GetBoneTransform(HumanBodyBones.Chest);
             animatedUpperChest = characterAnimator.GetBoneTransform(HumanBodyBones.UpperChest);
             animatedNeck = characterAnimator.GetBoneTransform(HumanBodyBones.Neck);
+            animatedLeftUpperArm = characterAnimator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            animatedRightUpperArm = characterAnimator.GetBoneTransform(HumanBodyBones.RightUpperArm);
         }
 
         private void OnApplicationFocus(bool hasFocus)
@@ -749,6 +813,8 @@ namespace Supernova.Gameplay
         private void ResolveReferences()
         {
             if (playerRoot == null) playerRoot = transform;
+            if (playerController == null || playerController.transform != playerRoot)
+                playerController = playerRoot.GetComponent<VoxelPlayerController>();
             if (characterAnimator == null)
             {
                 ResolveUpperBodyBones(playerRoot.GetComponentInChildren<Animator>(false));

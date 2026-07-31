@@ -2,6 +2,7 @@ using NUnit.Framework;
 using Supernova.MinecraftCaves;
 using Supernova.Voxels;
 using UnityEngine;
+using UnityEditor;
 
 namespace Supernova.Tests
 {
@@ -51,6 +52,10 @@ namespace Supernova.Tests
             leafObject.transform.SetParent(root.transform, false);
             leafObject.AddComponent<BoxCollider>().size =
                 new Vector3(2f, 2f, 0.25f);
+            Animator animator = leafObject.AddComponent<Animator>();
+            animator.runtimeAnimatorController =
+                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+                    ProjectAssetPaths.Animations.SciFiDoorController);
             playerObject = new GameObject("Player");
             playerObject.AddComponent<CharacterController>();
 
@@ -59,17 +64,16 @@ namespace Supernova.Tests
             door.Configure(
                 leafObject.transform,
                 playerObject.transform,
-                new Vector3(0f, -3f, 0f),
                 1.8f,
-                3f,
-                10f);
+                3f);
 
             playerObject.transform.position = Vector3.zero;
             Physics.SyncTransforms();
             door.Tick(1f);
 
             Assert.That(door.IsOpenRequested, Is.True);
-            Assert.That(leafObject.transform.localPosition.y, Is.EqualTo(-3f).Within(0.001f));
+            Assert.That(animator.enabled, Is.True);
+            Assert.That(animator.GetFloat("PlaybackSpeed"), Is.EqualTo(1f));
 
             playerObject.transform.position = Vector3.forward * 2f;
             Physics.SyncTransforms();
@@ -84,7 +88,7 @@ namespace Supernova.Tests
             door.Tick(1f);
 
             Assert.That(door.IsOpenRequested, Is.False);
-            Assert.That(leafObject.transform.localPosition.y, Is.EqualTo(0f).Within(0.001f));
+            Assert.That(animator.GetFloat("PlaybackSpeed"), Is.EqualTo(-1f));
         }
 
         [Test]
@@ -94,6 +98,10 @@ namespace Supernova.Tests
             GameObject leafObject = new GameObject("Door Leaf");
             leafObject.transform.SetParent(root.transform, false);
             leafObject.AddComponent<BoxCollider>();
+            Animator animator = leafObject.AddComponent<Animator>();
+            animator.runtimeAnimatorController =
+                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
+                    ProjectAssetPaths.Animations.SciFiDoorController);
             playerObject = new GameObject("Player");
             playerObject.AddComponent<CharacterController>();
 
@@ -102,10 +110,8 @@ namespace Supernova.Tests
             door.Configure(
                 leafObject.transform,
                 playerObject.transform,
-                new Vector3(0f, -3f, 0f),
                 1.8f,
-                3f,
-                10f);
+                3f);
             door.SetStayOpenAfterFirstOpen(true);
 
             playerObject.transform.position = Vector3.zero;
@@ -116,9 +122,7 @@ namespace Supernova.Tests
             door.Tick(1f);
 
             Assert.That(door.IsOpenRequested, Is.True);
-            Assert.That(
-                leafObject.transform.localPosition.y,
-                Is.EqualTo(-3f).Within(0.001f));
+            Assert.That(animator.GetFloat("PlaybackSpeed"), Is.EqualTo(1f));
         }
 
         [Test]

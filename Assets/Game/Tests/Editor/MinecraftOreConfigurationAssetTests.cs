@@ -47,6 +47,7 @@ namespace Supernova.Tests
                 "The default ore pass must cover the high caves while excluding top bedrock.");
             Assert.That(feature.Size, Is.EqualTo(8));
             Assert.That(feature.DiscardChanceOnAirExposure, Is.EqualTo(0.5f));
+            Assert.That(feature.OreUnitValue, Is.EqualTo(25));
             Assert.That(
                 feature.TryCreateSettings(out _, out string error),
                 Is.True,
@@ -116,6 +117,10 @@ namespace Supernova.Tests
                     FeaturePath);
 
             Assert.That(configuration, Is.Not.Null);
+            Assert.That(configuration.TerrainPhysicsMaterial, Is.Not.Null);
+            Assert.That(
+                AssetDatabase.GetAssetPath(configuration.TerrainPhysicsMaterial),
+                Is.EqualTo(ProjectAssetPaths.Materials.CaveTerrainPhysics));
             Assert.That(configuration.BaseSolidVoxelType, Is.Not.Null);
             Assert.That(
                 configuration.BaseSolidVoxelType.TypeId,

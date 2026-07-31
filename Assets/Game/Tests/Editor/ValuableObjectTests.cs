@@ -104,11 +104,7 @@ namespace Supernova.Tests
             int lowSpeedLoss = valuable.ApplyCollisionImpulse(8f);
             int damagingLoss = valuable.ApplyCollisionImpulse(20f);
 
-            Assert.That(
-                lowSpeedLoss,
-                Is.Zero,
-                "A large absolute impulse should not damage a heavy object "
-                + "when its velocity change remains below the threshold.");
+            Assert.That(lowSpeedLoss, Is.Zero);
             Assert.That(damagingLoss, Is.EqualTo(2));
             Assert.That(valuable.CurrentValue, Is.EqualTo(98));
         }
@@ -158,7 +154,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MinedOreDrop_UsesVoxelCountAndLevelUnitValue()
+        public void MinedOreDrop_UsesVoxelCountAndConfiguredUnitValue()
         {
             GameObject target = Create("Recovered Ore");
             target.AddComponent<Rigidbody>().isKinematic = true;
@@ -211,7 +207,7 @@ namespace Supernova.Tests
             GameObject extractionObject = Create("Extraction");
             OreExtractionZone extraction =
                 extractionObject.AddComponent<OreExtractionZone>();
-            extraction.Configure(null, 10);
+            extraction.Configure(null);
             ValuableObject valuable = CreateValuable("Ore", 100, 0.5f);
             Collider resourceCollider = valuable.GetComponent<Collider>();
 

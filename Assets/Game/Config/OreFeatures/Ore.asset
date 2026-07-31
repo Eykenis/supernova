@@ -23,6 +23,7 @@ MonoBehaviour:
   maxHeight: 254
   plateau: 0
   size: 8
-  discardChanceOnAirExposure: 0.3
-  massDensity: 10
-  fragility: 0.25
+  discardChanceOnAirExposure: 0.05
+  oreUnitValue: 25
+  massDensity: 2
+  fragility: 0.15

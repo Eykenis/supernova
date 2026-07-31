@@ -108,6 +108,15 @@ namespace Supernova.Gameplay
         bool ReceiveDamage(in DamageInfo damage);
     }
 
+    /// <summary>
+    /// Marks damage receivers that firearm projectiles are allowed to damage.
+    /// Keeping this separate from IDamageable prevents bullets from damaging the
+    /// player or unrelated damageable world objects.
+    /// </summary>
+    public interface IMonsterDamageable : IDamageable
+    {
+    }
+
     [Serializable]
     public sealed class CharacterVitals
     {

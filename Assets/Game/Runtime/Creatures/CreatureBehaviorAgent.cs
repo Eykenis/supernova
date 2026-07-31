@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Supernova.Gameplay;
+using Supernova.UI;
 using Supernova.Voxels;
 using UnityEngine;
 
@@ -18,12 +19,14 @@ namespace Supernova.MinecraftCaves.Creatures
 
     [DisallowMultipleComponent]
     [RequireComponent(typeof(CreaturePhysicsMotor))]
-    public sealed class CreatureBehaviorAgent : MonoBehaviour, IDamageable
+    public sealed class CreatureBehaviorAgent : MonoBehaviour, IMonsterDamageable
     {
         public const float DefaultSimulationDistance = 160f;
         public const float DefaultPursuitDistance = 32f;
         public const float DefaultWanderRadius = 32f;
         public const float DeadDespawnDelay = 5f;
+        public const float DefaultMinimumCollisionDamageImpulse = 3f;
+        private const int MaximumNavigationDistanceInChunks = 4;
 
         [Header("References")]
         [SerializeField] private MinecraftCaveInfiniteWorld caveWorld;
@@ -41,7 +44,6 @@ namespace Supernova.MinecraftCaves.Creatures
         [SerializeField] private CreatureNavigationSettings navigation = new CreatureNavigationSettings();
         [SerializeField, Min(0.05f)] private float pursuitReplanInterval = 0.5f;
         [SerializeField, Min(0.05f)] private float wanderRetryInterval = 1.5f;
-        [SerializeField, Range(1, 16)] private int wanderRejectionAttempts = 16;
         [SerializeField, Range(1, 32)] private int wanderVerticalSearch = 8;
         [SerializeField] private float solidDensityThreshold;
         [SerializeField, Range(0.5f, 1f)] private float arrivalToleranceInVoxels = 0.999f;
@@ -55,6 +57,23 @@ namespace Supernova.MinecraftCaves.Creatures
         [SerializeField, Min(0.02f)] private float attackCooldown = 0.9f;
         [SerializeField, Min(0.02f)] private float hurtDuration = 0.3f;
         [SerializeField, Min(0f)] private float attackImpulse = 1.5f;
+
+        [Header("Collision Damage")]
+        [Tooltip(
+            "How strongly collision impacts convert into health damage. "
+            + "Configure this per monster prefab.")]
+        [SerializeField, Range(0f, 1f)] private float collisionFragility = 0.5f;
+        [Tooltip(
+            "Minimum mass-normalized collision impulse before health damage "
+            + "starts. Treasure uses 1 by default.")]
+        [SerializeField, Min(0f)] private float minimumDamageImpulse =
+            DefaultMinimumCollisionDamageImpulse;
+        [Tooltip(
+            "Fraction of maximum health lost per squared unit of damaging "
+            + "specific impulse. 0.03 means 3%.")]
+        [SerializeField, Min(0f)]
+        private float damagePercentagePerSquaredImpulse =
+            CollisionImpulseDamage.DefaultDamagePercentagePerSquaredImpulse;
 
         [Header("Debug")]
         [SerializeField] private bool drawDebug = true;
@@ -72,15 +91,21 @@ namespace Supernova.MinecraftCaves.Creatures
         private Vector3Int lastPursuitTarget;
         private float nextPursuitReplanTime;
         private float nextWanderAttemptTime;
+        private float navigationIntervalMultiplier = 1f;
         private float forcedIdleUntil;
         private bool hasPursuitTarget;
+        private bool pursuitTargetUnreachable;
         private bool configurationErrorLogged;
         private int movementCommandId;
+        private int navigationRevision = int.MinValue;
         private CharacterStateMachine<CreatureBehaviorState> stateMachine;
         private float stateSeconds;
         private float nextAttackTime;
         private bool attackApplied;
         private bool deathCleanupScheduled;
+
+        public event Action<float, float> HealthChanged;
+        public event Action<float, Vector3> Damaged;
 
         public CreatureBehaviorState CurrentState => currentState;
         public IReadOnlyList<Vector3Int> CurrentPath => path;
@@ -95,6 +120,10 @@ namespace Supernova.MinecraftCaves.Creatures
         public bool IsAlive => vitals != null && vitals.IsAlive;
         public MinecraftCaveInfiniteWorld CaveWorld => caveWorld;
         public Transform PlayerFoot => playerFoot;
+        public float CollisionFragility => Mathf.Clamp01(collisionFragility);
+        public float MinimumDamageImpulse => Mathf.Max(0f, minimumDamageImpulse);
+        public float DamagePercentagePerSquaredImpulse =>
+            Mathf.Max(0f, damagePercentagePerSquaredImpulse);
 
         public void BindWorldContext(
             MinecraftCaveInfiniteWorld world,
@@ -103,6 +132,7 @@ namespace Supernova.MinecraftCaves.Creatures
             caveWorld = world;
             playerFoot = targetPlayerFoot;
             query = null;
+            navigationRevision = int.MinValue;
             configurationErrorLogged = false;
             ResolveReferences();
             if (caveWorld != null)
@@ -116,6 +146,7 @@ namespace Supernova.MinecraftCaves.Creatures
             random = new System.Random(unchecked(GetInstanceID() * 486187739));
             ResolveReferences();
             EnsureVitals(true);
+            EnsureHealthBar();
             BuildStateMachine();
         }
 
@@ -169,7 +200,22 @@ namespace Supernova.MinecraftCaves.Creatures
             }
 
             Vector3Int playerSupport = WorldFootPositionToSupport(playerFoot.position);
-            float playerDistance = Vector3.Distance(currentSupport, playerSupport);
+            float playerDistance = Vector3.Distance(observedSupport, playerSupport);
+            navigationIntervalMultiplier =
+                GetNavigationIntervalMultiplier(playerDistance);
+            if (navigationIntervalMultiplier <= 0f)
+            {
+                if (currentState != CreatureBehaviorState.Idle)
+                {
+                    SetState(CreatureBehaviorState.Idle);
+                }
+                else
+                {
+                    motor.Stop();
+                }
+                return;
+            }
+
             CreatureBehaviorState desiredState = SelectState(playerDistance);
             if (desiredState != currentState)
             {
@@ -204,7 +250,12 @@ namespace Supernova.MinecraftCaves.Creatures
         public bool ReceiveDamage(in DamageInfo damage)
         {
             EnsureVitals(false);
+            float previousHealth = vitals.CurrentHealth;
             if (!vitals.ApplyDamage(damage.Amount)) return false;
+            float actualDamage = previousHealth - vitals.CurrentHealth;
+
+            HealthChanged?.Invoke(vitals.CurrentHealth, vitals.MaximumHealth);
+            Damaged?.Invoke(actualDamage, damage.Point);
 
             ResolveReferences();
             EnsureStateMachine();
@@ -219,12 +270,75 @@ namespace Supernova.MinecraftCaves.Creatures
             return true;
         }
 
+        public float ApplyCollisionImpulse(float impulseMagnitude)
+        {
+            return ApplyCollisionImpulse(impulseMagnitude, transform.position);
+        }
+
+        public float ApplyCollisionImpulse(
+            float impulseMagnitude,
+            Vector3 collisionPoint)
+        {
+            EnsureVitals(false);
+            if (!vitals.IsAlive)
+            {
+                return 0f;
+            }
+
+            Rigidbody body = GetComponent<Rigidbody>();
+            float mass = body != null ? Mathf.Max(0.0001f, body.mass) : 1f;
+            float damage = CollisionImpulseDamage.CalculateDamage(
+                vitals.MaximumHealth,
+                impulseMagnitude,
+                CollisionFragility,
+                MinimumDamageImpulse,
+                DamagePercentagePerSquaredImpulse,
+                mass);
+            if (damage <= 0f)
+            {
+                return 0f;
+            }
+
+            float previousHealth = vitals.CurrentHealth;
+            var collisionDamage = new DamageInfo(
+                damage,
+                null,
+                collisionPoint,
+                Vector3.zero);
+            return ReceiveDamage(collisionDamage)
+                ? previousHealth - vitals.CurrentHealth
+                : 0f;
+        }
+
         public void RestoreFullHealth()
         {
             EnsureVitals(false);
             vitals.RestoreFullHealth();
+            HealthChanged?.Invoke(vitals.CurrentHealth, vitals.MaximumHealth);
             EnsureStateMachine();
             SetState(CreatureBehaviorState.Idle);
+        }
+
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (collision == null)
+            {
+                return;
+            }
+
+            // Projectiles already submit their explicit weapon damage through
+            // IMonsterDamageable. Do not count the same impact a second time.
+            if (collision.collider != null
+                && collision.collider.GetComponentInParent<BallisticProjectile>()
+                    != null)
+            {
+                return;
+            }
+
+            Vector3 collisionPoint = collision.contactCount > 0
+                ? collision.GetContact(0).point
+                : transform.position;
+            ApplyCollisionImpulse(collision.impulse.magnitude, collisionPoint);
         }
 
         private void TickIdle(float deltaTime)
@@ -386,35 +500,39 @@ namespace Supernova.MinecraftCaves.Creatures
                 return;
             }
 
-            nextWanderAttemptTime = Time.time + wanderRetryInterval;
-            for (int attempt = 0; attempt < wanderRejectionAttempts; attempt++)
+            float retryInterval = wanderRetryInterval
+                * navigationIntervalMultiplier;
+            nextWanderAttemptTime = Time.time + retryInterval;
+            Vector2 offset = RandomInsideCircle(wanderRadius);
+            int randomY = random.Next(
+                -wanderVerticalSearch,
+                wanderVerticalSearch + 1);
+            Vector3Int sample = currentSupport + new Vector3Int(
+                Mathf.RoundToInt(offset.x),
+                randomY,
+                Mathf.RoundToInt(offset.y));
+            if (TryFindStandableVertically(
+                    sample,
+                    wanderVerticalSearch,
+                    out Vector3Int target)
+                && Vector3.Distance(currentSupport, target) <= wanderRadius
+                && BuildPath(target))
             {
-                Vector2 offset = RandomInsideCircle(wanderRadius);
-                int randomY = random.Next(-wanderVerticalSearch, wanderVerticalSearch + 1);
-                Vector3Int sample = currentSupport + new Vector3Int(
-                    Mathf.RoundToInt(offset.x),
-                    randomY,
-                    Mathf.RoundToInt(offset.y));
-
-                if (!TryFindStandableVertically(sample, wanderVerticalSearch, out Vector3Int target)
-                    || Vector3.Distance(currentSupport, target) > wanderRadius)
-                {
-                    continue;
-                }
-
-                if (BuildPath(target))
-                {
-                    return;
-                }
+                return;
             }
 
-            forcedIdleUntil = Time.time + wanderRetryInterval;
+            forcedIdleUntil = Time.time + retryInterval;
             SetState(CreatureBehaviorState.Idle);
         }
 
         private void UpdatePursue(Vector3Int requestedTarget)
         {
             bool targetChanged = !hasPursuitTarget || requestedTarget != lastPursuitTarget;
+            if (!targetChanged && pursuitTargetUnreachable)
+            {
+                return;
+            }
+
             if (Time.time < nextPursuitReplanTime)
             {
                 return;
@@ -425,16 +543,18 @@ namespace Supernova.MinecraftCaves.Creatures
                 return;
             }
 
-            nextPursuitReplanTime = Time.time + pursuitReplanInterval;
+            nextPursuitReplanTime = Time.time
+                + pursuitReplanInterval * navigationIntervalMultiplier;
             lastPursuitTarget = requestedTarget;
             hasPursuitTarget = true;
 
             if (TryFindNearestStandable(requestedTarget, 2, 4, out Vector3Int target))
             {
-                BuildPath(target);
+                pursuitTargetUnreachable = !BuildPath(target);
             }
             else
             {
+                pursuitTargetUnreachable = true;
                 ClearNavigation();
             }
         }
@@ -516,11 +636,25 @@ namespace Supernova.MinecraftCaves.Creatures
 
             Vector3 localDirection = new Vector3(step.x, 0f, step.z);
             Vector3 worldDirection = caveWorld.transform.TransformDirection(localDirection);
-            motor.Submit(new CreatureMovementCommand(
-                movementCommandId,
-                worldDirection,
-                caveWorld.transform.up,
-                step.y));
+            bool usesTraversalLink = query.TryGetTraversalLink(
+                currentSupport,
+                nextSupport,
+                out CreatureTraversalLink link)
+                && CreatureVoxelNavigation.IsTraversalLinkAllowed(
+                    link,
+                    navigation);
+            CreatureMovementCommand command = usesTraversalLink
+                ? CreatureMovementCommand.TraverseTo(
+                    movementCommandId,
+                    worldDirection,
+                    caveWorld.transform.up,
+                    SupportToWorldFootPosition(nextSupport))
+                : new CreatureMovementCommand(
+                    movementCommandId,
+                    worldDirection,
+                    caveWorld.transform.up,
+                    step.y);
+            motor.Submit(command);
         }
 
         private bool EnsureReady()
@@ -550,7 +684,22 @@ namespace Supernova.MinecraftCaves.Creatures
                 return false;
             }
 
-            query ??= new MinecraftCaveVoxelQuery(caveWorld, solidDensityThreshold);
+            if (query == null)
+            {
+                query = new MinecraftCaveVoxelQuery(
+                    caveWorld,
+                    solidDensityThreshold);
+                navigationRevision = query.NavigationRevision;
+            }
+            else if (navigationRevision != query.NavigationRevision)
+            {
+                navigationRevision = query.NavigationRevision;
+                pursuitTargetUnreachable = false;
+                nextPursuitReplanTime = 0f;
+                nextWanderAttemptTime = 0f;
+                ClearNavigation();
+            }
+
             return true;
         }
 
@@ -560,6 +709,7 @@ namespace Supernova.MinecraftCaves.Creatures
             {
                 caveWorld = FindObjectOfType<MinecraftCaveInfiniteWorld>();
                 query = null;
+                navigationRevision = int.MinValue;
             }
 
             if (playerFoot == null)
@@ -689,6 +839,31 @@ namespace Supernova.MinecraftCaves.Creatures
             return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * distance;
         }
 
+        private static float GetNavigationIntervalMultiplier(
+            float playerDistanceInVoxels)
+        {
+            float chunkWidth = VoxelColumnChunkData.Width;
+            if (playerDistanceInVoxels > chunkWidth
+                * MaximumNavigationDistanceInChunks)
+            {
+                return 0f;
+            }
+            if (playerDistanceInVoxels > chunkWidth * 3f)
+            {
+                return 10f;
+            }
+            if (playerDistanceInVoxels > chunkWidth * 2f)
+            {
+                return 5f;
+            }
+            if (playerDistanceInVoxels > chunkWidth)
+            {
+                return 2f;
+            }
+
+            return 1f;
+        }
+
         private void SetState(CreatureBehaviorState value)
         {
             EnsureStateMachine();
@@ -730,12 +905,25 @@ namespace Supernova.MinecraftCaves.Creatures
             vitals.Initialize(maximumHealth, refill);
         }
 
+        private void EnsureHealthBar()
+        {
+            MonsterHealthBar healthBar = GetComponent<MonsterHealthBar>();
+            if (healthBar == null)
+            {
+                healthBar = gameObject.AddComponent<MonsterHealthBar>();
+            }
+
+            healthBar.Bind(this);
+        }
+
         private void EnterState(CreatureBehaviorState value)
         {
             currentState = value;
             ClearNavigation();
             hasPursuitTarget = false;
+            pursuitTargetUnreachable = false;
             if (value == CreatureBehaviorState.Wander) nextWanderAttemptTime = 0f;
+            if (value == CreatureBehaviorState.Pursue) nextPursuitReplanTime = 0f;
         }
 
         private void ClearNavigation()
@@ -776,6 +964,15 @@ namespace Supernova.MinecraftCaves.Creatures
                     SupportToWorldFootPosition(path[i - 1]),
                     SupportToWorldFootPosition(path[i]));
             }
+        }
+
+        private void OnValidate()
+        {
+            maximumHealth = Mathf.Max(1f, maximumHealth);
+            collisionFragility = Mathf.Clamp01(collisionFragility);
+            minimumDamageImpulse = Mathf.Max(0f, minimumDamageImpulse);
+            damagePercentagePerSquaredImpulse =
+                Mathf.Max(0f, damagePercentagePerSquaredImpulse);
         }
 
         private sealed class CreatureState : ICharacterState<CreatureBehaviorState>
