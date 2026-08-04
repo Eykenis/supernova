@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85b956af8dbc46278c7b1f49ed81b76e, type: 3}
+  m_Name: TigerRock
+  m_EditorClassIdentifier: 
+  type: 9
+  displayName: Tiger Rock
+  group: 0
+  durability: 4
+  material: {fileID: 2100000, guid: 6d1f848b8f69b1842a6c074cb7869f87, type: 2}

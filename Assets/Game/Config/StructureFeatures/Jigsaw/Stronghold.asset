@@ -10,29 +10,36 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0d96d5bdff9971149828a61965256e6a, type: 3}
-  m_Name: Fortress
+  m_Name: Stronghold
   m_EditorClassIdentifier: 
   enabled: 1
-  stableId: fortress
+  stableId: stronghold
   primaryVoxelType: {fileID: 11400000, guid: fc54184cf92454347a4a80cfc807cb3a, type: 2}
   accentVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
-  seedSalt: 123
-  regionSizeInChunks: 4
-  placementChance: 1
-  minFloorHeight: 30
-  maxFloorHeight: 200
-  maxPieces: 36
-  maxDepth: 7
-  maxHorizontalDistance: 63
-  firstPieceId: fortress_hall
+  placementStrategy: 1
+  seedSalt: 161803
+  regionSizeInChunks: 6
+  placementChance: 0.3
+  minFloorHeight: 34
+  maxFloorHeight: 190
+  ringStructureCount: 96
+  ringCount: 6
+  ringDistanceInChunks: 40
+  ringSpreadInChunks: 4
+  structureSetId: 
+  structureSetWeight: 1
+  maxPieces: 40
+  maxDepth: 9
+  maxHorizontalDistance: 84
+  firstPieceId: stronghold_hall
   layoutAttempts: 8
   connectorPlacementAttempts: 8
   collisionPadding: 1
   pieces:
-  - stableId: fortress_lobby
-    displayName: Lobby
-    poolId: main
-    outputPoolId: main
+  - stableId: stronghold_lobby
+    displayName: Great Hall
+    poolId: hold
+    outputPoolId: hold
     startPiece: 1
     weight: 0
     minimumGraphDepth: 0
@@ -43,15 +50,15 @@ MonoBehaviour:
     requiredByDepth: 0
     shape: 0
     buildStyle: 1
-    connectorPattern: 4
+    connectorPattern: 0
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 21
-    maximumWidth: 25
-    minimumDepth: 21
+    minimumWidth: 19
+    maximumWidth: 21
+    minimumDepth: 19
     maximumDepth: 21
-    minimumHeight: 12
+    minimumHeight: 10
     maximumHeight: 12
     minimumLength: 8
     maximumLength: 12
@@ -62,13 +69,13 @@ MonoBehaviour:
     descendingChance: 0.65
     decorationSpacing: 4
     connectors:
-    - stableId: north_gate
+    - stableId: forward
       role: 1
       face: 0
       joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -76,13 +83,13 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
-    - stableId: east_gate
+    - stableId: right
       role: 1
       face: 1
       joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -90,13 +97,13 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
-    - stableId: south_gate
+    - stableId: back
       role: 1
       face: 2
       joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -104,13 +111,13 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
-    - stableId: west_gate
+    - stableId: left
       role: 1
       face: 3
       joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -122,7 +129,7 @@ MonoBehaviour:
     - stableId: lobby_footings
       kind: 0
       palette: 0
-      maximumDistance: 20
+      maximumDistance: 22
       inset: 0
       chance: 1
       perimeterOnly: 1
@@ -133,21 +140,22 @@ MonoBehaviour:
       inset: 0
       chance: 0.22
       perimeterOnly: 1
-  - stableId: fortress_hall
-    displayName: Hall
-    poolId: main
-    outputPoolId: main
+    spawnMarkers: []
+  - stableId: stronghold_hall
+    displayName: Vaulted Hall
+    poolId: hold
+    outputPoolId: hold
     startPiece: 0
     weight: 60
     minimumGraphDepth: 1
-    maximumGraphDepth: 8
-    minimumCount: 4
+    maximumGraphDepth: 9
+    minimumCount: 6
     maximumCount: 0
     allowConsecutive: 1
     requiredByDepth: 3
     shape: 1
     buildStyle: 1
-    connectorPattern: 2
+    connectorPattern: 0
     decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
@@ -155,13 +163,13 @@ MonoBehaviour:
     maximumWidth: 7
     minimumDepth: 7
     maximumDepth: 7
-    minimumHeight: 10
-    maximumHeight: 10
+    minimumHeight: 5
+    maximumHeight: 5
     minimumLength: 10
     maximumLength: 18
-    width: 9
-    height: 8
-    verticalDelta: 6
+    width: 5
+    height: 6
+    verticalDelta: 4
     sideBranchChance: 0.3
     descendingChance: 0.65
     decorationSpacing: 4
@@ -170,9 +178,9 @@ MonoBehaviour:
       role: 0
       face: 2
       joint: 0
-      socketName: fortress_entry
-      targetName: fortress_branch
-      targetPoolId: main
+      socketName: hold_entry
+      targetName: hold_branch
+      targetPoolId: hold
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -184,9 +192,9 @@ MonoBehaviour:
       role: 1
       face: 0
       joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -198,9 +206,9 @@ MonoBehaviour:
       role: 1
       face: 3
       joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -212,9 +220,9 @@ MonoBehaviour:
       role: 1
       face: 1
       joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -237,30 +245,31 @@ MonoBehaviour:
       inset: 0
       chance: 0.18
       perimeterOnly: 1
-  - stableId: fortress_library
-    displayName: Library
-    poolId: main
-    outputPoolId: main
+    spawnMarkers: []
+  - stableId: stronghold_crossing
+    displayName: Cross Hall
+    poolId: hold
+    outputPoolId: hold
     startPiece: 0
-    weight: 20
+    weight: 18
     minimumGraphDepth: 2
-    maximumGraphDepth: 7
-    minimumCount: 1
-    maximumCount: 2
+    maximumGraphDepth: 9
+    minimumCount: 2
+    maximumCount: 6
     allowConsecutive: 0
-    requiredByDepth: 5
-    shape: 0
+    requiredByDepth: 4
+    shape: 2
     buildStyle: 1
     connectorPattern: 0
-    decoration: 2
+    decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 17
-    minimumDepth: 13
-    maximumDepth: 17
+    minimumWidth: 11
+    maximumWidth: 11
+    minimumDepth: 11
+    maximumDepth: 11
     minimumHeight: 8
-    maximumHeight: 9
+    maximumHeight: 8
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -274,9 +283,163 @@ MonoBehaviour:
       role: 0
       face: 2
       joint: 0
-      socketName: fortress_entry
-      targetName: fortress_branch
-      targetPoolId: main
+      socketName: hold_entry
+      targetName: hold_branch
+      targetPoolId: hold
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: left
+      role: 1
+      face: 3
+      joint: 0
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: right
+      role: 1
+      face: 1
+      joint: 0
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    processors: []
+    spawnMarkers: []
+  - stableId: stronghold_stairs
+    displayName: Stair Well
+    poolId: hold
+    outputPoolId: hold
+    startPiece: 0
+    weight: 8
+    minimumGraphDepth: 2
+    maximumGraphDepth: 9
+    minimumCount: 2
+    maximumCount: 6
+    allowConsecutive: 0
+    requiredByDepth: 5
+    shape: 3
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 10
+    maximumLength: 12
+    width: 5
+    height: 6
+    verticalDelta: 5
+    sideBranchChance: 0
+    descendingChance: 0.7
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: hold_entry
+      targetName: hold_branch
+      targetPoolId: hold
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: hold_branch
+      targetName: hold_entry
+      targetPoolId: hold
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    processors: []
+    spawnMarkers: []
+  - stableId: stronghold_library
+    displayName: Library
+    poolId: hold
+    outputPoolId: hold
+    startPiece: 0
+    weight: 20
+    minimumGraphDepth: 2
+    maximumGraphDepth: 9
+    minimumCount: 1
+    maximumCount: 2
+    allowConsecutive: 0
+    requiredByDepth: 5
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 2
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 15
+    maximumWidth: 19
+    minimumDepth: 15
+    maximumDepth: 19
+    minimumHeight: 9
+    maximumHeight: 11
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: hold_entry
+      targetName: hold_branch
+      targetPoolId: hold
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -299,30 +462,53 @@ MonoBehaviour:
       inset: 0
       chance: 0.25
       perimeterOnly: 1
-  - stableId: fortress_crossing
-    displayName: Cross Hall
-    poolId: main
-    outputPoolId: main
+    spawnMarkers:
+    - stableId: library_tome
+      kind: 0
+      treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 1, z: 0}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: library_guard
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
+      localOffset: {x: 3, y: 1, z: -3}
+      yaw: 0
+      spawnChance: 0.6
+      count: 2
+      scatterRadiusInVoxels: 3
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: stronghold_prison
+    displayName: Cell Block
+    poolId: hold
+    outputPoolId: hold
     startPiece: 0
-    weight: 15
-    minimumGraphDepth: 2
-    maximumGraphDepth: 7
+    weight: 12
+    minimumGraphDepth: 3
+    maximumGraphDepth: 9
     minimumCount: 1
-    maximumCount: 6
+    maximumCount: 2
     allowConsecutive: 0
-    requiredByDepth: 4
-    shape: 2
+    requiredByDepth: 6
+    shape: 0
     buildStyle: 1
-    connectorPattern: 3
-    decoration: 3
+    connectorPattern: 0
+    decoration: 4
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 9
-    maximumWidth: 9
-    minimumDepth: 9
-    maximumDepth: 9
-    minimumHeight: 7
-    maximumHeight: 7
+    minimumWidth: 15
+    maximumWidth: 17
+    minimumDepth: 17
+    maximumDepth: 19
+    minimumHeight: 8
+    maximumHeight: 10
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -336,161 +522,9 @@ MonoBehaviour:
       role: 0
       face: 2
       joint: 0
-      socketName: fortress_entry
-      targetName: fortress_branch
-      targetPoolId: main
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 5
-      openingHeight: 5
-    - stableId: forward
-      role: 1
-      face: 0
-      joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 5
-      openingHeight: 5
-    - stableId: left
-      role: 1
-      face: 3
-      joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 5
-      openingHeight: 5
-    - stableId: right
-      role: 1
-      face: 1
-      joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 5
-      openingHeight: 5
-    processors: []
-  - stableId: fortress_stairs
-    displayName: Stair Hall
-    poolId: main
-    outputPoolId: main
-    startPiece: 0
-    weight: 5
-    minimumGraphDepth: 2
-    maximumGraphDepth: 7
-    minimumCount: 1
-    maximumCount: 5
-    allowConsecutive: 0
-    requiredByDepth: 5
-    shape: 3
-    buildStyle: 1
-    connectorPattern: 1
-    decoration: 0
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 7
-    minimumDepth: 7
-    maximumDepth: 7
-    minimumHeight: 5
-    maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 10
-    width: 5
-    height: 6
-    verticalDelta: 4
-    sideBranchChance: 0
-    descendingChance: 0.7
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: fortress_entry
-      targetName: fortress_branch
-      targetPoolId: main
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 5
-      openingHeight: 5
-    - stableId: forward
-      role: 1
-      face: 0
-      joint: 0
-      socketName: fortress_branch
-      targetName: fortress_entry
-      targetPoolId: main
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 5
-      openingHeight: 5
-    processors: []
-  - stableId: fortress_prison
-    displayName: Prison Block
-    poolId: main
-    outputPoolId: main
-    startPiece: 0
-    weight: 12
-    minimumGraphDepth: 3
-    maximumGraphDepth: 7
-    minimumCount: 0
-    maximumCount: 2
-    allowConsecutive: 0
-    requiredByDepth: 0
-    shape: 0
-    buildStyle: 1
-    connectorPattern: 0
-    decoration: 4
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 17
-    minimumDepth: 15
-    maximumDepth: 19
-    minimumHeight: 8
-    maximumHeight: 10
-    minimumLength: 8
-    maximumLength: 12
-    width: 5
-    height: 6
-    verticalDelta: 4
-    sideBranchChance: 0
-    descendingChance: 0.5
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: fortress_entry
-      targetName: fortress_branch
-      targetPoolId: main
+      socketName: hold_entry
+      targetName: hold_branch
+      targetPoolId: hold
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -499,14 +533,37 @@ MonoBehaviour:
       openingWidth: 5
       openingHeight: 5
     processors: []
-  - stableId: fortress_portal_room
+    spawnMarkers:
+    - stableId: prison_inmates
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
+      localOffset: {x: 0, y: 1, z: 2}
+      yaw: 0
+      spawnChance: 0.9
+      count: 3
+      scatterRadiusInVoxels: 4
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: prison_remains
+      kind: 0
+      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 1, z: -3}
+      yaw: 0
+      spawnChance: 0.75
+      count: 2
+      scatterRadiusInVoxels: 3
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: stronghold_portal_room
     displayName: Portal Chamber
-    poolId: main
-    outputPoolId: main
+    poolId: hold
+    outputPoolId: hold
     startPiece: 0
     weight: 8
     minimumGraphDepth: 4
-    maximumGraphDepth: 7
+    maximumGraphDepth: 9
     minimumCount: 1
     maximumCount: 1
     allowConsecutive: 0
@@ -517,28 +574,28 @@ MonoBehaviour:
     decoration: 5
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 15
-    maximumWidth: 19
-    minimumDepth: 17
-    maximumDepth: 21
-    minimumHeight: 9
-    maximumHeight: 11
+    minimumWidth: 17
+    maximumWidth: 21
+    minimumDepth: 19
+    maximumDepth: 23
+    minimumHeight: 11
+    maximumHeight: 13
     minimumLength: 8
     maximumLength: 12
-    width: 5
-    height: 6
+    width: 3
+    height: 4
     verticalDelta: 4
-    sideBranchChance: 0
-    descendingChance: 0.5
+    sideBranchChance: 0.3
+    descendingChance: 0.65
     decorationSpacing: 4
     connectors:
     - stableId: entrance
       role: 0
       face: 2
       joint: 0
-      socketName: fortress_entry
-      targetName: fortress_branch
-      targetPoolId: main
+      socketName: hold_entry
+      targetName: hold_branch
+      targetPoolId: hold
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -568,8 +625,42 @@ MonoBehaviour:
       inset: 0
       chance: 0.3
       perimeterOnly: 1
-  - stableId: fortress_dead_end
-    displayName: Sealed End
+    spawnMarkers:
+    - stableId: portal_warden
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
+      localOffset: {x: 0, y: 1, z: 4}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 3
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: portal_relic
+      kind: 0
+      treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 1, z: -2}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: portal_hoard
+      kind: 0
+      treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: -4, y: 1, z: -2}
+      yaw: 0
+      spawnChance: 0.85
+      count: 2
+      scatterRadiusInVoxels: 3
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: stronghold_dead_end
+    displayName: Sealed Passage
     poolId: terminators
     outputPoolId: terminators
     startPiece: 0
@@ -586,10 +677,10 @@ MonoBehaviour:
     decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 5
-    maximumWidth: 5
-    minimumDepth: 5
-    maximumDepth: 5
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
     minimumLength: 4
@@ -605,8 +696,8 @@ MonoBehaviour:
       role: 0
       face: 2
       joint: 0
-      socketName: fortress_entry
-      targetName: fortress_branch
+      socketName: hold_entry
+      targetName: hold_branch
       targetPoolId: terminators
       fallbackPoolId: 
       alongOffset: -1
@@ -616,3 +707,4 @@ MonoBehaviour:
       openingWidth: 5
       openingHeight: 5
     processors: []
+    spawnMarkers: []

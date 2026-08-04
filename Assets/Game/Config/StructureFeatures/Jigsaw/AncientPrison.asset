@@ -10,36 +10,36 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0d96d5bdff9971149828a61965256e6a, type: 3}
-  m_Name: AbandonedMineshaft
+  m_Name: AncientPrison
   m_EditorClassIdentifier: 
   enabled: 1
-  stableId: abandoned_mineshaft
-  primaryVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
-  accentVoxelType: {fileID: 11400000, guid: 11c5091dafd134a4f8a05a513b833f94, type: 2}
+  stableId: ancient_prison
+  primaryVoxelType: {fileID: 11400000, guid: 2c8e05f588ced714181b788fd544c5cb, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: db911a53d53faf5409c2941730ce94b3, type: 2}
   placementStrategy: 0
-  seedSalt: 104729
+  seedSalt: 141421
   regionSizeInChunks: 5
-  placementChance: 0.34
-  minFloorHeight: 40
-  maxFloorHeight: 170
+  placementChance: 0.28
+  minFloorHeight: 20
+  maxFloorHeight: 140
   ringStructureCount: 128
   ringCount: 8
   ringDistanceInChunks: 32
   ringSpreadInChunks: 3
   structureSetId: 
   structureSetWeight: 1
-  maxPieces: 44
-  maxDepth: 9
-  maxHorizontalDistance: 70
-  firstPieceId: mineshaft_corridor
-  layoutAttempts: 6
+  maxPieces: 28
+  maxDepth: 6
+  maxHorizontalDistance: 63
+  firstPieceId: prison_corridor
+  layoutAttempts: 8
   connectorPlacementAttempts: 8
   collisionPadding: 1
   pieces:
-  - stableId: mineshaft_room
-    displayName: Shaft Head
-    poolId: mine
-    outputPoolId: mine
+  - stableId: prison_gatehouse
+    displayName: Gatehouse
+    poolId: gaol
+    outputPoolId: gaol
     startPiece: 1
     weight: 0
     minimumGraphDepth: 0
@@ -49,16 +49,16 @@ MonoBehaviour:
     allowConsecutive: 0
     requiredByDepth: 0
     shape: 0
-    buildStyle: 0
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
     minimumWidth: 13
-    maximumWidth: 17
+    maximumWidth: 13
     minimumDepth: 13
-    maximumDepth: 17
-    minimumHeight: 6
+    maximumDepth: 13
+    minimumHeight: 8
     maximumHeight: 8
     minimumLength: 8
     maximumLength: 12
@@ -73,9 +73,9 @@ MonoBehaviour:
       role: 1
       face: 0
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -87,9 +87,9 @@ MonoBehaviour:
       role: 1
       face: 1
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -101,9 +101,9 @@ MonoBehaviour:
       role: 1
       face: 2
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -115,9 +115,9 @@ MonoBehaviour:
       role: 1
       face: 3
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -125,35 +125,42 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
-    processors: []
-    spawnMarkers:
-    - stableId: shaft_bones
+    processors:
+    - stableId: gate_footings
       kind: 0
-      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      palette: 0
+      maximumDistance: 16
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    spawnMarkers:
+    - stableId: gate_watch
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
-      spawnChance: 0.6
+      spawnChance: 0.7
       count: 2
-      scatterRadiusInVoxels: 4
+      scatterRadiusInVoxels: 3
       snapToFloor: 1
       floorSearchDistance: 6
-  - stableId: mineshaft_corridor
-    displayName: Timbered Tunnel
-    poolId: mine
-    outputPoolId: mine
+  - stableId: prison_corridor
+    displayName: Cell Corridor
+    poolId: gaol
+    outputPoolId: gaol
     startPiece: 0
-    weight: 70
+    weight: 55
     minimumGraphDepth: 1
-    maximumGraphDepth: 9
-    minimumCount: 8
+    maximumGraphDepth: 6
+    minimumCount: 5
     maximumCount: 0
     allowConsecutive: 1
-    requiredByDepth: 3
+    requiredByDepth: 2
     shape: 1
-    buildStyle: 0
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
     minimumWidth: 7
@@ -162,113 +169,22 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 24
-    width: 5
-    height: 5
-    verticalDelta: 4
-    sideBranchChance: 0.32
-    descendingChance: 0.65
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: forward
-      role: 1
-      face: 0
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: left_branch
-      role: 1
-      face: 3
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 0.3
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: right_branch
-      role: 1
-      face: 1
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 0.3
-      openingWidth: 3
-      openingHeight: 3
-    processors: []
-    spawnMarkers: []
-  - stableId: mineshaft_crossing
-    displayName: Tunnel Junction
-    poolId: mine
-    outputPoolId: mine
-    startPiece: 0
-    weight: 22
-    minimumGraphDepth: 2
-    maximumGraphDepth: 9
-    minimumCount: 2
-    maximumCount: 8
-    allowConsecutive: 0
-    requiredByDepth: 5
-    shape: 2
-    buildStyle: 0
-    connectorPattern: 0
-    decoration: 1
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 9
-    minimumDepth: 7
-    maximumDepth: 9
-    minimumHeight: 5
-    maximumHeight: 6
     minimumLength: 8
-    maximumLength: 12
+    maximumLength: 14
     width: 3
     height: 4
     verticalDelta: 4
-    sideBranchChance: 0.3
-    descendingChance: 0.65
+    sideBranchChance: 0.55
+    descendingChance: 0.6
     decorationSpacing: 4
     connectors:
     - stableId: entrance
       role: 0
       face: 2
       joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
+      socketName: gaol_entry
+      targetName: gaol_branch
+      targetPoolId: gaol
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -280,9 +196,9 @@ MonoBehaviour:
       role: 1
       face: 0
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
@@ -290,122 +206,66 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
-    - stableId: left
+    - stableId: cell_left
       role: 1
       face: 3
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
       verticalOffset: 1
-      activationChance: 1
+      activationChance: 0.6
       openingWidth: 3
       openingHeight: 3
-    - stableId: right
+    - stableId: cell_right
       role: 1
       face: 1
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
       verticalOffset: 1
-      activationChance: 1
+      activationChance: 0.6
       openingWidth: 3
       openingHeight: 3
-    processors: []
+    processors:
+    - stableId: corridor_weathering
+      kind: 3
+      palette: 1
+      maximumDistance: 1
+      inset: 0
+      chance: 0.28
+      perimeterOnly: 1
     spawnMarkers: []
-  - stableId: mineshaft_stairs
-    displayName: Descending Shaft
-    poolId: mine
-    outputPoolId: mine
+  - stableId: prison_cell_block
+    displayName: Cell Block
+    poolId: gaol
+    outputPoolId: gaol
     startPiece: 0
-    weight: 14
-    minimumGraphDepth: 2
-    maximumGraphDepth: 9
-    minimumCount: 1
-    maximumCount: 6
-    allowConsecutive: 0
-    requiredByDepth: 6
-    shape: 3
-    buildStyle: 0
-    connectorPattern: 0
-    decoration: 1
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 7
-    minimumDepth: 7
-    maximumDepth: 7
-    minimumHeight: 5
-    maximumHeight: 5
-    minimumLength: 12
-    maximumLength: 16
-    width: 5
-    height: 5
-    verticalDelta: 5
-    sideBranchChance: 0
-    descendingChance: 0.7
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: forward
-      role: 1
-      face: 0
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    processors: []
-    spawnMarkers: []
-  - stableId: mineshaft_storage
-    displayName: Supply Cache
-    poolId: mine
-    outputPoolId: mine
-    startPiece: 0
-    weight: 14
-    minimumGraphDepth: 3
-    maximumGraphDepth: 9
-    minimumCount: 1
-    maximumCount: 4
-    allowConsecutive: 0
-    requiredByDepth: 5
+    weight: 34
+    minimumGraphDepth: 1
+    maximumGraphDepth: 6
+    minimumCount: 3
+    maximumCount: 8
+    allowConsecutive: 1
+    requiredByDepth: 3
     shape: 0
-    buildStyle: 0
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 4
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 9
-    maximumWidth: 13
-    minimumDepth: 11
-    maximumDepth: 15
-    minimumHeight: 6
+    minimumWidth: 13
+    maximumWidth: 15
+    minimumDepth: 13
+    maximumDepth: 17
+    minimumHeight: 7
     maximumHeight: 8
     minimumLength: 8
     maximumLength: 12
@@ -420,9 +280,9 @@ MonoBehaviour:
       role: 0
       face: 2
       joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
+      socketName: gaol_entry
+      targetName: gaol_branch
+      targetPoolId: gaol
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -430,60 +290,130 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
-    processors:
-    - stableId: cache_footings
-      kind: 0
-      palette: 0
-      maximumDistance: 18
-      inset: 0
-      chance: 1
-      perimeterOnly: 1
+    - stableId: through
+      role: 1
+      face: 0
+      joint: 0
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.5
+      openingWidth: 3
+      openingHeight: 3
+    processors: []
     spawnMarkers:
-    - stableId: cache_cauldron
-      kind: 0
-      treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+    - stableId: cell_inmates
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
-      spawnChance: 0.8
-      count: 1
-      scatterRadiusInVoxels: 2
+      spawnChance: 0.85
+      count: 3
+      scatterRadiusInVoxels: 4
       snapToFloor: 1
       floorSearchDistance: 6
-    - stableId: cache_bones
+    - stableId: cell_remains
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
       monster: {fileID: 0}
-      localOffset: {x: 2, y: 1, z: 2}
+      localOffset: {x: -3, y: 1, z: 2}
       yaw: 0
-      spawnChance: 0.5
+      spawnChance: 0.6
       count: 2
-      scatterRadiusInVoxels: 3
+      scatterRadiusInVoxels: 2
       snapToFloor: 1
       floorSearchDistance: 6
-  - stableId: mineshaft_lair
-    displayName: Collapsed Gallery
-    poolId: mine
-    outputPoolId: mine
+  - stableId: prison_oubliette
+    displayName: Oubliette Stair
+    poolId: gaol
+    outputPoolId: gaol
     startPiece: 0
-    weight: 10
-    minimumGraphDepth: 4
-    maximumGraphDepth: 9
+    weight: 12
+    minimumGraphDepth: 2
+    maximumGraphDepth: 6
     minimumCount: 1
     maximumCount: 3
     allowConsecutive: 0
-    requiredByDepth: 6
-    shape: 0
-    buildStyle: 0
+    requiredByDepth: 4
+    shape: 3
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 10
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 6
+    sideBranchChance: 0
+    descendingChance: 0.9
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: gaol_entry
+      targetName: gaol_branch
+      targetPoolId: gaol
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: gaol_branch
+      targetName: gaol_entry
+      targetPoolId: gaol
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    processors: []
+    spawnMarkers: []
+  - stableId: prison_warden
+    displayName: Warden's Vault
+    poolId: gaol
+    outputPoolId: gaol
+    startPiece: 0
+    weight: 8
+    minimumGraphDepth: 3
+    maximumGraphDepth: 6
+    minimumCount: 1
+    maximumCount: 1
+    allowConsecutive: 0
+    requiredByDepth: 4
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 2
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
     minimumWidth: 13
-    maximumWidth: 17
+    maximumWidth: 15
     minimumDepth: 13
-    maximumDepth: 17
-    minimumHeight: 7
+    maximumDepth: 15
+    minimumHeight: 8
     maximumHeight: 9
     minimumLength: 8
     maximumLength: 12
@@ -498,9 +428,9 @@ MonoBehaviour:
       role: 0
       face: 2
       joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
+      socketName: gaol_entry
+      targetName: gaol_branch
+      targetPoolId: gaol
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -508,32 +438,50 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
-    processors: []
+    processors:
+    - stableId: warden_foundation
+      kind: 1
+      palette: 0
+      maximumDistance: 3
+      inset: 0
+      chance: 1
+      perimeterOnly: 0
     spawnMarkers:
-    - stableId: lair_skeletons
+    - stableId: warden_boss
       kind: 1
       treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
+      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
+      localOffset: {x: 0, y: 1, z: 3}
       yaw: 0
-      spawnChance: 0.85
-      count: 4
-      scatterRadiusInVoxels: 4
-      snapToFloor: 1
-      floorSearchDistance: 6
-    - stableId: lair_bones
-      kind: 0
-      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
-      localOffset: {x: -3, y: 1, z: 3}
-      yaw: 0
-      spawnChance: 0.7
-      count: 3
+      spawnChance: 1
+      count: 1
       scatterRadiusInVoxels: 3
       snapToFloor: 1
       floorSearchDistance: 6
-  - stableId: mineshaft_dead_end
-    displayName: Cave-In
+    - stableId: warden_ledger
+      kind: 0
+      treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 1, z: -3}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: warden_strongbox
+      kind: 0
+      treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 3, y: 1, z: -3}
+      yaw: 0
+      spawnChance: 0.8
+      count: 1
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: prison_dead_end
+    displayName: Bricked Passage
     poolId: terminators
     outputPoolId: terminators
     startPiece: 0
@@ -545,9 +493,9 @@ MonoBehaviour:
     allowConsecutive: 1
     requiredByDepth: 0
     shape: 1
-    buildStyle: 0
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
     minimumWidth: 7
@@ -557,20 +505,20 @@ MonoBehaviour:
     minimumHeight: 5
     maximumHeight: 5
     minimumLength: 3
-    maximumLength: 7
-    width: 5
-    height: 5
+    maximumLength: 5
+    width: 3
+    height: 4
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5
-    decorationSpacing: 3
+    decorationSpacing: 4
     connectors:
     - stableId: entrance
       role: 0
       face: 2
       joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
+      socketName: gaol_entry
+      targetName: gaol_branch
       targetPoolId: terminators
       fallbackPoolId: 
       alongOffset: -1

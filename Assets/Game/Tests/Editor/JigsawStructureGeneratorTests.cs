@@ -19,30 +19,129 @@ namespace Supernova.Tests
         private static readonly VoxelTypeId FortressBrick = new VoxelTypeId(6);
 
         [Test]
-        public void DefaultWorld_ReferencesMineshaftAndFortressAsJigsawAssets()
+        public void DefaultWorld_ReferencesTheAuthoredJigsawStructureSet()
         {
             MinecraftWorldGenerationConfiguration world =
                 AssetDatabase.LoadAssetAtPath<MinecraftWorldGenerationConfiguration>(
                     ProjectAssetPaths.Config.WorldGeneration);
 
             Assert.That(world, Is.Not.Null);
-            Assert.That(world.JigsawStructures, Has.Count.EqualTo(2));
             Assert.That(
                 world.JigsawStructures.Select(item => item.StableId),
-                Is.EquivalentTo(new[] { "abandoned_mineshaft", "fortress" }));
+                Is.EquivalentTo(new[]
+                {
+                    "abandoned_mineshaft",
+                    "stronghold",
+                    "nether_fortress",
+                    "ancient_city",
+                    "cave_village",
+                    "ancient_prison",
+                    "cactus_grotto",
+                }));
         }
 
         [Test]
-        public void Definitions_ExposeEditableMineshaftAndFortressModules()
+        public void AuthoredStructures_AllPassGraphValidation()
+        {
+            foreach (string path in new[]
+            {
+                ProjectAssetPaths.Config.AbandonedMineshaftJigsaw,
+                ProjectAssetPaths.Config.StrongholdJigsaw,
+                ProjectAssetPaths.Config.NetherFortressJigsaw,
+                ProjectAssetPaths.Config.AncientCityJigsaw,
+                ProjectAssetPaths.Config.CaveVillageJigsaw,
+                ProjectAssetPaths.Config.AncientPrisonJigsaw,
+                ProjectAssetPaths.Config.CactusGrottoJigsaw,
+            })
+            {
+                JigsawStructureFeatureSettings settings = LoadSettings(path);
+                string[] errors = JigsawStructureValidator.Validate(settings)
+                    .Where(issue => issue.Severity
+                        == JigsawStructureValidator.Severity.Error)
+                    .Select(issue => issue.Message)
+                    .ToArray();
+                Assert.That(errors, Is.Empty, path);
+            }
+        }
+
+        [Test]
+        public void AuthoredStructures_KeepPrimaryAndAccentInOneVoxelGroup()
+        {
+            VoxelTypeCatalog catalog =
+                AssetDatabase.LoadAssetAtPath<VoxelTypeCatalog>(
+                    ProjectAssetPaths.Config.VoxelCatalog);
+            Assert.That(catalog, Is.Not.Null);
+            VoxelGroupMap groupMap =
+                VoxelGroupMap.FromDefinitions(catalog.Definitions);
+
+            foreach (string path in new[]
+            {
+                ProjectAssetPaths.Config.AbandonedMineshaftJigsaw,
+                ProjectAssetPaths.Config.StrongholdJigsaw,
+                ProjectAssetPaths.Config.NetherFortressJigsaw,
+                ProjectAssetPaths.Config.AncientCityJigsaw,
+                ProjectAssetPaths.Config.CaveVillageJigsaw,
+                ProjectAssetPaths.Config.AncientPrisonJigsaw,
+                ProjectAssetPaths.Config.CactusGrottoJigsaw,
+            })
+            {
+                JigsawStructureFeatureSettings settings = LoadSettings(path);
+                // A structure whose two palettes sit in different groups would be
+                // meshed as two surfaces and show inset seams inside its own walls.
+                Assert.That(
+                    groupMap.GetGroupKey(settings.PrimaryType),
+                    Is.EqualTo(groupMap.GetGroupKey(settings.AccentType)),
+                    $"{path} mixes voxel groups between its primary and accent types.");
+            }
+        }
+
+        [Test]
+        public void AuthoredStructures_CarryTreasureAndMonsterMarkers()
+        {
+            foreach (string path in new[]
+            {
+                ProjectAssetPaths.Config.AbandonedMineshaftJigsaw,
+                ProjectAssetPaths.Config.StrongholdJigsaw,
+                ProjectAssetPaths.Config.NetherFortressJigsaw,
+                ProjectAssetPaths.Config.AncientCityJigsaw,
+                ProjectAssetPaths.Config.CaveVillageJigsaw,
+                ProjectAssetPaths.Config.AncientPrisonJigsaw,
+                ProjectAssetPaths.Config.CactusGrottoJigsaw,
+            })
+            {
+                JigsawStructureFeatureSettings settings = LoadSettings(path);
+                StructureSpawnMarkerSettings[] markers = settings.Pieces
+                    .SelectMany(piece => piece.SpawnMarkers)
+                    .ToArray();
+                Assert.That(markers, Is.Not.Empty, path);
+                Assert.That(
+                    markers.All(marker => marker.IsConfigured),
+                    Is.True,
+                    $"{path} has a marker with no prefab assigned.");
+                Assert.That(
+                    markers.Any(marker => marker.Kind
+                        == StructureSpawnMarkerDefinition.Kind.Treasure),
+                    Is.True,
+                    $"{path} has no treasure marker.");
+                Assert.That(
+                    markers.Any(marker => marker.Kind
+                        == StructureSpawnMarkerDefinition.Kind.Monster),
+                    Is.True,
+                    $"{path} has no monster marker.");
+            }
+        }
+
+        [Test]
+        public void Definitions_ExposeEditableMineshaftAndStrongholdModules()
         {
             JigsawStructureFeatureSettings mineshaft = LoadSettings(
                 ProjectAssetPaths.Config.AbandonedMineshaftJigsaw);
             JigsawStructureFeatureSettings fortress = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.StrongholdJigsaw);
 
             Assert.That(
                 mineshaft.Pieces.Select(piece => piece.StableId),
-                Is.EquivalentTo(new[]
+                Is.SupersetOf(new[]
                 {
                     "mineshaft_room",
                     "mineshaft_corridor",
@@ -53,19 +152,19 @@ namespace Supernova.Tests
                 }));
             Assert.That(
                 fortress.Pieces.Select(piece => piece.StableId),
-                Does.Contain("fortress_hall"));
+                Does.Contain("stronghold_hall"));
             Assert.That(
                 fortress.Pieces.Select(piece => piece.StableId),
-                Does.Contain("fortress_lobby"));
+                Does.Contain("stronghold_lobby"));
             Assert.That(
                 fortress.Pieces.Select(piece => piece.StableId),
-                Does.Contain("fortress_library"));
+                Does.Contain("stronghold_library"));
             Assert.That(
                 fortress.Pieces.Select(piece => piece.StableId),
-                Does.Contain("fortress_portal_room"));
+                Does.Contain("stronghold_portal_room"));
             Assert.That(
                 fortress.Pieces.Select(piece => piece.StableId),
-                Does.Contain("fortress_prison"));
+                Does.Contain("stronghold_prison"));
             Assert.That(
                 mineshaft.Pieces.Sum(piece => piece.Connectors.Count),
                 Is.GreaterThanOrEqualTo(12));
@@ -102,62 +201,41 @@ namespace Supernova.Tests
         public void FortressLayout_CanComposeLobbyHallAndLibrary()
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.StrongholdJigsaw);
             IReadOnlyList<JigsawStructureGenerator.Piece> matching = null;
-            for (int regionZ = -6; regionZ <= 6 && matching == null; regionZ++)
+            var placements = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings, 114514, -400_000, -400_000, 400_000, 400_000, placements);
+            foreach (JigsawStructureGenerator.Placement placement in placements)
             {
-                for (int regionX = -6; regionX <= 6 && matching == null; regionX++)
-                {
-                    if (!JigsawStructureGenerator.TryGetPlacement(
+                IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                    JigsawStructureGenerator.BuildLayout(
                         settings,
                         114514,
-                        regionX,
-                        regionZ,
-                        out JigsawStructureGenerator.Placement placement))
-                    {
-                        continue;
-                    }
-                    IReadOnlyList<JigsawStructureGenerator.Piece> layout =
-                        JigsawStructureGenerator.BuildLayout(
-                            settings,
-                            114514,
-                            placement);
-                    HashSet<string> ids = layout
-                        .Select(piece => piece.ModuleId)
-                        .ToHashSet();
-                    if (ids.Contains("fortress_lobby")
-                        && ids.Contains("fortress_hall")
-                        && ids.Contains("fortress_library"))
-                    {
-                        matching = layout;
-                    }
+                        placement);
+                HashSet<string> ids = layout
+                    .Select(piece => piece.ModuleId)
+                    .ToHashSet();
+                if (ids.Contains("stronghold_lobby")
+                    && ids.Contains("stronghold_hall")
+                    && ids.Contains("stronghold_library"))
+                {
+                    matching = layout;
+                    break;
                 }
             }
 
             Assert.That(matching, Is.Not.Null);
-            Assert.That(matching[0].ModuleId, Is.EqualTo("fortress_lobby"));
+            Assert.That(matching[0].ModuleId, Is.EqualTo("stronghold_lobby"));
         }
 
         [Test]
         public void BuildLayout_SameSeedProducesIdenticalModuleGraph()
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
-            JigsawStructureGenerator.Placement placement = default;
-            bool found = false;
-            for (int regionZ = -3; regionZ <= 3 && !found; regionZ++)
-            {
-                for (int regionX = -3; regionX <= 3 && !found; regionX++)
-                {
-                    found = JigsawStructureGenerator.TryGetPlacement(
-                        settings,
-                        18731,
-                        regionX,
-                        regionZ,
-                        out placement);
-                }
-            }
-            Assert.That(found, Is.True);
+                ProjectAssetPaths.Config.StrongholdJigsaw);
+            JigsawStructureGenerator.Placement placement =
+                FindAnyPlacement(settings, 18731);
             IReadOnlyList<JigsawStructureGenerator.Piece> first =
                 JigsawStructureGenerator.BuildLayout(settings, 18731, placement);
             IReadOnlyList<JigsawStructureGenerator.Piece> second =
@@ -192,7 +270,7 @@ namespace Supernova.Tests
             string[] paths =
             {
                 ProjectAssetPaths.Config.AbandonedMineshaftJigsaw,
-                ProjectAssetPaths.Config.FortressJigsaw,
+                ProjectAssetPaths.Config.NetherFortressJigsaw,
             };
             foreach (string path in paths)
             {
@@ -244,7 +322,7 @@ namespace Supernova.Tests
         public void BuildLayout_ReusesThreadSafeRegionCache()
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.NetherFortressJigsaw);
             JigsawStructureGenerator.TryGetPlacement(
                 settings,
                 18731,
@@ -267,7 +345,7 @@ namespace Supernova.Tests
         public void BuildLayout_ConcurrentRequestsBuildRegionOnlyOnce()
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.NetherFortressJigsaw);
             JigsawStructureGenerator.TryGetPlacement(
                 settings,
                 99173,
@@ -297,7 +375,7 @@ namespace Supernova.Tests
         public void BuildLayout_CacheHasBoundedMemoryFootprint()
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.NetherFortressJigsaw);
             JigsawStructureGenerator.ClearLayoutCache();
             int created = JigsawStructureGenerator.LayoutCacheCapacity + 32;
             for (int regionX = 0; regionX < created; regionX++)
@@ -322,7 +400,7 @@ namespace Supernova.Tests
             string[] paths =
             {
                 ProjectAssetPaths.Config.AbandonedMineshaftJigsaw,
-                ProjectAssetPaths.Config.FortressJigsaw,
+                ProjectAssetPaths.Config.StrongholdJigsaw,
             };
             foreach (string path in paths)
             {
@@ -338,18 +416,12 @@ namespace Supernova.Tests
         public void FortressSideSocket_CarvesConfiguredMasonryOpening()
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.StrongholdJigsaw);
             const int seed = 666;
-            JigsawStructureGenerator.TryGetPlacement(
-                settings,
-                seed,
-                0,
-                0,
-                out JigsawStructureGenerator.Placement placement);
             IReadOnlyList<JigsawStructureGenerator.Piece> layout =
-                JigsawStructureGenerator.BuildLayout(settings, seed, placement);
+                FindLayoutContaining(settings, seed, "stronghold_hall");
             JigsawStructureGenerator.Piece hall = layout.First(piece =>
-                piece.ModuleId == "fortress_hall"
+                piece.ModuleId == "stronghold_hall"
                 && piece.Openings.Count >= 3);
             JigsawStructureGenerator.Opening sideOpening = hall.Openings.First(
                 opening => opening.Direction != hall.Direction
@@ -543,6 +615,8 @@ namespace Supernova.Tests
             VoxelTypeId[] actual = samples
                 .Select(sample => GenerateAndGetType(settings, seed, sample))
                 .ToArray();
+            // Support posts are an accent decoration, so read the palette from the
+            // asset rather than pinning a type id the designer may retune.
             Assert.That(
                 actual,
                 Is.EqualTo(new[]
@@ -550,8 +624,8 @@ namespace Supernova.Tests
                     VoxelTypeId.Air,
                     VoxelTypeId.Air,
                     VoxelTypeId.Air,
-                    StructureBrick,
-                    StructureBrick,
+                    settings.AccentType,
+                    settings.AccentType,
                 }),
                 $"Corridor {corridor.Origin} direction {corridor.Direction}; "
                 + $"samples: {string.Join(", ", samples)}");
@@ -561,38 +635,38 @@ namespace Supernova.Tests
         public void FortressGeneration_BuildsLobbyShellAndLibraryShelves()
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.StrongholdJigsaw);
             const int seed = 114514;
             JigsawStructureGenerator.Placement placement = default;
             JigsawStructureGenerator.Piece library = default;
             bool found = false;
-            for (int regionZ = -6; regionZ <= 6 && !found; regionZ++)
+            var placements = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                -400_000,
+                -400_000,
+                400_000,
+                400_000,
+                placements);
+            foreach (JigsawStructureGenerator.Placement candidatePlacement
+                in placements)
             {
-                for (int regionX = -6; regionX <= 6 && !found; regionX++)
-                {
-                    if (!JigsawStructureGenerator.TryGetPlacement(
+                IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                    JigsawStructureGenerator.BuildLayout(
                         settings,
                         seed,
-                        regionX,
-                        regionZ,
-                        out placement))
-                    {
-                        continue;
-                    }
-                    IReadOnlyList<JigsawStructureGenerator.Piece> layout =
-                        JigsawStructureGenerator.BuildLayout(
-                            settings,
-                            seed,
-                            placement);
-                    JigsawStructureGenerator.Piece? candidate = layout
-                        .Where(piece => piece.ModuleId == "fortress_library")
-                        .Cast<JigsawStructureGenerator.Piece?>()
-                        .FirstOrDefault();
-                    if (candidate.HasValue)
-                    {
-                        library = candidate.Value;
-                        found = true;
-                    }
+                        candidatePlacement);
+                JigsawStructureGenerator.Piece? candidate = layout
+                    .Where(piece => piece.ModuleId == "stronghold_library")
+                    .Cast<JigsawStructureGenerator.Piece?>()
+                    .FirstOrDefault();
+                if (candidate.HasValue)
+                {
+                    placement = candidatePlacement;
+                    library = candidate.Value;
+                    found = true;
+                    break;
                 }
             }
 
@@ -609,13 +683,13 @@ namespace Supernova.Tests
                 library.Bounds.MinZ + 2);
 
             Assert.That(GenerateAndGetType(settings, seed, lobbyFloor),
-                Is.EqualTo(StructureBrick));
+                Is.EqualTo(settings.PrimaryType));
             Assert.That(GenerateAndGetType(settings, seed, lobbyInterior),
                 Is.EqualTo(VoxelTypeId.Air));
-            // Shelves are an accent decoration, so the fortress writes them with
-            // its distinct accent palette rather than the shell palette.
+            // Shelves are an accent decoration, so they use the accent palette
+            // rather than the shell palette.
             Assert.That(GenerateAndGetType(settings, seed, libraryShelf),
-                Is.EqualTo(FortressBrick));
+                Is.EqualTo(settings.AccentType));
             Assert.That(GenerateAndGetType(settings, seed, libraryInterior),
                 Is.EqualTo(VoxelTypeId.Air));
         }
@@ -822,14 +896,14 @@ namespace Supernova.Tests
         public void Processors_DoNotAffectLayoutCollisionDecisions()
         {
             JigsawStructureFeatureSettings without = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.NetherFortressJigsaw);
             JigsawStructureFeatureDefinition definition =
                 AssetDatabase.LoadAssetAtPath<JigsawStructureFeatureDefinition>(
-                    ProjectAssetPaths.Config.FortressJigsaw);
+                    ProjectAssetPaths.Config.NetherFortressJigsaw);
             Assert.That(
                 definition.Pieces.Any(piece => piece.Processors.Count > 0),
                 Is.True,
-                "fortress should ship with authored processors");
+                "the structure should ship with authored processors");
 
             const int seed = 99001;
             JigsawStructureGenerator.TryGetPlacement(
@@ -1184,7 +1258,7 @@ namespace Supernova.Tests
             JigsawStructureFeatureSettings mineshaft = LoadSettings(
                 ProjectAssetPaths.Config.AbandonedMineshaftJigsaw);
             JigsawStructureFeatureSettings fortress = LoadSettings(
-                ProjectAssetPaths.Config.FortressJigsaw);
+                ProjectAssetPaths.Config.StrongholdJigsaw);
             var features = new[] { mineshaft, fortress };
 
             for (int region = 0; region < 16; region++)
@@ -1956,7 +2030,8 @@ namespace Supernova.Tests
         /// <summary>
         /// Scans regions for the first layout containing a module. Tests must not
         /// assume region (0, 0) wins, because that depends on the asset's authored
-        /// placement chance, which designers tune freely.
+        /// placement chance, which designers tune freely. Works for both placement
+        /// strategies by asking the placement service rather than sweeping regions.
         /// </summary>
         private static IReadOnlyList<JigsawStructureGenerator.Piece>
             FindLayoutContaining(
@@ -1964,33 +2039,53 @@ namespace Supernova.Tests
                 int seed,
                 string moduleId)
         {
-            for (int regionZ = -8; regionZ <= 8; regionZ++)
+            const int extent = 400_000;
+            var placements = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                -extent,
+                -extent,
+                extent,
+                extent,
+                placements);
+            foreach (JigsawStructureGenerator.Placement placement in placements)
             {
-                for (int regionX = -8; regionX <= 8; regionX++)
-                {
-                    if (!JigsawStructureGenerator.TryGetPlacement(
+                IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                    JigsawStructureGenerator.BuildLayout(
                         settings,
                         seed,
-                        regionX,
-                        regionZ,
-                        out JigsawStructureGenerator.Placement placement))
-                    {
-                        continue;
-                    }
-                    IReadOnlyList<JigsawStructureGenerator.Piece> layout =
-                        JigsawStructureGenerator.BuildLayout(
-                            settings,
-                            seed,
-                            placement);
-                    if (layout.Any(piece => piece.ModuleId == moduleId))
-                    {
-                        return layout;
-                    }
+                        placement);
+                if (layout.Any(piece => piece.ModuleId == moduleId))
+                {
+                    return layout;
                 }
             }
             Assert.Fail(
                 $"No layout containing '{moduleId}' was found for seed {seed}.");
             return null;
+        }
+
+        /// <summary>
+        /// The first candidate of a structure under whichever placement strategy it
+        /// uses, so tests work for ring-placed structures too.
+        /// </summary>
+        private static JigsawStructureGenerator.Placement FindAnyPlacement(
+            JigsawStructureFeatureSettings settings,
+            int seed)
+        {
+            const int extent = 400_000;
+            var placements = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                -extent,
+                -extent,
+                extent,
+                extent,
+                placements);
+            Assert.That(placements, Is.Not.Empty);
+            return placements[0];
         }
 
         private static JigsawStructureFeatureSettings LoadSettings(string path)

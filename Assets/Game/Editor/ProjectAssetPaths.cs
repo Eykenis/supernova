@@ -53,6 +53,8 @@ public static class ProjectAssetPaths
         public const string Structures = Game + "/Structures";
         public const string Materials = Game + "/Materials";
         public const string ToolMaterials = Materials + "/Tools";
+        public const string LightingMaterials = Materials + "/Lighting";
+        public const string VegetationMaterials = Materials + "/Vegetation";
         public const string SurfaceContentMaterials =
             Materials + "/SurfaceContent";
 
@@ -62,10 +64,12 @@ public static class ProjectAssetPaths
             EffectMaterials + "/MuzzleFlashes";
         public const string Models = Game + "/Models";
         public const string SurfaceContentModels = Models + "/SurfaceContent";
+        public const string VegetationModels = Models + "/Vegetation";
         public const string EffectModels = Models + "/Effects";
         public const string MuzzleFlashModels =
             EffectModels + "/MuzzleFlashes";
         public const string Shaders = Game + "/Shaders";
+        public const string VegetationShaders = Shaders + "/Vegetation";
 
         public const string PortalShaders = Shaders + "/Portals";
         public const string EffectShaders = Shaders + "/Effects";
@@ -123,8 +127,18 @@ public static class ProjectAssetPaths
             Folders.StructureFeatures + "/TrialChamber.asset";
         public const string AbandonedMineshaftJigsaw =
             Folders.JigsawStructureFeatures + "/AbandonedMineshaft.asset";
-        public const string FortressJigsaw =
-            Folders.JigsawStructureFeatures + "/Fortress.asset";
+        public const string StrongholdJigsaw =
+            Folders.JigsawStructureFeatures + "/Stronghold.asset";
+        public const string NetherFortressJigsaw =
+            Folders.JigsawStructureFeatures + "/NetherFortress.asset";
+        public const string AncientCityJigsaw =
+            Folders.JigsawStructureFeatures + "/AncientCity.asset";
+        public const string CaveVillageJigsaw =
+            Folders.JigsawStructureFeatures + "/CaveVillage.asset";
+        public const string AncientPrisonJigsaw =
+            Folders.JigsawStructureFeatures + "/AncientPrison.asset";
+        public const string CactusGrottoJigsaw =
+            Folders.JigsawStructureFeatures + "/CactusGrotto.asset";
         public const string PickaxeTool = Folders.Tools + "/PickaxeTool.asset";
         public const string MagnetTool = Folders.Tools + "/MagnetTool.asset";
         public const string FlashlightTool =
@@ -250,13 +264,45 @@ public static class ProjectAssetPaths
             "Assets/TextMesh Pro/Fonts/LiberationSans.ttf";
     }
 
+    public static class Shaders
+    {
+        public const string SoftFalloffLit =
+            Folders.LightingMaterials + "/SoftFalloffLit.shader";
+        public const string SoftFalloffAttenuation =
+            Folders.LightingMaterials + "/SoftFalloffAttenuation.hlsl";
+        public const string SoftFalloffLitForwardPass =
+            Folders.LightingMaterials + "/SoftFalloffLitForwardPass.hlsl";
+        public const string CaveGrassBlade =
+            Folders.VegetationShaders + "/CaveGrassBlade.shader";
+        public const string CaveGrassBladeInput =
+            Folders.VegetationShaders + "/CaveGrassBladeInput.hlsl";
+        public const string CaveGrassBladePasses =
+            Folders.VegetationShaders + "/CaveGrassBladePasses.hlsl";
+    }
+
     public static class Materials
     {
         public const string CaveTerrainPhysics =
             Folders.PhysicsMaterials + "/CaveTerrain.physicMaterial";
-        public const string Ore = Folders.Materials + "/Voxels/Ore.mat";
-        public const string Bedrock = Folders.Materials + "/Voxels/Bedrock.mat";
-        public const string Marble = Folders.Materials + "/Voxels/Marble.mat";
+        // Voxel materials each live in their own folder alongside their textures.
+        public const string Ore = Folders.Materials + "/Voxels/Ore/Ore.mat";
+        public const string Bedrock =
+            Folders.Materials + "/Voxels/Bedrock/Bedrock.mat";
+        public const string Marble =
+            Folders.Materials + "/Voxels/Marble/Marble.mat";
+        public const string Stone =
+            Folders.Materials + "/Voxels/Stone/Stone.mat";
+        public const string Bricks =
+            Folders.Materials + "/Voxels/Bricks/Bricks.mat";
+        public const string Dirt = Folders.Materials + "/Voxels/Dirt/Dirt.mat";
+        public const string RustyMetal =
+            Folders.Materials + "/Voxels/RustyMetal/RustyMetal.mat";
+        public const string TigerRock =
+            Folders.Materials + "/Voxels/TigerRock/Bricks.mat";
+        public const string WornBrick =
+            Folders.Materials + "/Voxels/WornBrick/WornBrick.mat";
+        public const string CaveGrassBlade =
+            Folders.VegetationMaterials + "/CaveGrassBlade.mat";
         public const string GrassSurfacePlaceholder =
             Folders.SurfaceContentMaterials + "/GrassPlaceholder.mat";
         public const string VineSurfacePlaceholder =
@@ -287,6 +333,12 @@ public static class ProjectAssetPaths
     {
         public const string GrassSurfacePlaceholder =
             Folders.SurfaceContentModels + "/GrassPlaceholder.asset";
+        public const string CaveGrassBladeLod0 =
+            Folders.VegetationModels + "/CaveGrassBladeLod0.asset";
+        public const string CaveGrassBladeLod1 =
+            Folders.VegetationModels + "/CaveGrassBladeLod1.asset";
+        public const string CaveGrassBladeLod2 =
+            Folders.VegetationModels + "/CaveGrassBladeLod2.asset";
     }
 
     public static class Structures

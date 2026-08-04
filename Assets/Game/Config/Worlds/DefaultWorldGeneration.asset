@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   generationMode: 0
   superflatStoneHeight: 10
-  worldSeed: 1234
+  worldSeed: 6667
   settings:
     cheeseFrequency: 0.001
     cheeseThreshold: 0.02
@@ -65,7 +65,18 @@ MonoBehaviour:
   bedrockVoxelType: {fileID: 11400000, guid: 2c50f434192e90a4fbd10cd5d9a7b8fb, type: 2}
   oreFeatures:
   - {fileID: 11400000, guid: c9849f1b483ab07428f176c33113c20f, type: 2}
+  caveBiomeCatalog: {fileID: 11400000, guid: fc03765759f7a814a81e9613c4963c8b, type: 2}
   spawnPointStructureRule:
     enabled: 1
     structure: {fileID: 11400000, guid: 2dd6e02553075e844a374e1bb4c19dff, type: 2}
     offset: {x: 0, y: 0, z: 0}
+  structureFeatures:
+  - {fileID: 11400000, guid: 917a4eb37c04e044d9a914f4cf7ffac7, type: 2}
+  jigsawStructures:
+  - {fileID: 11400000, guid: 24d309e4eebc89a4fbd85b0d95063adc, type: 2}
+  - {fileID: 11400000, guid: a777c7bda9a2dc84f9ad17dc33f43fe5, type: 2}
+  - {fileID: 11400000, guid: 73e3e60a83fccb346a8cd3856bc4028e, type: 2}
+  - {fileID: 11400000, guid: 3d5bf5f02ba09694c8cc7cc91515235b, type: 2}
+  - {fileID: 11400000, guid: cc81e841f13427d418e87039cb077e53, type: 2}
+  - {fileID: 11400000, guid: de6029ef6ecf0464f968b35e140ea7b2, type: 2}
+  - {fileID: 11400000, guid: 6ab04c8002eadd2428daa1f60233f38c, type: 2}

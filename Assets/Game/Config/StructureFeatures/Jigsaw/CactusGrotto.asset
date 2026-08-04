@@ -1,0 +1,471 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d96d5bdff9971149828a61965256e6a, type: 3}
+  m_Name: CactusGrotto
+  m_EditorClassIdentifier: 
+  enabled: 1
+  stableId: cactus_grotto
+  primaryVoxelType: {fileID: 11400000, guid: 11c5091dafd134a4f8a05a513b833f94, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
+  placementStrategy: 0
+  seedSalt: 866013
+  regionSizeInChunks: 5
+  placementChance: 0.45
+  minFloorHeight: 30
+  maxFloorHeight: 160
+  ringStructureCount: 128
+  ringCount: 8
+  ringDistanceInChunks: 32
+  ringSpreadInChunks: 3
+  structureSetId: 
+  structureSetWeight: 1
+  maxPieces: 36
+  maxDepth: 9
+  maxHorizontalDistance: 70
+  firstPieceId: grotto_tunnel
+  layoutAttempts: 6
+  connectorPlacementAttempts: 8
+  collisionPadding: 1
+  pieces:
+  - stableId: grotto_nest
+    displayName: Brood Nest
+    poolId: grotto
+    outputPoolId: grotto
+    startPiece: 1
+    weight: 0
+    minimumGraphDepth: 0
+    maximumGraphDepth: 0
+    minimumCount: 0
+    maximumCount: 1
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 0
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 11400000, guid: b4c81d0c331a0ec47a9ab81cc73d7436, type: 2}
+    templateWritesAir: 1
+    minimumWidth: 17
+    maximumWidth: 17
+    minimumDepth: 17
+    maximumDepth: 17
+    minimumHeight: 12
+    maximumHeight: 12
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors: []
+    processors:
+    - stableId: nest_footings
+      kind: 0
+      palette: 0
+      maximumDistance: 20
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    spawnMarkers: []
+  - stableId: grotto_tunnel
+    displayName: Winding Tunnel
+    poolId: grotto
+    outputPoolId: grotto
+    startPiece: 0
+    weight: 65
+    minimumGraphDepth: 1
+    maximumGraphDepth: 9
+    minimumCount: 7
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 3
+    shape: 1
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 8
+    maximumLength: 20
+    width: 5
+    height: 5
+    verticalDelta: 4
+    sideBranchChance: 0.45
+    descendingChance: 0.6
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: grotto_entry
+      targetName: grotto_branch
+      targetPoolId: grotto
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: grotto_branch
+      targetName: grotto_entry
+      targetPoolId: grotto
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: branch
+      role: 1
+      face: 3
+      joint: 0
+      socketName: grotto_branch
+      targetName: grotto_entry
+      targetPoolId: grotto
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.45
+      openingWidth: 3
+      openingHeight: 3
+    processors: []
+    spawnMarkers:
+    - stableId: tunnel_crawlers
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
+      localOffset: {x: 0, y: 1, z: 4}
+      yaw: 0
+      spawnChance: 0.4
+      count: 3
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: grotto_chamber
+    displayName: Root Chamber
+    poolId: grotto
+    outputPoolId: grotto
+    startPiece: 0
+    weight: 26
+    minimumGraphDepth: 2
+    maximumGraphDepth: 9
+    minimumCount: 3
+    maximumCount: 8
+    allowConsecutive: 0
+    requiredByDepth: 3
+    shape: 2
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 1
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 13
+    maximumWidth: 17
+    minimumDepth: 13
+    maximumDepth: 17
+    minimumHeight: 7
+    maximumHeight: 10
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: grotto_entry
+      targetName: grotto_branch
+      targetPoolId: grotto
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: grotto_branch
+      targetName: grotto_entry
+      targetPoolId: grotto
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: left
+      role: 1
+      face: 3
+      joint: 0
+      socketName: grotto_branch
+      targetName: grotto_entry
+      targetPoolId: grotto
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.7
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: right
+      role: 1
+      face: 1
+      joint: 0
+      socketName: grotto_branch
+      targetName: grotto_entry
+      targetPoolId: grotto
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.7
+      openingWidth: 3
+      openingHeight: 3
+    processors: []
+    spawnMarkers:
+    - stableId: chamber_swarm
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
+      localOffset: {x: 0, y: 1, z: 0}
+      yaw: 0
+      spawnChance: 0.75
+      count: 5
+      scatterRadiusInVoxels: 4
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: chamber_husks
+      kind: 0
+      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 3, y: 1, z: 3}
+      yaw: 0
+      spawnChance: 0.5
+      count: 2
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: grotto_shaft
+    displayName: Root Shaft
+    poolId: grotto
+    outputPoolId: grotto
+    startPiece: 0
+    weight: 16
+    minimumGraphDepth: 2
+    maximumGraphDepth: 9
+    minimumCount: 2
+    maximumCount: 6
+    allowConsecutive: 0
+    requiredByDepth: 4
+    shape: 3
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 10
+    maximumLength: 14
+    width: 5
+    height: 5
+    verticalDelta: 6
+    sideBranchChance: 0
+    descendingChance: 0.7
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: grotto_entry
+      targetName: grotto_branch
+      targetPoolId: grotto
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: grotto_branch
+      targetName: grotto_entry
+      targetPoolId: grotto
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    processors: []
+    spawnMarkers: []
+  - stableId: grotto_hollow
+    displayName: Bloom Hollow
+    poolId: grotto
+    outputPoolId: grotto
+    startPiece: 0
+    weight: 12
+    minimumGraphDepth: 3
+    maximumGraphDepth: 9
+    minimumCount: 1
+    maximumCount: 3
+    allowConsecutive: 0
+    requiredByDepth: 5
+    shape: 0
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 1
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 15
+    maximumWidth: 19
+    minimumDepth: 15
+    maximumDepth: 19
+    minimumHeight: 9
+    maximumHeight: 12
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: grotto_entry
+      targetName: grotto_branch
+      targetPoolId: grotto
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    processors:
+    - stableId: hollow_headroom
+      kind: 2
+      palette: 0
+      maximumDistance: 3
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    spawnMarkers:
+    - stableId: hollow_brood
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
+      localOffset: {x: 0, y: 1, z: 0}
+      yaw: 0
+      spawnChance: 0.9
+      count: 6
+      scatterRadiusInVoxels: 5
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: hollow_cache
+      kind: 0
+      treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 1, z: -4}
+      yaw: 0
+      spawnChance: 0.7
+      count: 1
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: grotto_dead_end
+    displayName: Choked Tunnel
+    poolId: terminators
+    outputPoolId: terminators
+    startPiece: 0
+    weight: 1
+    minimumGraphDepth: 1
+    maximumGraphDepth: 16
+    minimumCount: 0
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 0
+    shape: 1
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 3
+    maximumLength: 6
+    width: 5
+    height: 5
+    verticalDelta: 1
+    sideBranchChance: 0
+    descendingChance: 0.5
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: grotto_entry
+      targetName: grotto_branch
+      targetPoolId: terminators
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    processors: []
+    spawnMarkers: []

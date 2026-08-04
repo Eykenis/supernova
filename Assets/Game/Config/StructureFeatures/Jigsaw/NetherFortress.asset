@@ -10,36 +10,36 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0d96d5bdff9971149828a61965256e6a, type: 3}
-  m_Name: AbandonedMineshaft
+  m_Name: NetherFortress
   m_EditorClassIdentifier: 
   enabled: 1
-  stableId: abandoned_mineshaft
-  primaryVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
-  accentVoxelType: {fileID: 11400000, guid: 11c5091dafd134a4f8a05a513b833f94, type: 2}
+  stableId: nether_fortress
+  primaryVoxelType: {fileID: 11400000, guid: db911a53d53faf5409c2941730ce94b3, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: 2c8e05f588ced714181b788fd544c5cb, type: 2}
   placementStrategy: 0
-  seedSalt: 104729
-  regionSizeInChunks: 5
-  placementChance: 0.34
-  minFloorHeight: 40
-  maxFloorHeight: 170
+  seedSalt: 271828
+  regionSizeInChunks: 6
+  placementChance: 0.5
+  minFloorHeight: 56
+  maxFloorHeight: 180
   ringStructureCount: 128
   ringCount: 8
   ringDistanceInChunks: 32
   ringSpreadInChunks: 3
-  structureSetId: 
-  structureSetWeight: 1
-  maxPieces: 44
+  structureSetId: deep_complexes
+  structureSetWeight: 3
+  maxPieces: 38
   maxDepth: 9
-  maxHorizontalDistance: 70
-  firstPieceId: mineshaft_corridor
+  maxHorizontalDistance: 84
+  firstPieceId: fortress_bridge
   layoutAttempts: 6
   connectorPlacementAttempts: 8
   collisionPadding: 1
   pieces:
-  - stableId: mineshaft_room
-    displayName: Shaft Head
-    poolId: mine
-    outputPoolId: mine
+  - stableId: fortress_platform
+    displayName: Bridge Platform
+    poolId: bridge
+    outputPoolId: bridge
     startPiece: 1
     weight: 0
     minimumGraphDepth: 0
@@ -49,16 +49,16 @@ MonoBehaviour:
     allowConsecutive: 0
     requiredByDepth: 0
     shape: 0
-    buildStyle: 0
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 17
-    minimumDepth: 13
-    maximumDepth: 17
-    minimumHeight: 6
+    minimumWidth: 15
+    maximumWidth: 15
+    minimumDepth: 15
+    maximumDepth: 15
+    minimumHeight: 8
     maximumHeight: 8
     minimumLength: 8
     maximumLength: 12
@@ -73,416 +73,366 @@ MonoBehaviour:
       role: 1
       face: 0
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: bridge
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: right
       role: 1
       face: 1
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: bridge
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: back
       role: 1
       face: 2
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: bridge
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: left
       role: 1
       face: 3
       joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: bridge
       fallbackPoolId: terminators
       alongOffset: -1
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    processors: []
-    spawnMarkers:
-    - stableId: shaft_bones
-      kind: 0
-      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.6
-      count: 2
-      scatterRadiusInVoxels: 4
-      snapToFloor: 1
-      floorSearchDistance: 6
-  - stableId: mineshaft_corridor
-    displayName: Timbered Tunnel
-    poolId: mine
-    outputPoolId: mine
-    startPiece: 0
-    weight: 70
-    minimumGraphDepth: 1
-    maximumGraphDepth: 9
-    minimumCount: 8
-    maximumCount: 0
-    allowConsecutive: 1
-    requiredByDepth: 3
-    shape: 1
-    buildStyle: 0
-    connectorPattern: 0
-    decoration: 1
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 7
-    minimumDepth: 7
-    maximumDepth: 7
-    minimumHeight: 5
-    maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 24
-    width: 5
-    height: 5
-    verticalDelta: 4
-    sideBranchChance: 0.32
-    descendingChance: 0.65
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: forward
-      role: 1
-      face: 0
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: left_branch
-      role: 1
-      face: 3
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 0.3
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: right_branch
-      role: 1
-      face: 1
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 0.3
-      openingWidth: 3
-      openingHeight: 3
-    processors: []
-    spawnMarkers: []
-  - stableId: mineshaft_crossing
-    displayName: Tunnel Junction
-    poolId: mine
-    outputPoolId: mine
-    startPiece: 0
-    weight: 22
-    minimumGraphDepth: 2
-    maximumGraphDepth: 9
-    minimumCount: 2
-    maximumCount: 8
-    allowConsecutive: 0
-    requiredByDepth: 5
-    shape: 2
-    buildStyle: 0
-    connectorPattern: 0
-    decoration: 1
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 9
-    minimumDepth: 7
-    maximumDepth: 9
-    minimumHeight: 5
-    maximumHeight: 6
-    minimumLength: 8
-    maximumLength: 12
-    width: 3
-    height: 4
-    verticalDelta: 4
-    sideBranchChance: 0.3
-    descendingChance: 0.65
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: forward
-      role: 1
-      face: 0
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: left
-      role: 1
-      face: 3
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: right
-      role: 1
-      face: 1
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    processors: []
-    spawnMarkers: []
-  - stableId: mineshaft_stairs
-    displayName: Descending Shaft
-    poolId: mine
-    outputPoolId: mine
-    startPiece: 0
-    weight: 14
-    minimumGraphDepth: 2
-    maximumGraphDepth: 9
-    minimumCount: 1
-    maximumCount: 6
-    allowConsecutive: 0
-    requiredByDepth: 6
-    shape: 3
-    buildStyle: 0
-    connectorPattern: 0
-    decoration: 1
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 7
-    minimumDepth: 7
-    maximumDepth: 7
-    minimumHeight: 5
-    maximumHeight: 5
-    minimumLength: 12
-    maximumLength: 16
-    width: 5
-    height: 5
-    verticalDelta: 5
-    sideBranchChance: 0
-    descendingChance: 0.7
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    - stableId: forward
-      role: 1
-      face: 0
-      joint: 0
-      socketName: mine_branch
-      targetName: mine_entry
-      targetPoolId: mine
-      fallbackPoolId: terminators
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    processors: []
-    spawnMarkers: []
-  - stableId: mineshaft_storage
-    displayName: Supply Cache
-    poolId: mine
-    outputPoolId: mine
-    startPiece: 0
-    weight: 14
-    minimumGraphDepth: 3
-    maximumGraphDepth: 9
-    minimumCount: 1
-    maximumCount: 4
-    allowConsecutive: 0
-    requiredByDepth: 5
-    shape: 0
-    buildStyle: 0
-    connectorPattern: 0
-    decoration: 1
-    voxelTemplate: {fileID: 0}
-    templateWritesAir: 1
-    minimumWidth: 9
-    maximumWidth: 13
-    minimumDepth: 11
-    maximumDepth: 15
-    minimumHeight: 6
-    maximumHeight: 8
-    minimumLength: 8
-    maximumLength: 12
-    width: 3
-    height: 4
-    verticalDelta: 4
-    sideBranchChance: 0.3
-    descendingChance: 0.65
-    decorationSpacing: 4
-    connectors:
-    - stableId: entrance
-      role: 0
-      face: 2
-      joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
-      fallbackPoolId: 
-      alongOffset: -1
-      lateralOffset: 0
-      verticalOffset: 1
-      activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
-    - stableId: cache_footings
+    - stableId: platform_pillars
       kind: 0
       palette: 0
-      maximumDistance: 18
+      maximumDistance: 40
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    spawnMarkers: []
+  - stableId: fortress_bridge
+    displayName: Open Span
+    poolId: bridge
+    outputPoolId: bridge
+    startPiece: 0
+    weight: 50
+    minimumGraphDepth: 1
+    maximumGraphDepth: 5
+    minimumCount: 4
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 2
+    shape: 1
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 14
+    maximumLength: 22
+    width: 7
+    height: 6
+    verticalDelta: 4
+    sideBranchChance: 0.35
+    descendingChance: 0.6
+    decorationSpacing: 5
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_entry
+      targetName: fort_branch
+      targetPoolId: bridge
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: bridge
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: descend
+      role: 1
+      face: 1
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: corridor
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.5
+      openingWidth: 5
+      openingHeight: 5
+    processors:
+    - stableId: span_pillars
+      kind: 0
+      palette: 0
+      maximumDistance: 48
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    - stableId: span_headroom
+      kind: 2
+      palette: 0
+      maximumDistance: 3
       inset: 0
       chance: 1
       perimeterOnly: 1
     spawnMarkers:
-    - stableId: cache_cauldron
-      kind: 0
-      treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
-      localOffset: {x: 0, y: 1, z: 0}
+    - stableId: span_patrol
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
+      localOffset: {x: 0, y: 1, z: 6}
       yaw: 0
-      spawnChance: 0.8
-      count: 1
+      spawnChance: 0.45
+      count: 2
       scatterRadiusInVoxels: 2
       snapToFloor: 1
       floorSearchDistance: 6
-    - stableId: cache_bones
-      kind: 0
-      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
-      localOffset: {x: 2, y: 1, z: 2}
-      yaw: 0
-      spawnChance: 0.5
-      count: 2
-      scatterRadiusInVoxels: 3
-      snapToFloor: 1
-      floorSearchDistance: 6
-  - stableId: mineshaft_lair
-    displayName: Collapsed Gallery
-    poolId: mine
-    outputPoolId: mine
+  - stableId: fortress_junction
+    displayName: Span Junction
+    poolId: bridge
+    outputPoolId: bridge
     startPiece: 0
-    weight: 10
-    minimumGraphDepth: 4
-    maximumGraphDepth: 9
-    minimumCount: 1
-    maximumCount: 3
+    weight: 20
+    minimumGraphDepth: 1
+    maximumGraphDepth: 5
+    minimumCount: 2
+    maximumCount: 5
     allowConsecutive: 0
-    requiredByDepth: 6
-    shape: 0
-    buildStyle: 0
+    requiredByDepth: 3
+    shape: 2
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
     minimumWidth: 13
-    maximumWidth: 17
+    maximumWidth: 13
     minimumDepth: 13
-    maximumDepth: 17
+    maximumDepth: 13
+    minimumHeight: 7
+    maximumHeight: 7
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_entry
+      targetName: fort_branch
+      targetPoolId: bridge
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: bridge
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: left
+      role: 1
+      face: 3
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: bridge
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.7
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: right
+      role: 1
+      face: 1
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: corridor
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.7
+      openingWidth: 5
+      openingHeight: 5
+    processors:
+    - stableId: junction_pillars
+      kind: 0
+      palette: 0
+      maximumDistance: 48
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    spawnMarkers: []
+  - stableId: fortress_corridor
+    displayName: Inner Corridor
+    poolId: corridor
+    outputPoolId: corridor
+    startPiece: 0
+    weight: 48
+    minimumGraphDepth: 2
+    maximumGraphDepth: 9
+    minimumCount: 4
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 4
+    shape: 1
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 8
+    maximumLength: 14
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_entry
+      targetName: fort_branch
+      targetPoolId: corridor
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: corridor
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: side
+      role: 1
+      face: 3
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: corridor
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.3
+      openingWidth: 3
+      openingHeight: 3
+    processors: []
+    spawnMarkers: []
+  - stableId: fortress_balcony
+    displayName: Warp Terrace
+    poolId: corridor
+    outputPoolId: corridor
+    startPiece: 0
+    weight: 16
+    minimumGraphDepth: 3
+    maximumGraphDepth: 9
+    minimumCount: 2
+    maximumCount: 5
+    allowConsecutive: 0
+    requiredByDepth: 5
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 3
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 11
+    maximumWidth: 15
+    minimumDepth: 11
+    maximumDepth: 15
     minimumHeight: 7
     maximumHeight: 9
     minimumLength: 8
@@ -498,9 +448,9 @@ MonoBehaviour:
       role: 0
       face: 2
       joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
-      targetPoolId: mine
+      socketName: fort_entry
+      targetName: fort_branch
+      targetPoolId: corridor
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
@@ -508,32 +458,131 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
-    processors: []
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: corridor
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.6
+      openingWidth: 3
+      openingHeight: 3
+    processors:
+    - stableId: terrace_footings
+      kind: 0
+      palette: 0
+      maximumDistance: 40
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
     spawnMarkers:
-    - stableId: lair_skeletons
+    - stableId: terrace_guard
       kind: 1
       treasure: {fileID: 0}
       monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
       localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.85
-      count: 4
-      scatterRadiusInVoxels: 4
-      snapToFloor: 1
-      floorSearchDistance: 6
-    - stableId: lair_bones
-      kind: 0
-      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
-      localOffset: {x: -3, y: 1, z: 3}
       yaw: 0
       spawnChance: 0.7
       count: 3
       scatterRadiusInVoxels: 3
       snapToFloor: 1
       floorSearchDistance: 6
-  - stableId: mineshaft_dead_end
-    displayName: Cave-In
+    - stableId: terrace_cache
+      kind: 0
+      treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 2, y: 1, z: -2}
+      yaw: 0
+      spawnChance: 0.5
+      count: 1
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: fortress_vault
+    displayName: Iron Vault
+    poolId: corridor
+    outputPoolId: corridor
+    startPiece: 0
+    weight: 10
+    minimumGraphDepth: 4
+    maximumGraphDepth: 9
+    minimumCount: 1
+    maximumCount: 1
+    allowConsecutive: 0
+    requiredByDepth: 6
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 4
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 13
+    maximumWidth: 15
+    minimumDepth: 15
+    maximumDepth: 17
+    minimumHeight: 8
+    maximumHeight: 9
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_entry
+      targetName: fort_branch
+      targetPoolId: corridor
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    processors:
+    - stableId: vault_foundation
+      kind: 1
+      palette: 0
+      maximumDistance: 4
+      inset: 0
+      chance: 1
+      perimeterOnly: 0
+    spawnMarkers:
+    - stableId: vault_warden
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
+      localOffset: {x: 0, y: 1, z: 3}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 3
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: vault_hoard
+      kind: 0
+      treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 1, z: -3}
+      yaw: 0
+      spawnChance: 1
+      count: 3
+      scatterRadiusInVoxels: 3
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: fortress_bridge_end
+    displayName: Broken Span
     poolId: terminators
     outputPoolId: terminators
     startPiece: 0
@@ -545,9 +594,9 @@ MonoBehaviour:
     allowConsecutive: 1
     requiredByDepth: 0
     shape: 1
-    buildStyle: 0
+    buildStyle: 1
     connectorPattern: 0
-    decoration: 1
+    decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
     minimumWidth: 7
@@ -556,28 +605,35 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 3
-    maximumLength: 7
-    width: 5
-    height: 5
+    minimumLength: 4
+    maximumLength: 8
+    width: 7
+    height: 6
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5
-    decorationSpacing: 3
+    decorationSpacing: 4
     connectors:
     - stableId: entrance
       role: 0
       face: 2
       joint: 0
-      socketName: mine_entry
-      targetName: mine_branch
+      socketName: fort_entry
+      targetName: fort_branch
       targetPoolId: terminators
       fallbackPoolId: 
       alongOffset: -1
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
-    processors: []
+      openingWidth: 5
+      openingHeight: 5
+    processors:
+    - stableId: broken_pillars
+      kind: 0
+      palette: 0
+      maximumDistance: 32
+      inset: 0
+      chance: 0.5
+      perimeterOnly: 1
     spawnMarkers: []

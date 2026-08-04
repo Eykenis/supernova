@@ -1,0 +1,506 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d96d5bdff9971149828a61965256e6a, type: 3}
+  m_Name: AncientCity
+  m_EditorClassIdentifier: 
+  enabled: 1
+  stableId: ancient_city
+  primaryVoxelType: {fileID: 11400000, guid: 202a238be2391e34b89347de524ec2b3, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: db911a53d53faf5409c2941730ce94b3, type: 2}
+  placementStrategy: 0
+  seedSalt: 314159
+  regionSizeInChunks: 8
+  placementChance: 0.5
+  minFloorHeight: 24
+  maxFloorHeight: 90
+  ringStructureCount: 128
+  ringCount: 8
+  ringDistanceInChunks: 32
+  ringSpreadInChunks: 3
+  structureSetId: deep_complexes
+  structureSetWeight: 2
+  maxPieces: 42
+  maxDepth: 9
+  maxHorizontalDistance: 112
+  firstPieceId: city_avenue
+  layoutAttempts: 8
+  connectorPlacementAttempts: 8
+  collisionPadding: 2
+  pieces:
+  - stableId: city_shrine
+    displayName: Central Shrine
+    poolId: city
+    outputPoolId: city
+    startPiece: 1
+    weight: 0
+    minimumGraphDepth: 0
+    maximumGraphDepth: 0
+    minimumCount: 0
+    maximumCount: 1
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 11400000, guid: 42f95c3f1ee2216419ae362c0b553168, type: 2}
+    templateWritesAir: 1
+    minimumWidth: 19
+    maximumWidth: 19
+    minimumDepth: 19
+    maximumDepth: 19
+    minimumHeight: 13
+    maximumHeight: 13
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors: []
+    processors:
+    - stableId: shrine_footings
+      kind: 0
+      palette: 0
+      maximumDistance: 18
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    spawnMarkers:
+    - stableId: shrine_offering
+      kind: 0
+      treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 2, z: 0}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: shrine_wardens
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
+      localOffset: {x: 0, y: 2, z: 6}
+      yaw: 0
+      spawnChance: 0.8
+      count: 2
+      scatterRadiusInVoxels: 4
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: city_avenue
+    displayName: Sunken Avenue
+    poolId: city
+    outputPoolId: city
+    startPiece: 0
+    weight: 60
+    minimumGraphDepth: 1
+    maximumGraphDepth: 9
+    minimumCount: 6
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 3
+    shape: 1
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 16
+    maximumLength: 26
+    width: 9
+    height: 7
+    verticalDelta: 4
+    sideBranchChance: 0.4
+    descendingChance: 0.6
+    decorationSpacing: 6
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: city_entry
+      targetName: city_branch
+      targetPoolId: city
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: city_branch
+      targetName: city_entry
+      targetPoolId: city
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: left_branch
+      role: 1
+      face: 3
+      joint: 0
+      socketName: city_branch
+      targetName: city_entry
+      targetPoolId: city
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.4
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: right_branch
+      role: 1
+      face: 1
+      joint: 0
+      socketName: city_branch
+      targetName: city_entry
+      targetPoolId: city
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.4
+      openingWidth: 5
+      openingHeight: 5
+    processors:
+    - stableId: avenue_headroom
+      kind: 2
+      palette: 0
+      maximumDistance: 4
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    - stableId: avenue_weathering
+      kind: 3
+      palette: 1
+      maximumDistance: 1
+      inset: 0
+      chance: 0.2
+      perimeterOnly: 1
+    spawnMarkers: []
+  - stableId: city_plaza
+    displayName: Silent Plaza
+    poolId: city
+    outputPoolId: city
+    startPiece: 0
+    weight: 22
+    minimumGraphDepth: 2
+    maximumGraphDepth: 9
+    minimumCount: 2
+    maximumCount: 6
+    allowConsecutive: 0
+    requiredByDepth: 4
+    shape: 2
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 3
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 17
+    maximumWidth: 21
+    minimumDepth: 17
+    maximumDepth: 21
+    minimumHeight: 9
+    maximumHeight: 11
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: city_entry
+      targetName: city_branch
+      targetPoolId: city
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: city_branch
+      targetName: city_entry
+      targetPoolId: city
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: left
+      role: 1
+      face: 3
+      joint: 0
+      socketName: city_branch
+      targetName: city_entry
+      targetPoolId: city
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: right
+      role: 1
+      face: 1
+      joint: 0
+      socketName: city_branch
+      targetName: city_entry
+      targetPoolId: city
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    processors:
+    - stableId: plaza_footings
+      kind: 0
+      palette: 0
+      maximumDistance: 20
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    spawnMarkers:
+    - stableId: plaza_stalkers
+      kind: 1
+      treasure: {fileID: 0}
+      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
+      localOffset: {x: 0, y: 1, z: 0}
+      yaw: 0
+      spawnChance: 0.55
+      count: 3
+      scatterRadiusInVoxels: 5
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: city_descent
+    displayName: Deep Stair
+    poolId: city
+    outputPoolId: city
+    startPiece: 0
+    weight: 14
+    minimumGraphDepth: 2
+    maximumGraphDepth: 9
+    minimumCount: 2
+    maximumCount: 6
+    allowConsecutive: 0
+    requiredByDepth: 4
+    shape: 3
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 12
+    maximumLength: 16
+    width: 7
+    height: 7
+    verticalDelta: 6
+    sideBranchChance: 0
+    descendingChance: 0.85
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: city_entry
+      targetName: city_branch
+      targetPoolId: city
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: city_branch
+      targetName: city_entry
+      targetPoolId: city
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    processors: []
+    spawnMarkers: []
+  - stableId: city_reliquary
+    displayName: Reliquary
+    poolId: city
+    outputPoolId: city
+    startPiece: 0
+    weight: 16
+    minimumGraphDepth: 3
+    maximumGraphDepth: 9
+    minimumCount: 1
+    maximumCount: 3
+    allowConsecutive: 0
+    requiredByDepth: 5
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 2
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 15
+    maximumWidth: 17
+    minimumDepth: 15
+    maximumDepth: 17
+    minimumHeight: 9
+    maximumHeight: 10
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: city_entry
+      targetName: city_branch
+      targetPoolId: city
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    processors:
+    - stableId: reliquary_foundation
+      kind: 1
+      palette: 0
+      maximumDistance: 3
+      inset: 0
+      chance: 1
+      perimeterOnly: 0
+    spawnMarkers:
+    - stableId: reliquary_tomes
+      kind: 0
+      treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: 0, y: 1, z: 0}
+      yaw: 0
+      spawnChance: 0.9
+      count: 2
+      scatterRadiusInVoxels: 3
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: reliquary_bones
+      kind: 0
+      treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
+      monster: {fileID: 0}
+      localOffset: {x: -4, y: 1, z: 0}
+      yaw: 0
+      spawnChance: 0.6
+      count: 2
+      scatterRadiusInVoxels: 2
+      snapToFloor: 1
+      floorSearchDistance: 6
+  - stableId: city_dead_end
+    displayName: Buried Wall
+    poolId: terminators
+    outputPoolId: terminators
+    startPiece: 0
+    weight: 1
+    minimumGraphDepth: 1
+    maximumGraphDepth: 16
+    minimumCount: 0
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 0
+    shape: 1
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 4
+    maximumLength: 8
+    width: 9
+    height: 7
+    verticalDelta: 1
+    sideBranchChance: 0
+    descendingChance: 0.5
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: city_entry
+      targetName: city_branch
+      targetPoolId: terminators
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    processors: []
+    spawnMarkers: []
