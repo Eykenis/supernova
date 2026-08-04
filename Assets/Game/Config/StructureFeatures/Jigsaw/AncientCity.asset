@@ -18,26 +18,26 @@ MonoBehaviour:
   accentVoxelType: {fileID: 11400000, guid: db911a53d53faf5409c2941730ce94b3, type: 2}
   placementStrategy: 0
   seedSalt: 314159
-  regionSizeInChunks: 8
-  placementChance: 0.5
+  regionSizeInChunks: 14
+  placementChance: 0.6
   minFloorHeight: 24
-  maxFloorHeight: 90
+  maxFloorHeight: 80
   ringStructureCount: 128
   ringCount: 8
   ringDistanceInChunks: 32
   ringSpreadInChunks: 3
   structureSetId: deep_complexes
   structureSetWeight: 2
-  maxPieces: 42
+  maxPieces: 46
   maxDepth: 9
-  maxHorizontalDistance: 112
+  maxHorizontalDistance: 192
   firstPieceId: city_avenue
   layoutAttempts: 8
   connectorPlacementAttempts: 8
   collisionPadding: 2
   pieces:
   - stableId: city_shrine
-    displayName: Central Shrine
+    displayName: Grand Hall
     poolId: city
     outputPoolId: city
     startPiece: 1
@@ -54,12 +54,12 @@ MonoBehaviour:
     decoration: 0
     voxelTemplate: {fileID: 11400000, guid: 42f95c3f1ee2216419ae362c0b553168, type: 2}
     templateWritesAir: 1
-    minimumWidth: 19
-    maximumWidth: 19
-    minimumDepth: 19
-    maximumDepth: 19
-    minimumHeight: 13
-    maximumHeight: 13
+    minimumWidth: 79
+    maximumWidth: 79
+    minimumDepth: 79
+    maximumDepth: 79
+    minimumHeight: 40
+    maximumHeight: 40
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -124,11 +124,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 16
-    maximumLength: 26
-    width: 9
-    height: 7
-    verticalDelta: 4
+    minimumLength: 18
+    maximumLength: 30
+    width: 11
+    height: 9
+    verticalDelta: 5
     sideBranchChance: 0.4
     descendingChance: 0.6
     decorationSpacing: 6
@@ -223,12 +223,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 17
-    maximumWidth: 21
-    minimumDepth: 17
-    maximumDepth: 21
-    minimumHeight: 9
-    maximumHeight: 11
+    minimumWidth: 21
+    maximumWidth: 25
+    minimumDepth: 21
+    maximumDepth: 25
+    minimumHeight: 11
+    maximumHeight: 13
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -338,11 +338,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 12
-    maximumLength: 16
+    minimumLength: 14
+    maximumLength: 20
     width: 7
-    height: 7
-    verticalDelta: 6
+    height: 9
+    verticalDelta: 7
     sideBranchChance: 0
     descendingChance: 0.85
     decorationSpacing: 4
@@ -395,12 +395,12 @@ MonoBehaviour:
     decoration: 2
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 15
-    maximumWidth: 17
-    minimumDepth: 15
-    maximumDepth: 17
-    minimumHeight: 9
-    maximumHeight: 10
+    minimumWidth: 19
+    maximumWidth: 21
+    minimumDepth: 19
+    maximumDepth: 21
+    minimumHeight: 11
+    maximumHeight: 12
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -479,10 +479,10 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 4
-    maximumLength: 8
-    width: 9
-    height: 7
+    minimumLength: 5
+    maximumLength: 10
+    width: 11
+    height: 9
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5

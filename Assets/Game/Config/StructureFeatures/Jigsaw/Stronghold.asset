@@ -54,12 +54,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 19
-    maximumWidth: 21
-    minimumDepth: 19
-    maximumDepth: 21
-    minimumHeight: 10
-    maximumHeight: 12
+    minimumWidth: 23
+    maximumWidth: 25
+    minimumDepth: 23
+    maximumDepth: 25
+    minimumHeight: 12
+    maximumHeight: 14
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -165,11 +165,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 18
-    width: 5
-    height: 6
-    verticalDelta: 4
+    minimumLength: 12
+    maximumLength: 22
+    width: 7
+    height: 8
+    verticalDelta: 5
     sideBranchChance: 0.3
     descendingChance: 0.65
     decorationSpacing: 4
@@ -264,12 +264,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 11
-    maximumWidth: 11
-    minimumDepth: 11
-    maximumDepth: 11
-    minimumHeight: 8
-    maximumHeight: 8
+    minimumWidth: 15
+    maximumWidth: 15
+    minimumDepth: 15
+    maximumDepth: 15
+    minimumHeight: 10
+    maximumHeight: 10
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -361,11 +361,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 12
-    width: 5
-    height: 6
-    verticalDelta: 5
+    minimumLength: 12
+    maximumLength: 16
+    width: 7
+    height: 8
+    verticalDelta: 6
     sideBranchChance: 0
     descendingChance: 0.7
     decorationSpacing: 4
@@ -418,12 +418,12 @@ MonoBehaviour:
     decoration: 2
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 15
-    maximumWidth: 19
-    minimumDepth: 15
-    maximumDepth: 19
-    minimumHeight: 9
-    maximumHeight: 11
+    minimumWidth: 19
+    maximumWidth: 23
+    minimumDepth: 19
+    maximumDepth: 23
+    minimumHeight: 11
+    maximumHeight: 13
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -503,12 +503,12 @@ MonoBehaviour:
     decoration: 4
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 15
-    maximumWidth: 17
-    minimumDepth: 17
-    maximumDepth: 19
-    minimumHeight: 8
-    maximumHeight: 10
+    minimumWidth: 19
+    maximumWidth: 21
+    minimumDepth: 21
+    maximumDepth: 23
+    minimumHeight: 10
+    maximumHeight: 12
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -574,12 +574,12 @@ MonoBehaviour:
     decoration: 5
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 17
-    maximumWidth: 21
-    minimumDepth: 19
-    maximumDepth: 23
-    minimumHeight: 11
-    maximumHeight: 13
+    minimumWidth: 21
+    maximumWidth: 25
+    minimumDepth: 23
+    maximumDepth: 27
+    minimumHeight: 13
+    maximumHeight: 15
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -683,10 +683,10 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 4
-    maximumLength: 6
-    width: 5
-    height: 6
+    minimumLength: 5
+    maximumLength: 8
+    width: 7
+    height: 8
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5

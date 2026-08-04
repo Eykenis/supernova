@@ -54,12 +54,12 @@ MonoBehaviour:
     decoration: 0
     voxelTemplate: {fileID: 11400000, guid: b4c81d0c331a0ec47a9ab81cc73d7436, type: 2}
     templateWritesAir: 1
-    minimumWidth: 17
-    maximumWidth: 17
-    minimumDepth: 17
-    maximumDepth: 17
-    minimumHeight: 12
-    maximumHeight: 12
+    minimumWidth: 29
+    maximumWidth: 29
+    minimumDepth: 29
+    maximumDepth: 29
+    minimumHeight: 20
+    maximumHeight: 20
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -102,11 +102,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 8
-    maximumLength: 20
-    width: 5
-    height: 5
-    verticalDelta: 4
+    minimumLength: 10
+    maximumLength: 24
+    width: 7
+    height: 7
+    verticalDelta: 5
     sideBranchChance: 0.45
     descendingChance: 0.6
     decorationSpacing: 4
@@ -123,8 +123,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -137,8 +137,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: branch
       role: 1
       face: 3
@@ -151,8 +151,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.45
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers:
     - stableId: tunnel_crawlers
@@ -184,12 +184,12 @@ MonoBehaviour:
     decoration: 1
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 17
-    minimumDepth: 13
-    maximumDepth: 17
-    minimumHeight: 7
-    maximumHeight: 10
+    minimumWidth: 17
+    maximumWidth: 21
+    minimumDepth: 17
+    maximumDepth: 21
+    minimumHeight: 9
+    maximumHeight: 12
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -211,8 +211,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -225,8 +225,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: left
       role: 1
       face: 3
@@ -239,8 +239,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.7
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: right
       role: 1
       face: 1
@@ -253,8 +253,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.7
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers:
     - stableId: chamber_swarm
@@ -303,11 +303,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 14
-    width: 5
-    height: 5
-    verticalDelta: 6
+    minimumLength: 12
+    maximumLength: 18
+    width: 7
+    height: 7
+    verticalDelta: 7
     sideBranchChance: 0
     descendingChance: 0.7
     decorationSpacing: 4
@@ -324,8 +324,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -338,8 +338,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers: []
   - stableId: grotto_hollow
@@ -360,12 +360,12 @@ MonoBehaviour:
     decoration: 1
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 15
-    maximumWidth: 19
-    minimumDepth: 15
-    maximumDepth: 19
-    minimumHeight: 9
-    maximumHeight: 12
+    minimumWidth: 19
+    maximumWidth: 23
+    minimumDepth: 19
+    maximumDepth: 23
+    minimumHeight: 11
+    maximumHeight: 14
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -387,8 +387,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: hollow_headroom
       kind: 2
@@ -444,10 +444,10 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 3
-    maximumLength: 6
-    width: 5
-    height: 5
+    minimumLength: 4
+    maximumLength: 8
+    width: 7
+    height: 7
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5
@@ -465,7 +465,7 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers: []

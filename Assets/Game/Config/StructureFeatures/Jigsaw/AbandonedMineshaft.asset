@@ -54,12 +54,12 @@ MonoBehaviour:
     decoration: 1
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 17
-    minimumDepth: 13
-    maximumDepth: 17
-    minimumHeight: 6
-    maximumHeight: 8
+    minimumWidth: 17
+    maximumWidth: 23
+    minimumDepth: 17
+    maximumDepth: 23
+    minimumHeight: 8
+    maximumHeight: 10
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -81,8 +81,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: right
       role: 1
       face: 1
@@ -95,8 +95,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: back
       role: 1
       face: 2
@@ -109,8 +109,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: left
       role: 1
       face: 3
@@ -123,8 +123,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers:
     - stableId: shaft_bones
@@ -162,11 +162,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 24
+    minimumLength: 12
+    maximumLength: 28
     width: 5
-    height: 5
-    verticalDelta: 4
+    height: 7
+    verticalDelta: 5
     sideBranchChance: 0.32
     descendingChance: 0.65
     decorationSpacing: 4
@@ -184,7 +184,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -198,7 +198,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: left_branch
       role: 1
       face: 3
@@ -212,7 +212,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 0.3
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: right_branch
       role: 1
       face: 1
@@ -226,7 +226,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 0.3
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     processors: []
     spawnMarkers: []
   - stableId: mineshaft_crossing
@@ -247,12 +247,12 @@ MonoBehaviour:
     decoration: 1
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 9
-    minimumDepth: 7
-    maximumDepth: 9
-    minimumHeight: 5
-    maximumHeight: 6
+    minimumWidth: 11
+    maximumWidth: 13
+    minimumDepth: 11
+    maximumDepth: 13
+    minimumHeight: 7
+    maximumHeight: 8
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -274,8 +274,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -288,8 +288,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: left
       role: 1
       face: 3
@@ -302,8 +302,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: right
       role: 1
       face: 1
@@ -316,8 +316,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers: []
   - stableId: mineshaft_stairs
@@ -344,11 +344,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 12
-    maximumLength: 16
+    minimumLength: 14
+    maximumLength: 20
     width: 5
-    height: 5
-    verticalDelta: 5
+    height: 7
+    verticalDelta: 6
     sideBranchChance: 0
     descendingChance: 0.7
     decorationSpacing: 4
@@ -366,7 +366,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -380,7 +380,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     processors: []
     spawnMarkers: []
   - stableId: mineshaft_storage
@@ -401,12 +401,12 @@ MonoBehaviour:
     decoration: 1
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 9
-    maximumWidth: 13
-    minimumDepth: 11
-    maximumDepth: 15
-    minimumHeight: 6
-    maximumHeight: 8
+    minimumWidth: 13
+    maximumWidth: 17
+    minimumDepth: 15
+    maximumDepth: 19
+    minimumHeight: 8
+    maximumHeight: 10
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -428,8 +428,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: cache_footings
       kind: 0
@@ -479,12 +479,12 @@ MonoBehaviour:
     decoration: 1
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 17
-    minimumDepth: 13
-    maximumDepth: 17
-    minimumHeight: 7
-    maximumHeight: 9
+    minimumWidth: 17
+    maximumWidth: 21
+    minimumDepth: 17
+    maximumDepth: 21
+    minimumHeight: 9
+    maximumHeight: 11
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -506,8 +506,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers:
     - stableId: lair_skeletons
@@ -556,10 +556,10 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 3
-    maximumLength: 7
+    minimumLength: 4
+    maximumLength: 8
     width: 5
-    height: 5
+    height: 7
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5
@@ -578,6 +578,6 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     processors: []
     spawnMarkers: []

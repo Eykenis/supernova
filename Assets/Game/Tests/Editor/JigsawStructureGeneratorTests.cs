@@ -187,10 +187,17 @@ namespace Supernova.Tests
                 piece.StableId == corridor.ModuleId);
 
             Assert.That(room.ModuleId, Is.EqualTo("mineshaft_room"));
+            // Read the expected extents from the asset: designers retune these for
+            // player clearance, and the layout only has to honour what is authored.
+            JigsawPieceSettings roomModule = settings.GetPiece(room.ModuleIndex);
             Assert.That(
                 room.Bounds.MaxX - room.Bounds.MinX + 1,
-                Is.InRange(13, 19));
-            Assert.That(corridor.Length, Is.InRange(10, 24));
+                Is.InRange(roomModule.MinimumWidth, roomModule.MaximumWidth));
+            Assert.That(
+                corridor.Length,
+                Is.InRange(
+                    corridorModule.MinimumLength,
+                    corridorModule.MaximumLength));
             int corridorWidth = (corridor.Direction & 1) == 0
                 ? corridor.Bounds.MaxX - corridor.Bounds.MinX + 1
                 : corridor.Bounds.MaxZ - corridor.Bounds.MinZ + 1;

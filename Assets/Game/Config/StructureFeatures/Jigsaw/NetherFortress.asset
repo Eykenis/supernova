@@ -54,12 +54,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 15
-    maximumWidth: 15
-    minimumDepth: 15
-    maximumDepth: 15
-    minimumHeight: 8
-    maximumHeight: 8
+    minimumWidth: 19
+    maximumWidth: 19
+    minimumDepth: 19
+    maximumDepth: 19
+    minimumHeight: 10
+    maximumHeight: 10
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -158,11 +158,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 14
-    maximumLength: 22
-    width: 7
-    height: 6
-    verticalDelta: 4
+    minimumLength: 16
+    maximumLength: 26
+    width: 9
+    height: 8
+    verticalDelta: 5
     sideBranchChance: 0.35
     descendingChance: 0.6
     decorationSpacing: 5
@@ -254,12 +254,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 13
-    minimumDepth: 13
-    maximumDepth: 13
-    minimumHeight: 7
-    maximumHeight: 7
+    minimumWidth: 17
+    maximumWidth: 17
+    minimumDepth: 17
+    maximumDepth: 17
+    minimumHeight: 9
+    maximumHeight: 9
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -358,11 +358,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 8
-    maximumLength: 14
-    width: 3
-    height: 4
-    verticalDelta: 4
+    minimumLength: 10
+    maximumLength: 18
+    width: 5
+    height: 7
+    verticalDelta: 5
     sideBranchChance: 0.3
     descendingChance: 0.65
     decorationSpacing: 4
@@ -380,7 +380,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -394,7 +394,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: side
       role: 1
       face: 3
@@ -408,7 +408,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 0.3
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     processors: []
     spawnMarkers: []
   - stableId: fortress_balcony
@@ -429,12 +429,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 11
-    maximumWidth: 15
-    minimumDepth: 11
-    maximumDepth: 15
-    minimumHeight: 7
-    maximumHeight: 9
+    minimumWidth: 15
+    maximumWidth: 19
+    minimumDepth: 15
+    maximumDepth: 19
+    minimumHeight: 9
+    maximumHeight: 11
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -456,8 +456,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -470,8 +470,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.6
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: terrace_footings
       kind: 0
@@ -521,12 +521,12 @@ MonoBehaviour:
     decoration: 4
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 15
-    minimumDepth: 15
-    maximumDepth: 17
-    minimumHeight: 8
-    maximumHeight: 9
+    minimumWidth: 17
+    maximumWidth: 19
+    minimumDepth: 19
+    maximumDepth: 21
+    minimumHeight: 10
+    maximumHeight: 11
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -548,8 +548,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: vault_foundation
       kind: 1
@@ -605,10 +605,10 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 4
-    maximumLength: 8
-    width: 7
-    height: 6
+    minimumLength: 5
+    maximumLength: 10
+    width: 9
+    height: 8
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5

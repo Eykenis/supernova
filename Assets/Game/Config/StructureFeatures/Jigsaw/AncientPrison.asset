@@ -54,12 +54,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 13
-    minimumDepth: 13
-    maximumDepth: 13
-    minimumHeight: 8
-    maximumHeight: 8
+    minimumWidth: 17
+    maximumWidth: 17
+    minimumDepth: 17
+    maximumDepth: 17
+    minimumHeight: 9
+    maximumHeight: 9
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -81,8 +81,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: right
       role: 1
       face: 1
@@ -95,8 +95,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: back
       role: 1
       face: 2
@@ -109,8 +109,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: left
       role: 1
       face: 3
@@ -123,8 +123,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: gate_footings
       kind: 0
@@ -169,11 +169,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 8
-    maximumLength: 14
-    width: 3
-    height: 4
-    verticalDelta: 4
+    minimumLength: 10
+    maximumLength: 18
+    width: 5
+    height: 7
+    verticalDelta: 5
     sideBranchChance: 0.55
     descendingChance: 0.6
     decorationSpacing: 4
@@ -191,7 +191,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -205,7 +205,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: cell_left
       role: 1
       face: 3
@@ -219,7 +219,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 0.6
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: cell_right
       role: 1
       face: 1
@@ -233,7 +233,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 0.6
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     processors:
     - stableId: corridor_weathering
       kind: 3
@@ -261,12 +261,12 @@ MonoBehaviour:
     decoration: 4
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 15
-    minimumDepth: 13
-    maximumDepth: 17
-    minimumHeight: 7
-    maximumHeight: 8
+    minimumWidth: 17
+    maximumWidth: 19
+    minimumDepth: 19
+    maximumDepth: 23
+    minimumHeight: 9
+    maximumHeight: 10
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -288,8 +288,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: through
       role: 1
       face: 0
@@ -302,8 +302,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.5
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers:
     - stableId: cell_inmates
@@ -352,11 +352,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 12
-    width: 3
-    height: 4
-    verticalDelta: 6
+    minimumLength: 12
+    maximumLength: 16
+    width: 5
+    height: 7
+    verticalDelta: 7
     sideBranchChance: 0
     descendingChance: 0.9
     decorationSpacing: 4
@@ -374,7 +374,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -388,7 +388,7 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     processors: []
     spawnMarkers: []
   - stableId: prison_warden
@@ -409,12 +409,12 @@ MonoBehaviour:
     decoration: 2
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 13
-    maximumWidth: 15
-    minimumDepth: 13
-    maximumDepth: 15
-    minimumHeight: 8
-    maximumHeight: 9
+    minimumWidth: 17
+    maximumWidth: 19
+    minimumDepth: 17
+    maximumDepth: 19
+    minimumHeight: 10
+    maximumHeight: 11
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -436,8 +436,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: warden_foundation
       kind: 1
@@ -504,10 +504,10 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 3
-    maximumLength: 5
-    width: 3
-    height: 4
+    minimumLength: 4
+    maximumLength: 7
+    width: 5
+    height: 7
     verticalDelta: 1
     sideBranchChance: 0
     descendingChance: 0.5
@@ -526,6 +526,6 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 1
       openingWidth: 3
-      openingHeight: 3
+      openingHeight: 5
     processors: []
     spawnMarkers: []

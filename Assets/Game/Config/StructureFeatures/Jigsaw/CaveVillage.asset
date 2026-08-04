@@ -113,11 +113,11 @@ MonoBehaviour:
     maximumDepth: 7
     minimumHeight: 5
     maximumHeight: 5
-    minimumLength: 10
-    maximumLength: 18
-    width: 5
-    height: 5
-    verticalDelta: 4
+    minimumLength: 12
+    maximumLength: 22
+    width: 7
+    height: 7
+    verticalDelta: 5
     sideBranchChance: 0.5
     descendingChance: 0.6
     decorationSpacing: 4
@@ -134,8 +134,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -148,8 +148,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: plot_left
       role: 1
       face: 3
@@ -162,8 +162,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.65
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: plot_right
       role: 1
       face: 1
@@ -176,8 +176,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.65
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: road_bed
       kind: 1
@@ -212,12 +212,12 @@ MonoBehaviour:
     decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 9
-    maximumWidth: 11
-    minimumDepth: 9
-    maximumDepth: 11
-    minimumHeight: 6
-    maximumHeight: 7
+    minimumWidth: 13
+    maximumWidth: 15
+    minimumDepth: 13
+    maximumDepth: 15
+    minimumHeight: 7
+    maximumHeight: 8
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -239,8 +239,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: forward
       role: 1
       face: 0
@@ -253,8 +253,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: left
       role: 1
       face: 3
@@ -267,8 +267,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.8
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     - stableId: plot
       role: 1
       face: 1
@@ -281,8 +281,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 0.7
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers: []
   - stableId: village_house
@@ -345,12 +345,12 @@ MonoBehaviour:
     decoration: 3
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 11
-    maximumWidth: 13
-    minimumDepth: 11
-    maximumDepth: 13
-    minimumHeight: 7
-    maximumHeight: 8
+    minimumWidth: 15
+    maximumWidth: 17
+    minimumDepth: 15
+    maximumDepth: 17
+    minimumHeight: 9
+    maximumHeight: 10
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -372,8 +372,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors:
     - stableId: granary_footings
       kind: 0
@@ -412,12 +412,12 @@ MonoBehaviour:
     decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 9
-    maximumWidth: 11
-    minimumDepth: 9
-    maximumDepth: 11
-    minimumHeight: 5
-    maximumHeight: 6
+    minimumWidth: 13
+    maximumWidth: 15
+    minimumDepth: 13
+    maximumDepth: 15
+    minimumHeight: 7
+    maximumHeight: 8
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -439,8 +439,8 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers:
     - stableId: ruin_raiders
@@ -483,12 +483,12 @@ MonoBehaviour:
     decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 7
-    maximumWidth: 9
-    minimumDepth: 7
-    maximumDepth: 9
-    minimumHeight: 5
-    maximumHeight: 5
+    minimumWidth: 11
+    maximumWidth: 13
+    minimumDepth: 11
+    maximumDepth: 13
+    minimumHeight: 6
+    maximumHeight: 6
     minimumLength: 8
     maximumLength: 12
     width: 3
@@ -510,7 +510,7 @@ MonoBehaviour:
       lateralOffset: 0
       verticalOffset: 1
       activationChance: 1
-      openingWidth: 3
-      openingHeight: 3
+      openingWidth: 5
+      openingHeight: 5
     processors: []
     spawnMarkers: []
