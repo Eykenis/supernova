@@ -545,23 +545,30 @@ marker，会自动继承模板的。这样手绘的房间连带它的战利品�
 - 减小必需房间的尺寸；
 - 调低 `Required By Depth`（更早开始优先）。
 
-## 9. 重建默认资产
+## 9. 参考现有结构
 
-**没有这个功能，也不需要。**
+**没有"重建默认资产"这个功能，也不需要。**
 
-结构资产就是唯一的定义来源。项目里曾有一个
-`Tools > Supernova > World Generation > Create Default Jigsaw Structures`
-菜单用代码重建矿洞与 fortress，它已被删除——因为那意味着同一个结构存在
-两份定义，一份在资产里、一份在代码里，两者会漂移。事实上它们已经漂移过：
-资产引用的砖块与脚本写的不是同一种。
+结构资产就是唯一的定义来源。项目里曾有菜单用代码重建结构，已被删除——因为
+那意味着同一个结构存在两份定义，一份在资产里、一份在代码里，两者会漂移。
+事实上它们已经漂移过：资产引用的砖块与脚本写的不是同一种。
 
-想参考默认结构怎么配，**直接打开资产看 Inspector**：
+现有七类结构可以直接打开看，覆盖了本手册讲到的每一种技巧：
 
-- `Assets/Game/Config/StructureFeatures/Jigsaw/AbandonedMineshaft.asset`
-- `Assets/Game/Config/StructureFeatures/Jigsaw/Fortress.asset`
+| 资产 | 值得参考的地方 |
+|---|---|
+| `AbandonedMineshaft.asset` | Excavated 隧道网络、木支撑装饰、封口模块 |
+| `Stronghold.asset` | **ConcentricRings 选址**、必达房间（portal room）、Boss marker |
+| `NetherFortress.asset` | **双池** bridge→corridor 分区、深支柱 processor、**structure set 竞争** |
+| `AncientCity.asset` | **手绘模板作起点**、模板自带 socket |
+| `CaveVillage.asset` | **道路优先布局**：房屋挂在道路侧插口、模板自带 marker |
+| `AncientPrison.asset` | 小尺寸高密度、风化 processor |
+| `CactusGrotto.asset` | 全 Excavated 无砌造、椭球模板、群体怪物 marker |
 
-需要一个新结构就复制一份资产（Ctrl+D）再改，或按第 1 节从零新建。
+需要新结构就复制一份最接近的资产（Ctrl+D）再改，或按第 1 节从零新建。
 改坏了用 Undo，或从版本控制恢复那个 `.asset` 文件。
+
+⚠️ **`Seed Salt` 必须改成新值**，否则复制出来的结构会和原结构长在同一位置。
 
 ## 10. 完整字段参考
 
@@ -701,14 +708,18 @@ marker，会自动继承模板的。这样手绘的房间连带它的战利品�
 除了 `Type`（唯一 ushort ID）、`Display Name`、`Durability`、`Material`，
 还要设 **Group**：
 
-| Group | 含义 |
+| Group | 现有类型 |
 |---|---|
-| `Structure` | 建造几何：Default、StructureBrick、FortressBrick |
-| `Stone` | 天然岩石：Stone、Bedrock |
-| `Ore` | 可采矿脉：Ore |
+| `Structure` | Default(1)、StructureBrick(5)、FortressBrick(6)、RustyMetal(8)、TigerRock(9)、WornBrick(10) |
+| `Stone` | Stone(2)、Bedrock(4)、Dirt(7) |
+| `Ore` | Ore(3) |
 
 **同一 Group 内的体素会生成连贯的网格**，不同 Group 之间才留分界。
-结构用的所有砖类务必设为 `Structure`，否则墙上会出现坑洼接缝。
+
+⚠️ **一个结构的 Primary 与 Accent 必须同组**，否则墙面会出现坑洼接缝。
+例如 Dirt 是 Stone 组、WornBrick 是 Structure 组，不能用作同一结构的
+primary/accent 组合。测试
+`AuthoredStructures_KeepPrimaryAndAccentInOneVoxelGroup` 会拦下这种配置。
 
 新建后记得把它加进 `Assets/Game/Config/MinecraftVoxelTypes.asset` 的
 `Definitions` 列表，并确认 `Type` ID 与现有类型不重复。
@@ -733,6 +744,9 @@ A：布局按内容哈希缓存，改任何字段都会自动失效。如果确�
 
 **Q：结构墙面有坑洼 / 接缝。**
 A：结构用的两种砖不在同一个 Group。见 10.5 节。
+
+**Q：复制了一份结构资产，结果两个结构长在一起。**
+A：`Seed Salt` 没改。见第 9 节。
 
 **Q：想让某个房间只能由楼梯接入。**
 A：给楼梯出口和该房间入口用一组专属名字（如 `ruin_vertical` /

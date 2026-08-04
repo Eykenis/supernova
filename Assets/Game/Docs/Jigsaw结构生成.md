@@ -599,8 +599,52 @@ piece 一旦通过碰撞检查就立即提交，无法回滚。
 - marker 不支持"整组同时生成或都不生成"的事务语义；每个实例独立判定。
   Boss 房若需要"要么 3 只一起出、要么不出"，需等 9.3 的事务机制。
 
-## 10. 代码索引
+## 10. 现有结构内容
 
+七类结构，各自使用不同的调色板、形态与遭遇战定位：
+
+| 结构 | 调色板（primary/accent） | 形态范式 | 特点 |
+|---|---|---|---|
+| `abandoned_mineshaft` | Stone / Dirt | 废弃矿洞 | Excavated 隧道网络，木支撑，骷髅巢穴 |
+| `stronghold` | Marble / Bricks | 末地要塞 | **ConcentricRings** 选址；必达传送门房间由巨型骷髅守卫 |
+| `nether_fortress` | RustyMetal / WornBrick | 下界要塞 | **双池** bridge→corridor；深支柱造出桥的观感 |
+| `ancient_city` | TigerRock / RustyMetal | 远古城市 | 手绘十字神殿为起点，低矮长厅 |
+| `cave_village` | WornBrick / TigerRock | 村庄 | **道路优先**：房屋挂在道路侧插口上 |
+| `ancient_prison` | WornBrick / RustyMetal | 监牢 | 小尺寸高怪物密度，战斗口袋 |
+| `cactus_grotto` | Dirt / Stone | 天然巢穴 | 全 Excavated，无砌造，仙人掌群 |
+
+`nether_fortress` 与 `ancient_city` 共享 structure set `deep_complexes`
+（权重 3:2），同一候选格只出其一。
+
+四个手绘模板作为 jigsaw piece 载入，各自携带 socket 与 marker：
+
+| 模板 | 尺寸 | 用于 | 自带 |
+|---|---|---|---|
+| `AncientCityShrine` | 19×13×19 | ancient_city 起点 | 4 socket |
+| `VillageHouse` | 11×10×13 | cave_village 房屋 | 1 socket + 宝藏 marker |
+| `VillageWell` | 13×8×13 | cave_village 起点 | 4 socket |
+| `GrottoNest` | 17×12×17 | cactus_grotto 起点 | 2 socket + 怪物 marker |
+
+### 10.1 体素类型
+
+| 类型 | ID | Group | 材质 |
+|---|---|---|---|
+| Default | 1 | Structure | （无） |
+| Stone | 2 | Stone | Stone |
+| Ore | 3 | Ore | Ore |
+| Bedrock | 4 | Stone | Bedrock |
+| StructureBrick | 5 | Structure | Marble |
+| FortressBrick | 6 | Structure | Bricks |
+| Dirt | 7 | Stone | Dirt |
+| RustyMetal | 8 | Structure | RustyMetal |
+| TigerRock | 9 | Structure | TigerRock/Bricks |
+| WornBrick | 10 | Structure | WornBrick |
+
+⚠️ 一个结构的 primary 与 accent **必须同组**，否则 Marching Cubes 会把两者
+当成两个曲面并内缩分界，结构墙面出现坑洼。
+`AuthoredStructures_KeepPrimaryAndAccentInOneVoxelGroup` 测试守住这一点。
+
+## 11. 代码索引
 | 文件 | 职责 |
 |---|---|
 | `Runtime/Structures/JigsawStructureFeatureDefinition.cs` | 结构族资产（可编辑） |
