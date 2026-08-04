@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Supernova.Voxels;
 
 namespace Supernova.MinecraftCaves
 {
@@ -35,6 +36,7 @@ namespace Supernova.MinecraftCaves
                     Severity.Error,
                     $"Start piece '{start.StableId}' has no output socket."));
             }
+            ValidatePlacement(feature, issues);
 
             for (int pieceIndex = 0;
                 pieceIndex < feature.Pieces.Count;
@@ -74,6 +76,38 @@ namespace Supernova.MinecraftCaves
                 ValidateProcessors(feature, piece, issues);
             }
             return issues;
+        }
+
+        private static void ValidatePlacement(
+            JigsawStructureFeatureSettings feature,
+            List<Issue> issues)
+        {
+            if (feature.PlacementStrategy
+                == JigsawPlacementStrategy.ConcentricRings)
+            {
+                int outerRadius = feature.RingCount
+                    * feature.RingDistanceInChunks
+                    * VoxelColumnChunkData.Width;
+                if (feature.RingStructureCount < feature.RingCount)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Structure '{feature.StableId}' has fewer ring candidates ({feature.RingStructureCount}) than rings ({feature.RingCount}), so the outer rings stay empty."));
+                }
+                if (outerRadius <= feature.MaxHorizontalDistance)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Structure '{feature.StableId}' places all rings within its own layout radius, so candidates will overlap."));
+                }
+            }
+            else if (feature.RegionSizeInChunks * VoxelColumnChunkData.Width
+                <= feature.MaxHorizontalDistance * 2)
+            {
+                issues.Add(new Issue(
+                    Severity.Error,
+                    $"Structure '{feature.StableId}' has a placement region narrower than twice its layout radius."));
+            }
         }
 
         private static void ValidateProcessors(

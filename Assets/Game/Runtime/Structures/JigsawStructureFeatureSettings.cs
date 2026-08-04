@@ -27,7 +27,15 @@ namespace Supernova.MinecraftCaves
             int layoutAttempts,
             int connectorPlacementAttempts,
             int collisionPadding,
-            JigsawPieceSettings[] pieceSettings)
+            JigsawPieceSettings[] pieceSettings,
+            JigsawPlacementStrategy placementStrategy =
+                JigsawPlacementStrategy.RandomSpread,
+            int ringStructureCount = 128,
+            int ringCount = 8,
+            int ringDistanceInChunks = 32,
+            int ringSpreadInChunks = 3,
+            string structureSetId = null,
+            int structureSetWeight = 1)
         {
             if (string.IsNullOrWhiteSpace(stableId))
             {
@@ -67,6 +75,15 @@ namespace Supernova.MinecraftCaves
                 1,
                 connectorPlacementAttempts);
             CollisionPadding = Math.Max(0, collisionPadding);
+            PlacementStrategy = placementStrategy;
+            RingStructureCount = Math.Max(1, ringStructureCount);
+            RingCount = Math.Max(1, ringCount);
+            RingDistanceInChunks = Math.Max(4, ringDistanceInChunks);
+            RingSpreadInChunks = Math.Max(0, ringSpreadInChunks);
+            StructureSetId = string.IsNullOrWhiteSpace(structureSetId)
+                ? string.Empty
+                : structureSetId.Trim();
+            StructureSetWeight = Math.Max(1, structureSetWeight);
             pieces = (JigsawPieceSettings[])pieceSettings.Clone();
 
             int startIndex = -1;
@@ -162,7 +179,11 @@ namespace Supernova.MinecraftCaves
 
             int regionVoxelSize = RegionSizeInChunks
                 * VoxelColumnChunkData.Width;
-            if (regionVoxelSize <= MaxHorizontalDistance * 2)
+            // Only random spread owns a region, so only it needs the region to be
+            // wider than the layout influence. Ring candidates are absolute world
+            // positions and carry no region box.
+            if (PlacementStrategy == JigsawPlacementStrategy.RandomSpread
+                && regionVoxelSize <= MaxHorizontalDistance * 2)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(regionSizeInChunks),
@@ -197,6 +218,14 @@ namespace Supernova.MinecraftCaves
         public int LayoutAttempts { get; }
         public int ConnectorPlacementAttempts { get; }
         public int CollisionPadding { get; }
+        public JigsawPlacementStrategy PlacementStrategy { get; }
+        public int RingStructureCount { get; }
+        public int RingCount { get; }
+        public int RingDistanceInChunks { get; }
+        public int RingSpreadInChunks { get; }
+        public string StructureSetId { get; }
+        public int StructureSetWeight { get; }
+        public bool HasStructureSet => StructureSetId.Length > 0;
         public ulong ContentHash { get; }
         public IReadOnlyList<JigsawPieceSettings> Pieces => pieces;
 
@@ -223,6 +252,13 @@ namespace Supernova.MinecraftCaves
             AddHash(ref hash, LayoutAttempts);
             AddHash(ref hash, ConnectorPlacementAttempts);
             AddHash(ref hash, CollisionPadding);
+            AddHash(ref hash, (int)PlacementStrategy);
+            AddHash(ref hash, RingStructureCount);
+            AddHash(ref hash, RingCount);
+            AddHash(ref hash, RingDistanceInChunks);
+            AddHash(ref hash, RingSpreadInChunks);
+            AddHash(ref hash, StructureSetId);
+            AddHash(ref hash, StructureSetWeight);
             for (int i = 0; i < pieces.Length; i++)
             {
                 JigsawPieceSettings piece = pieces[i];

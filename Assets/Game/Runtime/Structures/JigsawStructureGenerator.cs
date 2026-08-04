@@ -240,6 +240,7 @@ namespace Supernova.MinecraftCaves
             {
             }
             Interlocked.Exchange(ref layoutBuildCount, 0);
+            JigsawPlacementService.ClearCaches();
         }
 
         public static int GenerateColumn(
@@ -263,6 +264,7 @@ namespace Supernova.MinecraftCaves
             int targetMaxX = targetMinX + VoxelColumnChunkData.Width - 1;
             int targetMaxZ = targetMinZ + VoxelColumnChunkData.Depth - 1;
             int changed = 0;
+            var placements = new List<Placement>();
 
             for (int featureIndex = 0; featureIndex < features.Count; featureIndex++)
             {
@@ -273,60 +275,64 @@ namespace Supernova.MinecraftCaves
                     continue;
                 }
 
-                int regionSize = feature.RegionSizeInChunks
-                    * VoxelColumnChunkData.Width;
-                int influence = feature.MaxHorizontalDistance;
-                int minRegionX = FloorDiv(targetMinX - influence, regionSize);
-                int maxRegionX = FloorDiv(targetMaxX + influence, regionSize);
-                int minRegionZ = FloorDiv(targetMinZ - influence, regionSize);
-                int maxRegionZ = FloorDiv(targetMaxZ + influence, regionSize);
-
-                for (int regionZ = minRegionZ; regionZ <= maxRegionZ; regionZ++)
+                JigsawPlacementService.CollectPlacements(
+                    feature,
+                    worldSeed,
+                    targetMinX,
+                    targetMinZ,
+                    targetMaxX,
+                    targetMaxZ,
+                    placements);
+                for (int i = 0; i < placements.Count; i++)
                 {
-                    for (int regionX = minRegionX; regionX <= maxRegionX; regionX++)
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Placement placement = placements[i];
+                    if (!JigsawPlacementService.WinsStructureSet(
+                        features,
+                        featureIndex,
+                        worldSeed,
+                        placement.RegionX,
+                        placement.RegionZ))
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        if (!TryGetPlacement(
-                            feature,
-                            worldSeed,
-                            regionX,
-                            regionZ,
-                            out Placement placement))
-                        {
-                            continue;
-                        }
-
-                        LayoutCacheEntry layout = GetOrCreateLayout(
-                            feature,
-                            worldSeed,
-                            placement);
-                        IReadOnlyList<Piece> intersectingPieces =
-                            layout.GetPiecesForColumn(
-                                columnCoordinate.x,
-                                columnCoordinate.z);
-                        if (intersectingPieces.Count == 0)
-                        {
-                            continue;
-                        }
-                        changed += ApplyLayoutToColumn(
-                            feature,
-                            intersectingPieces,
-                            targetMinX,
-                            targetMaxX,
-                            targetMinZ,
-                            targetMaxZ,
-                            densities,
-                            types,
-                            solidDensity,
-                            airDensity,
-                            cancellationToken);
+                        continue;
                     }
+
+                    LayoutCacheEntry layout = GetOrCreateLayout(
+                        feature,
+                        worldSeed,
+                        placement);
+                    IReadOnlyList<Piece> intersectingPieces =
+                        layout.GetPiecesForColumn(
+                            columnCoordinate.x,
+                            columnCoordinate.z);
+                    if (intersectingPieces.Count == 0)
+                    {
+                        continue;
+                    }
+                    changed += ApplyLayoutToColumn(
+                        feature,
+                        intersectingPieces,
+                        targetMinX,
+                        targetMaxX,
+                        targetMinZ,
+                        targetMaxZ,
+                        densities,
+                        types,
+                        solidDensity,
+                        airDensity,
+                        cancellationToken);
                 }
             }
 
             return changed;
         }
 
+        /// <summary>
+        /// Random-spread candidate for one region. Kept as the direct entry point
+        /// used by tests and tooling; general iteration should call
+        /// <see cref="JigsawPlacementService.CollectPlacements"/> so that every
+        /// placement strategy is honoured.
+        /// </summary>
         public static bool TryGetPlacement(
             JigsawStructureFeatureSettings feature,
             int worldSeed,
@@ -334,41 +340,12 @@ namespace Supernova.MinecraftCaves
             int regionZ,
             out Placement placement)
         {
-            var random = new DeterministicRandom(BuildSeed(
+            return JigsawPlacementService.TryGetRandomSpreadPlacement(
+                feature,
                 worldSeed,
-                feature.SeedSalt,
-                regionX,
-                regionZ));
-            if (random.NextDouble() >= feature.PlacementChance)
-            {
-                placement = default;
-                return false;
-            }
-
-            int regionSize = feature.RegionSizeInChunks
-                * VoxelColumnChunkData.Width;
-            int margin = feature.MaxHorizontalDistance;
-            int offsetRange = regionSize - margin * 2;
-            if (offsetRange <= 0)
-            {
-                placement = default;
-                return false;
-            }
-
-            int centreX = regionX * regionSize
-                + margin
-                + random.NextInt(offsetRange);
-            int centreZ = regionZ * regionSize
-                + margin
-                + random.NextInt(offsetRange);
-            int floorY = feature.MinFloorHeight
-                + random.NextInt(
-                    feature.MaxFloorHeight - feature.MinFloorHeight + 1);
-            placement = new Placement(
                 regionX,
                 regionZ,
-                new Vector3Int(centreX, floorY, centreZ));
-            return true;
+                out placement);
         }
 
         public static IReadOnlyList<Piece> BuildLayout(

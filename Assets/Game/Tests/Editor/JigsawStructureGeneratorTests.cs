@@ -1006,6 +1006,319 @@ namespace Supernova.Tests
             return owner.x == column.x && owner.z == column.z;
         }
 
+        [Test]
+        public void RandomSpread_CollectionMatchesDirectRegionQuery()
+        {
+            JigsawStructureFeatureSettings settings = LoadSettings(
+                ProjectAssetPaths.Config.AbandonedMineshaftJigsaw);
+            const int seed = 5150;
+            const int minX = -2048;
+            const int minZ = -2048;
+            const int maxX = 2048;
+            const int maxZ = 2048;
+            var collected = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                minX,
+                minZ,
+                maxX,
+                maxZ,
+                collected);
+
+            // Sweeping regions by hand must produce the same candidate set the
+            // service reports, otherwise generation and tooling would disagree.
+            int regionSize = settings.RegionSizeInChunks
+                * VoxelColumnChunkData.Width;
+            var expected = new List<Vector3Int>();
+            for (int regionZ = minZ / regionSize - 2;
+                regionZ <= maxZ / regionSize + 2;
+                regionZ++)
+            {
+                for (int regionX = minX / regionSize - 2;
+                    regionX <= maxX / regionSize + 2;
+                    regionX++)
+                {
+                    if (!JigsawStructureGenerator.TryGetPlacement(
+                        settings,
+                        seed,
+                        regionX,
+                        regionZ,
+                        out JigsawStructureGenerator.Placement placement))
+                    {
+                        continue;
+                    }
+                    if (placement.Centre.x < minX - settings.MaxHorizontalDistance
+                        || placement.Centre.x > maxX + settings.MaxHorizontalDistance
+                        || placement.Centre.z < minZ - settings.MaxHorizontalDistance
+                        || placement.Centre.z > maxZ + settings.MaxHorizontalDistance)
+                    {
+                        continue;
+                    }
+                    expected.Add(placement.Centre);
+                }
+            }
+
+            Assert.That(collected, Is.Not.Empty);
+            Assert.That(
+                collected.Select(item => item.Centre),
+                Is.SupersetOf(expected));
+        }
+
+        [Test]
+        public void ConcentricRings_ProduceDeterministicSpreadAroundOrigin()
+        {
+            JigsawStructureFeatureSettings settings = BuildRingFixture(
+                structureCount: 48,
+                rings: 4);
+            const int seed = 7321;
+            const int extent = 200_000;
+            var first = new List<JigsawStructureGenerator.Placement>();
+            var second = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                -extent,
+                -extent,
+                extent,
+                extent,
+                first);
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                -extent,
+                -extent,
+                extent,
+                extent,
+                second);
+
+            Assert.That(first, Has.Count.EqualTo(48));
+            Assert.That(
+                second.Select(item => item.Centre),
+                Is.EqualTo(first.Select(item => item.Centre)));
+
+            // Candidates must occupy several distinct radius bands rather than
+            // clustering at one distance from the origin.
+            int ringStep = settings.RingDistanceInChunks
+                * VoxelColumnChunkData.Width;
+            var bands = new HashSet<int>();
+            foreach (JigsawStructureGenerator.Placement placement in first)
+            {
+                double radius = Mathf.Sqrt(
+                    placement.Centre.x * (float)placement.Centre.x
+                    + placement.Centre.z * (float)placement.Centre.z);
+                bands.Add((int)(radius / ringStep));
+            }
+            Assert.That(bands.Count, Is.GreaterThanOrEqualTo(3));
+        }
+
+        [Test]
+        public void ConcentricRings_OnlyReportCandidatesInsideTheQueryWindow()
+        {
+            JigsawStructureFeatureSettings settings = BuildRingFixture(
+                structureCount: 48,
+                rings: 4);
+            const int seed = 7321;
+            var all = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                -200_000,
+                -200_000,
+                200_000,
+                200_000,
+                all);
+            JigsawStructureGenerator.Placement target = all[0];
+
+            var window = new List<JigsawStructureGenerator.Placement>();
+            JigsawPlacementService.CollectPlacements(
+                settings,
+                seed,
+                target.Centre.x - 1,
+                target.Centre.z - 1,
+                target.Centre.x + 1,
+                target.Centre.z + 1,
+                window);
+
+            Assert.That(
+                window.Select(item => item.Centre),
+                Contains.Item(target.Centre));
+            Assert.That(window.Count, Is.LessThan(all.Count));
+        }
+
+        [Test]
+        public void StructureSet_PicksExactlyOneCompetitorPerCandidateCell()
+        {
+            JigsawStructureFeatureSettings bridges = BuildSetFixture(
+                "nether_bridges",
+                weight: 2,
+                salt: 4001);
+            JigsawStructureFeatureSettings bastion = BuildSetFixture(
+                "nether_bastion",
+                weight: 3,
+                salt: 4001);
+            var features = new[] { bridges, bastion };
+            const int seed = 8642;
+            int bridgeWins = 0;
+            int bastionWins = 0;
+
+            for (int regionZ = 0; regionZ < 24; regionZ++)
+            {
+                for (int regionX = 0; regionX < 24; regionX++)
+                {
+                    bool first = JigsawPlacementService.WinsStructureSet(
+                        features,
+                        0,
+                        seed,
+                        regionX,
+                        regionZ);
+                    bool second = JigsawPlacementService.WinsStructureSet(
+                        features,
+                        1,
+                        seed,
+                        regionX,
+                        regionZ);
+
+                    // Exactly one member of a structure set may claim a cell.
+                    Assert.That(first && second, Is.False);
+                    Assert.That(first || second, Is.True);
+                    if (first) bridgeWins++;
+                    if (second) bastionWins++;
+                }
+            }
+
+            Assert.That(bridgeWins, Is.GreaterThan(0));
+            Assert.That(bastionWins, Is.GreaterThan(0));
+            // Weight 3 should beat weight 2 over a large sample.
+            Assert.That(bastionWins, Is.GreaterThan(bridgeWins));
+        }
+
+        [Test]
+        public void FeaturesOutsideAnyStructureSet_NeverCompete()
+        {
+            JigsawStructureFeatureSettings mineshaft = LoadSettings(
+                ProjectAssetPaths.Config.AbandonedMineshaftJigsaw);
+            JigsawStructureFeatureSettings fortress = LoadSettings(
+                ProjectAssetPaths.Config.FortressJigsaw);
+            var features = new[] { mineshaft, fortress };
+
+            for (int region = 0; region < 16; region++)
+            {
+                Assert.That(
+                    JigsawPlacementService.WinsStructureSet(
+                        features,
+                        0,
+                        4242,
+                        region,
+                        region),
+                    Is.True);
+                Assert.That(
+                    JigsawPlacementService.WinsStructureSet(
+                        features,
+                        1,
+                        4242,
+                        region,
+                        region),
+                    Is.True);
+            }
+        }
+
+        private static JigsawStructureFeatureSettings BuildRingFixture(
+            int structureCount,
+            int rings)
+        {
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                ConfigureSinglePieceStructure(definition, "ring_fixture", 90210);
+                definition.ConfigurePlacementStrategy(
+                    JigsawPlacementStrategy.ConcentricRings,
+                    structureCount,
+                    rings,
+                    32,
+                    3);
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+                return settings;
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        private static JigsawStructureFeatureSettings BuildSetFixture(
+            string stableId,
+            int weight,
+            int salt)
+        {
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                ConfigureSinglePieceStructure(definition, stableId, salt);
+                definition.ConfigureStructureSet("nether_complexes", weight);
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+                return settings;
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        private static void ConfigureSinglePieceStructure(
+            JigsawStructureFeatureDefinition definition,
+            string stableId,
+            int salt)
+        {
+            var start = new JigsawPieceDefinition();
+            start.ConfigureBox(
+                stableId + "_start",
+                "Start",
+                JigsawPieceDefinition.Shape.Room,
+                JigsawPieceDefinition.BuildStyle.Masonry,
+                JigsawPieceDefinition.ConnectorPattern.FourWay,
+                JigsawPieceDefinition.Decoration.None,
+                true,
+                0,
+                0,
+                0,
+                7,
+                7,
+                7,
+                7,
+                5,
+                5);
+            definition.Configure(
+                true,
+                stableId,
+                AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                    ProjectAssetPaths.Config.StructureBrickVoxel),
+                AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                    ProjectAssetPaths.Config.FortressBrickVoxel),
+                salt,
+                4,
+                1f,
+                100,
+                120,
+                2,
+                1,
+                16,
+                string.Empty,
+                new[] { start });
+        }
+
         private static JigsawStructureFeatureSettings LoadSettings(string path)
         {
             JigsawStructureFeatureDefinition definition =

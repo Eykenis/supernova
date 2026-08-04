@@ -21,11 +21,29 @@ namespace Supernova.MinecraftCaves
         [SerializeField] private VoxelTypeDefinition accentVoxelType;
 
         [Header("Placement")]
+        [SerializeField]
+        private JigsawPlacementStrategy placementStrategy =
+            JigsawPlacementStrategy.RandomSpread;
         [SerializeField] private int seedSalt = 104729;
         [SerializeField, Min(4)] private int regionSizeInChunks = 10;
         [SerializeField, Range(0f, 1f)] private float placementChance = 0.4f;
         [SerializeField] private int minFloorHeight = 48;
         [SerializeField] private int maxFloorHeight = 160;
+
+        [Header("Concentric Rings (used by that strategy only)")]
+        [Tooltip("Total candidates distributed over all rings.")]
+        [SerializeField, Range(1, 512)] private int ringStructureCount = 128;
+        [SerializeField, Range(1, 16)] private int ringCount = 8;
+        [Tooltip("Radius step per ring, in voxel column chunks.")]
+        [SerializeField, Range(4, 256)] private int ringDistanceInChunks = 32;
+        [Tooltip("Random radial jitter applied inside a ring, in chunks.")]
+        [SerializeField, Range(0, 64)] private int ringSpreadInChunks = 3;
+
+        [Header("Structure Set (optional competition)")]
+        [Tooltip("Features sharing a set ID compete for the same candidate cell.")]
+        [SerializeField] private string structureSetId;
+        [Tooltip("Relative odds of winning a shared candidate cell.")]
+        [SerializeField, Min(1)] private int structureSetWeight = 1;
 
         [Header("Piece Graph")]
         [SerializeField, Range(2, 128)] private int maxPieces = 40;
@@ -50,6 +68,28 @@ namespace Supernova.MinecraftCaves
         public bool Enabled => enabled;
         public string StableId => stableId;
         public IReadOnlyList<JigsawPieceDefinition> Pieces => pieces;
+
+        public void ConfigurePlacementStrategy(
+            JigsawPlacementStrategy strategy,
+            int totalRingStructures = 128,
+            int rings = 8,
+            int ringStepInChunks = 32,
+            int ringJitterInChunks = 3)
+        {
+            placementStrategy = strategy;
+            ringStructureCount = totalRingStructures;
+            ringCount = rings;
+            ringDistanceInChunks = ringStepInChunks;
+            ringSpreadInChunks = ringJitterInChunks;
+            ClampConfiguration();
+        }
+
+        public void ConfigureStructureSet(string setId, int weight)
+        {
+            structureSetId = setId;
+            structureSetWeight = weight;
+            ClampConfiguration();
+        }
 
         public void ConfigureLayoutPolicy(
             int deterministicLayoutAttempts,
@@ -158,7 +198,14 @@ namespace Supernova.MinecraftCaves
                     layoutAttempts,
                     connectorPlacementAttempts,
                     collisionPadding,
-                    snapshots);
+                    snapshots,
+                    placementStrategy,
+                    ringStructureCount,
+                    ringCount,
+                    ringDistanceInChunks,
+                    ringSpreadInChunks,
+                    structureSetId,
+                    structureSetWeight);
                 error = string.Empty;
                 return true;
             }
@@ -190,6 +237,14 @@ namespace Supernova.MinecraftCaves
                 1,
                 16);
             collisionPadding = Mathf.Clamp(collisionPadding, 0, 4);
+            ringStructureCount = Mathf.Clamp(ringStructureCount, 1, 512);
+            ringCount = Mathf.Clamp(ringCount, 1, 16);
+            ringDistanceInChunks = Mathf.Clamp(ringDistanceInChunks, 4, 256);
+            ringSpreadInChunks = Mathf.Clamp(ringSpreadInChunks, 0, 64);
+            structureSetId = structureSetId == null
+                ? string.Empty
+                : structureSetId.Trim();
+            structureSetWeight = Mathf.Max(1, structureSetWeight);
             int regionRadiusLimit = regionSizeInChunks
                 * VoxelColumnChunkData.Width / 2 - 1;
             maxHorizontalDistance = Mathf.Clamp(
