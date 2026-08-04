@@ -577,5 +577,24 @@ Minecraft 规模不大时线性扫描 AABB 已可用，但本项目无限流送�
 - 默认矿洞和 fortress 已迁移到显式 socket，fortress 包含唯一 portal room、library、prison、stairs、crossing 和封口模块；
 - Inspector 会检查无出口起点、空目标池、不兼容 socket 和不可达必需模块。
 
-阶段 B～D 仍是后续独立工作：Voxel Template + Processor、完整 Template Jigsaw、Terrain Matching、Placement Strategy 和 Recursive Grammar。当前代码与文档不会把这些尚未实现的能力描述为已完成。
+阶段 B“Voxel Template + Processor”已经落地：
+
+- `VoxelStructureAsset` 可作为可旋转 piece template 接入 jigsaw，写入时保留模板自带的体素类型；
+- 模板可自带 socket marker（`VoxelStructureSocket`），未配置 connector 的 piece 直接继承，marker 参与内容哈希；
+- 编辑器可在锚点添加/清除 marker，并在场景中绘制朝向；
+- processor 管线支持 `SupportToGround`、`FoundationFill`、`ClearAbove`、`Weathering`，作为落地 pass 运行且不参与布局碰撞；
+- processor 的逐体素掷点键取世界坐标，保证与流送顺序无关。
+
+Placement 层也已抽出：`RandomSpread`、`ConcentricRings` 与 weighted structure set 竞争，
+并与布局共享同一套确定性候选计算。
+
+仍未实现，且代码与文档都不把它们描述为已完成：
+
+- 完整 Template Jigsaw（模板池、empty element、pool 内模板加权）；
+- Terrain matching 与地表高度图投影；
+- biome 过滤；
+- loot / spawner / rail / door / light / entity marker pipeline；
+- 阶段 D 的 Recursive Grammar：一条规则产生 piece batch、整组碰撞、失败整组回滚、structure 级唯一标记。
+
+实现细节见 `../Jigsaw结构生成.md`，配置方法见 `../Jigsaw结构配置手册.md`。
 
