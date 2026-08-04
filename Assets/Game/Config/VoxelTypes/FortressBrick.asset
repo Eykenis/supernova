@@ -14,5 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 6
   displayName: Fortress Brick
+  group: 0
   durability: 3
   material: {fileID: 2100000, guid: 8d9648a193e2c504989e42b42db216b0, type: 2}

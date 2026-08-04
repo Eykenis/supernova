@@ -310,20 +310,25 @@ namespace Supernova.Voxels
             { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 },
         };
 
-        // Each type is polygonised as its own binary field. At a solid/solid type
-        // boundary, the two surfaces are moved slightly toward their owning samples,
-        // leaving a small seam instead of two coincident, z-fighting surfaces.
+        // Each surface is polygonised as its own binary field. At a solid/solid
+        // boundary between two surfaces, the two are moved slightly toward their
+        // owning samples, leaving a small seam instead of two coincident,
+        // z-fighting surfaces. Voxel types sharing a group form ONE surface, so
+        // no seam is produced between them.
         private const float TypeBoundaryInset = 0.05f;
         [ThreadStatic] private static VoxelSample[] sampleCache;
-        [ThreadStatic] private static List<VoxelTypeId> activeTypes;
-        [ThreadStatic] private static HashSet<VoxelTypeId> activeTypeSet;
+        [ThreadStatic] private static List<int> activeSurfaceKeys;
+        [ThreadStatic] private static HashSet<int> activeSurfaceKeySet;
+        [ThreadStatic] private static List<VoxelTypeId> cellMemberTypes;
+        [ThreadStatic] private static List<int> cellMemberCounts;
 
         public static VoxelMeshData Build(
             VoxelVolume volume,
             float isoLevel = 0f,
             float voxelSize = 1f,
             MarchingCubesVertexPlacement vertexPlacement =
-                MarchingCubesVertexPlacement.EdgeMidpoint)
+                MarchingCubesVertexPlacement.EdgeMidpoint,
+            VoxelGroupMap groupMap = default)
         {
             if (volume == null)
             {
@@ -337,7 +342,10 @@ namespace Supernova.Voxels
                 VoxelVolume.Size - 1,
                 isoLevel,
                 voxelSize,
-                vertexPlacement);
+                vertexPlacement,
+                null,
+                default,
+                groupMap);
         }
 
         public static VoxelMeshData BuildChunk(
@@ -387,7 +395,8 @@ namespace Supernova.Voxels
             MarchingCubesVertexPlacement vertexPlacement =
                 MarchingCubesVertexPlacement.EdgeMidpoint,
             VoxelTypeId? outsideType = null,
-            VoxelTypeId? verticalOutsideType = null)
+            VoxelTypeId? verticalOutsideType = null,
+            VoxelGroupMap groupMap = default)
         {
             return BuildColumnRange(
                 world,
@@ -398,7 +407,8 @@ namespace Supernova.Voxels
                 voxelSize,
                 vertexPlacement,
                 outsideType,
-                verticalOutsideType);
+                verticalOutsideType,
+                groupMap);
         }
 
         public static VoxelMeshData BuildColumnSection(
@@ -411,7 +421,8 @@ namespace Supernova.Voxels
             MarchingCubesVertexPlacement vertexPlacement =
                 MarchingCubesVertexPlacement.EdgeMidpoint,
             VoxelTypeId? outsideType = null,
-            VoxelTypeId? verticalOutsideType = null)
+            VoxelTypeId? verticalOutsideType = null,
+            VoxelGroupMap groupMap = default)
         {
             if (startY < 0
                 || height <= 0
@@ -432,7 +443,8 @@ namespace Supernova.Voxels
                 voxelSize,
                 vertexPlacement,
                 outsideType,
-                verticalOutsideType);
+                verticalOutsideType,
+                groupMap);
         }
 
         private static VoxelMeshData BuildColumnRange(
@@ -444,7 +456,8 @@ namespace Supernova.Voxels
             float voxelSize,
             MarchingCubesVertexPlacement vertexPlacement,
             VoxelTypeId? outsideType,
-            VoxelTypeId? verticalOutsideType)
+            VoxelTypeId? verticalOutsideType,
+            VoxelGroupMap groupMap = default)
         {
             if (world == null)
             {
@@ -477,7 +490,10 @@ namespace Supernova.Voxels
                 VoxelColumnChunkData.Depth,
                 isoLevel,
                 voxelSize,
-                vertexPlacement);
+                vertexPlacement,
+                null,
+                default,
+                groupMap);
         }
 
         internal static int GetCapturedColumnSectionSampleCount(int height)
@@ -622,7 +638,8 @@ namespace Supernova.Voxels
             int height,
             float isoLevel,
             float voxelSize,
-            MarchingCubesVertexPlacement vertexPlacement)
+            MarchingCubesVertexPlacement vertexPlacement,
+            VoxelGroupMap groupMap = default)
         {
             if (samples == null)
             {
@@ -650,7 +667,10 @@ namespace Supernova.Voxels
                 VoxelColumnChunkData.Depth,
                 isoLevel,
                 voxelSize,
-                vertexPlacement);
+                vertexPlacement,
+                null,
+                default,
+                groupMap);
         }
 
         private static void ValidateColumnSection(int startY, int height)
@@ -758,7 +778,8 @@ namespace Supernova.Voxels
             float voxelSize,
             MarchingCubesVertexPlacement vertexPlacement,
             VoxelTypeId? requestedType = null,
-            Vector3 vertexOffset = default)
+            Vector3 vertexOffset = default,
+            VoxelGroupMap groupMap = default)
         {
             if (voxelSize <= 0f)
             {
@@ -797,7 +818,8 @@ namespace Supernova.Voxels
                 voxelSize,
                 vertexPlacement,
                 requestedType,
-                vertexOffset);
+                vertexOffset,
+                groupMap);
         }
 
         private static VoxelMeshData BuildSampledGrid(
@@ -809,7 +831,8 @@ namespace Supernova.Voxels
             float voxelSize,
             MarchingCubesVertexPlacement vertexPlacement,
             VoxelTypeId? requestedType = null,
-            Vector3 vertexOffset = default)
+            Vector3 vertexOffset = default,
+            VoxelGroupMap groupMap = default)
         {
             var meshData = new VoxelMeshData();
             var edgePositions = new Vector3[12];
@@ -820,32 +843,29 @@ namespace Supernova.Voxels
             int sampleCountY = cellCountY + 1;
             int sampleCountZ = cellCountZ + 1;
 
-            if (activeTypes == null)
+            if (activeSurfaceKeys == null)
             {
-                activeTypes = new List<VoxelTypeId>();
+                activeSurfaceKeys = new List<int>();
             }
-            if (activeTypeSet == null)
+            if (activeSurfaceKeySet == null)
             {
-                activeTypeSet = new HashSet<VoxelTypeId>();
+                activeSurfaceKeySet = new HashSet<int>();
             }
-            activeTypes.Clear();
-            activeTypeSet.Clear();
-            if (!requestedType.HasValue)
+            if (cellMemberTypes == null)
             {
-                int sampleCount = sampleCountX * sampleCountY * sampleCountZ;
-                for (int i = 0; i < sampleCount; i++)
-                {
-                    VoxelSample voxel = samples[i];
-                    if (voxel.IsSolid(isoLevel)
-                        && activeTypeSet.Add(voxel.Type))
-                    {
-                        activeTypes.Add(voxel.Type);
-                    }
-                }
+                cellMemberTypes = new List<VoxelTypeId>();
             }
+            if (cellMemberCounts == null)
+            {
+                cellMemberCounts = new List<int>();
+            }
+            activeSurfaceKeys.Clear();
+            activeSurfaceKeySet.Clear();
 
             if (requestedType.HasValue)
             {
+                // A single requested type is its own surface regardless of groups:
+                // callers use this to extract one component in isolation.
                 for (int z = 0; z < cellCountZ; z++)
                 {
                     for (int y = 0; y < cellCountY; y++)
@@ -859,7 +879,9 @@ namespace Supernova.Voxels
                                 x,
                                 y,
                                 z,
+                                groupMap.GetGroupKey(requestedType.Value),
                                 requestedType.Value,
+                                groupMap,
                                 isoLevel,
                                 voxelSize,
                                 vertexPlacement,
@@ -871,35 +893,53 @@ namespace Supernova.Voxels
                         }
                     }
                 }
+                meshData.PrepareForUpload();
+                return meshData;
             }
-            else
+
+            int sampleCount = sampleCountX * sampleCountY * sampleCountZ;
+            for (int i = 0; i < sampleCount; i++)
             {
-                activeTypes.Sort();
-                foreach (VoxelTypeId type in activeTypes)
+                VoxelSample voxel = samples[i];
+                if (!voxel.IsSolid(isoLevel))
                 {
-                    for (int z = 0; z < cellCountZ; z++)
+                    continue;
+                }
+                int key = groupMap.GetGroupKey(voxel.Type);
+                if (activeSurfaceKeySet.Add(key))
+                {
+                    activeSurfaceKeys.Add(key);
+                }
+            }
+
+            activeSurfaceKeys.Sort();
+            for (int keyIndex = 0; keyIndex < activeSurfaceKeys.Count; keyIndex++)
+            {
+                int surfaceKey = activeSurfaceKeys[keyIndex];
+                for (int z = 0; z < cellCountZ; z++)
+                {
+                    for (int y = 0; y < cellCountY; y++)
                     {
-                        for (int y = 0; y < cellCountY; y++)
+                        for (int x = 0; x < cellCountX; x++)
                         {
-                            for (int x = 0; x < cellCountX; x++)
-                            {
-                                PolygoniseCell(
-                                    samples,
-                                    sampleCountX,
-                                    sampleCountY,
-                                    x,
-                                    y,
-                                    z,
-                                    type,
-                                    isoLevel,
-                                    voxelSize,
-                                    vertexPlacement,
-                                    vertexOffset,
-                                    edgePositions,
-                                    edgeSmoothingGroups,
-                                    projectedEdgeVertexIndices,
-                                    meshData);
-                            }
+                            PolygoniseCell(
+                                samples,
+                                sampleCountX,
+                                sampleCountY,
+                                x,
+                                y,
+                                z,
+                                surfaceKey,
+                                null,
+                                groupMap,
+                                isoLevel,
+                                voxelSize,
+                                vertexPlacement,
+                                vertexOffset,
+                                edgePositions,
+                                edgeSmoothingGroups,
+                                projectedEdgeVertexIndices,
+                                meshData);
                         }
                     }
                 }
@@ -918,7 +958,9 @@ namespace Supernova.Voxels
             int cellX,
             int cellY,
             int cellZ,
-            VoxelTypeId targetType,
+            int surfaceKey,
+            VoxelTypeId? forcedType,
+            VoxelGroupMap groupMap,
             float isoLevel,
             float voxelSize,
             MarchingCubesVertexPlacement vertexPlacement,
@@ -929,6 +971,8 @@ namespace Supernova.Voxels
             VoxelMeshData output)
         {
             int cubeIndex = 0;
+            cellMemberTypes.Clear();
+            cellMemberCounts.Clear();
             for (int corner = 0; corner < 8; corner++)
             {
                 VoxelSample voxel = GetCornerSample(
@@ -939,16 +983,27 @@ namespace Supernova.Voxels
                     cellY,
                     cellZ,
                     corner);
-                if (voxel.IsSolid(isoLevel) && voxel.Type == targetType)
+                bool belongs = voxel.IsSolid(isoLevel)
+                    && (forcedType.HasValue
+                        ? voxel.Type == forcedType.Value
+                        : groupMap.GetGroupKey(voxel.Type) == surfaceKey);
+                if (!belongs)
                 {
-                    cubeIndex |= 1 << corner;
+                    continue;
                 }
+                cubeIndex |= 1 << corner;
+                TallyMemberType(voxel.Type);
             }
 
             if (cubeIndex == 0 || cubeIndex == 255)
             {
                 return;
             }
+
+            // Submeshes stay per voxel type so each palette keeps its material,
+            // even though the surface itself spans the whole group. The type that
+            // owns most of the cell's member corners wins its triangles.
+            VoxelTypeId triangleType = forcedType ?? GetDominantMemberType();
 
             for (int edge = 0; edge < edgeSmoothingGroups.Length; edge++)
             {
@@ -979,7 +1034,9 @@ namespace Supernova.Voxels
                     cellY,
                     cellZ,
                     firstEdge,
-                    targetType,
+                    surfaceKey,
+                    forcedType,
+                    groupMap,
                     isoLevel,
                     voxelSize,
                     vertexPlacement,
@@ -995,7 +1052,9 @@ namespace Supernova.Voxels
                     cellY,
                     cellZ,
                     secondEdge,
-                    targetType,
+                    surfaceKey,
+                    forcedType,
+                    groupMap,
                     isoLevel,
                     voxelSize,
                     vertexPlacement,
@@ -1011,7 +1070,9 @@ namespace Supernova.Voxels
                     cellY,
                     cellZ,
                     thirdEdge,
-                    targetType,
+                    surfaceKey,
+                    forcedType,
+                    groupMap,
                     isoLevel,
                     voxelSize,
                     vertexPlacement,
@@ -1021,7 +1082,7 @@ namespace Supernova.Voxels
                     output);
 
                 output.AddFaceProjectedTriangle(
-                    targetType,
+                    triangleType,
                     firstEdge,
                     secondEdge,
                     thirdEdge,
@@ -1039,7 +1100,9 @@ namespace Supernova.Voxels
             int cellY,
             int cellZ,
             int edge,
-            VoxelTypeId targetType,
+            int surfaceKey,
+            VoxelTypeId? forcedType,
+            VoxelGroupMap groupMap,
             float isoLevel,
             float voxelSize,
             MarchingCubesVertexPlacement vertexPlacement,
@@ -1061,7 +1124,9 @@ namespace Supernova.Voxels
                 cellY,
                 cellZ,
                 edge,
-                targetType,
+                surfaceKey,
+                forcedType,
+                groupMap,
                 isoLevel,
                 vertexPlacement) * voxelSize;
             edgeSmoothingGroups[edge] = output.CreateSmoothingGroup();
@@ -1075,7 +1140,9 @@ namespace Supernova.Voxels
             int cellY,
             int cellZ,
             int edge,
-            VoxelTypeId targetType,
+            int surfaceKey,
+            VoxelTypeId? forcedType,
+            VoxelGroupMap groupMap,
             float isoLevel,
             MarchingCubesVertexPlacement vertexPlacement)
         {
@@ -1086,15 +1153,30 @@ namespace Supernova.Voxels
             VoxelSample sampleB = GetCornerSample(
                 samples, sampleCountX, sampleCountY, cellX, cellY, cellZ, cornerB);
 
-            bool aIsTarget = sampleA.IsSolid(isoLevel) && sampleA.Type == targetType;
-            bool bIsTarget = sampleB.IsSolid(isoLevel) && sampleB.Type == targetType;
-            bool isDifferentSolidTypeBoundary =
-                sampleA.IsSolid(isoLevel)
-                && sampleB.IsSolid(isoLevel)
-                && sampleA.Type != sampleB.Type;
+            bool solidA = sampleA.IsSolid(isoLevel);
+            bool solidB = sampleB.IsSolid(isoLevel);
+            bool aIsTarget = solidA
+                && BelongsToSurface(
+                    sampleA.Type,
+                    surfaceKey,
+                    forcedType,
+                    groupMap);
+            bool bIsTarget = solidB
+                && BelongsToSurface(
+                    sampleB.Type,
+                    surfaceKey,
+                    forcedType,
+                    groupMap);
+            // Only inset where two DIFFERENT surfaces meet. Types sharing a group
+            // resolve to the same key, so their shared edges interpolate normally
+            // and the group reads as one continuous solid.
+            bool isDifferentSurfaceBoundary = solidA
+                && solidB
+                && SurfaceKeyOf(sampleA.Type, forcedType, groupMap)
+                    != SurfaceKeyOf(sampleB.Type, forcedType, groupMap);
 
             float t = 0.5f;
-            if (isDifferentSolidTypeBoundary && aIsTarget != bIsTarget)
+            if (isDifferentSurfaceBoundary && aIsTarget != bIsTarget)
             {
                 t = aIsTarget
                     ? 0.5f - TypeBoundaryInset
@@ -1113,6 +1195,70 @@ namespace Supernova.Voxels
                 (Vector3)CornerOffsets[cornerA],
                 (Vector3)CornerOffsets[cornerB],
                 t);
+        }
+
+        private static bool BelongsToSurface(
+            VoxelTypeId type,
+            int surfaceKey,
+            VoxelTypeId? forcedType,
+            VoxelGroupMap groupMap)
+        {
+            return forcedType.HasValue
+                ? type == forcedType.Value
+                : groupMap.GetGroupKey(type) == surfaceKey;
+        }
+
+        /// <summary>
+        /// Surface identity of one sample. When a single type was requested the
+        /// world is only ever "that type" versus "everything else", so all other
+        /// types collapse to one foreign key.
+        /// </summary>
+        private static int SurfaceKeyOf(
+            VoxelTypeId type,
+            VoxelTypeId? forcedType,
+            VoxelGroupMap groupMap)
+        {
+            if (!forcedType.HasValue)
+            {
+                return groupMap.GetGroupKey(type);
+            }
+            return type == forcedType.Value ? 0 : 1;
+        }
+
+        private static void TallyMemberType(VoxelTypeId type)
+        {
+            for (int i = 0; i < cellMemberTypes.Count; i++)
+            {
+                if (cellMemberTypes[i] == type)
+                {
+                    cellMemberCounts[i]++;
+                    return;
+                }
+            }
+            cellMemberTypes.Add(type);
+            cellMemberCounts.Add(1);
+        }
+
+        /// <summary>
+        /// Type owning the most member corners of the current cell. Ties resolve to
+        /// the lowest type id so the choice is stable regardless of corner order.
+        /// </summary>
+        private static VoxelTypeId GetDominantMemberType()
+        {
+            VoxelTypeId best = cellMemberTypes[0];
+            int bestCount = cellMemberCounts[0];
+            for (int i = 1; i < cellMemberTypes.Count; i++)
+            {
+                int count = cellMemberCounts[i];
+                if (count > bestCount
+                    || (count == bestCount
+                        && cellMemberTypes[i].Value < best.Value))
+                {
+                    best = cellMemberTypes[i];
+                    bestCount = count;
+                }
+            }
+            return best;
         }
 
         private static VoxelSample GetCornerSample(

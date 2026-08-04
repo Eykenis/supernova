@@ -14,5 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 5
   displayName: Structure Brick
+  group: 0
   durability: 3
   material: {fileID: 2100000, guid: 2eee6220a97ded74489f8e9560ddb183, type: 2}

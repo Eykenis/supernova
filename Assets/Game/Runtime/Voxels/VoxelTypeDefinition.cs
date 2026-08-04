@@ -13,6 +13,8 @@ namespace Supernova.Voxels
     {
         [SerializeField, Min(1)] private ushort type = 1;
         [SerializeField] private string displayName = "Voxel";
+        [Tooltip("Types in the same group mesh into one continuous surface.")]
+        [SerializeField] private VoxelGroup group = VoxelGroup.Stone;
         [SerializeField, Min(1)] private int durability = 1;
         [SerializeField] private Material material;
 
@@ -20,6 +22,7 @@ namespace Supernova.Voxels
         public string DisplayName => string.IsNullOrWhiteSpace(displayName)
             ? name
             : displayName.Trim();
+        public VoxelGroup Group => group;
         public int Durability => Mathf.Max(1, durability);
         public Material Material => material;
 
@@ -33,6 +36,11 @@ namespace Supernova.Voxels
             this.displayName = displayName ?? string.Empty;
             this.durability = Mathf.Max(1, durability);
             this.material = material;
+        }
+
+        public void ConfigureGroup(VoxelGroup value)
+        {
+            group = value;
         }
 
         private void OnValidate()

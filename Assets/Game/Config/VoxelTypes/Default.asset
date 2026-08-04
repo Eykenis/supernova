@@ -14,5 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   type: 1
   displayName: Default
+  group: 0
   durability: 1
   material: {fileID: 0}
