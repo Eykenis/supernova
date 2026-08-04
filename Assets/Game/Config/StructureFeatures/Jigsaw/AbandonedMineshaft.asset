@@ -1,0 +1,453 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d96d5bdff9971149828a61965256e6a, type: 3}
+  m_Name: AbandonedMineshaft
+  m_EditorClassIdentifier: 
+  enabled: 1
+  stableId: abandoned_mineshaft
+  primaryVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
+  seedSalt: 104729
+  regionSizeInChunks: 4
+  placementChance: 1
+  minFloorHeight: 48
+  maxFloorHeight: 168
+  maxPieces: 40
+  maxDepth: 7
+  maxHorizontalDistance: 63
+  firstPieceId: mineshaft_corridor
+  layoutAttempts: 6
+  connectorPlacementAttempts: 8
+  collisionPadding: 1
+  pieces:
+  - stableId: mineshaft_room
+    displayName: Start Room
+    poolId: main
+    outputPoolId: main
+    startPiece: 1
+    weight: 0
+    minimumGraphDepth: 0
+    maximumGraphDepth: 0
+    minimumCount: 0
+    maximumCount: 1
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 0
+    buildStyle: 0
+    connectorPattern: 4
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 13
+    maximumWidth: 19
+    minimumDepth: 13
+    maximumDepth: 19
+    minimumHeight: 6
+    maximumHeight: 8
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: north_tunnel
+      role: 1
+      face: 0
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: east_tunnel
+      role: 1
+      face: 1
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: south_tunnel
+      role: 1
+      face: 2
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: west_tunnel
+      role: 1
+      face: 3
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+  - stableId: mineshaft_corridor
+    displayName: Corridor
+    poolId: main
+    outputPoolId: main
+    startPiece: 0
+    weight: 70
+    minimumGraphDepth: 1
+    maximumGraphDepth: 7
+    minimumCount: 6
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 3
+    shape: 1
+    buildStyle: 0
+    connectorPattern: 2
+    decoration: 1
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 10
+    maximumLength: 24
+    width: 5
+    height: 5
+    verticalDelta: 4
+    sideBranchChance: 0.32
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: mine_entry
+      targetName: mine_branch
+      targetPoolId: main
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: left_branch
+      role: 1
+      face: 3
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.32
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: right_branch
+      role: 1
+      face: 1
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.32
+      openingWidth: 3
+      openingHeight: 3
+  - stableId: mineshaft_crossing
+    displayName: Crossing
+    poolId: main
+    outputPoolId: main
+    startPiece: 0
+    weight: 20
+    minimumGraphDepth: 2
+    maximumGraphDepth: 7
+    minimumCount: 2
+    maximumCount: 8
+    allowConsecutive: 0
+    requiredByDepth: 5
+    shape: 2
+    buildStyle: 0
+    connectorPattern: 3
+    decoration: 1
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.3
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: mine_entry
+      targetName: mine_branch
+      targetPoolId: main
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: left
+      role: 1
+      face: 3
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: right
+      role: 1
+      face: 1
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+  - stableId: mineshaft_stairs
+    displayName: Stairs
+    poolId: main
+    outputPoolId: main
+    startPiece: 0
+    weight: 10
+    minimumGraphDepth: 2
+    maximumGraphDepth: 7
+    minimumCount: 1
+    maximumCount: 6
+    allowConsecutive: 0
+    requiredByDepth: 6
+    shape: 3
+    buildStyle: 0
+    connectorPattern: 1
+    decoration: 1
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 12
+    maximumLength: 12
+    width: 5
+    height: 5
+    verticalDelta: 4
+    sideBranchChance: 0
+    descendingChance: 0.65
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: mine_entry
+      targetName: mine_branch
+      targetPoolId: main
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+    - stableId: forward
+      role: 1
+      face: 0
+      joint: 0
+      socketName: mine_branch
+      targetName: mine_entry
+      targetPoolId: main
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+  - stableId: mineshaft_storage
+    displayName: Timber Storage
+    poolId: main
+    outputPoolId: main
+    startPiece: 0
+    weight: 12
+    minimumGraphDepth: 3
+    maximumGraphDepth: 7
+    minimumCount: 0
+    maximumCount: 4
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 0
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 1
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 9
+    maximumWidth: 13
+    minimumDepth: 11
+    maximumDepth: 15
+    minimumHeight: 6
+    maximumHeight: 8
+    minimumLength: 8
+    maximumLength: 12
+    width: 5
+    height: 5
+    verticalDelta: 1
+    sideBranchChance: 0
+    descendingChance: 0.5
+    decorationSpacing: 4
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: mine_entry
+      targetName: mine_branch
+      targetPoolId: main
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3
+  - stableId: mineshaft_dead_end
+    displayName: Collapsed End
+    poolId: terminators
+    outputPoolId: terminators
+    startPiece: 0
+    weight: 1
+    minimumGraphDepth: 1
+    maximumGraphDepth: 16
+    minimumCount: 0
+    maximumCount: 0
+    allowConsecutive: 1
+    requiredByDepth: 0
+    shape: 1
+    buildStyle: 0
+    connectorPattern: 0
+    decoration: 1
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 5
+    maximumWidth: 5
+    minimumDepth: 5
+    maximumDepth: 5
+    minimumHeight: 5
+    maximumHeight: 5
+    minimumLength: 3
+    maximumLength: 7
+    width: 5
+    height: 5
+    verticalDelta: 1
+    sideBranchChance: 0
+    descendingChance: 0.5
+    decorationSpacing: 3
+    connectors:
+    - stableId: entrance
+      role: 0
+      face: 2
+      joint: 0
+      socketName: mine_entry
+      targetName: mine_branch
+      targetPoolId: terminators
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 3

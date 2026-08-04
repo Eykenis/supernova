@@ -33,6 +33,23 @@ namespace Supernova.Voxels
             return new VoxelSample(densities[index], new VoxelTypeId(types[index]));
         }
 
+        /// <summary>
+        /// Copies the dense field into thread-safe arrays for background world
+        /// generation. ScriptableObject storage is never exposed to worker tasks.
+        /// </summary>
+        public void CopyData(
+            out float[] densitySnapshot,
+            out VoxelTypeId[] typeSnapshot)
+        {
+            EnsureStorage();
+            densitySnapshot = (float[])densities.Clone();
+            typeSnapshot = new VoxelTypeId[types.Length];
+            for (int i = 0; i < types.Length; i++)
+            {
+                typeSnapshot[i] = new VoxelTypeId(types[i]);
+            }
+        }
+
         public void SetData(
             Vector3Int newSize,
             Vector3Int newAnchor,
