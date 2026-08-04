@@ -6,9 +6,9 @@ namespace Supernova.Missions
 
     public sealed class MissionRun
     {
-        public MissionRun(float timeLimitSeconds, int requiredValue)
+        public MissionRun(float evacuationCountdownSeconds, int requiredValue)
         {
-            TimeRemaining = Math.Max(0f, timeLimitSeconds);
+            TimeRemaining = Math.Max(0f, evacuationCountdownSeconds);
             RequiredValue = Math.Max(1, requiredValue);
         }
 
@@ -16,6 +16,7 @@ namespace Supernova.Missions
         public int RequiredValue { get; }
         public int DeliveredValue { get; private set; }
         public MissionOutcome Outcome { get; private set; }
+        public bool IsEvacuationCountdownActive { get; private set; }
         public bool IsFinished => Outcome != MissionOutcome.None;
         public int ExcessValue => Outcome == MissionOutcome.Success
             ? Math.Max(0, DeliveredValue - RequiredValue) : 0;
@@ -27,16 +28,21 @@ namespace Supernova.Missions
 
         public void Tick(float deltaTime)
         {
-            if (IsFinished) return;
+            if (IsFinished || !IsEvacuationCountdownActive) return;
             TimeRemaining = Math.Max(0f, TimeRemaining - Math.Max(0f, deltaTime));
-            if (TimeRemaining <= 0f) Outcome = MissionOutcome.LostInCaves;
+            if (TimeRemaining <= 0f) Outcome = MissionOutcome.Success;
         }
 
-        public void Evacuate()
+        public bool TryStartEvacuationCountdown(int deliveredValue)
         {
-            if (IsFinished) return;
-            Outcome = DeliveredValue >= RequiredValue
-                ? MissionOutcome.Success : MissionOutcome.Fired;
+            if (IsFinished || IsEvacuationCountdownActive) return false;
+
+            int availableValue = Math.Max(0, deliveredValue);
+            if (availableValue < RequiredValue) return false;
+
+            DeliveredValue = availableValue;
+            IsEvacuationCountdownActive = true;
+            return true;
         }
     }
 }

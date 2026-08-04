@@ -121,6 +121,55 @@ namespace Supernova.Gameplay
         public bool CursorLockRequested => cursorLockRequested;
         public float ThirdPersonTurnSmoothTime => Mathf.Max(0.01f, thirdPersonTurnSmoothTime);
 
+        /// <summary>
+        /// Restores visual state that is intentionally altered on the live first-person
+        /// character after that character has been cloned for an isolated UI preview.
+        /// </summary>
+        public void RestoreCharacterPreviewVisibility(
+            Animator sourceAnimator,
+            Animator previewAnimator)
+        {
+            if (sourceAnimator == null || previewAnimator == null)
+                return;
+
+            CacheAnimatedHeadScale();
+            Transform previewHead = previewAnimator.isHuman
+                ? previewAnimator.GetBoneTransform(HumanBodyBones.Head)
+                : null;
+            if (previewHead != null && hasAnimatedHeadRestScale)
+                previewHead.localScale = animatedHeadRestLocalScale;
+
+            if (firstPersonHiddenRenderers == null)
+                return;
+
+            for (int i = 0; i < firstPersonHiddenRenderers.Length; i++)
+            {
+                Renderer sourceRenderer = firstPersonHiddenRenderers[i];
+                if (sourceRenderer == null
+                    || !sourceRenderer.transform.IsChildOf(sourceAnimator.transform))
+                {
+                    continue;
+                }
+
+                string relativePath = GetRelativePath(
+                    sourceAnimator.transform,
+                    sourceRenderer.transform);
+                Transform previewTransform = string.IsNullOrEmpty(relativePath)
+                    ? previewAnimator.transform
+                    : previewAnimator.transform.Find(relativePath);
+                Renderer previewRenderer = previewTransform != null
+                    ? previewTransform.GetComponent<Renderer>()
+                    : null;
+                if (previewRenderer == null)
+                    continue;
+
+                previewRenderer.enabled = true;
+                previewRenderer.forceRenderingOff = false;
+                previewRenderer.shadowCastingMode = ShadowCastingMode.On;
+                previewRenderer.receiveShadows = true;
+            }
+        }
+
         private void Awake()
         {
             ResolveReferences();
@@ -141,7 +190,7 @@ namespace Supernova.Gameplay
 
         private void Update()
         {
-            if (GameHudController.IsPauseMenuOpen)
+            if (GameHudController.IsGameplayInputBlocked)
             {
                 if (Cursor.lockState == CursorLockMode.Locked) SetCursorLocked(false);
                 return;
@@ -666,6 +715,25 @@ namespace Supernova.Gameplay
             else DestroyImmediate(target);
         }
 
+        private static string GetRelativePath(Transform root, Transform target)
+        {
+            if (root == null || target == null || target == root)
+                return string.Empty;
+
+            var names = new List<string>();
+            Transform current = target;
+            while (current != null && current != root)
+            {
+                names.Add(current.name);
+                current = current.parent;
+            }
+            if (current != root)
+                return string.Empty;
+
+            names.Reverse();
+            return string.Join("/", names);
+        }
+
         private void UpdateUpperBodyPose()
         {
             bool shouldFollow = rotateUpperBodyWithCamera
@@ -798,7 +866,7 @@ namespace Supernova.Gameplay
                     cursorLockRequested = true;
                 SetCursorLocked(false);
             }
-            else if (cursorLockRequested && !GameHudController.IsPauseMenuOpen)
+            else if (cursorLockRequested && !GameHudController.IsModalMenuOpen)
             {
                 SetCursorLocked(true);
             }

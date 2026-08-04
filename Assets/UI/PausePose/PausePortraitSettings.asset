@@ -20,7 +20,7 @@ MonoBehaviour:
     clip: {fileID: 7400000, guid: 8bafdcd44e3f81a49b836567ce6b6017, type: 3}
     holdNormalizedTime: 0.995
     portraitYaw: -8
-    cameraAnimation:
+    portraitAnimation:
       horizontalOffset:
         serializedVersion: 2
         m_Curve:
@@ -69,7 +69,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      dollyOffset:
+      depthOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -165,7 +165,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      fieldOfViewOffset:
+      scalePercentOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -193,7 +193,7 @@ MonoBehaviour:
     clip: {fileID: 7400000, guid: a8581da90cfdc0441b851aafe5cc9c7b, type: 3}
     holdNormalizedTime: 0.72
     portraitYaw: -12
-    cameraAnimation:
+    portraitAnimation:
       horizontalOffset:
         serializedVersion: 2
         m_Curve:
@@ -242,7 +242,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      dollyOffset:
+      depthOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -338,7 +338,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      fieldOfViewOffset:
+      scalePercentOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -366,7 +366,7 @@ MonoBehaviour:
     clip: {fileID: 7400000, guid: 3a954c05a2f94004eaff3df94a45c3ed, type: 2}
     holdNormalizedTime: 0.3
     portraitYaw: -18
-    cameraAnimation:
+    portraitAnimation:
       horizontalOffset:
         serializedVersion: 2
         m_Curve:
@@ -415,7 +415,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      dollyOffset:
+      depthOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -511,7 +511,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      fieldOfViewOffset:
+      scalePercentOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -539,7 +539,7 @@ MonoBehaviour:
     clip: {fileID: 7400154, guid: dd4bc59541169e34ead96f0310ddc7bd, type: 3}
     holdNormalizedTime: 0.9
     portraitYaw: 10
-    cameraAnimation:
+    portraitAnimation:
       horizontalOffset:
         serializedVersion: 2
         m_Curve:
@@ -588,7 +588,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      dollyOffset:
+      depthOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -684,7 +684,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      fieldOfViewOffset:
+      scalePercentOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -712,7 +712,7 @@ MonoBehaviour:
     clip: {fileID: 7400000, guid: 41301dd668efeb04998f91f3a172e2a7, type: 3}
     holdNormalizedTime: 1
     portraitYaw: 10
-    cameraAnimation:
+    portraitAnimation:
       horizontalOffset:
         serializedVersion: 2
         m_Curve:
@@ -761,7 +761,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      dollyOffset:
+      depthOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -857,7 +857,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      fieldOfViewOffset:
+      scalePercentOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -885,7 +885,7 @@ MonoBehaviour:
     clip: {fileID: 7400000, guid: e4d000527a6ff874681871252b5a0440, type: 3}
     holdNormalizedTime: 0.78
     portraitYaw: 10
-    cameraAnimation:
+    portraitAnimation:
       horizontalOffset:
         serializedVersion: 2
         m_Curve:
@@ -934,7 +934,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      dollyOffset:
+      depthOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -1030,7 +1030,7 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-      fieldOfViewOffset:
+      scalePercentOffset:
         serializedVersion: 2
         m_Curve:
         - serializedVersion: 3
@@ -1054,5 +1054,5 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-  selectionMode: 0
-  fixedPoseIndex: 0
+  selectionMode: 2
+  fixedPoseIndex: 3

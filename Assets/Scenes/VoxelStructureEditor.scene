@@ -3855,6 +3855,7 @@ GameObject:
   - component: {fileID: 154497526}
   - component: {fileID: 154497525}
   - component: {fileID: 154497524}
+  - component: {fileID: 154497528}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: Main Camera
@@ -3900,7 +3901,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -3958,6 +3959,58 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &154497528
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 154497523}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_RenderShadows: 1
+  m_RequiresDepthTextureOption: 2
+  m_RequiresOpaqueTextureOption: 2
+  m_CameraType: 0
+  m_Cameras: []
+  m_RendererIndex: -1
+  m_VolumeLayerMask:
+    serializedVersion: 2
+    m_Bits: 1
+  m_VolumeTrigger: {fileID: 0}
+  m_VolumeFrameworkUpdateModeOption: 2
+  m_RenderPostProcessing: 0
+  m_Antialiasing: 0
+  m_FXAAQualityMode: 0
+  m_FXAAContrastThreshold: 0.125
+  m_FXAAMinContrastThreshold: 0.012
+  m_AntialiasingQuality: 2
+  m_StopNaN: 0
+  m_Dithering: 0
+  m_ClearDepth: 1
+  m_AllowXRRendering: 1
+  m_AllowHDROutput: 1
+  m_UseScreenCoordOverride: 0
+  m_ScreenSizeOverride: {x: 0, y: 0, z: 0, w: 0}
+  m_ScreenCoordScaleBias: {x: 0, y: 0, z: 0, w: 0}
+  allowDeepLearningSuperSampling: 0
+  deepLearningSuperSamplingUseCustomQualitySettings: 0
+  deepLearningSuperSamplingQuality: 0
+  deepLearningSuperSamplingUseCustomAttributes: 0
+  deepLearningSuperSamplingUseOptimalSettings: 1
+  m_RequiresDepthTexture: 0
+  m_RequiresColorTexture: 0
+  m_Version: 2
+  m_TaaSettings:
+    m_Quality: 3
+    m_FrameInfluence: 0.1
+    m_JitterScale: 1
+    m_MipBias: 0
+    m_VarianceClampScale: 0.9
+    m_ContrastAdaptiveSharpening: 0
 --- !u!1 &162620571
 GameObject:
   m_ObjectHideFlags: 0
@@ -12397,13 +12450,44 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   healthSourceOverride: {fileID: 0}
+  inventorySourceOverride: {fileID: 0}
   sourceSearchInterval: 0.5
+  designTokens: {fileID: 0}
   rootCanvas: {fileID: 910765493}
   crosshairCanvas: {fileID: 128081332}
   healthPanel: {fileID: 384156838}
   healthFill: {fileID: 2058972873}
   healthFillImage: {fileID: 2058972871}
   healthValueLabel: {fileID: 1505181984}
+  hotbarRoot: {fileID: 0}
+  headingCompass: {fileID: 0}
+  missionOverlayCanvas: {fileID: 0}
+  missionView: {fileID: 0}
+  missionTimerRoot: {fileID: 0}
+  missionTimerValueLabel: {fileID: 0}
+  pauseCanvas: {fileID: 0}
+  pausePanel: {fileID: 0}
+  resumeButton: {fileID: 0}
+  pauseSettingsButton: {fileID: 0}
+  quitToMenuButton: {fileID: 0}
+  quitToDesktopButton: {fileID: 0}
+  pauseMainOptions: {fileID: 0}
+  pauseSettingsPanel: {fileID: 0}
+  pauseSettingsBackButton: {fileID: 0}
+  pauseFullscreenToggle: {fileID: 0}
+  pauseVolumeSlider: {fileID: 0}
+  pauseVolumeValueLabel: {fileID: 0}
+  equipmentMenu: {fileID: 0}
+  loadingCanvas: {fileID: 0}
+  loadingFadeGroup: {fileID: 0}
+  loadingContentGroup: {fileID: 0}
+  loadingPanel: {fileID: 0}
+  loadingSpinner: {fileID: 0}
+  loadingFill: {fileID: 0}
+  loadingStatusLabel: {fileID: 0}
+  loadingProgressLabel: {fileID: 0}
+  loadingSpinnerDegreesPerSecond: 140
+  loadingFadeDuration: 0.35
 --- !u!4 &537714090
 Transform:
   m_ObjectHideFlags: 0
@@ -34650,6 +34734,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   structureToEdit: {fileID: 11400000, guid: 2dd6e02553075e844a374e1bb4c19dff, type: 2}
+  structureFeatureToEdit: {fileID: 0}
   voxelTypeCatalog: {fileID: 11400000, guid: 2edfe535d7218ed4795d6c3a36fedea1, type: 2}
   size: {x: 11, y: 6, z: 11}
   anchor: {x: 5, y: 1, z: 5}

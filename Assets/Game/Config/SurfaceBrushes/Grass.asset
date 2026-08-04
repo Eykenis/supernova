@@ -1,0 +1,50 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 167ee0fa5db9b0f469e73eafa7e9ead4, type: 3}
+  m_Name: Grass
+  m_EditorClassIdentifier: 
+  renderMode: 1
+  prefab: {fileID: 0}
+  instanceMesh: {fileID: 4300000, guid: 83d61886c53a66b45b8c20cf8c8ed616, type: 2}
+  instanceMaterial: {fileID: 2100000, guid: 17cabf60b887b754e9afc6969b012197, type: 2}
+  instanceShadowCastingMode: 0
+  instanceReceiveShadows: 1
+  maximumDrawDistance: 45
+  lodTiers:
+  - mesh: {fileID: 4300000, guid: 83d61886c53a66b45b8c20cf8c8ed616, type: 2}
+    maximumDistance: 12
+  - mesh: {fileID: 4300000, guid: c8599af908da6da47a6199cd73959cea, type: 2}
+    maximumDistance: 25
+  - mesh: {fileID: 4300000, guid: b044e26767a3266478bb48da70e30d03, type: 2}
+    maximumDistance: 0
+  fadeBandDistance: 12
+  attachableVoxelTypes:
+  - {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
+  orientation: 1
+  seedSalt: 1009
+  densityPerSquareUnit: 6
+  minimumVerticalAlignment: 0.6
+  maximumWallVerticalAlignment: 0.4
+  normalOffset: 0.015
+  uprightBias: 0.65
+  tangentScaleRange: {x: 0.75, y: 1.3}
+  normalScaleRange: {x: 0.7, y: 1.2}
+  clumpHorizontalCellSize: 2.5
+  clumpVerticalCellSize: 3
+  clumpHeightRange: {x: 0.72, y: 1.35}
+  clumpWidthRange: {x: 0.85, y: 1.2}
+  clumpYawBiasDegrees: 35
+  windStrength: 0.16
+  windFrequency: 0.35
+  windScrollSpeed: 0.45
+  windDirection: {x: 0.9438583, y: 0.3303504}
+  windBendExponent: 2

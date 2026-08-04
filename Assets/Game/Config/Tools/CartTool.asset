@@ -32,6 +32,17 @@ MonoBehaviour:
   initialAmmunition: 120
   muzzleFlashPrefab: {fileID: 0}
   muzzleFlashLifetime: 0.75
+  grabHookProjectileModelPrefab: {fileID: 0}
+  grabHookLaunchSpeed: 36
+  grabHookMaximumLength: 30
+  grabHookCollisionRadius: 0.12
+  grabHookRetractSpeed: 45
+  grabHookAimPredictionDuration: 3
+  grabHookAimPredictionStep: 0.05
+  grabHookArrivalDistance: 1.25
+  grabHookPullAcceleration: 32
+  grabHookMaximumPullSpeed: 18
+  grabHookRopeWidth: 0.035
   miningPower: 1
   miningEvenHitMultiplier: 4
   miningPropagationDivisor: 2

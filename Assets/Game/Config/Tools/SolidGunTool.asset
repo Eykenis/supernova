@@ -31,10 +31,21 @@ MonoBehaviour:
   throwForwardOffset: 0.75
   firearmProjectilePrefab: {fileID: 3635957674621357889, guid: 557437c633bedc748a407f90e06385bf,
     type: 3}
-  projectileSpeed: 20
+  projectileSpeed: 55
   initialAmmunition: 36
   muzzleFlashPrefab: {fileID: 124018, guid: d44add1712ec4899b64012a6a0a56d44, type: 3}
   muzzleFlashLifetime: 0.75
+  grabHookProjectileModelPrefab: {fileID: 0}
+  grabHookLaunchSpeed: 36
+  grabHookMaximumLength: 30
+  grabHookCollisionRadius: 0.12
+  grabHookRetractSpeed: 45
+  grabHookAimPredictionDuration: 3
+  grabHookAimPredictionStep: 0.05
+  grabHookArrivalDistance: 1.25
+  grabHookPullAcceleration: 32
+  grabHookMaximumPullSpeed: 18
+  grabHookRopeWidth: 0.035
   miningPower: 1
   miningEvenHitMultiplier: 4
   miningPropagationDivisor: 2

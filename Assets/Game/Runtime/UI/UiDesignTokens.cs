@@ -88,6 +88,13 @@ namespace Supernova.UI
         [SerializeField] private Color overlayInverse =
             new Color(0.018f, 0.02f, 0.025f, 1f);
 
+        [Header("Fullscreen Overlay Presentation")]
+        [SerializeField] private Color pauseBackdrop =
+            new Color(0.025f, 0.028f, 0.035f, 1f);
+        [SerializeField] private Color loadingBackdrop =
+            new Color(0.025f, 0.028f, 0.035f, 1f);
+        [SerializeField, Min(2f)] private float loadingProgressThickness = 6f;
+
         [Header("Mission Layout")]
         [SerializeField] private Vector2 missionObjectivePosition =
             new Vector2(30f, -30f);
@@ -171,6 +178,10 @@ namespace Supernova.UI
         public Color OverlaySecondary => overlaySecondary;
         public Color OverlayDivider => overlayDivider;
         public Color OverlayInverse => overlayInverse;
+        public Color PauseBackdrop => pauseBackdrop;
+        public Color LoadingBackdrop => loadingBackdrop;
+        public float LoadingProgressThickness =>
+            Mathf.Max(2f, loadingProgressThickness);
         public Vector2 MissionObjectivePosition => missionObjectivePosition;
         public Vector2 MissionObjectiveSize => missionObjectiveSize;
         public Vector2 MissionPromptPosition => missionPromptPosition;

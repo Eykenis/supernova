@@ -18,6 +18,8 @@ namespace Supernova.MinecraftCaves.Editor
             EnsureFolder(ProjectAssetPaths.Folders.SurfaceContentPrefabs);
             EnsureFolder(ProjectAssetPaths.Folders.SurfaceContentMaterials);
             EnsureFolder(ProjectAssetPaths.Folders.SurfaceContentModels);
+            EnsureFolder(ProjectAssetPaths.Folders.VegetationMaterials);
+            EnsureFolder(ProjectAssetPaths.Folders.VegetationModels);
 
             Material grassMaterial = EnsureMaterial(
                 ProjectAssetPaths.Materials.GrassSurfacePlaceholder,
@@ -31,6 +33,23 @@ namespace Supernova.MinecraftCaves.Editor
             RebuildGrassPrefab(grassMesh, grassMaterial);
             GameObject vinePrefab = RebuildVinePrefab(vineMaterial);
 
+            // Stylised blade meshes and their dedicated shader replace the flat
+            // placeholder quads for the instanced grass brush. The placeholder
+            // mesh and material above are still produced because the prefab-mode
+            // path continues to reference them.
+            Material bladeMaterial = EnsureShaderMaterial(
+                ProjectAssetPaths.Materials.CaveGrassBlade,
+                CaveVegetationShaderNames.CaveGrassBlade);
+            Mesh bladeLod0 = EnsureGeneratedBladeMesh(
+                ProjectAssetPaths.Models.CaveGrassBladeLod0,
+                CaveGrassBladeMeshSettings.Lod0);
+            Mesh bladeLod1 = EnsureGeneratedBladeMesh(
+                ProjectAssetPaths.Models.CaveGrassBladeLod1,
+                CaveGrassBladeMeshSettings.Lod1);
+            Mesh bladeLod2 = EnsureGeneratedBladeMesh(
+                ProjectAssetPaths.Models.CaveGrassBladeLod2,
+                CaveGrassBladeMeshSettings.Lod2);
+
             VoxelTypeDefinition stone = LoadRequired<VoxelTypeDefinition>(
                 ProjectAssetPaths.Config.StoneVoxel);
             CaveSurfaceBrushDefinition grassBrush = EnsureAsset<
@@ -38,12 +57,12 @@ namespace Supernova.MinecraftCaves.Editor
                 ProjectAssetPaths.Config.GrassSurfaceBrush,
                 "Grass");
             grassBrush.ConfigureInstanced(
-                grassMesh,
-                grassMaterial,
+                bladeLod0,
+                bladeMaterial,
                 new[] { stone },
                 CaveSurfaceOrientation.Upward,
                 1009,
-                1.5f,
+                6f,
                 0.6f,
                 0.4f,
                 0.015f,
@@ -52,6 +71,25 @@ namespace Supernova.MinecraftCaves.Editor
                 ShadowCastingMode.Off,
                 true,
                 45f);
+            grassBrush.ConfigureVegetation(
+                new[]
+                {
+                    new CaveSurfaceLodTier(bladeLod0, 12f),
+                    new CaveSurfaceLodTier(bladeLod1, 25f),
+                    new CaveSurfaceLodTier(bladeLod2, 0f),
+                },
+                12f,
+                0.65f,
+                2.5f,
+                3f,
+                new Vector2(0.72f, 1.35f),
+                new Vector2(0.85f, 1.2f),
+                35f,
+                0.16f,
+                0.35f,
+                0.45f,
+                new Vector2(1f, 0.35f),
+                2f);
             EditorUtility.SetDirty(grassBrush);
 
             CaveSurfaceBrushDefinition vineBrush = EnsureAsset<
@@ -78,6 +116,12 @@ namespace Supernova.MinecraftCaves.Editor
                 "grassy",
                 "Grassy",
                 new[] { grassBrush, vineBrush });
+            grassy.ConfigureVegetationTint(
+                new Color(0.055f, 0.184f, 0.078f),
+                new Color(0.34f, 0.61f, 0.208f),
+                new Color(0.53f, 0.79f, 0.35f),
+                0.3f,
+                1f);
             EditorUtility.SetDirty(grassy);
 
             CaveBiomeDefinition bald = EnsureAsset<CaveBiomeDefinition>(
@@ -117,8 +161,9 @@ namespace Supernova.MinecraftCaves.Editor
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log(
-                "Rebuilt grassy/bald cave biomes, grass/vine brushes, and "
-                + "placeholder prefab/instanced-mesh surface content.");
+                "Rebuilt grassy/bald cave biomes, the vine brush, and the "
+                + "stylised grass brush with three blade LOD tiers, its shader "
+                + "material and the biome vegetation tint.");
         }
 
         private static GameObject RebuildGrassPrefab(
@@ -206,6 +251,66 @@ namespace Supernova.MinecraftCaves.Editor
                     "Failed to save surface placeholder prefab at " + path);
             }
             return prefab;
+        }
+
+        /// <summary>
+        /// Creates or retargets a material onto a named shader. Unlike
+        /// <see cref="EnsureMaterial"/> this throws rather than falling back to URP
+        /// Lit: a silent fallback would still render green grass and would hide a
+        /// shader compile error behind almost-correct output.
+        /// </summary>
+        private static Material EnsureShaderMaterial(string path, string shaderName)
+        {
+            Shader shader = Shader.Find(shaderName);
+            if (shader == null)
+            {
+                throw new InvalidOperationException(
+                    "Required shader is missing or failed to compile: "
+                    + shaderName);
+            }
+
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(shader)
+                {
+                    name = System.IO.Path.GetFileNameWithoutExtension(path),
+                };
+                AssetDatabase.CreateAsset(material, path);
+            }
+            else
+            {
+                material.shader = shader;
+            }
+            material.enableInstancing = true;
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        /// <summary>
+        /// Writes a generated blade mesh, reusing the existing asset when present
+        /// so its GUID survives and brush references stay intact.
+        /// </summary>
+        private static Mesh EnsureGeneratedBladeMesh(
+            string path,
+            in CaveGrassBladeMeshSettings settings)
+        {
+            Mesh generated = CaveGrassBladeMeshBuilder.Build(
+                settings,
+                System.IO.Path.GetFileNameWithoutExtension(path));
+            Mesh mesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (mesh == null)
+            {
+                AssetDatabase.CreateAsset(generated, path);
+                return generated;
+            }
+
+            string meshName = generated.name;
+            EditorUtility.CopySerialized(generated, mesh);
+            mesh.name = meshName;
+            Object.DestroyImmediate(generated);
+            EditorUtility.SetDirty(mesh);
+            return mesh;
         }
 
         private static Material EnsureMaterial(string path, Color color)

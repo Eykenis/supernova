@@ -57,10 +57,19 @@ namespace Supernova.MinecraftCaves
         [SerializeField] private List<VoxelOreFeatureDefinition> oreFeatures =
             new List<VoxelOreFeatureDefinition>();
 
+        [Header("Surface Biomes")]
+        [SerializeField] private CaveBiomeCatalog caveBiomeCatalog;
+
         [Header("Structures")]
         [SerializeField]
         private SpawnPointStructureRule spawnPointStructureRule =
             new SpawnPointStructureRule();
+        [SerializeField]
+        private List<VoxelStructureFeatureDefinition> structureFeatures =
+            new List<VoxelStructureFeatureDefinition>();
+        [SerializeField]
+        private List<JigsawStructureFeatureDefinition> jigsawStructures =
+            new List<JigsawStructureFeatureDefinition>();
 
         public MinecraftWorldGenerationMode GenerationMode => generationMode;
         public int SuperflatStoneHeight => Mathf.Clamp(
@@ -98,8 +107,29 @@ namespace Supernova.MinecraftCaves
         public VoxelTypeDefinition BaseSolidVoxelType => baseSolidVoxelType;
         public VoxelTypeDefinition BedrockVoxelType => bedrockVoxelType;
         public IReadOnlyList<VoxelOreFeatureDefinition> OreFeatures => oreFeatures;
+        public CaveBiomeCatalog CaveBiomeCatalog => caveBiomeCatalog;
         public SpawnPointStructureRule SpawnPointStructureRule =>
             spawnPointStructureRule;
+        public IReadOnlyList<VoxelStructureFeatureDefinition> StructureFeatures =>
+            structureFeatures;
+        public IReadOnlyList<JigsawStructureFeatureDefinition> JigsawStructures =>
+            jigsawStructures;
+
+        public void SetStructureFeatures(
+            IEnumerable<VoxelStructureFeatureDefinition> features)
+        {
+            structureFeatures = features != null
+                ? new List<VoxelStructureFeatureDefinition>(features)
+                : new List<VoxelStructureFeatureDefinition>();
+        }
+
+        public void SetJigsawStructures(
+            IEnumerable<JigsawStructureFeatureDefinition> structures)
+        {
+            jigsawStructures = structures != null
+                ? new List<JigsawStructureFeatureDefinition>(structures)
+                : new List<JigsawStructureFeatureDefinition>();
+        }
 
         private void OnValidate()
         {
@@ -142,6 +172,14 @@ namespace Supernova.MinecraftCaves
             if (spawnPointStructureRule == null)
             {
                 spawnPointStructureRule = new SpawnPointStructureRule();
+            }
+            if (structureFeatures == null)
+            {
+                structureFeatures = new List<VoxelStructureFeatureDefinition>();
+            }
+            if (jigsawStructures == null)
+            {
+                jigsawStructures = new List<JigsawStructureFeatureDefinition>();
             }
         }
     }

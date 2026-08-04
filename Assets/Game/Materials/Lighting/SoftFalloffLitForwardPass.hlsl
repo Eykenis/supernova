@@ -1,26 +1,7 @@
 #ifndef SUPERNOVA_SOFT_FALLOFF_LIT_FORWARD_PASS_INCLUDED
 #define SUPERNOVA_SOFT_FALLOFF_LIT_FORWARD_PASS_INCLUDED
 
-// Global rather than per-material so the shader remains SRP Batcher compatible.
-// x: attenuation exponent, y: near attenuation cap, z: multiplier.
-float4 _SupernovaSoftFalloffParams;
-
-half SoftenedPunctualAttenuation(half attenuation)
-{
-    float falloffPower = _SupernovaSoftFalloffParams.x > 0.0
-        ? _SupernovaSoftFalloffParams.x
-        : 1.0;
-    float attenuationLimit = _SupernovaSoftFalloffParams.y > 0.0
-        ? _SupernovaSoftFalloffParams.y
-        : HALF_MAX;
-    float lightMultiplier = _SupernovaSoftFalloffParams.z > 0.0
-        ? _SupernovaSoftFalloffParams.z
-        : 1.0;
-
-    float safeAttenuation = max((float)attenuation, 0.0);
-    float softened = pow(safeAttenuation, falloffPower) * lightMultiplier;
-    return (half)min(softened, attenuationLimit);
-}
+#include "Assets/Game/Materials/Lighting/SoftFalloffAttenuation.hlsl"
 
 half4 SoftFalloffUniversalFragmentPBR(
     InputData inputData,

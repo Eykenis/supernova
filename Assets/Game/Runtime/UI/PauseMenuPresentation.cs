@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Supernova.Gameplay;
 using Supernova.Infrastructure;
 using TMPro;
 using UnityEngine;
@@ -17,7 +16,7 @@ namespace Supernova.UI
     {
         private const float IntroDuration = 0.9f;
 
-        private static readonly Color PortraitFieldColor = new Color32(4, 4, 6, 255);
+        private static readonly Color PortraitClearColor = new Color(0f, 0f, 0f, 0f);
         private static readonly Color InkColor = new Color32(8, 8, 10, 255);
 
         private RectTransform rootRect;
@@ -32,11 +31,6 @@ namespace Supernova.UI
         private Image backdrop;
         private TMP_Text title;
         private TMP_Text kicker;
-        private Button backSlotButton;
-        private TMP_Text backEquipmentName;
-        private TMP_Text backEquipmentState;
-        private TMP_Text backEquipmentHint;
-        private PlayerEquipmentController equipmentSource;
         private bool visualsBuilt;
         private bool introPlaying;
         private float introElapsed;
@@ -51,13 +45,13 @@ namespace Supernova.UI
         private RuntimeAnimatorController portraitController;
         private AnimatorOverrideController portraitOverrideController;
         private AnimationClip portraitPoseClip;
-        private PauseCameraAnimationCurves portraitCameraAnimation;
+        private PausePortraitAnimationCurves portraitAnimation;
         private float portraitHoldNormalizedTime = 0.995f;
         private float portraitYaw = -8f;
         private int poseSequence;
-        private Vector3 portraitCameraBasePosition;
-        private Quaternion portraitCameraBaseRotation;
-        private float portraitCameraBaseFieldOfView;
+        private Vector3 portraitBaseLocalPosition;
+        private Quaternion portraitBaseLocalRotation;
+        private Vector3 portraitBaseLocalScale = Vector3.one;
         private Material bodyMaterial;
         private Material backgroundMaterial;
         private readonly List<Material> faceDetailMaterials = new List<Material>();
@@ -68,8 +62,8 @@ namespace Supernova.UI
         private int portraitLayerMask;
 
         private Color OverlayBackdrop => designTokens != null
-            ? designTokens.OverlayBackdrop
-            : new Color(0.008f, 0.01f, 0.014f, 0.72f);
+            ? designTokens.PauseBackdrop
+            : new Color(0.025f, 0.028f, 0.035f, 1f);
         private Color OverlaySurface => designTokens != null
             ? designTokens.OverlaySurface
             : new Color(1f, 1f, 1f, 0.055f);
@@ -93,16 +87,6 @@ namespace Supernova.UI
             public Transform ProxyTransform;
             public MeshRenderer ProxyRenderer;
             public Mesh BakedMesh;
-        }
-
-        public void BindEquipment(PlayerEquipmentController source)
-        {
-            equipmentSource = source;
-            if (visualsBuilt)
-            {
-                BindEquipmentButton();
-                RefreshEquipmentView();
-            }
         }
 
         public void PlayIntro()
@@ -139,8 +123,6 @@ namespace Supernova.UI
         private void OnDestroy()
         {
             UnregisterPortraitRenderCallback();
-            if (backSlotButton != null)
-                backSlotButton.onClick.RemoveListener(ToggleBackEquipment);
             if (portraitCamera != null)
                 portraitCamera.targetTexture = null;
             if (portraitTexture != null)
@@ -203,35 +185,52 @@ namespace Supernova.UI
             if (backdrop != null)
                 backdrop.color = OverlayBackdrop;
 
-            inkSlash = CreateImage("Portrait Field", transform, OverlaySurface);
-            SetRect(inkSlash, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(390f, 0f), new Vector2(850f, 1080f));
+            inkSlash = CreateRect("Portrait Field", transform);
+            inkSlash.anchorMin = Vector2.zero;
+            inkSlash.anchorMax = Vector2.one;
+            inkSlash.offsetMin = Vector2.zero;
+            inkSlash.offsetMax = Vector2.zero;
+            float referenceWidth = designTokens != null
+                ? designTokens.ReferenceResolution.x
+                : 1920f;
+            float portraitBottomEdge = referenceWidth
+                - PauseMenuWedgeGraphic.SystemFieldWidth;
+            float portraitTopEdge = portraitBottomEdge
+                + PauseMenuWedgeGraphic.SystemFieldTopInset;
+            PausePortraitFieldGraphic portraitField = inkSlash.gameObject
+                .AddComponent<PausePortraitFieldGraphic>();
+            portraitField.Configure(
+                portraitBottomEdge,
+                portraitTopEdge,
+                OverlayBackdrop);
+            Mask portraitMask = inkSlash.gameObject.AddComponent<Mask>();
+            portraitMask.showMaskGraphic = true;
 
-            foregroundRedSlash = CreateImage("Portrait Divider", transform, OverlayPrimary);
+            foregroundRedSlash = CreateImage("Portrait Divider", transform, Color.clear);
             SetRect(foregroundRedSlash, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(872f, 0f), new Vector2(2f, 920f));
+                new Vector2(0.5f, 0.5f), new Vector2(1058f, 0f), new Vector2(2f, 1080f));
 
-            paperSlash = CreateImage("Portrait Divider Echo", transform, OverlayDivider);
+            paperSlash = CreateImage("Portrait Divider Echo", transform, Color.clear);
             SetRect(paperSlash, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(884f, 0f), new Vector2(1f, 620f));
+                new Vector2(0.5f, 0.5f), new Vector2(1074f, 0f), new Vector2(1f, 860f));
 
-            RectTransform portrait = CreateRect("Pause Portrait", transform);
+            RectTransform portrait = CreateRect("Pause Portrait", inkSlash);
             portraitRect = portrait;
             SetRect(portraitRect, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(420f, -8f), new Vector2(1040f, 1080f));
+                new Vector2(0.5f, 0.5f), new Vector2(470f, -8f), new Vector2(1180f, 1080f));
             portraitImage = portrait.gameObject.AddComponent<RawImage>();
             portraitImage.color = Color.white;
             portraitImage.raycastTarget = false;
             portraitGroup = portrait.gameObject.AddComponent<CanvasGroup>();
-            portraitGroup.alpha = 0.22f;
+            portraitGroup.alpha = 0.46f;
             portraitGroup.interactable = false;
             portraitGroup.blocksRaycasts = false;
 
             menuRect = transform.Find(UiHierarchyPaths.Pause.Menu) as RectTransform;
             if (menuRect != null)
             {
-                SetRect(menuRect, new Vector2(0.78f, 0.52f), new Vector2(0.78f, 0.52f),
-                    new Vector2(0.5f, 0.5f), new Vector2(70f, -10f), new Vector2(560f, 650f));
+                SetRect(menuRect, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f),
+                    new Vector2(1f, 0.5f), new Vector2(-40f, 0f), new Vector2(640f, 760f));
                 menuRect.localEulerAngles = Vector3.zero;
                 menuGroup = menuRect.GetComponent<CanvasGroup>();
                 if (menuGroup == null)
@@ -239,7 +238,7 @@ namespace Supernova.UI
 
                 Image menuImage = menuRect.GetComponent<Image>();
                 if (menuImage != null)
-                    menuImage.color = OverlaySurface;
+                    menuImage.color = Color.clear;
 
                 Outline menuOutline = menuRect.GetComponent<Outline>();
                 if (menuOutline != null)
@@ -249,123 +248,54 @@ namespace Supernova.UI
                     menuOutline.useGraphicAlpha = false;
                 }
 
-                title = menuRect.Find(UiHierarchyPaths.Pause.Title) != null
-                    ? menuRect.Find(UiHierarchyPaths.Pause.Title).GetComponent<TMP_Text>()
+                Transform mainOptions = menuRect.Find(UiHierarchyPaths.Pause.MainOptions);
+                title = mainOptions != null
+                    ? mainOptions.Find(UiHierarchyPaths.Pause.Title)?.GetComponent<TMP_Text>()
                     : null;
                 if (title != null)
                 {
                     title.text = "PAUSED";
-                    title.fontSize = 42f;
+                    title.fontSize = 48f;
                     title.fontStyle = FontStyles.Bold;
                     title.characterSpacing = 4f;
-                    title.color = OverlayPrimary;
+                    title.color = OverlayInverse;
                     title.alignment = TextAlignmentOptions.Left;
-                    SetRect((RectTransform)title.transform, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                        new Vector2(0f, 1f), new Vector2(30f, -26f), new Vector2(500f, 58f));
                 }
 
-                RectTransform resume = menuRect.Find(UiHierarchyPaths.Pause.Resume) as RectTransform;
+                RectTransform resume = menuRect.Find(
+                    UiHierarchyPaths.Pause.MainOptions
+                    + "/"
+                    + UiHierarchyPaths.Pause.Resume) as RectTransform;
                 if (resume != null)
                 {
-                    SetRect(resume, new Vector2(1f, 0f), new Vector2(1f, 0f),
-                        new Vector2(1f, 0f), new Vector2(-30f, 28f), new Vector2(500f, 58f));
-                    Image resumeImage = resume.GetComponent<Image>();
-                    if (resumeImage != null)
-                        resumeImage.color = OverlayPrimary;
-
                     TMP_Text resumeLabel = resume.Find(UiHierarchyPaths.Pause.Label) != null
                         ? resume.Find(UiHierarchyPaths.Pause.Label).GetComponent<TMP_Text>()
                         : null;
                     if (resumeLabel != null)
                     {
-                        resumeLabel.text = "RESUME  [ ESC ]";
+                        resumeLabel.text = "RESUME";
                         resumeLabel.fontStyle = FontStyles.Bold;
-                        resumeLabel.color = OverlayInverse;
+                        resumeLabel.color = OverlayPrimary;
                     }
-                }
-
-                backSlotButton = menuRect.Find(UiHierarchyPaths.Pause.BackSlot) != null
-                    ? menuRect.Find(UiHierarchyPaths.Pause.BackSlot).GetComponent<Button>()
-                    : null;
-                if (backSlotButton != null)
-                {
-                    backEquipmentName = backSlotButton.transform.Find(UiHierarchyPaths.Pause.EquipmentName)
-                        ?.GetComponent<TMP_Text>();
-                    backEquipmentState = backSlotButton.transform.Find(UiHierarchyPaths.Pause.State)
-                        ?.GetComponent<TMP_Text>();
-                    backEquipmentHint = backSlotButton.transform.Find(UiHierarchyPaths.Pause.Hint)
-                        ?.GetComponent<TMP_Text>();
-                    BindEquipmentButton();
-                    RefreshEquipmentView();
                 }
             }
 
-            kicker = CreateText("Pause Kicker", transform, "SUPERNOVA  //  FIELD PAUSE");
-            SetRect((RectTransform)kicker.transform, new Vector2(1f, 1f), new Vector2(1f, 1f),
-                new Vector2(1f, 1f), new Vector2(-46f, -36f), new Vector2(430f, 50f));
-            kicker.alignment = TextAlignmentOptions.Right;
+            kicker = CreateText("Pause Kicker", transform, "FIELD PAUSE  //  00:00");
+            SetRect((RectTransform)kicker.transform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(0f, 1f), new Vector2(46f, -36f), new Vector2(430f, 50f));
+            kicker.alignment = TextAlignmentOptions.Left;
             kicker.fontSize = 20f;
             kicker.fontStyle = FontStyles.Bold;
             kicker.characterSpacing = 5f;
-            kicker.color = OverlaySecondary;
+            kicker.color = OverlayPrimary;
 
             inkSlash.SetSiblingIndex(0);
-            portraitRect.SetSiblingIndex(1);
-            foregroundRedSlash.SetSiblingIndex(2);
-            paperSlash.SetSiblingIndex(3);
+            foregroundRedSlash.SetSiblingIndex(1);
+            paperSlash.SetSiblingIndex(2);
             if (menuRect != null)
                 menuRect.SetAsLastSibling();
             kicker.transform.SetAsLastSibling();
             SciFiUiSkin.ApplyPauseMenu(transform);
-        }
-
-        private void BindEquipmentButton()
-        {
-            if (backSlotButton == null)
-                return;
-            backSlotButton.onClick.RemoveListener(ToggleBackEquipment);
-            backSlotButton.onClick.AddListener(ToggleBackEquipment);
-        }
-
-        private void ToggleBackEquipment()
-        {
-            equipmentSource?.ToggleBackEquipment();
-            RefreshEquipmentView();
-        }
-
-        private void RefreshEquipmentView()
-        {
-            if (backSlotButton == null)
-                return;
-
-            PlayerEquipmentDefinition equipped = equipmentSource != null
-                ? equipmentSource.EquippedBack
-                : null;
-            PlayerEquipmentDefinition available = equipmentSource != null
-                ? equipmentSource.AvailableBack
-                : null;
-            PlayerEquipmentDefinition shown = equipped != null ? equipped : available;
-            backSlotButton.interactable = shown != null;
-
-            if (backEquipmentName != null)
-                backEquipmentName.text = shown != null
-                    ? shown.DisplayName.ToUpperInvariant()
-                    : "NO EQUIPMENT";
-            if (backEquipmentState != null)
-            {
-                backEquipmentState.text = equipped != null
-                    ? "EQUIPPED  //  REMOVE"
-                    : shown != null
-                        ? "STOWED  //  EQUIP"
-                        : "EMPTY";
-                backEquipmentState.color = equipped != null
-                    ? OverlayPrimary
-                    : OverlaySecondary;
-            }
-            if (backEquipmentHint != null)
-                backEquipmentHint.text = shown != null
-                    ? shown.InteractionHint
-                    : "NO BACK MODULE AVAILABLE";
         }
 
         private void EnsurePortrait()
@@ -403,8 +333,8 @@ namespace Supernova.UI
             backgroundMaterial = new Material(backgroundTemplate) { name = "Pause Background (Runtime)" };
             bodyMaterial.SetColor("_Color", OverlayPrimary);
             bodyMaterial.SetColor("_OutlineColor", InkColor);
-            backgroundMaterial.SetColor("_Color", PortraitFieldColor);
-            backgroundMaterial.SetColor("_OutlineColor", PortraitFieldColor);
+            backgroundMaterial.SetColor("_Color", OverlayBackdrop);
+            backgroundMaterial.SetColor("_OutlineColor", OverlayBackdrop);
 
             renderStage = new GameObject("Pause Portrait Render Stage");
             renderStage.hideFlags = HideFlags.DontSave;
@@ -426,6 +356,8 @@ namespace Supernova.UI
             portraitInstance.name = "Aki Pause Portrait";
             portraitInstance.transform.localPosition = Vector3.zero;
             portraitInstance.transform.localRotation = Quaternion.Euler(0f, portraitYaw, 0f);
+            portraitBaseLocalScale = portraitInstance.transform.localScale;
+            CapturePortraitBaseTransform();
 
             portraitAnimator = portraitInstance.GetComponentInChildren<Animator>(true);
             if (portraitAnimator != null)
@@ -468,9 +400,14 @@ namespace Supernova.UI
                 ? pose.HoldNormalizedTime
                 : 0.995f;
             portraitYaw = pose != null ? pose.PortraitYaw : -8f;
-            portraitCameraAnimation = pose != null ? pose.CameraAnimation : null;
+            portraitAnimation = pose != null ? pose.PortraitAnimation : null;
             if (portraitInstance != null)
+            {
+                portraitInstance.transform.localPosition = Vector3.zero;
                 portraitInstance.transform.localRotation = Quaternion.Euler(0f, portraitYaw, 0f);
+                portraitInstance.transform.localScale = portraitBaseLocalScale;
+                CapturePortraitBaseTransform();
+            }
             RebuildPoseOverride();
         }
 
@@ -697,7 +634,7 @@ namespace Supernova.UI
             cameraObject.transform.SetParent(renderStage.transform, false);
             portraitCamera = cameraObject.AddComponent<Camera>();
             portraitCamera.clearFlags = CameraClearFlags.SolidColor;
-            portraitCamera.backgroundColor = PortraitFieldColor;
+            portraitCamera.backgroundColor = PortraitClearColor;
             portraitCamera.fieldOfView = 27f;
             portraitCamera.nearClipPlane = 0.05f;
             portraitCamera.farClipPlane = 30f;
@@ -715,9 +652,6 @@ namespace Supernova.UI
             portraitCamera.transform.position = focus
                 + new Vector3(bounds.extents.x * 0.12f, 0f, distance);
             portraitCamera.transform.LookAt(focus);
-            portraitCameraBasePosition = portraitCamera.transform.position;
-            portraitCameraBaseRotation = portraitCamera.transform.rotation;
-            portraitCameraBaseFieldOfView = portraitCamera.fieldOfView;
         }
 
         private void ExcludePortraitLayerFromOtherCameras()
@@ -728,8 +662,12 @@ namespace Supernova.UI
             Camera[] cameras = FindObjectsOfType<Camera>(true);
             for (int i = 0; i < cameras.Length; i++)
             {
-                if (cameras[i] != null && cameras[i] != portraitCamera)
+                if (cameras[i] != null
+                    && cameras[i] != portraitCamera
+                    && cameras[i].targetTexture == null)
+                {
                     cameras[i].cullingMask &= ~portraitLayerMask;
+                }
             }
         }
 
@@ -762,6 +700,11 @@ namespace Supernova.UI
 
             if (renderingCamera == portraitCamera)
                 UpdatePortraitRendererProxies(true);
+            else if (renderingCamera.targetTexture != null
+                && (renderingCamera.cullingMask & portraitLayerMask) != 0)
+            {
+                return;
+            }
             else
             {
                 renderingCamera.cullingMask &= ~portraitLayerMask;
@@ -873,33 +816,27 @@ namespace Supernova.UI
 
             float backgroundProgress = EaseOutCubic(progress);
             if (backdrop != null)
-            {
-                Color color = OverlayBackdrop;
-                color.a *= Mathf.Clamp01(progress * 3.5f);
-                backdrop.color = color;
-            }
+                backdrop.color = OverlayBackdrop;
 
-            float slashProgress = EaseOutBack(Mathf.Clamp01(progress / 0.72f));
-            SetAnchoredX(inkSlash, Mathf.Lerp(-960f, 390f, slashProgress));
             float edgeProgress = EaseOutCubic(
                 Mathf.Clamp01((progress - 0.04f) / 0.65f));
-            SetAnchoredX(foregroundRedSlash, Mathf.Lerp(-600f, 872f, edgeProgress));
-            SetAnchoredX(paperSlash, Mathf.Lerp(-600f, 886f, edgeProgress));
+            SetAnchoredX(foregroundRedSlash, Mathf.Lerp(-600f, 1058f, edgeProgress));
+            SetAnchoredX(paperSlash, Mathf.Lerp(-600f, 1074f, edgeProgress));
 
             float portraitProgress = EaseOutBack(Mathf.Clamp01((progress - 0.08f) / 0.72f));
-            SetAnchoredX(portraitRect, Mathf.Lerp(-760f, 420f, portraitProgress));
+            SetAnchoredX(portraitRect, Mathf.Lerp(-820f, 470f, portraitProgress));
             portraitRect.localEulerAngles = new Vector3(
                 0f, 0f, Mathf.Lerp(-11f, -2.5f, portraitProgress));
             portraitRect.localScale = Vector3.one * Mathf.Lerp(1.14f, 1f, portraitProgress);
             if (portraitGroup != null)
                 portraitGroup.alpha =
-                    Mathf.Clamp01((progress - 0.04f) / 0.22f) * 0.22f;
+                    Mathf.Clamp01((progress - 0.04f) / 0.22f) * 0.46f;
 
             float menuProgress = EaseOutBack(Mathf.Clamp01((progress - 0.31f) / 0.62f));
             if (menuRect != null)
             {
                 menuRect.anchoredPosition = Vector2.Lerp(
-                    new Vector2(820f, 120f), new Vector2(70f, -10f), menuProgress);
+                    new Vector2(720f, 100f), new Vector2(-40f, 0f), menuProgress);
                 menuRect.localEulerAngles = Vector3.zero;
             }
             if (menuGroup != null)
@@ -907,42 +844,47 @@ namespace Supernova.UI
 
             if (kicker != null)
             {
-                Color color = OverlaySecondary;
+                Color color = OverlayPrimary;
                 color.a *= Mathf.Clamp01((progress - 0.45f) / 0.3f);
                 kicker.color = color;
                 ((RectTransform)kicker.transform).anchoredPosition =
-                    new Vector2(-46f, Mathf.Lerp(-90f, -36f, backgroundProgress));
+                    new Vector2(46f, Mathf.Lerp(-90f, -36f, backgroundProgress));
             }
 
-            ApplyCameraAnimation(progress);
+            ApplyPortraitAnimation(progress);
         }
 
-        private void ApplyCameraAnimation(float normalizedTime)
+        private void CapturePortraitBaseTransform()
         {
-            if (portraitCamera == null)
+            if (portraitInstance == null)
                 return;
 
-            if (portraitCameraAnimation == null)
+            Transform portraitTransform = portraitInstance.transform;
+            portraitBaseLocalPosition = portraitTransform.localPosition;
+            portraitBaseLocalRotation = portraitTransform.localRotation;
+            portraitBaseLocalScale = portraitTransform.localScale;
+        }
+
+        private void ApplyPortraitAnimation(float normalizedTime)
+        {
+            if (portraitInstance == null)
+                return;
+
+            Transform portraitTransform = portraitInstance.transform;
+            if (portraitAnimation == null)
             {
-                portraitCamera.transform.position = portraitCameraBasePosition;
-                portraitCamera.transform.rotation = portraitCameraBaseRotation;
-                portraitCamera.fieldOfView = portraitCameraBaseFieldOfView;
+                portraitTransform.localPosition = portraitBaseLocalPosition;
+                portraitTransform.localRotation = portraitBaseLocalRotation;
+                portraitTransform.localScale = portraitBaseLocalScale;
                 return;
             }
 
-            Vector3 localOffset =
-                portraitCameraAnimation.EvaluateLocalPosition(normalizedTime);
-            Vector3 localEuler =
-                portraitCameraAnimation.EvaluateLocalEulerAngles(normalizedTime);
-            portraitCamera.transform.position = portraitCameraBasePosition
-                + portraitCameraBaseRotation * localOffset;
-            portraitCamera.transform.rotation = portraitCameraBaseRotation
-                * Quaternion.Euler(localEuler);
-            portraitCamera.fieldOfView = Mathf.Clamp(
-                portraitCameraBaseFieldOfView
-                    + portraitCameraAnimation.EvaluateFieldOfViewOffset(normalizedTime),
-                10f,
-                80f);
+            Vector3 localOffset = portraitAnimation.EvaluateLocalPosition(normalizedTime);
+            Vector3 localEuler = portraitAnimation.EvaluateLocalEulerAngles(normalizedTime);
+            portraitTransform.localPosition = portraitBaseLocalPosition + localOffset;
+            portraitTransform.localRotation = portraitBaseLocalRotation * Quaternion.Euler(localEuler);
+            portraitTransform.localScale = portraitBaseLocalScale
+                * portraitAnimation.EvaluateScaleMultiplier(normalizedTime);
         }
 
         private static float EaseOutCubic(float value)

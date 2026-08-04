@@ -119,15 +119,16 @@ namespace Supernova.Gameplay
     }
 
     /// <summary>
-    /// Four configurable quick slots. Item ownership lives in <see cref="PlayerOwnedItems"/>;
+    /// Five configurable quick slots. Item ownership lives in <see cref="PlayerOwnedItems"/>;
     /// this type only tracks which owned items the player placed on the hotbar.
     /// </summary>
     public sealed class PlayerInventory
     {
-        public const int SlotCount = 4;
+        public const int SlotCount = 5;
 
         private static readonly PlayerInventoryItem[] DefaultItems =
         {
+            PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
@@ -270,8 +271,8 @@ namespace Supernova.Gameplay
     }
 
     /// <summary>
-    /// Owns the player's four configurable quick slots and enables the selected tool.
-    /// Number keys 1-4 select slots 0-3.
+    /// Owns the player's five configurable quick slots and enables the selected tool.
+    /// Number keys 1-5 select slots 0-4.
     /// </summary>
     [DefaultExecutionOrder(-200)]
     [DisallowMultipleComponent]
@@ -285,6 +286,7 @@ namespace Supernova.Gameplay
         [Tooltip("Fallback quick-slot configuration used until the player saves a loadout.")]
         [SerializeField] private PlayerInventoryItem[] configuredSlots =
         {
+            PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
@@ -374,6 +376,7 @@ namespace Supernova.Gameplay
 
         private void Update()
         {
+            if (Supernova.UI.GameHudController.IsGameplayInputBlocked) return;
             if (cartAttractor != null && cartAttractor.IsTowingCart) return;
             int requestedSlot = ReadRequestedSlot();
             if (requestedSlot >= 0) SelectSlot(requestedSlot);
@@ -811,6 +814,7 @@ namespace Supernova.Gameplay
             if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2)) return 1;
             if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3)) return 2;
             if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4)) return 3;
+            if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5)) return 4;
             return -1;
         }
     }

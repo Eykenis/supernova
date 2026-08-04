@@ -101,6 +101,8 @@ public static class ProjectAssetPaths
             Folders.Levels + "/CombatTestLevel.asset";
         public const string WorldGeneration =
             Folders.Worlds + "/DefaultWorldGeneration.asset";
+        public const string JigsawSuperflatWorldGeneration =
+            Folders.Worlds + "/JigsawSuperflatWorldGeneration.asset";
         public const string MonsterSpawnTable =
             Folders.Config + "/MonsterSpawnTable.asset";
         public const string TreasureSpawnTable =
@@ -368,6 +370,8 @@ public static class ProjectAssetPaths
         public const string Portal = Folders.Scenes + "/Portal.scene";
         public const string WorldGenerationPreview =
             Folders.Scenes + "/WorldGenerationPreview.scene";
+        public const string JigsawSuperflat =
+            Folders.Scenes + "/JigsawSuperflat.scene";
     }
 
     public static class Screenshots

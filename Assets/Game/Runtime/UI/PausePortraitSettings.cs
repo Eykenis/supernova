@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Supernova.UI
 {
@@ -12,28 +13,30 @@ namespace Supernova.UI
     }
 
     [Serializable]
-    public sealed class PauseCameraAnimationCurves
+    public sealed class PausePortraitAnimationCurves
     {
-        [Tooltip("Local camera X offset over the normalized intro time.")]
+        [Tooltip("Target portrait local X offset over the normalized intro time.")]
         [SerializeField] private AnimationCurve horizontalOffset =
             AnimationCurve.EaseInOut(0f, -0.35f, 1f, 0f);
-        [Tooltip("Local camera Y offset over the normalized intro time.")]
+        [Tooltip("Target portrait local Y offset over the normalized intro time.")]
         [SerializeField] private AnimationCurve verticalOffset =
             AnimationCurve.EaseInOut(0f, 0.12f, 1f, 0f);
-        [Tooltip("Movement along the camera forward axis. Positive values move toward the character.")]
-        [SerializeField] private AnimationCurve dollyOffset =
+        [Tooltip("Target portrait local Z offset over the normalized intro time.")]
+        [FormerlySerializedAs("dollyOffset")]
+        [SerializeField] private AnimationCurve depthOffset =
             AnimationCurve.EaseInOut(0f, -0.65f, 1f, 0f);
-        [Tooltip("Additional camera pitch in degrees.")]
+        [Tooltip("Additional target portrait pitch in degrees.")]
         [SerializeField] private AnimationCurve pitch =
             AnimationCurve.EaseInOut(0f, 2f, 1f, 0f);
-        [Tooltip("Additional camera yaw in degrees.")]
+        [Tooltip("Additional target portrait yaw in degrees.")]
         [SerializeField] private AnimationCurve yaw =
             AnimationCurve.EaseInOut(0f, -4f, 1f, 0f);
-        [Tooltip("Additional camera roll in degrees.")]
+        [Tooltip("Additional target portrait roll in degrees.")]
         [SerializeField] private AnimationCurve roll =
             AnimationCurve.EaseInOut(0f, -4f, 1f, 0f);
-        [Tooltip("Offset added to the base field of view in degrees.")]
-        [SerializeField] private AnimationCurve fieldOfViewOffset =
+        [Tooltip("Uniform target portrait scale offset in percent (6 means 6% larger).")]
+        [FormerlySerializedAs("fieldOfViewOffset")]
+        [SerializeField] private AnimationCurve scalePercentOffset =
             AnimationCurve.EaseInOut(0f, 6f, 1f, 0f);
 
         public Vector3 EvaluateLocalPosition(float normalizedTime)
@@ -42,7 +45,7 @@ namespace Supernova.UI
             return new Vector3(
                 Evaluate(horizontalOffset, time),
                 Evaluate(verticalOffset, time),
-                Evaluate(dollyOffset, time));
+                Evaluate(depthOffset, time));
         }
 
         public Vector3 EvaluateLocalEulerAngles(float normalizedTime)
@@ -54,9 +57,10 @@ namespace Supernova.UI
                 Evaluate(roll, time));
         }
 
-        public float EvaluateFieldOfViewOffset(float normalizedTime)
+        public float EvaluateScaleMultiplier(float normalizedTime)
         {
-            return Evaluate(fieldOfViewOffset, Mathf.Clamp01(normalizedTime));
+            float percentOffset = Evaluate(scalePercentOffset, Mathf.Clamp01(normalizedTime));
+            return Mathf.Max(0f, 1f + percentOffset * 0.01f);
         }
 
         private static float Evaluate(AnimationCurve curve, float time)
@@ -75,9 +79,10 @@ namespace Supernova.UI
         [SerializeField, Range(0f, 1f)] private float holdNormalizedTime = 0.995f;
         [Tooltip("Portrait rotation around the vertical axis for this pose.")]
         [SerializeField, Range(-180f, 180f)] private float portraitYaw = -8f;
-        [Tooltip("Camera animation evaluated from 0 to 1 during the pause intro.")]
-        [SerializeField] private PauseCameraAnimationCurves cameraAnimation =
-            new PauseCameraAnimationCurves();
+        [Tooltip("Target portrait animation evaluated from 0 to 1 during the pause intro.")]
+        [FormerlySerializedAs("cameraAnimation")]
+        [SerializeField] private PausePortraitAnimationCurves portraitAnimation =
+            new PausePortraitAnimationCurves();
 
         public string DisplayName => string.IsNullOrWhiteSpace(displayName)
             ? (clip != null ? clip.name : "Pause Pose")
@@ -85,7 +90,7 @@ namespace Supernova.UI
         public AnimationClip Clip => clip;
         public float HoldNormalizedTime => Mathf.Clamp01(holdNormalizedTime);
         public float PortraitYaw => portraitYaw;
-        public PauseCameraAnimationCurves CameraAnimation => cameraAnimation;
+        public PausePortraitAnimationCurves PortraitAnimation => portraitAnimation;
     }
 
     [CreateAssetMenu(

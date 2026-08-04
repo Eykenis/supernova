@@ -68,11 +68,11 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerInventory_UsesFourPlayerConfiguredSlots()
+        public void PlayerInventory_UsesFivePlayerConfiguredSlots()
         {
             var inventory = new PlayerInventory();
 
-            Assert.That(PlayerInventory.SlotCount, Is.EqualTo(4));
+            Assert.That(PlayerInventory.SlotCount, Is.EqualTo(5));
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
                 Assert.That(inventory.GetItemAtSlot(i), Is.EqualTo(PlayerInventoryItem.Empty));
 

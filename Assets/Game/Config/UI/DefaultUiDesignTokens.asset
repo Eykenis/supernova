@@ -68,6 +68,9 @@ MonoBehaviour:
   overlaySecondary: {r: 1, g: 1, b: 1, a: 0.58}
   overlayDivider: {r: 1, g: 1, b: 1, a: 0.24}
   overlayInverse: {r: 0.018, g: 0.02, b: 0.025, a: 1}
+  pauseBackdrop: {r: 0.025, g: 0.028, b: 0.035, a: 1}
+  loadingBackdrop: {r: 0.025, g: 0.028, b: 0.035, a: 1}
+  loadingProgressThickness: 6
   missionObjectivePosition: {x: 30, y: -30}
   missionObjectiveSize: {x: 600, y: 160}
   missionPromptPosition: {x: 0, y: 112}

@@ -181,84 +181,34 @@ namespace Supernova.UI
         {
             if (pausePanel == null)
                 return;
-
-            RectTransform menu = FindRect(pausePanel, UiHierarchyPaths.Pause.Menu);
-            if (menu == null)
-                return;
+            ApplyTypography(pausePanel);
 
             UiDesignTokens tokens = GetDesignTokens();
-            Color surface = tokens != null
-                ? tokens.OverlaySurface
-                : new Color(1f, 1f, 1f, 0.055f);
-            Color primary = tokens != null
-                ? tokens.OverlayPrimary
-                : Color.white;
-            Color secondary = tokens != null
-                ? tokens.OverlaySecondary
-                : new Color(1f, 1f, 1f, 0.58f);
-            Color divider = tokens != null
-                ? tokens.OverlayDivider
-                : new Color(1f, 1f, 1f, 0.24f);
-            Color inverse = tokens != null
+            Color systemInk = tokens != null
                 ? tokens.OverlayInverse
                 : new Color(0.018f, 0.02f, 0.025f, 1f);
-
-            Image menuImage = menu.GetComponent<Image>();
-            if (menuImage != null)
-                menuImage.color = surface;
-            Outline menuOutline = menu.GetComponent<Outline>();
-            if (menuOutline != null)
-            {
-                menuOutline.effectColor = divider;
-                menuOutline.useGraphicAlpha = false;
-            }
-            DisableDecoration(menu, DecorationName);
-            SetTextColor(menu, UiHierarchyPaths.Pause.Title, primary);
-            SetTextColor(menu, UiHierarchyPaths.Pause.LoadoutHeader, secondary);
-
-            RectTransform backSlot = FindRect(menu, UiHierarchyPaths.Pause.BackSlot);
-            if (backSlot != null)
-            {
-                Image slotImage = backSlot.GetComponent<Image>();
-                if (slotImage != null)
-                    slotImage.color = surface;
-                Outline slotOutline = backSlot.GetComponent<Outline>();
-                if (slotOutline != null)
-                {
-                    slotOutline.effectColor = divider;
-                    slotOutline.useGraphicAlpha = false;
-                }
-                DisableDecoration(backSlot, DecorationName);
-                SetAnchoredPositionY(backSlot, UiHierarchyPaths.Pause.SlotName, -22f);
-                SetAnchoredPositionY(backSlot, UiHierarchyPaths.Pause.State, -22f);
-                SetAnchoredPositionY(backSlot, UiHierarchyPaths.Pause.EquipmentName, 0f);
-                SetTextColor(backSlot, UiHierarchyPaths.Pause.SlotName, secondary);
-                SetTextColor(backSlot, UiHierarchyPaths.Pause.EquipmentName, primary);
-                SetTextColor(backSlot, UiHierarchyPaths.Pause.State, primary);
-                SetTextColor(backSlot, UiHierarchyPaths.Pause.Hint, secondary);
-            }
-
-            RectTransform resume = FindRect(menu, UiHierarchyPaths.Pause.Resume);
-            if (resume != null)
-            {
-                Image image = resume.GetComponent<Image>();
-                if (image != null)
-                    image.color = primary;
-                DisableDecoration(resume, DecorationName);
-                Button button = resume.GetComponent<Button>();
-                if (button != null)
-                {
-                    button.targetGraphic = image;
-                    ColorBlock colors = button.colors;
-                    colors.normalColor = Color.white;
-                    colors.highlightedColor = new Color(1f, 1f, 1f, 0.82f);
-                    colors.selectedColor = colors.highlightedColor;
-                    colors.pressedColor = new Color(1f, 1f, 1f, 0.62f);
-                    colors.fadeDuration = 0.12f;
-                    button.colors = colors;
-                }
-                SetTextColor(resume, UiHierarchyPaths.Pause.Label, inverse);
-            }
+            string mainOptions = UiHierarchyPaths.Pause.Menu
+                + "/"
+                + UiHierarchyPaths.Pause.MainOptions;
+            string settingsPanel = UiHierarchyPaths.Pause.Menu
+                + "/"
+                + UiHierarchyPaths.Pause.SettingsPanel;
+            SetTextColor(
+                pausePanel,
+                mainOptions + "/" + UiHierarchyPaths.Pause.Title,
+                systemInk);
+            SetTextColor(
+                pausePanel,
+                settingsPanel + "/" + UiHierarchyPaths.Pause.Title,
+                systemInk);
+            SetTextColor(
+                pausePanel,
+                settingsPanel
+                    + "/"
+                    + UiHierarchyPaths.Pause.MasterVolume
+                    + "/"
+                    + UiHierarchyPaths.Pause.VolumeValue,
+                systemInk);
         }
 
         private static void ApplyLoading(Transform root)
@@ -269,8 +219,8 @@ namespace Supernova.UI
 
             UiDesignTokens tokens = GetDesignTokens();
             Color backdrop = tokens != null
-                ? tokens.OverlayBackdrop
-                : new Color(0.008f, 0.01f, 0.014f, 0.72f);
+                ? tokens.LoadingBackdrop
+                : new Color(0.025f, 0.028f, 0.035f, 1f);
             Color primary = tokens != null
                 ? tokens.OverlayPrimary
                 : Color.white;
@@ -316,7 +266,9 @@ namespace Supernova.UI
             if (progressTrack != null)
             {
                 Vector2 trackSize = progressTrack.sizeDelta;
-                trackSize.y = 2f;
+                trackSize.y = tokens != null
+                    ? tokens.LoadingProgressThickness
+                    : 6f;
                 progressTrack.sizeDelta = trackSize;
                 Image track = progressTrack.GetComponent<Image>();
                 if (track != null)

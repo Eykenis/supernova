@@ -166,7 +166,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PauseMenu_HasLoadoutBackpackAndEquipmentControls()
+        public void PauseMenu_UsesDiagonalSystemLayoutAndFourPrimaryActions()
         {
             hudObject = new GameObject("Game HUD");
             GameHudController controller = hudObject.AddComponent<GameHudController>();
@@ -175,67 +175,222 @@ namespace Supernova.Tests
             Transform panel = hudObject.transform.Find(UiHierarchyPaths.Pause.Panel);
             Transform resume = panel.Find(UiHierarchyPaths.Pause.MenuResume);
             Selectable[] options = panel.GetComponentsInChildren<Selectable>(true);
+            Transform systemField = panel.Find(UiHierarchyPaths.Pause.SystemField);
 
             Assert.That(panel.gameObject.activeSelf, Is.False);
             Assert.That(
                 panel.GetComponent<Image>().color.a,
-                Is.LessThan(1f),
-                "The pause overlay should preserve the transparent in-game HUD style.");
+                Is.EqualTo(1f).Within(0.001f),
+                "The pause overlay should fully cover gameplay with opaque dark gray.");
             Assert.That(
                 options.Length,
-                Is.GreaterThanOrEqualTo(PlayerInventory.SlotCount + 3));
+                Is.EqualTo(7),
+                "Four primary actions plus fullscreen, volume, and settings back are expected.");
             Assert.That(
-                panel.Find(
-                    UiHierarchyPaths.Pause.Menu
-                    + "/"
-                    + UiHierarchyPaths.Pause.QuickSlots),
+                systemField.GetComponent<PauseMenuWedgeGraphic>(),
                 Is.Not.Null);
-            Assert.That(
-                panel.Find(
-                    UiHierarchyPaths.Pause.Menu
-                    + "/"
-                    + UiHierarchyPaths.Pause.Backpack),
-                Is.Not.Null);
-            TMP_Text firstQuickSlotLabel = panel.Find(
-                    UiHierarchyPaths.Pause.Menu
-                    + "/"
-                    + UiHierarchyPaths.Pause.QuickSlots
-                    + "/"
-                    + UiHierarchyPaths.Pause.QuickSlotName(1)
-                    + "/"
-                    + UiHierarchyPaths.Pause.SlotItem)
-                .GetComponent<TMP_Text>();
-            Assert.That(
-                firstQuickSlotLabel.color,
-                Is.EqualTo(controller.DesignTokens != null
-                    ? controller.DesignTokens.OverlayInverse
-                    : new Color(0.018f, 0.02f, 0.025f, 1f)));
+            Color systemFieldColor = systemField
+                .GetComponent<PauseMenuWedgeGraphic>().color;
+            Assert.That(systemFieldColor.r, Is.GreaterThan(0.9f));
+            Assert.That(systemFieldColor.g, Is.GreaterThan(0.9f));
+            Assert.That(systemFieldColor.b, Is.GreaterThan(0.9f));
+            Assert.That(systemFieldColor.a, Is.EqualTo(1f).Within(0.001f));
             Assert.That(resume.GetComponent<Button>(), Is.Not.Null);
-            Assert.That(resume.Find(UiHierarchyPaths.Pause.Label).GetComponent<TMP_Text>().text, Is.EqualTo("RESUME"));
-            Transform backSlot = panel.Find(UiHierarchyPaths.Pause.MenuBackSlot);
-            Assert.That(backSlot.GetComponent<Button>(), Is.Not.Null);
+            TMP_Text resumeLabel = resume.Find(UiHierarchyPaths.Pause.Label)
+                .GetComponent<TMP_Text>();
+            Assert.That(resumeLabel.text, Is.EqualTo("RESUME"));
+            Assert.That(resumeLabel.color.r, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(resumeLabel.color.g, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(resumeLabel.color.b, Is.EqualTo(1f).Within(0.001f));
+            TMP_Text title = panel.Find(
+                    UiHierarchyPaths.Pause.Menu
+                    + "/"
+                    + UiHierarchyPaths.Pause.MainOptions
+                    + "/"
+                    + UiHierarchyPaths.Pause.Title)
+                .GetComponent<TMP_Text>();
+            Assert.That(title.color.r, Is.LessThan(0.1f));
+            Assert.That(title.color.g, Is.LessThan(0.1f));
+            Assert.That(title.color.b, Is.LessThan(0.1f));
             Assert.That(
-                backSlot.Find(UiHierarchyPaths.Pause.SlotName).GetComponent<TMP_Text>().text,
-                Is.EqualTo("BACK MODULE"));
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullSettings)
+                    .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullQuitToMenu)
+                    .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullQuitToDesktop)
+                    .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(panel.Find("Menu/Quick Slots"), Is.Null);
+            Assert.That(panel.Find("Menu/Backpack"), Is.Null);
+            Assert.That(panel.Find("Menu/Back Slot"), Is.Null);
             Assert.That(
                 panel.Find(UiHierarchyPaths.Pause.MenuFrame),
                 Is.Null,
                 "The pause menu should not depend on the legacy sci-fi frame.");
-            Assert.That(
-                resume.GetComponent<Image>().color,
-                Is.EqualTo(controller.DesignTokens != null
-                    ? controller.DesignTokens.OverlayPrimary
-                    : Color.white));
             Assert.That(controller.PauseCanvas.sortingOrder,
                 Is.GreaterThan(controller.LoadingCanvas.sortingOrder));
 
             controller.PauseGame();
             Assert.That(controller.IsPauseMenuVisible, Is.True);
             Assert.That(GameHudController.IsPauseMenuOpen, Is.True);
+            Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.False);
+            Assert.That(controller.CrosshairCanvas.gameObject.activeSelf, Is.False);
+            Assert.That(
+                panel.Find("Portrait Field")?.GetComponent<Mask>(),
+                Is.Not.Null,
+                "The portrait RenderTexture must be clipped before the translucent menu region.");
+            PausePortraitFieldGraphic portraitField = panel.Find("Portrait Field")
+                ?.GetComponent<PausePortraitFieldGraphic>();
+            Assert.That(portraitField, Is.Not.Null);
+            Assert.That(
+                portraitField.BottomEdgeFromLeft,
+                Is.EqualTo(1920f - PauseMenuWedgeGraphic.SystemFieldWidth)
+                    .Within(0.001f));
+            Assert.That(
+                portraitField.TopEdgeFromLeft,
+                Is.EqualTo(
+                    1920f
+                    - PauseMenuWedgeGraphic.SystemFieldWidth
+                    + PauseMenuWedgeGraphic.SystemFieldTopInset)
+                    .Within(0.001f));
 
             controller.ResumeGame();
             Assert.That(controller.IsPauseMenuVisible, Is.False);
             Assert.That(GameHudController.IsPauseMenuOpen, Is.False);
+            Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void EquipmentMenu_UsesFiveSlotsAndTwelveOpaqueOwnedCells()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+
+            EquipmentLoadoutMenu menu = controller.EquipmentMenu;
+            Transform panel = hudObject.transform.Find(
+                UiHierarchyPaths.Equipment.Panel);
+            RectTransform portraitRegion = (RectTransform)panel.Find(
+                UiHierarchyPaths.Equipment.PortraitRegion);
+            Transform slots = hudObject.transform.Find(
+                UiHierarchyPaths.Equipment.FullSlots);
+            Transform ownedGrid = hudObject.transform.Find(
+                UiHierarchyPaths.Equipment.FullOwnedGrid);
+
+            Assert.That(menu, Is.Not.Null);
+            Assert.That(panel.gameObject.activeSelf, Is.False);
+            Assert.That(panel.GetComponent<Image>().color.a, Is.LessThan(1f));
+            Assert.That(portraitRegion.anchorMax.x, Is.EqualTo(0.38f)
+                .Within(0.001f));
+            Transform portrait = panel.Find(
+                UiHierarchyPaths.Equipment.Portrait);
+            EquipmentMenuInteraction portraitInteraction =
+                portrait.GetComponent<EquipmentMenuInteraction>();
+            Assert.That(portrait.GetComponent<RawImage>().raycastTarget, Is.True);
+            Assert.That(portraitInteraction, Is.Not.Null);
+            Assert.That(portraitInteraction.IsPortraitRotationArea, Is.True);
+
+            for (int i = 1; i <= PlayerInventory.SlotCount; i++)
+            {
+                Transform slot = slots.Find(
+                    UiHierarchyPaths.Equipment.SlotName(i));
+                Assert.That(slot, Is.Not.Null);
+                Assert.That(slot.GetComponent<Button>(), Is.Not.Null);
+                EquipmentMenuInteraction interaction =
+                    slot.GetComponent<EquipmentMenuInteraction>();
+                Assert.That(interaction, Is.Not.Null);
+                Assert.That(interaction.IsEquipmentSlotTarget, Is.True);
+                Assert.That(interaction.Index, Is.EqualTo(i - 1));
+                Assert.That(
+                    slot.Find("Angled Surface")
+                        .GetComponent<AngledPanelGraphic>().color.a,
+                    Is.EqualTo(1f).Within(0.001f));
+                Image icon = slot.Find(UiHierarchyPaths.Equipment.Icon)
+                    .GetComponent<Image>();
+                Assert.That(icon, Is.Not.Null);
+                Assert.That(icon.preserveAspect, Is.True);
+                Assert.That(icon.raycastTarget, Is.False);
+            }
+
+            for (int i = 1; i <= EquipmentLoadoutMenu.OwnedGridCellCount; i++)
+            {
+                Transform cell = ownedGrid.Find(
+                    UiHierarchyPaths.Equipment.OwnedCellName(i));
+                Assert.That(cell, Is.Not.Null);
+                Assert.That(cell.GetComponent<Button>(), Is.Not.Null);
+                EquipmentMenuInteraction interaction =
+                    cell.GetComponent<EquipmentMenuInteraction>();
+                Assert.That(interaction, Is.Not.Null);
+                Assert.That(interaction.IsOwnedItemSource, Is.True);
+                Assert.That(interaction.Index, Is.EqualTo(i - 1));
+                Assert.That(
+                    cell.Find("Angled Surface")
+                        .GetComponent<AngledPanelGraphic>().color.a,
+                    Is.EqualTo(1f).Within(0.001f));
+                Image icon = cell.Find(UiHierarchyPaths.Equipment.Icon)
+                    .GetComponent<Image>();
+                Assert.That(icon, Is.Not.Null);
+                Assert.That(icon.preserveAspect, Is.True);
+                Assert.That(icon.raycastTarget, Is.False);
+            }
+
+            menu.Open();
+            Assert.That(menu.IsOpen, Is.True);
+            Assert.That(GameHudController.IsModalMenuOpen, Is.True);
+            Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.False);
+            Assert.That(controller.CrosshairCanvas.gameObject.activeSelf, Is.False);
+            menu.Close();
+            Assert.That(menu.IsOpen, Is.False);
+            Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void EquipmentPortrait_HidesOnlyTheRuntimeHeldToolClone()
+        {
+            sourceObject = new GameObject("Player");
+            PlayerToolController inventory =
+                sourceObject.AddComponent<PlayerToolController>();
+            GameObject character = new GameObject("Character");
+            character.transform.SetParent(sourceObject.transform);
+            GameObject hand = new GameObject("Hand");
+            hand.transform.SetParent(character.transform);
+            GameObject heldTool = new GameObject("Runtime Held Tool");
+            heldTool.transform.SetParent(hand.transform);
+            GameObject clothing = new GameObject("Clothing");
+            clothing.transform.SetParent(character.transform);
+
+            menuObject = Object.Instantiate(character);
+            hudObject = new GameObject("Equipment Menu Host");
+            EquipmentLoadoutMenu menu =
+                hudObject.AddComponent<EquipmentLoadoutMenu>();
+            typeof(PlayerToolController).GetField(
+                "equippedToolModel",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(inventory, heldTool);
+            typeof(EquipmentLoadoutMenu).GetField(
+                "inventorySource",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(menu, inventory);
+            typeof(EquipmentLoadoutMenu).GetField(
+                "portraitInstance",
+                BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(menu, menuObject);
+
+            MethodInfo hideTool = typeof(EquipmentLoadoutMenu).GetMethod(
+                "HideEquippedToolInPortrait",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(hideTool, Is.Not.Null);
+            hideTool.Invoke(menu, new object[] { character.transform });
+
+            Transform clonedHand = menuObject.transform.GetChild(0);
+            Assert.That(clonedHand.GetChild(0).gameObject.activeSelf, Is.False);
+            Assert.That(menuObject.transform.GetChild(1).gameObject.activeSelf, Is.True);
+            Assert.That(heldTool.activeSelf, Is.True);
         }
 
         [Test]
@@ -280,8 +435,8 @@ namespace Supernova.Tests
             Assert.That(panel.gameObject.activeSelf, Is.True);
             Assert.That(
                 panel.GetComponent<Image>().color.a,
-                Is.LessThan(1f),
-                "The loading overlay should keep the game visible behind it.");
+                Is.EqualTo(1f).Within(0.001f),
+                "The loading overlay should use an opaque dark-gray background.");
             Assert.That(progress.text, Is.EqualTo("0%"));
             Assert.That(
                 panel.Find(UiHierarchyPaths.Loading.LocalSpinner).GetComponent<Image>().sprite,
@@ -297,6 +452,12 @@ namespace Supernova.Tests
                 Is.EqualTo(controller.DesignTokens != null
                     ? controller.DesignTokens.OverlayPrimary
                     : Color.white));
+            Assert.That(
+                ((RectTransform)panel.Find(
+                    UiHierarchyPaths.Loading.LocalProgressTrack)).sizeDelta.y,
+                Is.EqualTo(controller.DesignTokens != null
+                    ? controller.DesignTokens.LoadingProgressThickness
+                    : 6f).Within(0.001f));
             Assert.That(controller.LoadingCanvas.sortingOrder,
                 Is.GreaterThan(controller.CrosshairCanvas.sortingOrder));
 
@@ -453,40 +614,39 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PauseLoadout_AssignsOwnedBackpackItemToChosenQuickSlot()
+        public void PauseSettings_SwitchesPanelsWithoutExposingLoadoutConfiguration()
         {
-            sourceObject = new GameObject("Player");
-            PlayerToolController inventory =
-                sourceObject.AddComponent<PlayerToolController>();
             hudObject = new GameObject("Game HUD");
             GameHudController controller =
                 hudObject.AddComponent<GameHudController>();
             controller.RebuildDefaultView();
-            controller.BindInventorySource(inventory);
 
-            Transform quickSlots = hudObject.transform.Find(
-                UiHierarchyPaths.Pause.FullQuickSlots);
-            Button secondSlot = quickSlots.Find(
-                    UiHierarchyPaths.Pause.QuickSlotName(2))
-                .GetComponent<Button>();
-            Transform backpack = hudObject.transform.Find(
-                UiHierarchyPaths.Pause.FullBackpack);
-            Button pickaxe = backpack.Find(
-                    UiHierarchyPaths.Pause.BackpackItemName(
-                        PlayerInventoryItem.Pickaxe))
-                .GetComponent<Button>();
+            GameObject mainOptions = hudObject.transform.Find(
+                UiHierarchyPaths.Pause.FullMainOptions).gameObject;
+            GameObject settingsPanel = hudObject.transform.Find(
+                UiHierarchyPaths.Pause.FullSettingsPanel).gameObject;
+            Button settings = hudObject.transform.Find(
+                UiHierarchyPaths.Pause.FullSettings).GetComponent<Button>();
+            Button back = hudObject.transform.Find(
+                UiHierarchyPaths.Pause.FullSettingsBack).GetComponent<Button>();
 
-            secondSlot.onClick.Invoke();
-            pickaxe.onClick.Invoke();
-
+            Assert.That(mainOptions.activeSelf, Is.True);
+            Assert.That(settingsPanel.activeSelf, Is.False);
+            settings.onClick.Invoke();
+            Assert.That(mainOptions.activeSelf, Is.False);
+            Assert.That(settingsPanel.activeSelf, Is.True);
             Assert.That(
-                inventory.GetItemAtSlot(1),
-                Is.EqualTo(PlayerInventoryItem.Pickaxe));
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullFullscreen)
+                    .GetComponent<Toggle>(),
+                Is.Not.Null);
             Assert.That(
-                hudObject.transform.Find(
-                        UiHierarchyPaths.Hud.SlotItem(2))
-                    .GetComponent<TMP_Text>().text,
-                Is.EqualTo("PICKAXE"));
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullMasterVolume)
+                    .GetComponent<Slider>(),
+                Is.Not.Null);
+
+            back.onClick.Invoke();
+            Assert.That(mainOptions.activeSelf, Is.True);
+            Assert.That(settingsPanel.activeSelf, Is.False);
         }
     }
 

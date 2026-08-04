@@ -23,6 +23,8 @@ namespace Supernova.Infrastructure
         [SerializeField] private GameObject mainMenuPrefab;
         [SerializeField] private UiDesignTokens designTokens;
         [SerializeField] private PausePortraitSettings pausePortraitSettings;
+        [SerializeField] private EquipmentIconCatalog equipmentIcons;
+        [SerializeField] private EquipmentPortraitSettings equipmentPortraitSettings;
 
         [Header("Pause Portrait")]
         [SerializeField] private Material pauseBodyMaterial;
@@ -44,6 +46,9 @@ namespace Supernova.Infrastructure
         public GameObject MainMenuPrefab => mainMenuPrefab;
         public UiDesignTokens DesignTokens => designTokens;
         public PausePortraitSettings PausePortraitSettings => pausePortraitSettings;
+        public EquipmentIconCatalog EquipmentIcons => equipmentIcons;
+        public EquipmentPortraitSettings EquipmentPortraitSettings =>
+            equipmentPortraitSettings;
         public Material PauseBodyMaterial => pauseBodyMaterial;
         public Material PauseBackgroundMaterial => pauseBackgroundMaterial;
         public Sprite PrimaryFrame => primaryFrame;
@@ -62,6 +67,8 @@ namespace Supernova.Infrastructure
             mainMenuPrefab != null
             && designTokens != null
             && pausePortraitSettings != null
+            && equipmentIcons != null
+            && equipmentPortraitSettings != null
             && pauseBodyMaterial != null
             && pauseBackgroundMaterial != null
             && primaryFrame != null

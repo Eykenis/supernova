@@ -17,7 +17,7 @@ MonoBehaviour:
   worldGeneration: {fileID: 11400000, guid: 229d6f195a5d42c4dbc249fd8aa49ffd, type: 2}
   monsterGeneration: {fileID: 11400000, guid: 09d92db632bafda4096a3f8350baafa2, type: 2}
   treasureGeneration: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
-  timeLimitSeconds: 300
+  evacuationCountdownSeconds: 180
   requiredFunds: 100
   caveSceneName: CombatTest
   homeSceneName: Home

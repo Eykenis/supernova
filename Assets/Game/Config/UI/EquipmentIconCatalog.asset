@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8368ff254c8b97440b0a6a10bae4cf5e, type: 3}
+  m_Name: EquipmentIconCatalog
+  m_EditorClassIdentifier: 
+  entries:
+  - item: 1
+    icon: {fileID: 21300000, guid: ab61f846543994a4b8e7725ff3bef763, type: 3}
+  - item: 2
+    icon: {fileID: 21300000, guid: 36272c8162beb3d44bce0afd1e46adde, type: 3}
+  - item: 3
+    icon: {fileID: 21300000, guid: 0f0d0f8fc1e555447bc0737e5d56adf4, type: 3}
+  - item: 4
+    icon: {fileID: 21300000, guid: f49ef0a0853c90347b3b66bdaf51ced1, type: 3}
+  - item: 5
+    icon: {fileID: 21300000, guid: ca39ada66a6a7404dbc1ec2c696defee, type: 3}
+  - item: 6
+    icon: {fileID: 21300000, guid: 534ad48d125ad824b8174e5b182cf770, type: 3}
+  - item: 7
+    icon: {fileID: 21300000, guid: 9f29629b4ac02624fb436f96fbd2a833, type: 3}
+  - item: 8
+    icon: {fileID: 21300000, guid: 9564267da722a2e44868592c995b212e, type: 3}

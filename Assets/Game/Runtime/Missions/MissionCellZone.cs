@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using Supernova.MinecraftCaves;
 using Supernova.Voxels;
 using UnityEngine;
@@ -10,9 +11,10 @@ namespace Supernova.Missions
     {
         private MissionGameLoop owner;
         private bool homeMode;
-        private bool playerInside;
         private bool sequenceRunning;
         private ProximitySlidingDoor[] proximityDoors;
+        private readonly HashSet<Collider> playerOverlaps =
+            new HashSet<Collider>();
 
         public void Configure(MissionGameLoop missionOwner, bool isHome)
         {
@@ -21,22 +23,41 @@ namespace Supernova.Missions
             FindDoors();
         }
 
+        public void RefreshActionPrompt()
+        {
+            if (playerOverlaps.Count > 0)
+                owner?.ShowCellActionPrompt(homeMode);
+        }
+
         private void OnTriggerEnter(Collider other)
         {
             if (other.GetComponentInParent<VoxelPlayerController>() == null) return;
-            playerInside = true;
-            if (homeMode && !sequenceRunning) StartCoroutine(HomeLaunchSequence());
+            if (playerOverlaps.Add(other) && playerOverlaps.Count == 1)
+                owner?.ShowCellActionPrompt(homeMode);
         }
 
         private void OnTriggerExit(Collider other)
         {
-            if (other.GetComponentInParent<VoxelPlayerController>() != null) playerInside = false;
+            if (other.GetComponentInParent<VoxelPlayerController>() == null) return;
+            playerOverlaps.Remove(other);
+            if (playerOverlaps.Count == 0)
+                owner?.HideCellActionPrompt(homeMode);
         }
 
         private void Update()
         {
-            if (!homeMode && playerInside && Input.GetKeyDown(KeyCode.E))
-                owner?.RequestEvacuation();
+            if (playerOverlaps.Count == 0
+                || sequenceRunning
+                || !Input.GetKeyDown(KeyCode.E))
+                return;
+
+            if (homeMode)
+            {
+                StartCoroutine(HomeLaunchSequence());
+                return;
+            }
+
+            owner?.RequestEvacuation();
         }
 
         private IEnumerator HomeLaunchSequence()
@@ -47,7 +68,8 @@ namespace Supernova.Missions
                 proximityDoors[i].CloseForLaunch();
             yield return CloseDoors(0.65f);
             yield return new WaitForSeconds(0.35f);
-            owner?.BeginFirstMission();
+            if (owner == null || !owner.BeginFirstMission())
+                sequenceRunning = false;
         }
 
         private IEnumerator CloseDoors(float duration)

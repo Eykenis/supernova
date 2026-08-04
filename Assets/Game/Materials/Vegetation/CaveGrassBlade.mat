@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: CaveGrassBlade
+  m_Shader: {fileID: 4800000, guid: 2927033fa62ed8148852968b075bcc95, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 1
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _FadeEndDistance: 45
+    - _FadeStartDistance: 33
+    - _HeightJitter: 0.25
+    - _HueJitter: 0.12
+    - _NormalBlend: 0.85
+    - _RimPower: 3
+    - _RimStrength: 0.6
+    - _RootOcclusion: 0.55
+    - _TintVariation: 0.3
+    - _WindBendExponent: 2
+    - _WindFrequency: 0.35
+    - _WindScrollSpeed: 0.45
+    - _WindStrength: 0.16
+    m_Colors:
+    - _ClumpCellSize: {r: 2.5, g: 3, b: 0, a: 0}
+    - _RimColor: {r: 0.53, g: 0.78999996, b: 0.34999996, a: 1}
+    - _RootColor: {r: 0.054999977, g: 0.18399996, b: 0.07799999, a: 1}
+    - _SupernovaGrassInteractionParams: {r: 0, g: 0, b: 0, a: 0}
+    - _TipColor: {r: 0.33999997, g: 0.61, b: 0.20799997, a: 1}
+    - _WindDirection: {r: 1, g: 0.35, b: 0, a: 0}
+  m_BuildTextureStacks: []

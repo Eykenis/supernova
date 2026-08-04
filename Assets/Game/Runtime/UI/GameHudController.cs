@@ -48,6 +48,18 @@ namespace Supernova.UI
         [SerializeField] private Canvas pauseCanvas;
         [SerializeField] private GameObject pausePanel;
         [SerializeField] private Button resumeButton;
+        [SerializeField] private Button pauseSettingsButton;
+        [SerializeField] private Button quitToMenuButton;
+        [SerializeField] private Button quitToDesktopButton;
+        [SerializeField] private GameObject pauseMainOptions;
+        [SerializeField] private GameObject pauseSettingsPanel;
+        [SerializeField] private Button pauseSettingsBackButton;
+        [SerializeField] private Toggle pauseFullscreenToggle;
+        [SerializeField] private Slider pauseVolumeSlider;
+        [SerializeField] private TMP_Text pauseVolumeValueLabel;
+
+        [Header("Equipment Menu")]
+        [SerializeField] private EquipmentLoadoutMenu equipmentMenu;
 
         [Header("Loading View")]
         [SerializeField] private Canvas loadingCanvas;
@@ -63,12 +75,10 @@ namespace Supernova.UI
 
         private IDamageable healthSource;
         private PlayerToolController inventorySource;
-        private PlayerEquipmentController equipmentSource;
         private GameHudPresenter presenter;
         private HotbarPresenter hotbarPresenter;
         private float nextSourceSearchTime;
         private float nextInventorySourceSearchTime;
-        private float nextEquipmentSourceSearchTime;
         private float nextWorldSourceSearchTime;
         private MinecraftCaveInfiniteWorld loadingSource;
         private bool loadingRequestedVisible;
@@ -84,22 +94,14 @@ namespace Supernova.UI
         private bool cursorVisibleBeforePause;
         private static GameHudController pauseOwner;
         private static GameHudController runtimeHud;
+        private static int gameplayInputBlockedThroughFrame = -1;
         private PauseMenuPresentation pausePresentation;
         private AngledPanelGraphic[] healthSegments = new AngledPanelGraphic[0];
         private readonly Image[] hotbarSlotBackgrounds = new Image[PlayerInventory.SlotCount];
         private readonly Outline[] hotbarSlotOutlines = new Outline[PlayerInventory.SlotCount];
         private readonly TMP_Text[] hotbarItemLabels = new TMP_Text[PlayerInventory.SlotCount];
-        private readonly Button[] loadoutSlotButtons =
-            new Button[PlayerInventory.SlotCount];
-        private readonly TMP_Text[] loadoutSlotItemLabels =
-            new TMP_Text[PlayerInventory.SlotCount];
-        private readonly Dictionary<PlayerInventoryItem, Button>
-            backpackItemButtons =
-                new Dictionary<PlayerInventoryItem, Button>();
-        private readonly Dictionary<PlayerInventoryItem, TMP_Text>
-            backpackItemLabels =
-                new Dictionary<PlayerInventoryItem, TMP_Text>();
-        private int configuringSlotIndex;
+        private const string FullscreenPreferenceKey = "ui.fullscreen";
+        private const string VolumePreferenceKey = "ui.master-volume";
 
         public Canvas RootCanvas => rootCanvas;
         public Canvas CrosshairCanvas => crosshairCanvas;
@@ -111,13 +113,27 @@ namespace Supernova.UI
         public TMP_Text MissionTimerValueLabel => missionTimerValueLabel;
         public UiDesignTokens DesignTokens => designTokens;
         public bool IsPauseMenuVisible => pausePanel != null && pausePanel.activeSelf;
+        public EquipmentLoadoutMenu EquipmentMenu => equipmentMenu;
+        public bool IsEquipmentMenuVisible =>
+            equipmentMenu != null && equipmentMenu.IsOpen;
         public bool IsLoadingVisible => loadingPanel != null && loadingPanel.activeSelf;
         public IDamageable HealthSource =>
             IsHealthSourceValid(healthSource) ? healthSource : null;
         public PlayerToolController InventorySource => inventorySource;
         public static bool IsPauseMenuOpen => pauseOwner != null && pauseOwner.pauseMenuOpen;
+        public static bool IsModalMenuOpen =>
+            IsPauseMenuOpen || EquipmentLoadoutMenu.IsAnyOpen;
+        public static bool IsGameplayInputBlocked =>
+            IsModalMenuOpen || Time.frameCount <= gameplayInputBlockedThroughFrame;
         public bool CanPauseGame =>
             isActiveAndEnabled
+            && !IsEquipmentMenuVisible
+            && !IsMainMenuActive()
+            && !MissionGameLoop.IsSceneTransitioning
+            && !IsLoadingBlockingPause();
+        public bool CanOpenEquipmentMenu =>
+            isActiveAndEnabled
+            && !pauseMenuOpen
             && !IsMainMenuActive()
             && !MissionGameLoop.IsSceneTransitioning
             && !IsLoadingBlockingPause();
@@ -168,6 +184,7 @@ namespace Supernova.UI
         {
             runtimeHud = null;
             pauseOwner = null;
+            gameplayInputBlockedThroughFrame = -1;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -235,14 +252,12 @@ namespace Supernova.UI
             EnsureView();
             BindHealthSource(healthSourceOverride as IDamageable);
             BindInventorySource(inventorySourceOverride);
-            equipmentSource = FindObjectOfType<PlayerEquipmentController>();
         }
 
         private void OnEnable()
         {
             nextSourceSearchTime = 0f;
             nextInventorySourceSearchTime = 0f;
-            nextEquipmentSourceSearchTime = 0f;
             nextWorldSourceSearchTime = 0f;
             if (inventorySource != null)
                 BindInventorySource(inventorySource);
@@ -252,11 +267,11 @@ namespace Supernova.UI
         private void OnDisable()
         {
             ResumeGame();
+            equipmentMenu?.Close();
             if (inventorySource != null)
             {
                 inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
                 inventorySource.LoadoutChanged -= HandleLoadoutChanged;
-                inventorySource.OwnedItemsChanged -= HandleOwnedItemsChanged;
             }
         }
 
@@ -271,9 +286,20 @@ namespace Supernova.UI
             if (pauseMenuOpen && !CanPauseGame)
                 ResumeGame();
 
+            if (IsEquipmentMenuVisible && !CanOpenEquipmentMenu)
+                equipmentMenu.Close();
+
             if (Input.GetKeyDown(KeyCode.Escape))
             {
-                TogglePauseMenu();
+                if (IsEquipmentMenuVisible)
+                    equipmentMenu.Close();
+                else
+                    TogglePauseMenu();
+            }
+
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                ToggleEquipmentMenu();
             }
 
             if (!IsHealthSourceValid(healthSource)
@@ -288,13 +314,6 @@ namespace Supernova.UI
             {
                 nextInventorySourceSearchTime = Time.unscaledTime + sourceSearchInterval;
                 BindInventorySource(FindPlayerInventorySource());
-            }
-
-            if (equipmentSource == null
-                && Time.unscaledTime >= nextEquipmentSourceSearchTime)
-            {
-                nextEquipmentSourceSearchTime = Time.unscaledTime + sourceSearchInterval;
-                equipmentSource = FindObjectOfType<PlayerEquipmentController>();
             }
 
             if (loadingSource == null && Time.unscaledTime >= nextWorldSourceSearchTime)
@@ -313,9 +332,40 @@ namespace Supernova.UI
             else if (CanPauseGame) PauseGame();
         }
 
+        public void ToggleEquipmentMenu()
+        {
+            EnsureEquipmentMenu();
+            if (equipmentMenu == null)
+                return;
+
+            if (equipmentMenu.IsOpen)
+                equipmentMenu.Close();
+            else if (CanOpenEquipmentMenu)
+                equipmentMenu.Open();
+        }
+
+        internal void SetGameplayHudVisibleForModal(bool visible)
+        {
+            if (rootCanvas != null)
+                rootCanvas.gameObject.SetActive(visible);
+            if (crosshairCanvas != null)
+            {
+                crosshairCanvas.gameObject.SetActive(
+                    visible && (designTokens == null || designTokens.ShowCrosshair));
+            }
+        }
+
+        internal static void BlockGameplayInputAfterModalClose()
+        {
+            gameplayInputBlockedThroughFrame = Mathf.Max(
+                gameplayInputBlockedThroughFrame,
+                Time.frameCount + 1);
+        }
+
         public void PauseGame()
         {
             if (pauseMenuOpen || !CanPauseGame) return;
+            equipmentMenu?.Close();
             if (pausePanel == null || resumeButton == null)
             {
                 CacheViewReferences();
@@ -326,16 +376,12 @@ namespace Supernova.UI
             pauseMenuOpen = true;
             pauseOwner = this;
             pausePanel.SetActive(true);
+            SetGameplayHudVisibleForModal(false);
             pausePresentation = pausePanel.GetComponent<PauseMenuPresentation>();
             if (pausePresentation == null)
                 pausePresentation = pausePanel.AddComponent<PauseMenuPresentation>();
-            if (equipmentSource == null)
-                equipmentSource = FindObjectOfType<PlayerEquipmentController>();
-            pausePresentation.BindEquipment(equipmentSource);
-            configuringSlotIndex = inventorySource != null
-                ? inventorySource.SelectedSlotIndex
-                : 0;
-            RefreshLoadoutConfigurationView();
+            ShowPauseMainOptions();
+            LoadPauseSettings();
             pausePresentation.PlayIntro();
             if (EventSystem.current != null)
                 EventSystem.current.SetSelectedGameObject(resumeButton.gameObject);
@@ -357,9 +403,12 @@ namespace Supernova.UI
 
             pauseMenuOpen = false;
             if (pauseOwner == this) pauseOwner = null;
+            SetGameplayHudVisibleForModal(true);
             if (!Application.isPlaying) return;
+            BlockGameplayInputAfterModalClose();
             Time.timeScale = timeScaleBeforePause;
             SetCursorState(cursorLockBeforePause, cursorVisibleBeforePause);
+            PlayerPrefs.Save();
         }
 
         private bool IsLoadingBlockingPause()
@@ -388,7 +437,10 @@ namespace Supernova.UI
         {
             EnsureView();
             if (!visible)
+            {
                 ResumeGame();
+                equipmentMenu?.Close();
+            }
 
             if (rootCanvas != null)
                 rootCanvas.gameObject.SetActive(visible);
@@ -401,6 +453,8 @@ namespace Supernova.UI
                 loadingCanvas.gameObject.SetActive(visible);
             if (pauseCanvas != null)
                 pauseCanvas.gameObject.SetActive(visible);
+            if (equipmentMenu != null && equipmentMenu.Canvas != null)
+                equipmentMenu.Canvas.gameObject.SetActive(visible);
 
             if (!visible)
                 return;
@@ -408,7 +462,6 @@ namespace Supernova.UI
             loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
             nextSourceSearchTime = 0f;
             nextInventorySourceSearchTime = 0f;
-            nextEquipmentSourceSearchTime = 0f;
             nextWorldSourceSearchTime = 0f;
             IDamageable configuredHealthSource =
                 healthSourceOverride as IDamageable;
@@ -441,7 +494,6 @@ namespace Supernova.UI
             {
                 inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
                 inventorySource.LoadoutChanged -= HandleLoadoutChanged;
-                inventorySource.OwnedItemsChanged -= HandleOwnedItemsChanged;
             }
 
             inventorySource = source;
@@ -449,14 +501,10 @@ namespace Supernova.UI
             {
                 inventorySource.SelectionChanged += HandleInventorySelectionChanged;
                 inventorySource.LoadoutChanged += HandleLoadoutChanged;
-                inventorySource.OwnedItemsChanged += HandleOwnedItemsChanged;
             }
+            equipmentMenu?.BindInventory(inventorySource);
             displayedSlotIndex = -1;
-            configuringSlotIndex = inventorySource != null
-                ? inventorySource.SelectedSlotIndex
-                : 0;
             RefreshNow();
-            RefreshLoadoutConfigurationView();
         }
 
         public void RefreshNow()
@@ -635,18 +683,11 @@ namespace Supernova.UI
         {
             displayedSlotIndex = -1;
             RefreshHotbar();
-            RefreshLoadoutConfigurationView();
         }
 
         private void HandleLoadoutChanged()
         {
             RefreshHotbar();
-            RefreshLoadoutConfigurationView();
-        }
-
-        private void HandleOwnedItemsChanged()
-        {
-            RefreshLoadoutConfigurationView();
         }
 
         [ContextMenu("Rebuild Default UGUI View")]
@@ -664,6 +705,7 @@ namespace Supernova.UI
             BuildMissionView();
             BuildLoadingView();
             BuildPauseView();
+            EnsureEquipmentMenu();
             SciFiUiSkin.ApplyGameHud(transform);
             ApplyReferenceHudLayout();
             CreatePresenter();
@@ -703,20 +745,34 @@ namespace Supernova.UI
             }
 
             bool pauseViewNeedsUpgrade =
-                transform.Find(UiHierarchyPaths.Pause.FullBackSlot) == null
-                || transform.Find(UiHierarchyPaths.Pause.FullQuickSlots) == null
-                || transform.Find(UiHierarchyPaths.Pause.FullBackpack) == null;
+                transform.Find(UiHierarchyPaths.Pause.FullSettings) == null
+                || transform.Find(UiHierarchyPaths.Pause.FullQuitToMenu) == null
+                || transform.Find(UiHierarchyPaths.Pause.FullQuitToDesktop) == null
+                || transform.Find(UiHierarchyPaths.Pause.FullSettingsPanel) == null;
             if (pauseCanvas == null || pausePanel == null || resumeButton == null
                 || pauseViewNeedsUpgrade)
             {
                 BuildPauseView();
             }
 
-            BindLoadoutConfigurationButtons();
+            EnsureEquipmentMenu();
+
+            BindPauseMenuButtons();
             SciFiUiSkin.ApplyGameHud(transform);
             ApplyReferenceHudLayout();
             CreatePresenter();
             RefreshLoadingView();
+        }
+
+        private void EnsureEquipmentMenu()
+        {
+            if (equipmentMenu == null)
+                equipmentMenu = GetComponent<EquipmentLoadoutMenu>();
+            if (equipmentMenu == null)
+                equipmentMenu = gameObject.AddComponent<EquipmentLoadoutMenu>();
+
+            equipmentMenu.Initialize(this, designTokens);
+            equipmentMenu.BindInventory(inventorySource);
         }
 
         private void CacheViewReferences()
@@ -752,7 +808,7 @@ namespace Supernova.UI
             Transform resume = transform.Find(UiHierarchyPaths.Pause.FullResume);
             if (resumeButton == null && resume != null)
                 resumeButton = resume.GetComponent<Button>();
-            CacheLoadoutViewReferences();
+            CachePauseMenuReferences();
 
             Transform loadingCanvasTransform = transform.Find(UiHierarchyPaths.Loading.Canvas);
             if (loadingCanvas == null && loadingCanvasTransform != null)
@@ -1166,8 +1222,8 @@ namespace Supernova.UI
             ApplyCanvasPolicy(loadingRoot.gameObject, scaler);
 
             Color overlayBackdrop = designTokens != null
-                ? designTokens.OverlayBackdrop
-                : new Color(0.008f, 0.01f, 0.014f, 0.72f);
+                ? designTokens.LoadingBackdrop
+                : new Color(0.025f, 0.028f, 0.035f, 1f);
             Color overlayPrimary = designTokens != null
                 ? designTokens.OverlayPrimary
                 : Color.white;
@@ -1243,7 +1299,13 @@ namespace Supernova.UI
             RectTransform track = CreateRect("Progress Track", content);
             SetAnchoredRect(track,
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), new Vector2(0f, -66f), new Vector2(520f, 2f));
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, -66f),
+                new Vector2(
+                    520f,
+                    designTokens != null
+                        ? designTokens.LoadingProgressThickness
+                        : 6f));
             Image trackImage = track.gameObject.AddComponent<Image>();
             trackImage.color = overlayDivider;
             trackImage.raycastTarget = false;
@@ -1295,13 +1357,6 @@ namespace Supernova.UI
                 if (Application.isPlaying) Destroy(existing.gameObject);
                 else DestroyImmediate(existing.gameObject);
             }
-            backpackItemButtons.Clear();
-            backpackItemLabels.Clear();
-            for (int i = 0; i < PlayerInventory.SlotCount; i++)
-            {
-                loadoutSlotButtons[i] = null;
-                loadoutSlotItemLabels[i] = null;
-            }
 
             RectTransform pauseRoot = CreateRect(UiHierarchyPaths.Pause.Canvas, transform);
             pauseCanvas = pauseRoot.gameObject.AddComponent<Canvas>();
@@ -1314,11 +1369,8 @@ namespace Supernova.UI
             pauseRoot.gameObject.AddComponent<GraphicRaycaster>();
 
             Color overlayBackdrop = designTokens != null
-                ? designTokens.OverlayBackdrop
-                : new Color(0.008f, 0.01f, 0.014f, 0.72f);
-            Color overlaySurface = designTokens != null
-                ? designTokens.OverlaySurface
-                : new Color(1f, 1f, 1f, 0.055f);
+                ? designTokens.PauseBackdrop
+                : new Color(0.025f, 0.028f, 0.035f, 1f);
             Color overlayPrimary = designTokens != null
                 ? designTokens.OverlayPrimary
                 : Color.white;
@@ -1331,6 +1383,12 @@ namespace Supernova.UI
             Color overlayInverse = designTokens != null
                 ? designTokens.OverlayInverse
                 : new Color(0.018f, 0.02f, 0.025f, 1f);
+            Color systemSurface = overlayPrimary;
+            Color systemDivider = new Color(
+                overlayInverse.r,
+                overlayInverse.g,
+                overlayInverse.b,
+                overlayDivider.a);
 
             RectTransform panel = CreateRect("Pause Panel", pauseRoot);
             panel.anchorMin = Vector2.zero;
@@ -1342,228 +1400,232 @@ namespace Supernova.UI
             backdrop.raycastTarget = true;
             pausePanel = panel.gameObject;
 
-            RectTransform menu = CreateRect("Menu", panel);
-            SetAnchoredRect(menu,
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560f, 650f));
-            Image menuImage = menu.gameObject.AddComponent<Image>();
-            menuImage.color = overlaySurface;
-            Outline menuOutline = menu.gameObject.AddComponent<Outline>();
-            menuOutline.effectColor = overlayDivider;
-            menuOutline.effectDistance = new Vector2(1f, -1f);
-            menuOutline.useGraphicAlpha = false;
-
-            TMP_Text title = CreateText("Title", menu, "PAUSED", TextAlignmentOptions.Left);
-            SetAnchoredRect((RectTransform)title.transform,
-                new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(0f, 1f), new Vector2(30f, -26f), new Vector2(500f, 58f));
-            title.fontSize = 42f;
-            title.fontStyle = FontStyles.Bold;
-            title.characterSpacing = 4f;
-            title.color = overlayPrimary;
-
-            TMP_Text loadout = CreateText(
-                "Loadout Header",
-                menu,
-                "QUICK SLOTS  //  SELECT A SLOT, THEN CHOOSE AN ITEM",
-                TextAlignmentOptions.Left);
-            SetAnchoredRect((RectTransform)loadout.transform,
-                new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(0f, 1f), new Vector2(30f, -84f), new Vector2(500f, 28f));
-            loadout.fontSize = 12f;
-            loadout.characterSpacing = 3f;
-            loadout.color = overlayInverse;
-
-            RectTransform quickSlots = CreateRect(
-                UiHierarchyPaths.Pause.QuickSlots,
-                menu);
+            RectTransform systemFieldEdge = CreateRect(
+                "System Field Edge",
+                panel);
             SetAnchoredRect(
-                quickSlots,
-                new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f),
-                new Vector2(0f, -116f),
-                new Vector2(500f, 72f));
-            for (int i = 0; i < PlayerInventory.SlotCount; i++)
-            {
-                int slotIndex = i;
-                Button button = CreateLoadoutButton(
-                    UiHierarchyPaths.Pause.QuickSlotName(i + 1),
-                    quickSlots,
-                    new Vector2(i * 126f, 0f),
-                    new Vector2(119f, 66f),
-                    overlaySurface,
-                    overlayDivider,
-                    out TMP_Text label);
-                label.text = (i + 1) + "  //  EMPTY";
-                button.onClick.AddListener(
-                    () => SelectConfiguringSlot(slotIndex));
-                loadoutSlotButtons[i] = button;
-                loadoutSlotItemLabels[i] = label;
-            }
+                systemFieldEdge,
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(1f, 0.5f),
+                Vector2.zero,
+                new Vector2(928f, 0f));
+            PauseMenuWedgeGraphic wedgeEdge = systemFieldEdge.gameObject
+                .AddComponent<PauseMenuWedgeGraphic>();
+            wedgeEdge.Configure(264f, systemDivider);
 
-            TMP_Text backpackHeader = CreateText(
-                UiHierarchyPaths.Pause.BackpackHeader,
-                menu,
-                "BACKPACK  //  OWNED ITEMS",
-                TextAlignmentOptions.Left);
+            RectTransform systemField = CreateRect(
+                UiHierarchyPaths.Pause.SystemField,
+                panel);
             SetAnchoredRect(
-                (RectTransform)backpackHeader.transform,
-                new Vector2(0f, 1f),
-                new Vector2(0f, 1f),
-                new Vector2(0f, 1f),
-                new Vector2(30f, -202f),
-                new Vector2(390f, 28f));
-            backpackHeader.fontSize = 12f;
-            backpackHeader.characterSpacing = 3f;
-            backpackHeader.color = overlayInverse;
+                systemField,
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(1f, 0.5f),
+                Vector2.zero,
+                new Vector2(PauseMenuWedgeGraphic.SystemFieldWidth, 0f));
+            PauseMenuWedgeGraphic wedge =
+                systemField.gameObject.AddComponent<PauseMenuWedgeGraphic>();
+            wedge.Configure(PauseMenuWedgeGraphic.SystemFieldTopInset, systemSurface);
 
-            Button clearButton = CreateLoadoutButton(
-                UiHierarchyPaths.Pause.ClearSlot,
+            RectTransform menu = CreateRect(UiHierarchyPaths.Pause.Menu, panel);
+            SetAnchoredRect(
                 menu,
-                new Vector2(430f, -198f),
-                new Vector2(100f, 26f),
-                overlaySurface,
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                new Vector2(-40f, 0f),
+                new Vector2(640f, 760f));
+            menu.gameObject.AddComponent<CanvasGroup>();
+
+            pauseMainOptions = CreateRect(
+                UiHierarchyPaths.Pause.MainOptions,
+                menu).gameObject;
+            StretchToParent((RectTransform)pauseMainOptions.transform);
+            BuildPauseMainOptions(
+                (RectTransform)pauseMainOptions.transform,
+                overlayInverse,
+                overlayPrimary,
+                overlayDivider);
+
+            pauseSettingsPanel = CreateRect(
+                UiHierarchyPaths.Pause.SettingsPanel,
+                menu).gameObject;
+            StretchToParent((RectTransform)pauseSettingsPanel.transform);
+            BuildPauseSettingsPanel(
+                (RectTransform)pauseSettingsPanel.transform,
+                overlayInverse,
+                overlayPrimary,
+                systemDivider,
                 overlayDivider,
-                out TMP_Text clearLabel);
-            RectTransform clearRect = (RectTransform)clearButton.transform;
-            clearRect.anchorMin = new Vector2(0f, 1f);
-            clearRect.anchorMax = new Vector2(0f, 1f);
-            clearRect.pivot = new Vector2(0f, 1f);
-            clearLabel.text = "CLEAR SLOT";
-            clearLabel.fontSize = 9f;
-            clearLabel.color = overlayInverse;
-            clearButton.onClick.AddListener(ClearConfiguringSlot);
+                overlaySecondary);
+            pauseSettingsPanel.SetActive(false);
 
-            RectTransform backpack = CreateRect(
-                UiHierarchyPaths.Pause.Backpack,
-                menu);
-            SetAnchoredRect(
-                backpack,
-                new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f),
-                new Vector2(0f, -232f),
-                new Vector2(500f, 132f));
-            List<PlayerInventoryItem> inventoryItems =
-                GetDistinctInventoryItems();
-            for (int i = 0; i < inventoryItems.Count; i++)
-            {
-                PlayerInventoryItem item = inventoryItems[i];
-                int column = i % 4;
-                int row = i / 4;
-                Button button = CreateLoadoutButton(
-                    UiHierarchyPaths.Pause.BackpackItemName(item),
-                    backpack,
-                    new Vector2(column * 126f, -row * 64f),
-                    new Vector2(119f, 58f),
-                    overlaySurface,
-                    overlayDivider,
-                    out TMP_Text itemLabel);
-                itemLabel.text = HotbarPresenter.GetItemLabel(item);
-                button.onClick.AddListener(
-                    () => ConfigureSelectedSlot(item));
-                backpackItemButtons[item] = button;
-                backpackItemLabels[item] = itemLabel;
-            }
-
-            RectTransform backSlot = CreateRect("Back Slot", menu);
-            SetAnchoredRect(backSlot,
-                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(0.5f, 1f), new Vector2(0f, -382f), new Vector2(500f, 108f));
-            Image backSlotImage = backSlot.gameObject.AddComponent<Image>();
-            backSlotImage.color = overlaySurface;
-            Button backSlotButton = backSlot.gameObject.AddComponent<Button>();
-            backSlotButton.targetGraphic = backSlotImage;
-            ColorBlock backColors = backSlotButton.colors;
-            backColors.normalColor = Color.white;
-            backColors.highlightedColor = new Color(1f, 1f, 1f, 1.35f);
-            backColors.pressedColor = new Color(1f, 1f, 1f, 0.72f);
-            backColors.selectedColor = backColors.highlightedColor;
-            backSlotButton.colors = backColors;
-            Outline backOutline = backSlot.gameObject.AddComponent<Outline>();
-            backOutline.effectColor = overlayDivider;
-            backOutline.effectDistance = new Vector2(1f, -1f);
-            backOutline.useGraphicAlpha = false;
-
-            TMP_Text slotName = CreateText(
-                "Slot Name", backSlot, "BACK MODULE", TextAlignmentOptions.TopLeft);
-            SetAnchoredRect((RectTransform)slotName.transform,
-                Vector2.zero, Vector2.one, new Vector2(0f, 1f),
-                new Vector2(18f, -14f), new Vector2(-36f, -24f));
-            slotName.fontSize = 12f;
-            slotName.characterSpacing = 2f;
-            slotName.color = overlaySecondary;
-
-            TMP_Text equipmentName = CreateText(
-                "Equipment Name", backSlot, "NO EQUIPMENT", TextAlignmentOptions.Left);
-            SetAnchoredRect((RectTransform)equipmentName.transform,
-                new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
-                new Vector2(0f, 0.5f), new Vector2(18f, 1f), new Vector2(310f, 34f));
-            equipmentName.fontSize = 20f;
-            equipmentName.fontStyle = FontStyles.Bold;
-            equipmentName.color = overlayPrimary;
-
-            TMP_Text equipmentState = CreateText(
-                "State", backSlot, "EMPTY", TextAlignmentOptions.TopRight);
-            SetAnchoredRect((RectTransform)equipmentState.transform,
-                Vector2.zero, Vector2.one, new Vector2(1f, 1f),
-                new Vector2(-18f, -14f), new Vector2(-36f, -24f));
-            equipmentState.fontSize = 12f;
-            equipmentState.characterSpacing = 2f;
-            equipmentState.color = overlayPrimary;
-
-            TMP_Text equipmentHint = CreateText(
-                "Hint", backSlot, "NO MODULE AVAILABLE", TextAlignmentOptions.BottomLeft);
-            SetAnchoredRect((RectTransform)equipmentHint.transform,
-                Vector2.zero, Vector2.one, new Vector2(0f, 0f),
-                new Vector2(18f, 12f), new Vector2(-36f, -24f));
-            equipmentHint.fontSize = 10f;
-            equipmentHint.characterSpacing = 1f;
-            equipmentHint.color = overlaySecondary;
-
-            RectTransform resume = CreateRect("Resume", menu);
-            SetAnchoredRect(resume,
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0.5f, 0f), new Vector2(0f, 28f), new Vector2(500f, 58f));
-            Image resumeImage = resume.gameObject.AddComponent<Image>();
-            resumeImage.color = overlayPrimary;
-            resumeButton = resume.gameObject.AddComponent<Button>();
-            resumeButton.targetGraphic = resumeImage;
-            ColorBlock colors = resumeButton.colors;
-            colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(1f, 1f, 1f, 0.82f);
-            colors.pressedColor = new Color(1f, 1f, 1f, 0.62f);
-            colors.selectedColor = colors.highlightedColor;
-            resumeButton.colors = colors;
-            Navigation navigation = resumeButton.navigation;
-            navigation.mode = Navigation.Mode.None;
-            resumeButton.navigation = navigation;
-            resumeButton.onClick.AddListener(ResumeGame);
-
-            TMP_Text resumeLabel = CreateText(
-                "Label", resume, "RESUME", TextAlignmentOptions.Center);
-            SetAnchoredRect((RectTransform)resumeLabel.transform,
-                Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
-                Vector2.zero, Vector2.zero);
-            resumeLabel.fontSize = 18f;
-            resumeLabel.characterSpacing = 2f;
-            resumeLabel.fontStyle = FontStyles.Bold;
-            resumeLabel.color = overlayInverse;
-
-            RefreshLoadoutConfigurationView();
+            BindPauseMenuButtons();
+            LoadPauseSettings();
             EnsureSingleEventSystem(transform);
             pausePanel.SetActive(pauseMenuOpen);
         }
 
-        private static Button CreateLoadoutButton(
+        private void BuildPauseMainOptions(
+            RectTransform parent,
+            Color systemInk,
+            Color buttonInk,
+            Color buttonDivider)
+        {
+            CreatePauseHeader(parent, "PAUSED", systemInk);
+
+            resumeButton = CreatePauseMenuButton(
+                UiHierarchyPaths.Pause.Resume,
+                parent,
+                1,
+                "RESUME",
+                "ESC",
+                -174f,
+                buttonInk,
+                buttonDivider);
+            pauseSettingsButton = CreatePauseMenuButton(
+                UiHierarchyPaths.Pause.Settings,
+                parent,
+                2,
+                "SETTINGS",
+                string.Empty,
+                -260f,
+                buttonInk,
+                buttonDivider);
+            quitToMenuButton = CreatePauseMenuButton(
+                UiHierarchyPaths.Pause.QuitToMenu,
+                parent,
+                3,
+                "QUIT TO MENU",
+                string.Empty,
+                -346f,
+                buttonInk,
+                buttonDivider);
+            quitToDesktopButton = CreatePauseMenuButton(
+                UiHierarchyPaths.Pause.QuitToDesktop,
+                parent,
+                4,
+                "QUIT TO DESKTOP",
+                string.Empty,
+                -432f,
+                buttonInk,
+                buttonDivider);
+
+            ConfigurePauseNavigation(
+                resumeButton,
+                pauseSettingsButton,
+                quitToMenuButton,
+                quitToDesktopButton);
+        }
+
+        private void BuildPauseSettingsPanel(
+            RectTransform parent,
+            Color systemInk,
+            Color buttonInk,
+            Color systemDivider,
+            Color buttonDivider,
+            Color secondary)
+        {
+            CreatePauseHeader(parent, "SETTINGS", systemInk);
+
+            pauseFullscreenToggle = CreatePauseToggle(
+                UiHierarchyPaths.Pause.Fullscreen,
+                parent,
+                "FULLSCREEN",
+                -202f,
+                systemInk,
+                systemDivider);
+            pauseVolumeSlider = CreatePauseSlider(
+                UiHierarchyPaths.Pause.MasterVolume,
+                parent,
+                "MASTER VOLUME",
+                -306f,
+                systemInk,
+                systemDivider,
+                out pauseVolumeValueLabel);
+            pauseSettingsBackButton = CreatePauseMenuButton(
+                UiHierarchyPaths.Pause.SettingsBack,
+                parent,
+                0,
+                "BACK",
+                string.Empty,
+                -470f,
+                buttonInk,
+                buttonDivider);
+
+            TMP_Text backIndex = pauseSettingsBackButton.transform
+                .Find("Index")?.GetComponent<TMP_Text>();
+            if (backIndex != null)
+                backIndex.text = "<";
+
+            TMP_Text hint = CreateText(
+                "Settings Hint",
+                parent,
+                "CHANGES ARE APPLIED IMMEDIATELY",
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)hint.transform,
+                new Vector2(0f, 0f),
+                new Vector2(0f, 0f),
+                new Vector2(0f, 0f),
+                new Vector2(80f, 42f),
+                new Vector2(500f, 28f));
+            hint.fontSize = 11f;
+            hint.characterSpacing = 2f;
+            hint.color =
+                new Color(systemInk.r, systemInk.g, systemInk.b, secondary.a);
+        }
+
+        private static void CreatePauseHeader(
+            RectTransform parent,
+            string titleText,
+            Color inverse)
+        {
+            TMP_Text eyebrow = CreateText(
+                UiHierarchyPaths.Pause.Eyebrow,
+                parent,
+                "SUPERNOVA  //  SYSTEM",
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)eyebrow.transform,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(80f, -54f),
+                new Vector2(500f, 28f));
+            eyebrow.fontSize = 12f;
+            eyebrow.fontStyle = FontStyles.Bold;
+            eyebrow.characterSpacing = 4f;
+            eyebrow.color = new Color(inverse.r, inverse.g, inverse.b, 0.56f);
+
+            TMP_Text title = CreateText(
+                UiHierarchyPaths.Pause.Title,
+                parent,
+                titleText,
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)title.transform,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(76f, -82f),
+                new Vector2(510f, 72f));
+            title.fontSize = titleText.Length > 6 ? 44f : 48f;
+            title.fontStyle = FontStyles.Bold;
+            title.characterSpacing = 4f;
+            title.color = inverse;
+        }
+
+        private Button CreatePauseMenuButton(
             string name,
-            Transform parent,
-            Vector2 anchoredPosition,
-            Vector2 size,
-            Color surface,
-            Color divider,
-            out TMP_Text label)
+            RectTransform parent,
+            int index,
+            string text,
+            string shortcut,
+            float anchoredY,
+            Color inverse,
+            Color divider)
         {
             RectTransform rect = CreateRect(name, parent);
             SetAnchoredRect(
@@ -1571,236 +1633,548 @@ namespace Supernova.UI
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
                 new Vector2(0f, 1f),
-                anchoredPosition,
-                size);
-            Image image = rect.gameObject.AddComponent<Image>();
-            image.color = surface;
+                new Vector2(70f, anchoredY),
+                new Vector2(520f, 72f));
+
+            RectTransform angledRect = CreateRect("Angled Surface", rect);
+            StretchToParent(angledRect);
+            AngledPanelGraphic angled = angledRect.gameObject
+                .AddComponent<AngledPanelGraphic>();
+            float slant = designTokens != null
+                ? designTokens.HudElementSlant * 1.8f
+                : 16f;
+            float depth = designTokens != null
+                ? designTokens.HudExtrusionDepth
+                : 5f;
+            Color surface = designTokens != null
+                ? designTokens.HudSurface
+                : new Color(0.035f, 0.045f, 0.055f, 0.84f);
+            Color shadow = designTokens != null
+                ? designTokens.HudShadow
+                : new Color(0f, 0f, 0f, 0.72f);
+            Color highlight = designTokens != null
+                ? designTokens.HudMuted
+                : new Color(1f, 1f, 1f, 0.2f);
+            bool reverse = designTokens == null
+                || designTokens.HudHotbarReverseSlant;
+            angled.Configure(
+                slant,
+                depth,
+                surface,
+                shadow,
+                highlight,
+                reverse);
+            angled.raycastTarget = true;
             Button button = rect.gameObject.AddComponent<Button>();
-            button.targetGraphic = image;
+            button.targetGraphic = angled;
             ColorBlock colors = button.colors;
             colors.normalColor = Color.white;
-            colors.highlightedColor = new Color(1f, 1f, 1f, 1.35f);
-            colors.pressedColor = new Color(1f, 1f, 1f, 0.72f);
-            colors.selectedColor = colors.highlightedColor;
+            colors.highlightedColor = new Color(1.35f, 1.35f, 1.35f, 1f);
+            colors.pressedColor = new Color(0.68f, 0.68f, 0.68f, 1f);
+            colors.selectedColor = new Color(1.22f, 1.22f, 1.22f, 1f);
+            colors.disabledColor = new Color(0.35f, 0.35f, 0.35f, 0.42f);
+            colors.fadeDuration = 0.08f;
             button.colors = colors;
-            Outline outline = rect.gameObject.AddComponent<Outline>();
-            outline.effectColor = divider;
-            outline.effectDistance = new Vector2(1f, -1f);
-            outline.useGraphicAlpha = false;
 
-            label = CreateText(
-                UiHierarchyPaths.Pause.SlotItem,
+            TMP_Text indexLabel = CreateText(
+                "Index",
                 rect,
-                string.Empty,
-                TextAlignmentOptions.Center);
+                index > 0 ? index.ToString("00") : string.Empty,
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)indexLabel.transform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0f, 0.5f),
+                new Vector2(12f, 0f),
+                new Vector2(42f, 0f));
+            indexLabel.fontSize = 11f;
+            indexLabel.fontStyle = FontStyles.Bold;
+            indexLabel.characterSpacing = 2f;
+            indexLabel.color =
+                new Color(inverse.r, inverse.g, inverse.b, 0.46f);
+
+            TMP_Text label = CreateText(
+                UiHierarchyPaths.Pause.Label,
+                rect,
+                text,
+                TextAlignmentOptions.Left);
             SetAnchoredRect(
                 (RectTransform)label.transform,
                 Vector2.zero,
                 Vector2.one,
-                new Vector2(0.5f, 0.5f),
-                Vector2.zero,
-                new Vector2(-12f, -8f));
-            label.fontSize = 10f;
+                new Vector2(0f, 0.5f),
+                new Vector2(62f, 0f),
+                new Vector2(-126f, 0f));
+            label.fontSize = text.Length > 14 ? 24f : 29f;
             label.fontStyle = FontStyles.Bold;
-            label.characterSpacing = 1f;
-            label.color = Color.white;
+            label.characterSpacing = 1.5f;
+            label.color = inverse;
+
+            if (!string.IsNullOrEmpty(shortcut))
+            {
+                TMP_Text shortcutLabel = CreateText(
+                    "Shortcut",
+                    rect,
+                    "[ " + shortcut + " ]",
+                    TextAlignmentOptions.Right);
+                SetAnchoredRect(
+                    (RectTransform)shortcutLabel.transform,
+                    Vector2.zero,
+                    Vector2.one,
+                    new Vector2(1f, 0.5f),
+                    new Vector2(-14f, 0f),
+                    new Vector2(100f, 0f));
+                shortcutLabel.fontSize = 11f;
+                shortcutLabel.fontStyle = FontStyles.Bold;
+                shortcutLabel.characterSpacing = 2f;
+                shortcutLabel.color =
+                    new Color(inverse.r, inverse.g, inverse.b, 0.5f);
+            }
+
+            RectTransform rule = CreateRect("Rule", rect);
+            SetAnchoredRect(
+                rule,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0.5f, 0f),
+                Vector2.zero,
+                new Vector2(0f, 1f));
+            Image ruleImage = rule.gameObject.AddComponent<Image>();
+            ruleImage.color = new Color(
+                inverse.r,
+                inverse.g,
+                inverse.b,
+                Mathf.Max(0.14f, divider.a * 0.72f));
+            ruleImage.raycastTarget = false;
             return button;
         }
 
-        private void CacheLoadoutViewReferences()
+        private static Toggle CreatePauseToggle(
+            string name,
+            RectTransform parent,
+            string labelText,
+            float anchoredY,
+            Color inverse,
+            Color divider)
         {
-            Transform quickSlots = transform.Find(
-                UiHierarchyPaths.Pause.FullQuickSlots);
-            if (quickSlots != null)
-            {
-                for (int i = 0; i < PlayerInventory.SlotCount; i++)
-                {
-                    Transform slot = quickSlots.Find(
-                        UiHierarchyPaths.Pause.QuickSlotName(i + 1));
-                    loadoutSlotButtons[i] = slot != null
-                        ? slot.GetComponent<Button>()
-                        : null;
-                    loadoutSlotItemLabels[i] = slot != null
-                        ? slot.Find(UiHierarchyPaths.Pause.SlotItem)
-                            ?.GetComponent<TMP_Text>()
-                        : null;
-                }
-            }
+            RectTransform rect = CreateRect(name, parent);
+            SetAnchoredRect(
+                rect,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(80f, anchoredY),
+                new Vector2(500f, 72f));
 
-            backpackItemButtons.Clear();
-            backpackItemLabels.Clear();
-            Transform backpack = transform.Find(
-                UiHierarchyPaths.Pause.FullBackpack);
-            if (backpack == null)
+            TMP_Text label = CreateText(
+                UiHierarchyPaths.Pause.Label,
+                rect,
+                labelText,
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)label.transform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0f, 0.5f),
+                Vector2.zero,
+                new Vector2(-120f, 0f));
+            label.fontSize = 20f;
+            label.fontStyle = FontStyles.Bold;
+            label.characterSpacing = 1.5f;
+            label.color = inverse;
+
+            RectTransform indicator = CreateRect("Indicator", rect);
+            SetAnchoredRect(
+                indicator,
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                Vector2.zero,
+                new Vector2(82f, 34f));
+            Image indicatorImage = indicator.gameObject.AddComponent<Image>();
+            indicatorImage.color =
+                new Color(inverse.r, inverse.g, inverse.b, 0.12f);
+
+            RectTransform checkmark = CreateRect("Checkmark", indicator);
+            SetAnchoredRect(
+                checkmark,
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                new Vector2(1f, 0.5f),
+                new Vector2(-4f, 0f),
+                new Vector2(35f, 26f));
+            Image checkmarkImage = checkmark.gameObject.AddComponent<Image>();
+            checkmarkImage.color = inverse;
+
+            Toggle toggle = rect.gameObject.AddComponent<Toggle>();
+            toggle.targetGraphic = indicatorImage;
+            toggle.graphic = checkmarkImage;
+            ColorBlock colors = toggle.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.82f);
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.64f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.fadeDuration = 0.08f;
+            toggle.colors = colors;
+
+            RectTransform rule = CreateRect("Rule", rect);
+            SetAnchoredRect(
+                rule,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0.5f, 0f),
+                Vector2.zero,
+                new Vector2(0f, 1f));
+            Image ruleImage = rule.gameObject.AddComponent<Image>();
+            ruleImage.color =
+                new Color(inverse.r, inverse.g, inverse.b, divider.a);
+            ruleImage.raycastTarget = false;
+            return toggle;
+        }
+
+        private static Slider CreatePauseSlider(
+            string name,
+            RectTransform parent,
+            string labelText,
+            float anchoredY,
+            Color inverse,
+            Color divider,
+            out TMP_Text valueLabel)
+        {
+            RectTransform rect = CreateRect(name, parent);
+            SetAnchoredRect(
+                rect,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(80f, anchoredY),
+                new Vector2(500f, 102f));
+
+            TMP_Text label = CreateText(
+                UiHierarchyPaths.Pause.Label,
+                rect,
+                labelText,
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)label.transform,
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(0f, 1f),
+                Vector2.zero,
+                new Vector2(-110f, 42f));
+            label.fontSize = 20f;
+            label.fontStyle = FontStyles.Bold;
+            label.characterSpacing = 1.5f;
+            label.color = inverse;
+
+            valueLabel = CreateText(
+                UiHierarchyPaths.Pause.VolumeValue,
+                rect,
+                "100%",
+                TextAlignmentOptions.Right);
+            SetAnchoredRect(
+                (RectTransform)valueLabel.transform,
+                new Vector2(1f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(1f, 1f),
+                Vector2.zero,
+                new Vector2(100f, 42f));
+            valueLabel.fontSize = 17f;
+            valueLabel.fontStyle = FontStyles.Bold;
+            valueLabel.characterSpacing = 2f;
+            valueLabel.color = inverse;
+
+            RectTransform track = CreateRect("Background", rect);
+            SetAnchoredRect(
+                track,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 18f),
+                new Vector2(0f, 8f));
+            Image trackImage = track.gameObject.AddComponent<Image>();
+            trackImage.color =
+                new Color(inverse.r, inverse.g, inverse.b, 0.16f);
+
+            RectTransform fillArea = CreateRect("Fill Area", rect);
+            SetAnchoredRect(
+                fillArea,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 18f),
+                new Vector2(0f, 8f));
+            RectTransform fill = CreateRect("Fill", fillArea);
+            StretchToParent(fill);
+            Image fillImage = fill.gameObject.AddComponent<Image>();
+            fillImage.color = inverse;
+
+            RectTransform handleArea = CreateRect("Handle Slide Area", rect);
+            SetAnchoredRect(
+                handleArea,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 18f),
+                new Vector2(-20f, 30f));
+            RectTransform handle = CreateRect("Handle", handleArea);
+            SetAnchoredRect(
+                handle,
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(18f, 30f));
+            Image handleImage = handle.gameObject.AddComponent<Image>();
+            handleImage.color = inverse;
+
+            Slider slider = rect.gameObject.AddComponent<Slider>();
+            slider.minValue = 0f;
+            slider.maxValue = 100f;
+            slider.wholeNumbers = false;
+            slider.direction = Slider.Direction.LeftToRight;
+            slider.fillRect = fill;
+            slider.handleRect = handle;
+            slider.targetGraphic = handleImage;
+            ColorBlock colors = slider.colors;
+            colors.normalColor = Color.white;
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.78f);
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.6f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.fadeDuration = 0.08f;
+            slider.colors = colors;
+
+            RectTransform rule = CreateRect("Rule", rect);
+            SetAnchoredRect(
+                rule,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0.5f, 0f),
+                Vector2.zero,
+                new Vector2(0f, 1f));
+            Image ruleImage = rule.gameObject.AddComponent<Image>();
+            ruleImage.color =
+                new Color(inverse.r, inverse.g, inverse.b, divider.a);
+            ruleImage.raycastTarget = false;
+            return slider;
+        }
+
+        private void CachePauseMenuReferences()
+        {
+            pauseMainOptions = FindPauseObject(
+                UiHierarchyPaths.Pause.FullMainOptions,
+                pauseMainOptions);
+            pauseSettingsPanel = FindPauseObject(
+                UiHierarchyPaths.Pause.FullSettingsPanel,
+                pauseSettingsPanel);
+            resumeButton = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullResume,
+                resumeButton);
+            pauseSettingsButton = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullSettings,
+                pauseSettingsButton);
+            quitToMenuButton = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullQuitToMenu,
+                quitToMenuButton);
+            quitToDesktopButton = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullQuitToDesktop,
+                quitToDesktopButton);
+            pauseSettingsBackButton = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullSettingsBack,
+                pauseSettingsBackButton);
+            pauseFullscreenToggle = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullFullscreen,
+                pauseFullscreenToggle);
+            pauseVolumeSlider = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullMasterVolume,
+                pauseVolumeSlider);
+
+            Transform volume = transform.Find(
+                UiHierarchyPaths.Pause.FullMasterVolume);
+            if (volume != null)
+            {
+                pauseVolumeValueLabel = volume
+                    .Find(UiHierarchyPaths.Pause.VolumeValue)
+                    ?.GetComponent<TMP_Text>();
+            }
+        }
+
+        private GameObject FindPauseObject(string path, GameObject current)
+        {
+            if (current != null)
+                return current;
+            Transform found = transform.Find(path);
+            return found != null ? found.gameObject : null;
+        }
+
+        private T FindPauseComponent<T>(string path, T current)
+            where T : Component
+        {
+            if (current != null)
+                return current;
+            Transform found = transform.Find(path);
+            return found != null ? found.GetComponent<T>() : null;
+        }
+
+        private void BindPauseMenuButtons()
+        {
+            CachePauseMenuReferences();
+
+            if (resumeButton != null)
+            {
+                resumeButton.onClick.RemoveListener(ResumeGame);
+                resumeButton.onClick.AddListener(ResumeGame);
+            }
+            if (pauseSettingsButton != null)
+            {
+                pauseSettingsButton.onClick.RemoveListener(ShowPauseSettings);
+                pauseSettingsButton.onClick.AddListener(ShowPauseSettings);
+            }
+            if (quitToMenuButton != null)
+            {
+                quitToMenuButton.onClick.RemoveListener(QuitToMainMenu);
+                quitToMenuButton.onClick.AddListener(QuitToMainMenu);
+            }
+            if (quitToDesktopButton != null)
+            {
+                quitToDesktopButton.onClick.RemoveListener(QuitToDesktop);
+                quitToDesktopButton.onClick.AddListener(QuitToDesktop);
+            }
+            if (pauseSettingsBackButton != null)
+            {
+                pauseSettingsBackButton.onClick.RemoveListener(
+                    ShowPauseMainOptions);
+                pauseSettingsBackButton.onClick.AddListener(
+                    ShowPauseMainOptions);
+            }
+            if (pauseFullscreenToggle != null)
+            {
+                pauseFullscreenToggle.onValueChanged.RemoveListener(
+                    OnPauseFullscreenChanged);
+                pauseFullscreenToggle.onValueChanged.AddListener(
+                    OnPauseFullscreenChanged);
+            }
+            if (pauseVolumeSlider != null)
+            {
+                pauseVolumeSlider.onValueChanged.RemoveListener(
+                    OnPauseVolumeChanged);
+                pauseVolumeSlider.onValueChanged.AddListener(
+                    OnPauseVolumeChanged);
+            }
+        }
+
+        private static void ConfigurePauseNavigation(params Selectable[] controls)
+        {
+            for (int i = 0; i < controls.Length; i++)
+            {
+                Selectable current = controls[i];
+                if (current == null)
+                    continue;
+
+                Navigation navigation = current.navigation;
+                navigation.mode = Navigation.Mode.Explicit;
+                navigation.selectOnUp =
+                    controls[(i - 1 + controls.Length) % controls.Length];
+                navigation.selectOnDown =
+                    controls[(i + 1) % controls.Length];
+                current.navigation = navigation;
+            }
+        }
+
+        private void ShowPauseSettings()
+        {
+            if (pauseMainOptions != null)
+                pauseMainOptions.SetActive(false);
+            if (pauseSettingsPanel != null)
+                pauseSettingsPanel.SetActive(true);
+            LoadPauseSettings();
+            if (EventSystem.current != null && pauseFullscreenToggle != null)
+            {
+                EventSystem.current.SetSelectedGameObject(
+                    pauseFullscreenToggle.gameObject);
+            }
+        }
+
+        private void ShowPauseMainOptions()
+        {
+            if (pauseMainOptions != null)
+                pauseMainOptions.SetActive(true);
+            if (pauseSettingsPanel != null)
+                pauseSettingsPanel.SetActive(false);
+            if (EventSystem.current != null && resumeButton != null)
+                EventSystem.current.SetSelectedGameObject(resumeButton.gameObject);
+        }
+
+        private void LoadPauseSettings()
+        {
+            bool fullscreen = PlayerPrefs.GetInt(
+                FullscreenPreferenceKey,
+                Screen.fullScreen ? 1 : 0) != 0;
+            float volume = Mathf.Clamp01(
+                PlayerPrefs.GetFloat(
+                    VolumePreferenceKey,
+                    AudioListener.volume));
+
+            if (pauseFullscreenToggle != null)
+                pauseFullscreenToggle.SetIsOnWithoutNotify(fullscreen);
+            if (pauseVolumeSlider != null)
+                pauseVolumeSlider.SetValueWithoutNotify(volume * 100f);
+            SetPauseVolumeValue(volume * 100f);
+        }
+
+        private void OnPauseFullscreenChanged(bool value)
+        {
+            Screen.fullScreen = value;
+            PlayerPrefs.SetInt(FullscreenPreferenceKey, value ? 1 : 0);
+        }
+
+        private void OnPauseVolumeChanged(float value)
+        {
+            float normalized = Mathf.Clamp01(value / 100f);
+            AudioListener.volume = normalized;
+            PlayerPrefs.SetFloat(VolumePreferenceKey, normalized);
+            SetPauseVolumeValue(value);
+        }
+
+        private void SetPauseVolumeValue(float value)
+        {
+            if (pauseVolumeValueLabel != null)
+            {
+                pauseVolumeValueLabel.text =
+                    Mathf.RoundToInt(value).ToString("00") + "%";
+            }
+        }
+
+        public void QuitToMainMenu()
+        {
+            string mainMenuSceneName = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.SceneLookups.MainMenuSceneName
+                : string.Empty;
+            if (string.IsNullOrWhiteSpace(mainMenuSceneName)
+                || !Application.CanStreamedLevelBeLoaded(mainMenuSceneName))
+            {
+                Debug.LogError(
+                    "Pause menu could not load the configured main-menu scene.");
                 return;
-
-            List<PlayerInventoryItem> items =
-                GetDistinctInventoryItems();
-            for (int i = 0; i < items.Count; i++)
-            {
-                PlayerInventoryItem item = items[i];
-                Transform itemRoot = backpack.Find(
-                    UiHierarchyPaths.Pause.BackpackItemName(item));
-                if (itemRoot == null)
-                    continue;
-                backpackItemButtons[item] =
-                    itemRoot.GetComponent<Button>();
-                backpackItemLabels[item] =
-                    itemRoot.Find(UiHierarchyPaths.Pause.SlotItem)
-                        ?.GetComponent<TMP_Text>();
             }
+
+            ResumeGame();
+            Time.timeScale = 1f;
+            SceneManager.LoadSceneAsync(
+                mainMenuSceneName,
+                LoadSceneMode.Single);
         }
 
-        private void BindLoadoutConfigurationButtons()
+        public void QuitToDesktop()
         {
-            for (int i = 0; i < PlayerInventory.SlotCount; i++)
-            {
-                Button button = loadoutSlotButtons[i];
-                if (button == null)
-                    continue;
-                int slotIndex = i;
-                button.onClick.RemoveAllListeners();
-                button.onClick.AddListener(
-                    () => SelectConfiguringSlot(slotIndex));
-            }
-
-            foreach (KeyValuePair<PlayerInventoryItem, Button> pair
-                in backpackItemButtons)
-            {
-                if (pair.Value == null)
-                    continue;
-                PlayerInventoryItem item = pair.Key;
-                pair.Value.onClick.RemoveAllListeners();
-                pair.Value.onClick.AddListener(
-                    () => ConfigureSelectedSlot(item));
-            }
-
-            Transform clear = transform.Find(
-                UiHierarchyPaths.Pause.FullMenu
-                + "/"
-                + UiHierarchyPaths.Pause.ClearSlot);
-            Button clearButton = clear != null
-                ? clear.GetComponent<Button>()
-                : null;
-            if (clearButton != null)
-            {
-                clearButton.onClick.RemoveAllListeners();
-                clearButton.onClick.AddListener(ClearConfiguringSlot);
-            }
+            PlayerPrefs.Save();
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
-
-        private void SelectConfiguringSlot(int slotIndex)
-        {
-            configuringSlotIndex = Mathf.Clamp(
-                slotIndex,
-                0,
-                PlayerInventory.SlotCount - 1);
-            RefreshLoadoutConfigurationView();
-        }
-
-        private void ConfigureSelectedSlot(PlayerInventoryItem item)
-        {
-            if (inventorySource == null)
-                return;
-            inventorySource.ConfigureSlot(configuringSlotIndex, item);
-            RefreshLoadoutConfigurationView();
-        }
-
-        private void ClearConfiguringSlot()
-        {
-            ConfigureSelectedSlot(PlayerInventoryItem.Empty);
-        }
-
-        private void RefreshLoadoutConfigurationView()
-        {
-            Color primary = designTokens != null
-                ? designTokens.OverlayPrimary
-                : Color.white;
-            Color surface = designTokens != null
-                ? designTokens.OverlaySurface
-                : new Color(1f, 1f, 1f, 0.055f);
-            Color inverse = designTokens != null
-                ? designTokens.OverlayInverse
-                : new Color(0.018f, 0.02f, 0.025f, 1f);
-
-            for (int i = 0; i < PlayerInventory.SlotCount; i++)
-            {
-                PlayerInventoryItem item = inventorySource != null
-                    ? inventorySource.GetItemAtSlot(i)
-                    : PlayerInventoryItem.Empty;
-                bool selected = i == configuringSlotIndex;
-                if (loadoutSlotItemLabels[i] != null)
-                {
-                    string itemName = HotbarPresenter.GetItemLabel(item);
-                    loadoutSlotItemLabels[i].text = (i + 1)
-                        + "  //  "
-                        + (string.IsNullOrEmpty(itemName)
-                            ? "EMPTY"
-                            : itemName);
-                    loadoutSlotItemLabels[i].color = inverse;
-                }
-                if (loadoutSlotButtons[i] != null)
-                {
-                    Image image =
-                        loadoutSlotButtons[i].targetGraphic as Image;
-                    if (image != null)
-                        image.color = selected ? primary : surface;
-                }
-            }
-
-            foreach (KeyValuePair<PlayerInventoryItem, Button> pair
-                in backpackItemButtons)
-            {
-                PlayerInventoryItem item = pair.Key;
-                Button button = pair.Value;
-                bool owned = inventorySource != null
-                    && inventorySource.OwnedItems.Owns(item);
-                if (button != null)
-                {
-                    button.gameObject.SetActive(owned);
-                    button.interactable = owned;
-                }
-
-                if (!backpackItemLabels.TryGetValue(
-                        item,
-                        out TMP_Text label)
-                    || label == null)
-                {
-                    continue;
-                }
-
-                int assignedSlot = inventorySource != null
-                    ? inventorySource.Inventory.IndexOf(item)
-                    : -1;
-                label.text = HotbarPresenter.GetItemLabel(item)
-                    + (assignedSlot >= 0
-                        ? "\nSLOT " + (assignedSlot + 1)
-                        : string.Empty);
-                label.color = inverse;
-            }
-        }
-
-        private static List<PlayerInventoryItem>
-            GetDistinctInventoryItems()
-        {
-            var items = new List<PlayerInventoryItem>();
-            var seenValues = new HashSet<int>();
-            Array values = Enum.GetValues(typeof(PlayerInventoryItem));
-            for (int i = 0; i < values.Length; i++)
-            {
-                PlayerInventoryItem item =
-                    (PlayerInventoryItem)values.GetValue(i);
-                int value = (int)item;
-                if (item == PlayerInventoryItem.Empty
-                    || !seenValues.Add(value))
-                {
-                    continue;
-                }
-                items.Add(item);
-            }
-            return items;
-        }
-
         public static EventSystem EnsureSingleEventSystem(Transform fallbackParent)
         {
             EventSystem[] eventSystems = FindObjectsOfType<EventSystem>(true);
@@ -2513,6 +2887,15 @@ namespace Supernova.UI
             rect.sizeDelta = sizeDelta;
         }
 
+        private static void StretchToParent(RectTransform rect)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = Vector2.zero;
+        }
+
         private static void SetCursorState(CursorLockMode lockMode, bool visible)
         {
             Cursor.lockState = lockMode;
@@ -2578,7 +2961,7 @@ namespace Supernova.UI
         }
     }
 
-    /// <summary>Presentation-only adapter for the four configurable hotbar slots.</summary>
+    /// <summary>Presentation-only adapter for the five configurable hotbar slots.</summary>
     public sealed class HotbarPresenter
     {
         private readonly Image[] backgrounds;

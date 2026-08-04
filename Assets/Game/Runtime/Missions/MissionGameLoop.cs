@@ -24,6 +24,7 @@ namespace Supernova.Missions
         private bool caveSetup;
         private int configuredSceneHandle = int.MinValue;
         private OreExtractionZone extractionZone;
+        private MissionCellZone cellZone;
         private int displayedObjectiveSeconds = int.MinValue;
         private int displayedObjectiveStoredValue = int.MinValue;
         private int displayedObjectiveRequiredValue = int.MinValue;
@@ -140,7 +141,7 @@ namespace Supernova.Missions
 
             definition = level;
             run = new MissionRun(
-                definition.TimeLimitSeconds,
+                definition.EvacuationCountdownSeconds,
                 definition.RequiredFunds);
             InvalidateObjectiveCache();
             StartCoroutine(LoadWithFade(CaveSceneName));
@@ -154,19 +155,85 @@ namespace Supernova.Missions
             RefreshObjective();
         }
 
-        public void RequestEvacuation()
+        public bool RequestEvacuation()
         {
-            if (run == null || run.IsFinished || transitioning) return;
-            run.AddDeliveredValue(
-                extractionZone != null ? extractionZone.CurrentStoredValue : 0);
-            run.Evacuate();
-            ShowResult();
+            if (run == null || run.IsFinished || transitioning) return false;
+
+            int storedValue = extractionZone != null
+                ? extractionZone.CurrentStoredValue
+                : 0;
+            if (!run.TryStartEvacuationCountdown(storedValue))
+            {
+                if (run.IsEvacuationCountdownActive)
+                {
+                    SetPrompt("EVACUATION COUNTDOWN ALREADY ACTIVE");
+                }
+                else
+                {
+                    int missingValue = Mathf.Max(
+                        0,
+                        run.RequiredValue - storedValue);
+                    SetPrompt(
+                        "RETURN LOCKED · NEED $" + missingValue
+                        + " MORE    STORED $" + storedValue
+                        + " / $" + run.RequiredValue);
+                }
+                return false;
+            }
+
+            InvalidateObjectiveCache();
+            SetPrompt(
+                "EVACUATION INITIATED · RETURN IN "
+                + FormatCountdown(run.TimeRemaining));
+            RefreshObjective();
+            return true;
+        }
+
+        public void ShowCellActionPrompt(bool home)
+        {
+            if (home)
+            {
+                SetPrompt("PRESS E AT CELL CONSOLE TO START MISSION");
+                return;
+            }
+
+            if (run == null || run.IsFinished) return;
+            if (run.IsEvacuationCountdownActive)
+            {
+                SetPrompt("EVACUATION COUNTDOWN ACTIVE");
+                return;
+            }
+
+            int storedValue = extractionZone != null
+                ? extractionZone.CurrentStoredValue
+                : 0;
+            SetPrompt(storedValue >= run.RequiredValue
+                ? "PRESS E AT CELL CONSOLE TO BEGIN EVACUATION"
+                : "RETURN LOCKED · STORED $" + storedValue
+                    + " / $" + run.RequiredValue);
+        }
+
+        public void HideCellActionPrompt(bool home)
+        {
+            if (home)
+            {
+                SetPrompt("SHOP ONLINE    BALANCE: $" + Credits);
+            }
+            else if (run != null && run.IsEvacuationCountdownActive)
+            {
+                SetPrompt("EVACUATION COUNTDOWN ACTIVE");
+            }
+            else
+            {
+                SetPrompt("");
+            }
         }
 
         public void NotifyStoredValueChanged(int value)
         {
             SetPrompt("TOTAL STORED VALUE: $" + Mathf.Max(0, value));
             RefreshObjective();
+            cellZone?.RefreshActionPrompt();
         }
 
         public void SetPrompt(string message)
@@ -189,11 +256,12 @@ namespace Supernova.Missions
             missionUi.HideResult();
             caveSetup = false;
             extractionZone = null;
+            cellZone = null;
             if (scene.name == HomeSceneName) SetupHome();
             else if (scene.name == CaveSceneName)
             {
                 EnsureRunForDirectCaveEntry();
-                gameUi?.SetMissionTimeRemaining(run.TimeRemaining);
+                gameUi?.HideMissionTimer();
                 SetPrompt("");
             }
         }
@@ -204,7 +272,7 @@ namespace Supernova.Missions
                 return;
 
             run = new MissionRun(
-                definition.TimeLimitSeconds,
+                definition.EvacuationCountdownSeconds,
                 definition.RequiredFunds);
             InvalidateObjectiveCache();
         }
@@ -285,6 +353,8 @@ namespace Supernova.Missions
             trigger.size = new Vector3(5f, 3f, 5f);
             MissionCellZone zone = triggerObject.AddComponent<MissionCellZone>();
             zone.Configure(this, home);
+            cellZone = zone;
+            MissionCellButton.Create(cell, home);
             if (!home)
             {
                 extractionZone = triggerObject.AddComponent<OreExtractionZone>();
@@ -427,8 +497,14 @@ namespace Supernova.Missions
             EnsureUi();
             if (missionUi == null) return;
             int seconds = Mathf.CeilToInt(run.TimeRemaining);
-            if (seconds != displayedObjectiveSeconds)
+            if (!run.IsEvacuationCountdownActive)
+            {
+                gameUi?.HideMissionTimer();
+            }
+            else if (seconds != displayedObjectiveSeconds)
+            {
                 gameUi?.SetMissionTimeRemaining(run.TimeRemaining);
+            }
             int storedValue = extractionZone != null
                 ? extractionZone.CurrentStoredValue
                 : 0;
@@ -485,6 +561,14 @@ namespace Supernova.Missions
         private string MissionName => definition != null
             ? definition.DisplayName
             : string.Empty;
+
+        private static string FormatCountdown(float secondsRemaining)
+        {
+            int totalSeconds = Mathf.Max(0, Mathf.CeilToInt(secondsRemaining));
+            return (totalSeconds / 60).ToString("00")
+                + ":" + (totalSeconds % 60).ToString("00");
+        }
+
         private string CaveSceneName => definition != null
             ? definition.CaveSceneName
             : string.Empty;

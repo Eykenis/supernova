@@ -126,6 +126,13 @@ namespace Supernova.Tests
                 homeCellObject.GetComponentInChildren<OreExtractionZone>(),
                 Is.Null,
                 "Home must only provide the mission launch trigger.");
+            MissionCellButton homeButton =
+                homeCellObject.GetComponentInChildren<MissionCellButton>();
+            Assert.That(homeButton, Is.Not.Null);
+            Assert.That(homeButton.IsHomeMode, Is.True);
+            Assert.That(
+                homeButton.transform.parent,
+                Is.EqualTo(homeCellObject.transform));
 
             var caveCellObject = new GameObject("Cave Cell");
             caveCellObject.transform.SetParent(loopObject.transform);
@@ -137,6 +144,13 @@ namespace Supernova.Tests
                 caveCellObject.GetComponentInChildren<OreExtractionZone>(),
                 Is.Not.Null,
                 "Ore extraction must be enabled after entering InfiniteCaves.");
+            MissionCellButton caveButton =
+                caveCellObject.GetComponentInChildren<MissionCellButton>();
+            Assert.That(caveButton, Is.Not.Null);
+            Assert.That(caveButton.IsHomeMode, Is.False);
+            Assert.That(
+                caveButton.transform.parent,
+                Is.EqualTo(caveCellObject.transform));
         }
     }
 }

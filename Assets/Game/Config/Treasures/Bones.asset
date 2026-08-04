@@ -21,6 +21,6 @@ MonoBehaviour:
   maximumSurfaceSlope: 12
   requiredHeadroom: 1.5
   fractureVariants:
-  - {fileID: 4975227794547731760, guid: 0a5048e503d5a7d4b9fb39c59b37afc9, type: 3}
-  - {fileID: 8893047387986134901, guid: 95f4bc661d1de744992726650179a191, type: 3}
-  - {fileID: 5418715639798846648, guid: 1c1686e740f0c4f428818b3ec6b8ed46, type: 3}
+  - {fileID: 7884704049027483410, guid: 45beb09e07c296d43b80a3668baff376, type: 3}
+  - {fileID: 5181494394900259129, guid: f958a4a528223d04f9c7ca4a8d4dd42e, type: 3}
+  - {fileID: 1522562274898966685, guid: 2787771922ea8a543a8093f0819a28b5, type: 3}

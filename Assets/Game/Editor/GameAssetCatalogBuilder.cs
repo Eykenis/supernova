@@ -58,6 +58,16 @@ public static class GameAssetCatalogBuilder
             serialized,
             "ui.pausePortraitSettings",
             ProjectAssetPaths.Ui.PauseSettings);
+        EquipmentIconBaker.EnsureIconCatalogAsset();
+        SetReference<EquipmentIconCatalog>(
+            serialized,
+            "ui.equipmentIcons",
+            ProjectAssetPaths.Config.EquipmentIconCatalog);
+        EnsureEquipmentPortraitSettingsAsset();
+        SetReference<EquipmentPortraitSettings>(
+            serialized,
+            "ui.equipmentPortraitSettings",
+            ProjectAssetPaths.Config.EquipmentPortraitSettings);
         SetReference<Material>(
             serialized,
             "ui.pauseBodyMaterial",
@@ -161,6 +171,28 @@ public static class GameAssetCatalogBuilder
             throw new InvalidOperationException(
                 $"Catalog property was not found: {propertyPath}");
         property.stringValue = value;
+    }
+
+    private static void EnsureEquipmentPortraitSettingsAsset()
+    {
+        EquipmentPortraitSettings settings =
+            AssetDatabase.LoadAssetAtPath<EquipmentPortraitSettings>(
+                ProjectAssetPaths.Config.EquipmentPortraitSettings);
+        if (settings != null)
+            return;
+
+        settings = ScriptableObject.CreateInstance<EquipmentPortraitSettings>();
+        AssetDatabase.CreateAsset(
+            settings,
+            ProjectAssetPaths.Config.EquipmentPortraitSettings);
+        SerializedObject serialized = new SerializedObject(settings);
+        SetReference<AnimationClip>(
+            serialized,
+            "animationClip",
+            ProjectAssetPaths.ThirdParty.WaitAnimation);
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(settings);
+        AssetDatabase.SaveAssets();
     }
 
     private static void EnsurePreloaded(GameAssetCatalog catalog)

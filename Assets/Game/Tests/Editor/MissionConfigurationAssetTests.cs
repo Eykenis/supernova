@@ -35,10 +35,20 @@ namespace Supernova.Tests
             Assert.That(level.MonsterGeneration, Is.Not.Null);
             Assert.That(level.TreasureGeneration, Is.Not.Null);
             Assert.That(level.HasCompleteGenerationConfiguration, Is.True);
-            Assert.That(level.TimeLimitSeconds, Is.EqualTo(300f));
+            Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
             Assert.That(level.RequiredFunds, Is.EqualTo(100));
             Assert.That(level.HomeSceneName, Is.EqualTo("Home"));
             Assert.That(level.CaveSceneName, Is.EqualTo("InfiniteCaves"));
+        }
+
+        [Test]
+        public void FirstLevel_UsesThreeMinuteEvacuationCountdown()
+        {
+            LevelConfiguration level =
+                AssetDatabase.LoadAssetAtPath<LevelConfiguration>(LevelPath);
+
+            Assert.That(level, Is.Not.Null);
+            Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
         }
 
         [Test]

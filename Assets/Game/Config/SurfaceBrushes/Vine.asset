@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 167ee0fa5db9b0f469e73eafa7e9ead4, type: 3}
+  m_Name: Vine
+  m_EditorClassIdentifier: 
+  renderMode: 0
+  prefab: {fileID: 100000, guid: 20158b2d4acc4526a3ddf4237323169d, type: 3}
+  instanceMesh: {fileID: 0}
+  instanceMaterial: {fileID: 0}
+  instanceShadowCastingMode: 0
+  instanceReceiveShadows: 1
+  maximumDrawDistance: 45
+  lodTiers: []
+  fadeBandDistance: 12
+  attachableVoxelTypes:
+  - {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
+  orientation: 2
+  seedSalt: 2029
+  densityPerSquareUnit: 0.02
+  minimumVerticalAlignment: 0.6
+  maximumWallVerticalAlignment: 0.4
+  normalOffset: 0.01
+  uprightBias: 0.65
+  tangentScaleRange: {x: 0.8, y: 1.2}
+  normalScaleRange: {x: 0.6, y: 1.6}
+  clumpHorizontalCellSize: 2.5
+  clumpVerticalCellSize: 3
+  clumpHeightRange: {x: 0.72, y: 1.35}
+  clumpWidthRange: {x: 0.85, y: 1.2}
+  clumpYawBiasDegrees: 35
+  windStrength: 0.16
+  windFrequency: 0.35
+  windScrollSpeed: 0.45
+  windDirection: {x: 1, y: 0.35}
+  windBendExponent: 2

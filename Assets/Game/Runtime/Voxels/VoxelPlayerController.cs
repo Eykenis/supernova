@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Supernova.Gameplay;
+using Supernova.UI;
 using UnityEngine;
 
 namespace Supernova.Voxels
@@ -224,6 +225,7 @@ namespace Supernova.Voxels
         private void Update()
         {
             if (!Application.isPlaying) return;
+            if (GameHudController.IsGameplayInputBlocked) return;
 
             ResolveReferences();
             EnsureMotor();

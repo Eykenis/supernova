@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 8
   primaryAction: 6
-  animationTriggerMode: 2
+  animationTriggerMode: 0
   primaryActionAnimation: {fileID: 0}
   heldModelPrefab: {fileID: 4117411956817622082, guid: 4c833792bdb758c45aead63b9e6f151e,
     type: 3}

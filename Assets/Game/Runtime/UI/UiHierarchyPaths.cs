@@ -1,5 +1,3 @@
-using Supernova.Gameplay;
-
 namespace Supernova.UI
 {
     public static class UiHierarchyPaths
@@ -129,41 +127,56 @@ namespace Supernova.UI
         {
             public const string Canvas = "Pause Canvas";
             public const string Panel = "Pause Canvas/Pause Panel";
+            public const string SystemField = "System Field";
             public const string Menu = "Menu";
             public const string FullMenu = "Pause Canvas/Pause Panel/Menu";
+            public const string MainOptions = "Main Options";
+            public const string FullMainOptions = FullMenu + "/" + MainOptions;
             public const string Resume = "Resume";
-            public const string FullResume = "Pause Canvas/Pause Panel/Menu/Resume";
-            public const string BackSlot = "Back Slot";
-            public const string LoadoutHeader = "Loadout Header";
-            public const string QuickSlots = "Quick Slots";
-            public const string BackpackHeader = "Backpack Header";
-            public const string Backpack = "Backpack";
-            public const string ClearSlot = "Clear Slot";
-            public const string SlotItem = "Item";
-            public const string FullQuickSlots =
-                "Pause Canvas/Pause Panel/Menu/Quick Slots";
-            public const string FullBackpack =
-                "Pause Canvas/Pause Panel/Menu/Backpack";
-            public const string FullBackSlot =
-                "Pause Canvas/Pause Panel/Menu/Back Slot";
+            public const string Settings = "Settings";
+            public const string QuitToMenu = "Quit To Menu";
+            public const string QuitToDesktop = "Quit To Desktop";
+            public const string SettingsPanel = "Settings Panel";
+            public const string Fullscreen = "Fullscreen";
+            public const string MasterVolume = "Master Volume";
+            public const string VolumeValue = "Value";
+            public const string SettingsBack = "Back";
+            public const string FullResume = FullMainOptions + "/" + Resume;
+            public const string FullSettings = FullMainOptions + "/" + Settings;
+            public const string FullQuitToMenu = FullMainOptions + "/" + QuitToMenu;
+            public const string FullQuitToDesktop = FullMainOptions + "/" + QuitToDesktop;
+            public const string FullSettingsPanel = FullMenu + "/" + SettingsPanel;
+            public const string FullFullscreen = FullSettingsPanel + "/" + Fullscreen;
+            public const string FullMasterVolume = FullSettingsPanel + "/" + MasterVolume;
+            public const string FullSettingsBack = FullSettingsPanel + "/" + SettingsBack;
             public const string Title = "Title";
+            public const string Eyebrow = "Eyebrow";
             public const string Label = "Label";
-            public const string EquipmentName = "Equipment Name";
-            public const string State = "State";
-            public const string Hint = "Hint";
-            public const string SlotName = "Slot Name";
-            public const string MenuResume = Menu + "/" + Resume;
-            public const string MenuBackSlot = Menu + "/" + BackSlot;
+            public const string MenuResume = Menu + "/" + MainOptions + "/" + Resume;
             public const string MenuFrame = Menu + "/" + Decoration.Frame;
+        }
 
-            public static string QuickSlotName(int oneBasedIndex)
+        public static class Equipment
+        {
+            public const string Canvas = "Equipment Canvas";
+            public const string Panel = Canvas + "/Equipment Panel";
+            public const string PortraitRegion = "Portrait Region";
+            public const string Portrait = PortraitRegion + "/Character Portrait";
+            public const string Configuration = "Configuration";
+            public const string Slots = Configuration + "/Equipped Slots";
+            public const string OwnedGrid = Configuration + "/Owned Grid";
+            public const string FullSlots = Panel + "/" + Slots;
+            public const string FullOwnedGrid = Panel + "/" + OwnedGrid;
+            public const string Icon = "Icon";
+
+            public static string SlotName(int oneBasedIndex)
             {
-                return "Quick Slot " + oneBasedIndex;
+                return "Equipment Slot " + oneBasedIndex;
             }
 
-            public static string BackpackItemName(PlayerInventoryItem item)
+            public static string OwnedCellName(int oneBasedIndex)
             {
-                return "Backpack Item " + (int)item;
+                return "Owned Cell " + oneBasedIndex;
             }
         }
 

@@ -21,6 +21,9 @@ MonoBehaviour:
     designTokens: {fileID: 11400000, guid: f9e24d221d6abf146a14516bf46287b9, type: 2}
     pausePortraitSettings: {fileID: 11400000, guid: 710d17134a320164fa6a2b6bc9d5c195,
       type: 2}
+    equipmentIcons: {fileID: 11400000, guid: 846791f132a48b841a6765f9d81f7aa5, type: 2}
+    equipmentPortraitSettings: {fileID: 11400000, guid: e9302378318acc448810a8624097b3ee,
+      type: 2}
     pauseBodyMaterial: {fileID: 2100000, guid: 64fdf5e060ce1a64da8714edd5c7a4ff, type: 2}
     pauseBackgroundMaterial: {fileID: 2100000, guid: f2310bdcc96b16242aa6bc3ce31ba94e,
       type: 2}
