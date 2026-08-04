@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   enabled: 1
   stableId: abandoned_mineshaft
-  primaryVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
-  accentVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
+  primaryVoxelType: {fileID: 11400000, guid: fc54184cf92454347a4a80cfc807cb3a, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: fc54184cf92454347a4a80cfc807cb3a, type: 2}
   seedSalt: 104729
   regionSizeInChunks: 4
   placementChance: 1
@@ -118,6 +118,7 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
+    processors: []
   - stableId: mineshaft_corridor
     displayName: Corridor
     poolId: main
@@ -207,6 +208,7 @@ MonoBehaviour:
       activationChance: 0.32
       openingWidth: 3
       openingHeight: 3
+    processors: []
   - stableId: mineshaft_crossing
     displayName: Crossing
     poolId: main
@@ -296,6 +298,7 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
+    processors: []
   - stableId: mineshaft_stairs
     displayName: Stairs
     poolId: main
@@ -357,6 +360,7 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
+    processors: []
   - stableId: mineshaft_storage
     displayName: Timber Storage
     poolId: main
@@ -404,6 +408,14 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
+    processors:
+    - stableId: storage_footings
+      kind: 0
+      palette: 0
+      maximumDistance: 16
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
   - stableId: mineshaft_dead_end
     displayName: Collapsed End
     poolId: terminators
@@ -451,3 +463,4 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 3
       openingHeight: 3
+    processors: []

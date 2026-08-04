@@ -279,6 +279,20 @@ namespace Supernova.MinecraftCaves
                     AddHash(ref hash, connector.OpeningWidth);
                     AddHash(ref hash, connector.OpeningHeight);
                 }
+                for (int processorIndex = 0;
+                    processorIndex < piece.Processors.Count;
+                    processorIndex++)
+                {
+                    JigsawProcessorSettings processor =
+                        piece.Processors[processorIndex];
+                    AddHash(ref hash, processor.StableId);
+                    AddHash(ref hash, (int)processor.Kind);
+                    AddHash(ref hash, (int)processor.Palette);
+                    AddHash(ref hash, processor.MaximumDistance);
+                    AddHash(ref hash, processor.Inset);
+                    AddHash(ref hash, processor.Chance.GetHashCode());
+                    AddHash(ref hash, processor.PerimeterOnly ? 1 : 0);
+                }
             }
             return hash;
         }

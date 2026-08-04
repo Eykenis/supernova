@@ -14,6 +14,7 @@ namespace Supernova.Tests
     {
         private static readonly VoxelTypeId Stone = new VoxelTypeId(2);
         private static readonly VoxelTypeId StructureBrick = new VoxelTypeId(5);
+        private static readonly VoxelTypeId FortressBrick = new VoxelTypeId(6);
 
         [Test]
         public void DefaultWorld_ReferencesMineshaftAndFortressAsJigsawAssets()
@@ -626,10 +627,383 @@ namespace Supernova.Tests
                 Is.EqualTo(StructureBrick));
             Assert.That(GenerateAndGetType(settings, seed, lobbyInterior),
                 Is.EqualTo(VoxelTypeId.Air));
+            // Shelves are an accent decoration, so the fortress writes them with
+            // its distinct accent palette rather than the shell palette.
             Assert.That(GenerateAndGetType(settings, seed, libraryShelf),
-                Is.EqualTo(StructureBrick));
+                Is.EqualTo(FortressBrick));
             Assert.That(GenerateAndGetType(settings, seed, libraryInterior),
                 Is.EqualTo(VoxelTypeId.Air));
+        }
+
+        [Test]
+        public void SupportProcessor_FillsGapDownToTerrainAndStopsThere()
+        {
+            JigsawStructureFeatureSettings settings = BuildProcessorFixture(
+                JigsawProcessorDefinition.Kind.SupportToGround,
+                24,
+                1f,
+                JigsawProcessorDefinition.Palette.Primary,
+                perimeterOnly: false,
+                out int floorY);
+            Vector3Int column = GetProcessorColumn(settings, floorY);
+            int terrainTopY = floorY - 6;
+            GenerateColumnOverTerrain(
+                settings,
+                ProcessorSeed,
+                column,
+                terrainTopY,
+                out float[] densities,
+                out VoxelTypeId[] types);
+            Vector3Int centre = GetProcessorCentre(settings, floorY);
+
+            // Every voxel between the piece floor and the terrain top becomes a
+            // support column of the structure palette.
+            for (int y = floorY - 1; y > terrainTopY; y--)
+            {
+                Assert.That(
+                    GetWorldType(
+                        types,
+                        column,
+                        new Vector3Int(centre.x, y, centre.z)),
+                    Is.EqualTo(StructureBrick),
+                    $"support voxel at y={y}");
+            }
+            // The column stops at the surface instead of boring into terrain.
+            Assert.That(
+                GetWorldType(
+                    types,
+                    column,
+                    new Vector3Int(centre.x, terrainTopY, centre.z)),
+                Is.EqualTo(Stone));
+        }
+
+        [Test]
+        public void FoundationProcessor_WritesFixedSlabWithoutReachingTerrain()
+        {
+            const int depth = 3;
+            JigsawStructureFeatureSettings settings = BuildProcessorFixture(
+                JigsawProcessorDefinition.Kind.FoundationFill,
+                depth,
+                1f,
+                JigsawProcessorDefinition.Palette.Primary,
+                perimeterOnly: false,
+                out int floorY);
+            Vector3Int column = GetProcessorColumn(settings, floorY);
+            GenerateColumnOverTerrain(
+                settings,
+                ProcessorSeed,
+                column,
+                floorY - 20,
+                out float[] densities,
+                out VoxelTypeId[] types);
+            Vector3Int centre = GetProcessorCentre(settings, floorY);
+
+            for (int step = 1; step <= depth; step++)            {
+                Assert.That(
+                    GetWorldType(
+                        types,
+                        column,
+                        new Vector3Int(centre.x, floorY - step, centre.z)),
+                    Is.EqualTo(StructureBrick),
+                    $"foundation voxel at depth {step}");
+            }
+            Assert.That(
+                GetWorldType(
+                    types,
+                    column,
+                    new Vector3Int(centre.x, floorY - depth - 1, centre.z)),
+                Is.EqualTo(VoxelTypeId.Air),
+                "foundation must not exceed its configured depth");
+        }
+
+        [Test]
+        public void ClearAboveProcessor_CarvesHeadroomOverThePieceCeiling()
+        {
+            const int headroom = 4;
+            JigsawStructureFeatureSettings settings = BuildProcessorFixture(
+                JigsawProcessorDefinition.Kind.ClearAbove,
+                headroom,
+                1f,
+                JigsawProcessorDefinition.Palette.Primary,
+                perimeterOnly: false,
+                out int floorY);
+            Vector3Int column = GetProcessorColumn(settings, floorY);
+            GenerateColumnOverTerrain(
+                settings,
+                ProcessorSeed,
+                column,
+                VoxelColumnChunkData.Height - 2,
+                out float[] densities,
+                out VoxelTypeId[] types);
+            Vector3Int centre = GetProcessorCentre(settings, floorY);
+            JigsawStructureGenerator.Piece start = GetProcessorStartPiece(
+                settings,
+                floorY);
+
+            for (int step = 1; step <= headroom; step++)
+            {
+                Assert.That(
+                    GetWorldType(
+                        types,
+                        column,
+                        new Vector3Int(
+                            centre.x,
+                            start.Bounds.MaxY + step,
+                            centre.z)),
+                    Is.EqualTo(VoxelTypeId.Air),
+                    $"headroom voxel {step} above the ceiling");
+            }
+            Assert.That(
+                GetWorldType(
+                    types,
+                    column,
+                    new Vector3Int(
+                        centre.x,
+                        start.Bounds.MaxY + headroom + 1,
+                        centre.z)),
+                Is.EqualTo(Stone),
+                "clearing must not exceed its configured distance");
+        }
+
+        [Test]
+        public void WeatheringProcessor_IsDeterministicAndOnlyTouchesStructureVoxels()
+        {
+            JigsawStructureFeatureSettings settings = BuildProcessorFixture(
+                JigsawProcessorDefinition.Kind.Weathering,
+                1,
+                0.5f,
+                JigsawProcessorDefinition.Palette.Accent,
+                perimeterOnly: false,
+                out int floorY);
+            Vector3Int column = GetProcessorColumn(settings, floorY);
+            GenerateColumnOverTerrain(
+                settings,
+                ProcessorSeed,
+                column,
+                floorY - 20,
+                out float[] first,
+                out VoxelTypeId[] firstTypes);
+            GenerateColumnOverTerrain(
+                settings,
+                ProcessorSeed,
+                column,
+                floorY - 20,
+                out float[] second,
+                out VoxelTypeId[] secondTypes);
+
+            Assert.That(secondTypes, Is.EqualTo(firstTypes));
+            JigsawStructureGenerator.Piece start = GetProcessorStartPiece(
+                settings,
+                floorY);
+            int weathered = 0;
+            int shell = 0;
+            for (int y = start.Bounds.MinY; y <= start.Bounds.MaxY; y++)
+            {
+                for (int z = start.Bounds.MinZ; z <= start.Bounds.MaxZ; z++)
+                {
+                    for (int x = start.Bounds.MinX; x <= start.Bounds.MaxX; x++)
+                    {
+                        var world = new Vector3Int(x, y, z);
+                        if (!IsInsideColumn(column, world))
+                        {
+                            continue;
+                        }
+                        VoxelTypeId type = GetWorldType(
+                            firstTypes,
+                            column,
+                            world);
+                        if (type == FortressBrick) weathered++;
+                        else if (type == StructureBrick) shell++;
+                    }
+                }
+            }
+
+            Assert.That(weathered, Is.GreaterThan(0), "weathering never applied");
+            Assert.That(shell, Is.GreaterThan(0), "weathering replaced everything");
+            // Space below the piece is untouched: weathering only recolours
+            // voxels this structure wrote, never surrounding terrain or air.
+            Assert.That(
+                GetWorldType(
+                    firstTypes,
+                    column,
+                    new Vector3Int(
+                        start.Origin.x,
+                        start.Bounds.MinY - 2,
+                        start.Origin.z)),
+                Is.EqualTo(VoxelTypeId.Air));
+        }
+
+        [Test]
+        public void Processors_DoNotAffectLayoutCollisionDecisions()
+        {
+            JigsawStructureFeatureSettings without = LoadSettings(
+                ProjectAssetPaths.Config.FortressJigsaw);
+            JigsawStructureFeatureDefinition definition =
+                AssetDatabase.LoadAssetAtPath<JigsawStructureFeatureDefinition>(
+                    ProjectAssetPaths.Config.FortressJigsaw);
+            Assert.That(
+                definition.Pieces.Any(piece => piece.Processors.Count > 0),
+                Is.True,
+                "fortress should ship with authored processors");
+
+            const int seed = 99001;
+            JigsawStructureGenerator.TryGetPlacement(
+                without,
+                seed,
+                0,
+                0,
+                out JigsawStructureGenerator.Placement placement);
+            IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                JigsawStructureGenerator.BuildLayout(without, seed, placement);
+
+            // A support reaching far below a piece must never inflate the bounds
+            // used for collision, otherwise deep pillars would reject neighbours.
+            foreach (JigsawStructureGenerator.Piece piece in layout)
+            {
+                JigsawPieceSettings module = without.GetPiece(piece.ModuleIndex);
+                if (module.ProcessorDownwardReach <= 0)
+                {
+                    continue;
+                }
+                Assert.That(
+                    piece.Bounds.MinY,
+                    Is.GreaterThanOrEqualTo(placement.Centre.y
+                        - without.MaxDepth * module.VerticalDelta),
+                    $"piece '{piece.ModuleId}' bounds grew with its processor reach");
+            }
+        }
+
+        private const int ProcessorSeed = 20260804;
+
+        /// <summary>
+        /// Builds a single-piece structure whose only job is to exercise one
+        /// processor kind at a known location.
+        /// </summary>
+        private static JigsawStructureFeatureSettings BuildProcessorFixture(
+            JigsawProcessorDefinition.Kind kind,
+            int distance,
+            float chance,
+            JigsawProcessorDefinition.Palette palette,
+            bool perimeterOnly,
+            out int floorY)
+        {
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                var start = new JigsawPieceDefinition();
+                start.ConfigureBox(
+                    "processor_start",
+                    "Processor Start",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    true,
+                    0,
+                    0,
+                    0,
+                    7,
+                    7,
+                    7,
+                    7,
+                    5,
+                    5);
+                var processor = new JigsawProcessorDefinition();
+                processor.Configure(
+                    "fixture",
+                    kind,
+                    distance,
+                    chance,
+                    palette,
+                    0,
+                    perimeterOnly);
+                start.AddProcessor(processor);
+
+                floorY = 120;
+                definition.Configure(
+                    true,
+                    "processor_fixture",
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.StructureBrickVoxel),
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.FortressBrickVoxel),
+                    31337,
+                    4,
+                    1f,
+                    floorY,
+                    floorY,
+                    2,
+                    1,
+                    16,
+                    string.Empty,
+                    new[] { start });
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+                return settings;
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        private static JigsawStructureGenerator.Piece GetProcessorStartPiece(
+            JigsawStructureFeatureSettings settings,
+            int floorY)
+        {
+            JigsawStructureGenerator.TryGetPlacement(
+                settings,
+                ProcessorSeed,
+                0,
+                0,
+                out JigsawStructureGenerator.Placement placement);
+            return JigsawStructureGenerator.BuildLayout(
+                settings,
+                ProcessorSeed,
+                placement)[0];
+        }
+
+        private static Vector3Int GetProcessorCentre(
+            JigsawStructureFeatureSettings settings,
+            int floorY)
+        {
+            JigsawStructureGenerator.Piece start = GetProcessorStartPiece(
+                settings,
+                floorY);
+            return new Vector3Int(
+                start.Origin.x,
+                start.Bounds.MinY,
+                start.Origin.z);
+        }
+
+        /// <summary>
+        /// The voxel column that contains the fixture piece. Placement picks a
+        /// randomised centre inside its region, so tests must not assume (0, 0).
+        /// </summary>
+        private static Vector3Int GetProcessorColumn(
+            JigsawStructureFeatureSettings settings,
+            int floorY)
+        {
+            Vector3Int centre = GetProcessorCentre(settings, floorY);
+            return InfiniteVoxelWorld.WorldToChunk(centre.x, centre.y, centre.z);
+        }
+
+        /// <summary>
+        /// True when a world position lies inside the given streamed column, so
+        /// assertions can skip voxels that belong to a neighbouring column.
+        /// </summary>
+        private static bool IsInsideColumn(Vector3Int column, Vector3Int world)
+        {
+            Vector3Int owner = InfiniteVoxelWorld.WorldToChunk(
+                world.x,
+                world.y,
+                world.z);
+            return owner.x == column.x && owner.z == column.z;
         }
 
         private static JigsawStructureFeatureSettings LoadSettings(string path)
@@ -707,6 +1081,44 @@ namespace Supernova.Tests
                 1f,
                 -1f);
             return GetWorldType(types, column, world);
+        }
+
+        /// <summary>
+        /// Generates one column over a terrain profile that is solid below
+        /// <paramref name="terrainTopY"/> and air above it, so downward
+        /// processors have empty space to travel through.
+        /// </summary>
+        private static void GenerateColumnOverTerrain(
+            JigsawStructureFeatureSettings settings,
+            int seed,
+            Vector3Int column,
+            int terrainTopY,
+            out float[] densities,
+            out VoxelTypeId[] types)
+        {
+            densities = new float[VoxelColumnChunkData.VoxelCount];
+            types = new VoxelTypeId[VoxelColumnChunkData.VoxelCount];
+            for (int y = 0; y < VoxelColumnChunkData.Height; y++)
+            {
+                bool solid = y <= terrainTopY;
+                for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
+                {
+                    for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                    {
+                        int index = VoxelColumnChunkData.ToIndex(x, y, z);
+                        densities[index] = solid ? 1f : -1f;
+                        types[index] = solid ? Stone : VoxelTypeId.Air;
+                    }
+                }
+            }
+            JigsawStructureGenerator.GenerateColumn(
+                column,
+                densities,
+                types,
+                seed,
+                new[] { settings },
+                1f,
+                -1f);
         }
     }
 }

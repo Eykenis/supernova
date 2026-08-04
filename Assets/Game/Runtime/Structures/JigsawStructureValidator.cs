@@ -71,8 +71,48 @@ namespace Supernova.MinecraftCaves
                         string.Empty,
                         issues);
                 }
+                ValidateProcessors(feature, piece, issues);
             }
             return issues;
+        }
+
+        private static void ValidateProcessors(
+            JigsawStructureFeatureSettings feature,
+            JigsawPieceSettings piece,
+            List<Issue> issues)
+        {
+            var processorIds = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < piece.Processors.Count; i++)
+            {
+                JigsawProcessorSettings processor = piece.Processors[i];
+                if (!processorIds.Add(processor.StableId))
+                {
+                    issues.Add(new Issue(
+                        Severity.Error,
+                        $"Piece '{piece.StableId}' has duplicate processor ID '{processor.StableId}'."));
+                }
+                if (processor.Chance <= 0f)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Processor '{piece.StableId}/{processor.StableId}' has a zero chance and never runs."));
+                }
+                if (processor.Kind
+                        == JigsawProcessorDefinition.Kind.Weathering
+                    && feature.AccentType == feature.PrimaryType)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Processor '{piece.StableId}/{processor.StableId}' weathers into the primary type, so it has no visible effect."));
+                }
+                if (processor.DownwardReach > 0
+                    && feature.MinFloorHeight - processor.DownwardReach <= 1)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Processor '{piece.StableId}/{processor.StableId}' can reach the world floor and will be truncated."));
+                }
+            }
         }
 
         private static bool HasAnyOutput(JigsawPieceSettings piece)

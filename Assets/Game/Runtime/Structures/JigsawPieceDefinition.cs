@@ -100,10 +100,16 @@ namespace Supernova.MinecraftCaves
         [SerializeField] private List<JigsawConnectorDefinition> connectors =
             new List<JigsawConnectorDefinition>();
 
+        [Header("Landing Processors (optional)")]
+        [Tooltip("Applied after rasterization. Processors never affect layout collision.")]
+        [SerializeField] private List<JigsawProcessorDefinition> processors =
+            new List<JigsawProcessorDefinition>();
+
         public string StableId => stableId;
         public string DisplayName => displayName;
         public bool IsStartPiece => startPiece;
         public IReadOnlyList<JigsawConnectorDefinition> Connectors => connectors;
+        public IReadOnlyList<JigsawProcessorDefinition> Processors => processors;
 
         public void ConfigureTemplate(
             VoxelStructureAsset template,
@@ -137,6 +143,19 @@ namespace Supernova.MinecraftCaves
                 connectors = new List<JigsawConnectorDefinition>();
             }
             connectors.Add(connector);
+        }
+
+        public void AddProcessor(JigsawProcessorDefinition processor)
+        {
+            if (processor == null)
+            {
+                throw new ArgumentNullException(nameof(processor));
+            }
+            if (processors == null)
+            {
+                processors = new List<JigsawProcessorDefinition>();
+            }
+            processors.Add(processor);
         }
 
         public void ConfigureBox(
@@ -237,6 +256,16 @@ namespace Supernova.MinecraftCaves
                 }
                 connectorSettings[i] = connectors[i].CreateSettings();
             }
+            var processorSettings = new JigsawProcessorSettings[processors.Count];
+            for (int i = 0; i < processors.Count; i++)
+            {
+                if (processors[i] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Processor at index {i} on piece '{stableId}' is null.");
+                }
+                processorSettings[i] = processors[i].CreateSettings();
+            }
             Vector3Int templateSize = default;
             Vector3Int templateAnchor = default;
             float[] templateDensities = null;
@@ -281,6 +310,7 @@ namespace Supernova.MinecraftCaves
                 descendingChance,
                 decorationSpacing,
                 connectorSettings,
+                processorSettings,
                 templateSize,
                 templateAnchor,
                 templateWritesAir,
@@ -333,6 +363,14 @@ namespace Supernova.MinecraftCaves
             for (int i = 0; i < connectors.Count; i++)
             {
                 connectors[i]?.ClampConfiguration();
+            }
+            if (processors == null)
+            {
+                processors = new List<JigsawProcessorDefinition>();
+            }
+            for (int i = 0; i < processors.Count; i++)
+            {
+                processors[i]?.ClampConfiguration();
             }
         }
 

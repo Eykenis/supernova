@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 85b956af8dbc46278c7b1f49ed81b76e, type: 3}
   m_Name: FortressBrick
   m_EditorClassIdentifier: 
-  type: 5
+  type: 6
   displayName: Fortress Brick
   durability: 3
   material: {fileID: 2100000, guid: 8d9648a193e2c504989e42b42db216b0, type: 2}

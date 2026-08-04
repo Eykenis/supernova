@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   enabled: 1
   stableId: fortress
-  primaryVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
+  primaryVoxelType: {fileID: 11400000, guid: fc54184cf92454347a4a80cfc807cb3a, type: 2}
   accentVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
   seedSalt: 123
   regionSizeInChunks: 4
@@ -118,6 +118,21 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
+    processors:
+    - stableId: lobby_footings
+      kind: 0
+      palette: 0
+      maximumDistance: 20
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    - stableId: lobby_weathering
+      kind: 3
+      palette: 1
+      maximumDistance: 1
+      inset: 0
+      chance: 0.22
+      perimeterOnly: 1
   - stableId: fortress_hall
     displayName: Hall
     poolId: main
@@ -207,6 +222,21 @@ MonoBehaviour:
       activationChance: 0.34
       openingWidth: 5
       openingHeight: 5
+    processors:
+    - stableId: hall_pillars
+      kind: 0
+      palette: 0
+      maximumDistance: 24
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    - stableId: hall_weathering
+      kind: 3
+      palette: 1
+      maximumDistance: 1
+      inset: 0
+      chance: 0.18
+      perimeterOnly: 1
   - stableId: fortress_library
     displayName: Library
     poolId: main
@@ -254,6 +284,21 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
+    processors:
+    - stableId: library_foundation
+      kind: 1
+      palette: 0
+      maximumDistance: 3
+      inset: 0
+      chance: 1
+      perimeterOnly: 0
+    - stableId: library_weathering
+      kind: 3
+      palette: 1
+      maximumDistance: 1
+      inset: 0
+      chance: 0.25
+      perimeterOnly: 1
   - stableId: fortress_crossing
     displayName: Cross Hall
     poolId: main
@@ -343,6 +388,7 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
+    processors: []
   - stableId: fortress_stairs
     displayName: Stair Hall
     poolId: main
@@ -404,6 +450,7 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
+    processors: []
   - stableId: fortress_prison
     displayName: Prison Block
     poolId: main
@@ -451,6 +498,7 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
+    processors: []
   - stableId: fortress_portal_room
     displayName: Portal Chamber
     poolId: main
@@ -498,6 +546,28 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
+    processors:
+    - stableId: portal_footings
+      kind: 0
+      palette: 0
+      maximumDistance: 24
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    - stableId: portal_headroom
+      kind: 2
+      palette: 0
+      maximumDistance: 2
+      inset: 0
+      chance: 1
+      perimeterOnly: 1
+    - stableId: portal_weathering
+      kind: 3
+      palette: 1
+      maximumDistance: 1
+      inset: 0
+      chance: 0.3
+      perimeterOnly: 1
   - stableId: fortress_dead_end
     displayName: Sealed End
     poolId: terminators
@@ -545,3 +615,4 @@ MonoBehaviour:
       activationChance: 1
       openingWidth: 5
       openingHeight: 5
+    processors: []

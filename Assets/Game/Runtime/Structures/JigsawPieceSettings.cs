@@ -8,6 +8,7 @@ namespace Supernova.MinecraftCaves
     public readonly struct JigsawPieceSettings
     {
         private readonly JigsawConnectorSettings[] connectors;
+        private readonly JigsawProcessorSettings[] processors;
         private readonly float[] templateDensities;
         private readonly VoxelTypeId[] templateTypes;
 
@@ -43,6 +44,7 @@ namespace Supernova.MinecraftCaves
             float descendingChance,
             int decorationSpacing,
             JigsawConnectorSettings[] connectorSettings,
+            JigsawProcessorSettings[] processorSettings,
             Vector3Int templateSize,
             Vector3Int templateAnchor,
             bool templateWritesAir,
@@ -99,6 +101,20 @@ namespace Supernova.MinecraftCaves
             connectors = connectorSettings == null
                 ? Array.Empty<JigsawConnectorSettings>()
                 : (JigsawConnectorSettings[])connectorSettings.Clone();
+            processors = processorSettings == null
+                ? Array.Empty<JigsawProcessorSettings>()
+                : (JigsawProcessorSettings[])processorSettings.Clone();
+            int downwardReach = 0;
+            int upwardReach = 0;
+            for (int i = 0; i < processors.Length; i++)
+            {
+                downwardReach = Math.Max(
+                    downwardReach,
+                    processors[i].DownwardReach);
+                upwardReach = Math.Max(upwardReach, processors[i].UpwardReach);
+            }
+            ProcessorDownwardReach = downwardReach;
+            ProcessorUpwardReach = upwardReach;
             bool hasTemplateData = templateDensitySettings != null
                 || templateTypeSettings != null;
             if (hasTemplateData)
@@ -168,6 +184,11 @@ namespace Supernova.MinecraftCaves
         public int DecorationSpacing { get; }
         public System.Collections.Generic.IReadOnlyList<JigsawConnectorSettings>
             Connectors => connectors;
+        public System.Collections.Generic.IReadOnlyList<JigsawProcessorSettings>
+            Processors => processors;
+        public bool HasProcessors => processors.Length > 0;
+        public int ProcessorDownwardReach { get; }
+        public int ProcessorUpwardReach { get; }
         public bool HasExplicitConnectors => connectors.Length > 0;
         public bool HasTemplate { get; }
         public Vector3Int TemplateSize { get; }

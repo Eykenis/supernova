@@ -24,6 +24,7 @@ namespace Supernova.MinecraftCaves
             VoxelPass.Shell,
             VoxelPass.Air,
             VoxelPass.Accent,
+            VoxelPass.Processor,
         };
         private static long layoutBuildCount;
 
@@ -177,6 +178,13 @@ namespace Supernova.MinecraftCaves
             Shell,
             Air,
             Accent,
+
+            /// <summary>
+            /// Landing pass. Runs after every piece has written its shell, air
+            /// and accent voxels so supports and headroom see the finished
+            /// structure rather than a half-built one.
+            /// </summary>
+            Processor,
         }
 
         private readonly struct Connector
@@ -1556,6 +1564,24 @@ namespace Supernova.MinecraftCaves
             float solidDensity,
             float airDensity)
         {
+            if (pass == VoxelPass.Processor)
+            {
+                return module.HasProcessors
+                    ? ApplyProcessors(
+                        piece,
+                        module,
+                        feature,
+                        targetMinX,
+                        targetMaxX,
+                        targetMinZ,
+                        targetMaxZ,
+                        densities,
+                        types,
+                        solidDensity,
+                        airDensity)
+                    : 0;
+            }
+
             int minX = Math.Max(targetMinX, piece.Bounds.MinX);
             int maxX = Math.Min(targetMaxX, piece.Bounds.MaxX);
             int minZ = Math.Max(targetMinZ, piece.Bounds.MinZ);
@@ -1638,6 +1664,313 @@ namespace Supernova.MinecraftCaves
                 }
             }
             return changed;
+        }
+
+        /// <summary>
+        /// Runs every authored processor for one piece against the current voxel
+        /// column. Processors read the already-rasterized field, so they can find
+        /// the terrain surface below a piece and stop there.
+        /// </summary>
+        private static int ApplyProcessors(
+            Piece piece,
+            JigsawPieceSettings module,
+            JigsawStructureFeatureSettings feature,
+            int targetMinX,
+            int targetMaxX,
+            int targetMinZ,
+            int targetMaxZ,
+            float[] densities,
+            VoxelTypeId[] types,
+            float solidDensity,
+            float airDensity)
+        {
+            int changed = 0;
+            for (int i = 0; i < module.Processors.Count; i++)
+            {
+                JigsawProcessorSettings processor = module.Processors[i];
+                if (processor.Chance <= 0f)
+                {
+                    continue;
+                }
+                int minX = Math.Max(
+                    targetMinX,
+                    piece.Bounds.MinX + processor.Inset);
+                int maxX = Math.Min(
+                    targetMaxX,
+                    piece.Bounds.MaxX - processor.Inset);
+                int minZ = Math.Max(
+                    targetMinZ,
+                    piece.Bounds.MinZ + processor.Inset);
+                int maxZ = Math.Min(
+                    targetMaxZ,
+                    piece.Bounds.MaxZ - processor.Inset);
+                if (minX > maxX || minZ > maxZ)
+                {
+                    continue;
+                }
+
+                for (int worldZ = minZ; worldZ <= maxZ; worldZ++)
+                {
+                    for (int worldX = minX; worldX <= maxX; worldX++)
+                    {
+                        changed += ApplyProcessorColumn(
+                            piece,
+                            feature,
+                            processor,
+                            worldX,
+                            worldZ,
+                            targetMinX,
+                            targetMinZ,
+                            densities,
+                            types,
+                            solidDensity,
+                            airDensity);
+                    }
+                }
+            }
+            return changed;
+        }
+
+        private static int ApplyProcessorColumn(
+            Piece piece,
+            JigsawStructureFeatureSettings feature,
+            JigsawProcessorSettings processor,
+            int worldX,
+            int worldZ,
+            int targetMinX,
+            int targetMinZ,
+            float[] densities,
+            VoxelTypeId[] types,
+            float solidDensity,
+            float airDensity)
+        {
+            int localX = worldX - targetMinX;
+            int localZ = worldZ - targetMinZ;
+            VoxelTypeId writeType = processor.ResolveType(
+                feature.PrimaryType,
+                feature.AccentType);
+
+            switch (processor.Kind)
+            {
+                case JigsawProcessorDefinition.Kind.SupportToGround:
+                    if (processor.PerimeterOnly
+                        && !IsPerimeterColumn(piece, processor, worldX, worldZ))
+                    {
+                        return 0;
+                    }
+                    if (!ShouldApply(processor, piece, worldX, 0, worldZ))
+                    {
+                        return 0;
+                    }
+                    return FillDownwards(
+                        piece.Bounds.MinY - 1,
+                        processor.MaximumDistance,
+                        true,
+                        localX,
+                        localZ,
+                        densities,
+                        types,
+                        solidDensity,
+                        writeType);
+
+                case JigsawProcessorDefinition.Kind.FoundationFill:
+                    if (!ShouldApply(processor, piece, worldX, 0, worldZ))
+                    {
+                        return 0;
+                    }
+                    return FillDownwards(
+                        piece.Bounds.MinY - 1,
+                        processor.MaximumDistance,
+                        false,
+                        localX,
+                        localZ,
+                        densities,
+                        types,
+                        solidDensity,
+                        writeType);
+
+                case JigsawProcessorDefinition.Kind.ClearAbove:
+                    return ClearUpwards(
+                        piece.Bounds.MaxY + 1,
+                        processor.MaximumDistance,
+                        localX,
+                        localZ,
+                        densities,
+                        types,
+                        airDensity);
+
+                case JigsawProcessorDefinition.Kind.Weathering:
+                    return ApplyWeathering(
+                        piece,
+                        feature,
+                        processor,
+                        worldX,
+                        worldZ,
+                        localX,
+                        localZ,
+                        densities,
+                        types,
+                        solidDensity,
+                        writeType);
+
+                default:
+                    return 0;
+            }
+        }
+
+        /// <summary>
+        /// Writes a solid column below a piece. When <paramref name="stopAtSolid"/>
+        /// is set the column ends as soon as existing terrain is reached, which is
+        /// how bridge and platform pillars gain continuous footings.
+        /// </summary>
+        private static int FillDownwards(
+            int startY,
+            int maximumDistance,
+            bool stopAtSolid,
+            int localX,
+            int localZ,
+            float[] densities,
+            VoxelTypeId[] types,
+            float solidDensity,
+            VoxelTypeId writeType)
+        {
+            int changed = 0;
+            for (int step = 0; step < maximumDistance; step++)
+            {
+                int worldY = startY - step;
+                if (worldY <= 1)
+                {
+                    break;
+                }
+                int index = VoxelColumnChunkData.ToIndex(localX, worldY, localZ);
+                bool alreadySolid = !types[index].IsAir && densities[index] >= 0f;
+                if (stopAtSolid && alreadySolid)
+                {
+                    break;
+                }
+                if (densities[index] == solidDensity
+                    && types[index] == writeType)
+                {
+                    continue;
+                }
+                densities[index] = solidDensity;
+                types[index] = writeType;
+                changed++;
+            }
+            return changed;
+        }
+
+        private static int ClearUpwards(
+            int startY,
+            int maximumDistance,
+            int localX,
+            int localZ,
+            float[] densities,
+            VoxelTypeId[] types,
+            float airDensity)
+        {
+            int changed = 0;
+            for (int step = 0; step < maximumDistance; step++)
+            {
+                int worldY = startY + step;
+                if (worldY >= VoxelColumnChunkData.Height - 1)
+                {
+                    break;
+                }
+                int index = VoxelColumnChunkData.ToIndex(localX, worldY, localZ);
+                if (densities[index] == airDensity && types[index].IsAir)
+                {
+                    continue;
+                }
+                densities[index] = airDensity;
+                types[index] = VoxelTypeId.Air;
+                changed++;
+            }
+            return changed;
+        }
+
+        /// <summary>
+        /// Substitutes a fraction of the piece's own solid voxels for a second
+        /// palette, producing the mixed brick look of stronghold masonry. Only
+        /// voxels this structure wrote are eligible, so surrounding terrain and
+        /// ore veins are never recoloured.
+        /// </summary>
+        private static int ApplyWeathering(
+            Piece piece,
+            JigsawStructureFeatureSettings feature,
+            JigsawProcessorSettings processor,
+            int worldX,
+            int worldZ,
+            int localX,
+            int localZ,
+            float[] densities,
+            VoxelTypeId[] types,
+            float solidDensity,
+            VoxelTypeId writeType)
+        {
+            int changed = 0;
+            for (int worldY = piece.Bounds.MinY;
+                worldY <= piece.Bounds.MaxY;
+                worldY++)
+            {
+                int index = VoxelColumnChunkData.ToIndex(localX, worldY, localZ);
+                if (densities[index] < 0f || types[index] == writeType)
+                {
+                    continue;
+                }
+                bool ownedByStructure = types[index] == feature.PrimaryType
+                    || types[index] == feature.AccentType;
+                if (!ownedByStructure)
+                {
+                    continue;
+                }
+                if (!ShouldApply(processor, piece, worldX, worldY, worldZ))
+                {
+                    continue;
+                }
+                densities[index] = solidDensity;
+                types[index] = writeType;
+                changed++;
+            }
+            return changed;
+        }
+
+        private static bool IsPerimeterColumn(
+            Piece piece,
+            JigsawProcessorSettings processor,
+            int worldX,
+            int worldZ)
+        {
+            return worldX == piece.Bounds.MinX + processor.Inset
+                || worldX == piece.Bounds.MaxX - processor.Inset
+                || worldZ == piece.Bounds.MinZ + processor.Inset
+                || worldZ == piece.Bounds.MaxZ - processor.Inset;
+        }
+
+        /// <summary>
+        /// Per-voxel processor roll. Keyed on world coordinates rather than an
+        /// iteration counter so the outcome is identical no matter which column
+        /// is streamed first.
+        /// </summary>
+        private static bool ShouldApply(
+            JigsawProcessorSettings processor,
+            Piece piece,
+            int worldX,
+            int worldY,
+            int worldZ)
+        {
+            if (processor.Chance >= 1f)
+            {
+                return true;
+            }
+            ulong hash = Mix(unchecked(
+                (ulong)(uint)worldX * 0x9E3779B185EBCA87UL
+                ^ (ulong)(uint)worldY * 0xC2B2AE3D27D4EB4FUL
+                ^ (ulong)(uint)worldZ * 0x165667B19E3779F9UL
+                ^ (ulong)(uint)processor.Salt
+                ^ (ulong)(uint)piece.ModuleIndex));
+            double roll = (hash >> 11) * (1.0 / 9007199254740992.0);
+            return roll < processor.Chance;
         }
 
         private static bool TryEvaluateTemplateSample(

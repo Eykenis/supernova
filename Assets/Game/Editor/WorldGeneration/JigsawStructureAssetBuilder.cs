@@ -21,6 +21,15 @@ public static class JigsawStructureAssetBuilder
                 $"Missing voxel type at {ProjectAssetPaths.Config.StructureBrickVoxel}.");
             return;
         }
+        VoxelTypeDefinition fortressBrick =
+            AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                ProjectAssetPaths.Config.FortressBrickVoxel);
+        if (fortressBrick == null)
+        {
+            Debug.LogError(
+                $"Missing voxel type at {ProjectAssetPaths.Config.FortressBrickVoxel}.");
+            return;
+        }
 
         JigsawStructureFeatureDefinition mineshaft = EnsureDefinition(
             ProjectAssetPaths.Config.AbandonedMineshaftJigsaw);
@@ -48,7 +57,7 @@ public static class JigsawStructureAssetBuilder
             true,
             "fortress",
             structureBrick,
-            structureBrick,
+            fortressBrick,
             161803,
             12,
             0.35f,
@@ -208,6 +217,11 @@ public static class JigsawStructureAssetBuilder
             8);
         storage.ConfigureSelectionConstraints(0, 4, false);
         AddInput(storage, "mine", 3);
+        AddProcessor(
+            storage,
+            "storage_footings",
+            JigsawProcessorDefinition.Kind.SupportToGround,
+            16);
 
         var deadEnd = new JigsawPieceDefinition();
         deadEnd.ConfigurePassage(
@@ -256,6 +270,18 @@ public static class JigsawStructureAssetBuilder
             8);
         lobby.ConfigureSelectionConstraints(0, 1, false);
         AddOutputs(lobby, "fortress", 5, 1f, true);
+        AddProcessor(
+            lobby,
+            "lobby_footings",
+            JigsawProcessorDefinition.Kind.SupportToGround,
+            20);
+        AddProcessor(
+            lobby,
+            "lobby_weathering",
+            JigsawProcessorDefinition.Kind.Weathering,
+            1,
+            0.22f,
+            JigsawProcessorDefinition.Palette.Accent);
 
         var hall = new JigsawPieceDefinition();
         hall.ConfigurePassage(
@@ -284,6 +310,18 @@ public static class JigsawStructureAssetBuilder
             "fortress", 5, 0.34f);
         AddOutput(hall, "right_branch", JigsawConnectorDefinition.Face.Right,
             "fortress", 5, 0.34f);
+        AddProcessor(
+            hall,
+            "hall_pillars",
+            JigsawProcessorDefinition.Kind.SupportToGround,
+            24);
+        AddProcessor(
+            hall,
+            "hall_weathering",
+            JigsawProcessorDefinition.Kind.Weathering,
+            1,
+            0.18f,
+            JigsawProcessorDefinition.Palette.Accent);
 
         var library = new JigsawPieceDefinition();
         library.ConfigureBox(
@@ -305,6 +343,22 @@ public static class JigsawStructureAssetBuilder
             9);
         library.ConfigureSelectionConstraints(1, 2, false, 5);
         AddInput(library, "fortress", 5);
+        AddProcessor(
+            library,
+            "library_foundation",
+            JigsawProcessorDefinition.Kind.FoundationFill,
+            3,
+            1f,
+            JigsawProcessorDefinition.Palette.Primary,
+            0,
+            false);
+        AddProcessor(
+            library,
+            "library_weathering",
+            JigsawProcessorDefinition.Kind.Weathering,
+            1,
+            0.25f,
+            JigsawProcessorDefinition.Palette.Accent);
 
         var crossing = new JigsawPieceDefinition();
         crossing.ConfigureBox(
@@ -377,6 +431,23 @@ public static class JigsawStructureAssetBuilder
             11);
         portalRoom.ConfigureSelectionConstraints(1, 1, false, 6);
         AddInput(portalRoom, "fortress", 5);
+        AddProcessor(
+            portalRoom,
+            "portal_footings",
+            JigsawProcessorDefinition.Kind.SupportToGround,
+            24);
+        AddProcessor(
+            portalRoom,
+            "portal_headroom",
+            JigsawProcessorDefinition.Kind.ClearAbove,
+            2);
+        AddProcessor(
+            portalRoom,
+            "portal_weathering",
+            JigsawProcessorDefinition.Kind.Weathering,
+            1,
+            0.3f,
+            JigsawProcessorDefinition.Palette.Accent);
 
         var prison = new JigsawPieceDefinition();
         prison.ConfigureBox(
@@ -501,6 +572,29 @@ public static class JigsawStructureAssetBuilder
             chance,
             "terminators");
         piece.AddConnector(connector);
+    }
+
+    private static void AddProcessor(
+        JigsawPieceDefinition piece,
+        string id,
+        JigsawProcessorDefinition.Kind kind,
+        int distance,
+        float chance = 1f,
+        JigsawProcessorDefinition.Palette palette =
+            JigsawProcessorDefinition.Palette.Primary,
+        int inset = 0,
+        bool perimeterOnly = true)
+    {
+        var processor = new JigsawProcessorDefinition();
+        processor.Configure(
+            id,
+            kind,
+            distance,
+            chance,
+            palette,
+            inset,
+            perimeterOnly);
+        piece.AddProcessor(processor);
     }
 
     private static JigsawStructureFeatureDefinition EnsureDefinition(
