@@ -246,16 +246,9 @@ namespace Supernova.MinecraftCaves
         internal JigsawPieceSettings CreateSettings()
         {
             ClampConfiguration();
-            var connectorSettings = new JigsawConnectorSettings[connectors.Count];
-            for (int i = 0; i < connectors.Count; i++)
-            {
-                if (connectors[i] == null)
-                {
-                    throw new InvalidOperationException(
-                        $"Connector at index {i} on piece '{stableId}' is null.");
-                }
-                connectorSettings[i] = connectors[i].CreateSettings();
-            }
+            JigsawConnectorSettings[] connectorSettings = connectors.Count > 0
+                ? BuildAuthoredConnectors()
+                : BuildTemplateConnectors();
             var processorSettings = new JigsawProcessorSettings[processors.Count];
             for (int i = 0; i < processors.Count; i++)
             {
@@ -316,6 +309,63 @@ namespace Supernova.MinecraftCaves
                 templateWritesAir,
                 templateDensities,
                 templateTypes);
+        }
+
+        private JigsawConnectorSettings[] BuildAuthoredConnectors()
+        {
+            var result = new JigsawConnectorSettings[connectors.Count];
+            for (int i = 0; i < connectors.Count; i++)
+            {
+                if (connectors[i] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Connector at index {i} on piece '{stableId}' is null.");
+                }
+                result[i] = connectors[i].CreateSettings();
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Adopts the markers authored inside the assigned voxel template. This
+        /// lets a template carry its own connection points so a piece using it
+        /// does not have to restate them and cannot drift out of sync.
+        /// </summary>
+        private JigsawConnectorSettings[] BuildTemplateConnectors()
+        {
+            if (voxelTemplate == null || voxelTemplate.Sockets.Count == 0)
+            {
+                return Array.Empty<JigsawConnectorSettings>();
+            }
+            var result = new JigsawConnectorSettings[
+                voxelTemplate.Sockets.Count];
+            for (int i = 0; i < voxelTemplate.Sockets.Count; i++)
+            {
+                VoxelStructureSocket socket = voxelTemplate.Sockets[i];
+                if (socket == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Template socket at index {i} on piece '{stableId}' is null.");
+                }
+                result[i] = new JigsawConnectorSettings(
+                    socket.StableId,
+                    socket.Role,
+                    socket.Face,
+                    JigsawConnectorDefinition.Joint.Aligned,
+                    socket.SocketName,
+                    socket.TargetName,
+                    socket.TargetPoolId,
+                    socket.FallbackPoolId,
+                    -1,
+                    0,
+                    0,
+                    socket.ActivationChance,
+                    socket.OpeningWidth,
+                    socket.OpeningHeight,
+                    true,
+                    socket.LocalPosition);
+            }
+            return result;
         }
 
         internal void ClampConfiguration()

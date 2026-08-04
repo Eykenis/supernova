@@ -1083,6 +1083,30 @@ namespace Supernova.MinecraftCaves
             JigsawPieceSettings module,
             JigsawConnectorSettings connector)
         {
+            // A template marker already knows exactly which voxel it sits on, so
+            // rotate that local position instead of inferring one from the
+            // piece's generated dimensions.
+            if (connector.HasTemplatePosition && module.HasTemplate)
+            {
+                Vector3Int templateForward = DirectionVector(piece.Direction);
+                Vector3Int templateRight = DirectionVector(
+                    (piece.Direction + 1) & 3);
+                int localX = connector.TemplatePosition.x
+                    - module.TemplateAnchor.x;
+                int localZ = connector.TemplatePosition.z
+                    - module.TemplateAnchor.z;
+                return new Vector3Int(
+                    piece.Origin.x
+                        + templateRight.x * localX
+                        + templateForward.x * localZ,
+                    piece.Origin.y
+                        + connector.TemplatePosition.y
+                        - module.TemplateAnchor.y,
+                    piece.Origin.z
+                        + templateRight.z * localX
+                        + templateForward.z * localZ);
+            }
+
             int worldDirection = (piece.Direction + (int)connector.Face) & 3;
             bool box = module.HasTemplate
                 || piece.Shape == JigsawPieceDefinition.Shape.Room

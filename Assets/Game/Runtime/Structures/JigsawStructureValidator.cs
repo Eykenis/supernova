@@ -47,7 +47,7 @@ namespace Supernova.MinecraftCaves
                 {
                     issues.Add(new Issue(
                         Severity.Error,
-                        $"Template piece '{piece.StableId}' requires explicit sockets for deterministic alignment."));
+                        $"Template piece '{piece.StableId}' needs sockets, either authored on the piece or as markers inside its template."));
                 }
                 if (piece.MinimumCount > 0
                     && (piece.MinimumGraphDepth > feature.MaxDepth

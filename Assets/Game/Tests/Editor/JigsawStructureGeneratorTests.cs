@@ -1319,6 +1319,280 @@ namespace Supernova.Tests
                 new[] { start });
         }
 
+        [Test]
+        public void TemplateSockets_AreInheritedByPiecesThatAuthorNone()
+        {
+            var template = ScriptableObject.CreateInstance<VoxelStructureAsset>();
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                var size = new Vector3Int(7, 6, 9);
+                var anchor = new Vector3Int(3, 0, 4);
+                BuildSolidTemplate(template, size, anchor);
+                var marker = new VoxelStructureSocket();
+                var markerPosition = new Vector3Int(3, 1, size.z - 1);
+                marker.Configure(
+                    "template_exit",
+                    markerPosition,
+                    JigsawConnectorDefinition.Face.Forward,
+                    JigsawConnectorDefinition.Role.Output,
+                    "tpl_branch",
+                    "tpl_entry",
+                    "child",
+                    3,
+                    3);
+                template.AddSocket(marker);
+
+                var start = new JigsawPieceDefinition();
+                start.ConfigureBox(
+                    "tpl_start",
+                    "Template Start",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    true,
+                    0,
+                    0,
+                    0,
+                    7,
+                    7,
+                    7,
+                    7,
+                    5,
+                    5);
+                // Deliberately author no connectors on the piece: the socket must
+                // come from the template alone.
+                start.ConfigureTemplate(template, true);
+
+                var child = new JigsawPieceDefinition();
+                child.ConfigurePassage(
+                    "tpl_child",
+                    "Template Child",
+                    JigsawPieceDefinition.Shape.Corridor,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    1,
+                    1,
+                    1,
+                    5,
+                    5,
+                    3,
+                    4,
+                    1,
+                    0f,
+                    0.5f,
+                    3,
+                    "child",
+                    "child");
+                var entrance = new JigsawConnectorDefinition();
+                entrance.Configure(
+                    "entrance",
+                    JigsawConnectorDefinition.Role.Input,
+                    JigsawConnectorDefinition.Face.Back,
+                    "tpl_entry",
+                    "tpl_branch",
+                    "child",
+                    -1,
+                    0,
+                    1,
+                    3,
+                    3);
+                child.AddConnector(entrance);
+
+                VoxelTypeDefinition brick =
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.StructureBrickVoxel);
+                definition.Configure(
+                    true,
+                    "template_socket_test",
+                    brick,
+                    brick,
+                    9977,
+                    4,
+                    1f,
+                    100,
+                    100,
+                    4,
+                    2,
+                    16,
+                    string.Empty,
+                    new[] { start, child });
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+
+                JigsawPieceSettings startModule = settings.GetPiece(
+                    settings.StartPieceIndex);
+                Assert.That(startModule.HasExplicitConnectors, Is.True);
+                Assert.That(startModule.Connectors.Count, Is.EqualTo(1));
+                Assert.That(
+                    startModule.Connectors[0].StableId,
+                    Is.EqualTo("template_exit"));
+                Assert.That(
+                    startModule.Connectors[0].HasTemplatePosition,
+                    Is.True);
+                Assert.That(
+                    startModule.Connectors[0].TemplatePosition,
+                    Is.EqualTo(markerPosition));
+
+                // The graph validator must accept a template piece whose sockets
+                // live in the template rather than on the piece.
+                Assert.That(
+                    JigsawStructureValidator.Validate(settings)
+                        .Where(issue => issue.Severity
+                            == JigsawStructureValidator.Severity.Error)
+                        .Select(issue => issue.Message),
+                    Is.Empty);
+
+                // The socket must actually attach a child, and the child has to
+                // sit on the rotated marker rather than the template centre.
+                JigsawStructureGenerator.TryGetPlacement(
+                    settings,
+                    31,
+                    0,
+                    0,
+                    out JigsawStructureGenerator.Placement placement);
+                IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                    JigsawStructureGenerator.BuildLayout(settings, 31, placement);
+                Assert.That(layout.Count, Is.GreaterThan(1));
+                JigsawStructureGenerator.Piece parent = layout[0];
+                JigsawStructureGenerator.Piece attached = layout[1];
+                Assert.That(attached.ModuleId, Is.EqualTo("tpl_child"));
+
+                GetAxes(
+                    parent.Direction,
+                    out Vector3Int forward,
+                    out Vector3Int right);
+                Vector3Int expectedBoundary = new Vector3Int(
+                    parent.Origin.x
+                        + right.x * (markerPosition.x - anchor.x)
+                        + forward.x * (markerPosition.z - anchor.z),
+                    parent.Origin.y + markerPosition.y - anchor.y,
+                    parent.Origin.z
+                        + right.z * (markerPosition.x - anchor.x)
+                        + forward.z * (markerPosition.z - anchor.z));
+                Assert.That(
+                    parent.Openings.Select(opening => opening.Boundary),
+                    Contains.Item(expectedBoundary));
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+                Object.DestroyImmediate(template);
+            }
+        }
+
+        [Test]
+        public void TemplateSockets_ChangeTheFeatureContentHash()
+        {
+            var template = ScriptableObject.CreateInstance<VoxelStructureAsset>();
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                var size = new Vector3Int(7, 6, 9);
+                var anchor = new Vector3Int(3, 0, 4);
+                BuildSolidTemplate(template, size, anchor);
+
+                var start = new JigsawPieceDefinition();
+                start.ConfigureBox(
+                    "hash_start",
+                    "Hash Start",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    true,
+                    0,
+                    0,
+                    0,
+                    7,
+                    7,
+                    7,
+                    7,
+                    5,
+                    5);
+                start.ConfigureTemplate(template, true);
+                VoxelTypeDefinition brick =
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.StructureBrickVoxel);
+                definition.Configure(
+                    true,
+                    "template_hash_test",
+                    brick,
+                    brick,
+                    9978,
+                    4,
+                    1f,
+                    100,
+                    100,
+                    2,
+                    1,
+                    16,
+                    string.Empty,
+                    new[] { start });
+
+                definition.TryCreateSettings(
+                    out JigsawStructureFeatureSettings before,
+                    out _);
+
+                var marker = new VoxelStructureSocket();
+                marker.Configure(
+                    "late_socket",
+                    new Vector3Int(3, 1, size.z - 1),
+                    JigsawConnectorDefinition.Face.Forward,
+                    JigsawConnectorDefinition.Role.Output,
+                    "*",
+                    "*",
+                    "main");
+                template.AddSocket(marker);
+                definition.TryCreateSettings(
+                    out JigsawStructureFeatureSettings after,
+                    out _);
+
+                // Editing markers must invalidate cached layouts, otherwise a
+                // stale graph would survive an authoring change.
+                Assert.That(after.ContentHash, Is.Not.EqualTo(before.ContentHash));
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+                Object.DestroyImmediate(template);
+            }
+        }
+
+        private static void BuildSolidTemplate(
+            VoxelStructureAsset template,
+            Vector3Int size,
+            Vector3Int anchor)
+        {
+            int sampleCount = size.x * size.y * size.z;
+            var densities = new float[sampleCount];
+            var types = new ushort[sampleCount];
+            for (int z = 0; z < size.z; z++)
+            {
+                for (int y = 0; y < size.y; y++)
+                {
+                    for (int x = 0; x < size.x; x++)
+                    {
+                        bool shell = x == 0 || x == size.x - 1
+                            || y == 0 || y == size.y - 1
+                            || z == 0 || z == size.z - 1;
+                        int index = x + size.x * (y + size.y * z);
+                        densities[index] = shell ? 1f : -1f;
+                        types[index] = shell ? StructureBrick.Value : (ushort)0;
+                    }
+                }
+            }
+            template.SetData(size, anchor, Vector3.zero, densities, types);
+        }
+
         private static JigsawStructureFeatureSettings LoadSettings(string path)
         {
             JigsawStructureFeatureDefinition definition =

@@ -19,11 +19,37 @@ namespace Supernova.Voxels
         [SerializeField] private Vector3 playerSpawnOffset = new Vector3(0f, 1.25f, 0f);
         [SerializeField, HideInInspector] private float[] densities = Array.Empty<float>();
         [SerializeField, HideInInspector] private ushort[] types = Array.Empty<ushort>();
+        [Tooltip("Connection markers used when this template is a jigsaw piece.")]
+        [SerializeField] private List<VoxelStructureSocket> sockets =
+            new List<VoxelStructureSocket>();
 
         public Vector3Int Size => size;
         public Vector3Int Anchor => anchor;
         public Vector3 PlayerSpawnOffset => playerSpawnOffset;
         public int SampleCount => size.x * size.y * size.z;
+        public IReadOnlyList<VoxelStructureSocket> Sockets => sockets;
+
+        public void SetSockets(IEnumerable<VoxelStructureSocket> values)
+        {
+            sockets = values != null
+                ? new List<VoxelStructureSocket>(values)
+                : new List<VoxelStructureSocket>();
+            ClampSockets();
+        }
+
+        public void AddSocket(VoxelStructureSocket socket)
+        {
+            if (socket == null)
+            {
+                throw new ArgumentNullException(nameof(socket));
+            }
+            if (sockets == null)
+            {
+                sockets = new List<VoxelStructureSocket>();
+            }
+            socket.ClampToSize(size);
+            sockets.Add(socket);
+        }
 
         public VoxelSample GetSample(int x, int y, int z)
         {
@@ -74,6 +100,7 @@ namespace Supernova.Voxels
             densities = (float[])newDensities.Clone();
             types = (ushort[])newTypes.Clone();
             NormalizeSamples();
+            ClampSockets();
         }
 
         public Vector3Int GetWorldOrigin(Vector3Int worldAnchor, Vector3Int ruleOffset)
@@ -154,6 +181,20 @@ namespace Supernova.Voxels
             anchor = ClampCoordinate(anchor, size);
             EnsureStorage();
             NormalizeSamples();
+            ClampSockets();
+        }
+
+        private void ClampSockets()
+        {
+            if (sockets == null)
+            {
+                sockets = new List<VoxelStructureSocket>();
+                return;
+            }
+            for (int i = 0; i < sockets.Count; i++)
+            {
+                sockets[i]?.ClampToSize(size);
+            }
         }
 
         private void EnsureStorage()

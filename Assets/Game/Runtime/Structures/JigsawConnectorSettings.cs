@@ -19,12 +19,13 @@ namespace Supernova.MinecraftCaves
             int verticalOffset,
             float activationChance,
             int openingWidth,
-            int openingHeight)
+            int openingHeight,
+            bool hasTemplatePosition = false,
+            UnityEngine.Vector3Int templatePosition = default)
         {
             StableId = string.IsNullOrWhiteSpace(stableId)
                 ? "socket"
-                : stableId.Trim();
-            Role = role;
+                : stableId.Trim();            Role = role;
             Face = face;
             Joint = joint;
             SocketName = NormalizeMatch(socketName);
@@ -41,6 +42,10 @@ namespace Supernova.MinecraftCaves
             ActivationChance = Clamp01(activationChance);
             OpeningWidth = MakeOdd(Math.Max(1, openingWidth));
             OpeningHeight = Math.Max(1, openingHeight);
+            HasTemplatePosition = hasTemplatePosition;
+            TemplatePosition = hasTemplatePosition
+                ? templatePosition
+                : default;
         }
 
         public string StableId { get; }
@@ -57,6 +62,14 @@ namespace Supernova.MinecraftCaves
         public float ActivationChance { get; }
         public int OpeningWidth { get; }
         public int OpeningHeight { get; }
+
+        /// <summary>
+        /// True when this socket came from a template marker and therefore knows
+        /// its own voxel position inside the template field. Procedural sockets
+        /// derive their position from the piece's generated dimensions instead.
+        /// </summary>
+        public bool HasTemplatePosition { get; }
+        public UnityEngine.Vector3Int TemplatePosition { get; }
 
         public bool CanAcceptInput => Role != JigsawConnectorDefinition.Role.Output;
         public bool CanEmitOutput => Role != JigsawConnectorDefinition.Role.Input;

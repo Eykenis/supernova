@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using Supernova.MinecraftCaves;
 using Supernova.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -16,6 +18,7 @@ namespace Supernova.Voxels.Editor
             EditorGUILayout.Space();
 
             var authoring = (VoxelStructureAuthoring)target;
+            DrawFeatureTemplateControls(authoring);
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Load Structure"))
@@ -44,11 +47,121 @@ namespace Supernova.Voxels.Editor
                     ClearCells(authoring);
                 }
             }
+            DrawSocketControls(authoring);
         }
 
+        /// <summary>
+        /// Template sockets travel with the asset, so a jigsaw piece that uses
+        /// the template inherits them instead of restating each connection.
+        /// </summary>
+        private static void DrawSocketControls(VoxelStructureAuthoring authoring)
+        {
+            VoxelStructureAsset asset = authoring.StructureToEdit;
+            if (asset == null)
+            {
+                return;
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "Jigsaw Template Sockets",
+                EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                $"Authored sockets: {asset.Sockets.Count}");
+            if (asset.Sockets.Count == 0)
+            {
+                EditorGUILayout.HelpBox(
+                    "Without sockets this template can only be used as a start piece or by a piece that authors its own connectors.",
+                    MessageType.Info);
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Add Socket At Anchor"))
+                {
+                    Undo.RecordObject(asset, "Add Template Socket");
+                    var socket = new VoxelStructureSocket();
+                    socket.Configure(
+                        $"socket_{asset.Sockets.Count}",
+                        authoring.Anchor,
+                        JigsawConnectorDefinition.Face.Forward,
+                        JigsawConnectorDefinition.Role.Bidirectional,
+                        "*",
+                        "*",
+                        "main");
+                    asset.AddSocket(socket);
+                    EditorUtility.SetDirty(asset);
+                    AssetDatabase.SaveAssets();
+                }
+                using (new EditorGUI.DisabledScope(asset.Sockets.Count == 0))
+                {
+                    if (GUILayout.Button("Clear Sockets"))
+                    {
+                        Undo.RecordObject(asset, "Clear Template Sockets");
+                        asset.SetSockets(null);
+                        EditorUtility.SetDirty(asset);
+                        AssetDatabase.SaveAssets();
+                    }
+                }
+            }
+        }
+
+        /// <summary>Draws each template socket and the wall it faces.</summary>
         private void OnSceneGUI()
         {
             var authoring = (VoxelStructureAuthoring)target;
+            DrawSocketHandles(authoring);
+            HandlePaintInput(authoring);
+        }
+
+        private static void DrawSocketHandles(VoxelStructureAuthoring authoring)
+        {
+            VoxelStructureAsset asset = authoring.StructureToEdit;
+            if (asset == null)
+            {
+                return;
+            }
+            for (int i = 0; i < asset.Sockets.Count; i++)
+            {
+                VoxelStructureSocket socket = asset.Sockets[i];
+                if (socket == null)
+                {
+                    continue;
+                }
+                Vector3 world = authoring.transform.TransformPoint(
+                    socket.LocalPosition);
+                Handles.color = new Color(0.2f, 0.9f, 1f, 0.85f);
+                Handles.DrawWireCube(world, Vector3.one);
+                Handles.Label(world + Vector3.up, socket.StableId);
+                Handles.ArrowHandleCap(
+                    0,
+                    world,
+                    Quaternion.LookRotation(
+                        FaceDirection(socket.Face),
+                        Vector3.up),
+                    1.5f,
+                    EventType.Repaint);
+            }
+        }
+
+        private static Vector3 FaceDirection(
+            JigsawConnectorDefinition.Face face)
+        {
+            switch (face)
+            {
+                case JigsawConnectorDefinition.Face.Right:
+                    return Vector3.right;
+                case JigsawConnectorDefinition.Face.Back:
+                    return Vector3.back;
+                case JigsawConnectorDefinition.Face.Left:
+                    return Vector3.left;
+                default:
+                    return Vector3.forward;
+            }
+        }
+
+        private static void HandlePaintInput(VoxelStructureAuthoring authoring)
+        {
             Event current = Event.current;
             if (current.type != EventType.MouseDown
                 || current.button != 0
@@ -93,6 +206,61 @@ namespace Supernova.Voxels.Editor
 
             current.Use();
             EditorSceneManager.MarkSceneDirty(authoring.gameObject.scene);
+        }
+
+        private static void DrawFeatureTemplateControls(
+            VoxelStructureAuthoring authoring)
+        {
+            VoxelStructureFeatureDefinition feature =
+                authoring.StructureFeatureToEdit;
+            if (feature == null)
+            {
+                return;
+            }
+
+            EditorGUILayout.LabelField("Random Structure Feature", EditorStyles.boldLabel);
+            if (feature.StructureTemplate == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "The selected feature has no editable voxel template. Assign the current structure to connect it.",
+                    MessageType.Warning);
+            }
+            else if (authoring.StructureToEdit != feature.StructureTemplate)
+            {
+                EditorGUILayout.HelpBox(
+                    "Structure To Edit is not the template used by the selected random feature.",
+                    MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    "Saving this structure updates the template used by random world generation.",
+                    MessageType.None);
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(feature.StructureTemplate == null))
+                {
+                    if (GUILayout.Button("Use Feature Template"))
+                    {
+                        Undo.RecordObject(authoring, "Use Structure Feature Template");
+                        authoring.ConfigureFeature(feature, authoring.TypeCatalog);
+                        LoadStructure(authoring);
+                    }
+                }
+                using (new EditorGUI.DisabledScope(authoring.StructureToEdit == null))
+                {
+                    if (GUILayout.Button("Assign Current To Feature"))
+                    {
+                        Undo.RecordObject(feature, "Assign Structure Feature Template");
+                        feature.SetStructureTemplate(authoring.StructureToEdit);
+                        EditorUtility.SetDirty(feature);
+                        AssetDatabase.SaveAssets();
+                    }
+                }
+            }
+            EditorGUILayout.Space();
         }
 
         internal static void LoadStructure(VoxelStructureAuthoring authoring)
@@ -178,6 +346,13 @@ namespace Supernova.Voxels.Editor
                 asset.Size,
                 asset.Anchor,
                 asset.PlayerSpawnOffset);
+            VoxelStructureFeatureDefinition feature =
+                authoring.StructureFeatureToEdit;
+            if (feature != null && feature.StructureTemplate != asset)
+            {
+                feature.SetStructureTemplate(asset);
+                EditorUtility.SetDirty(feature);
+            }
             EditorUtility.SetDirty(asset);
             EditorUtility.SetDirty(authoring);
             AssetDatabase.SaveAssets();
@@ -302,7 +477,17 @@ namespace Supernova.Voxels.Editor
                 catalog = ScriptableObject.CreateInstance<VoxelTypeCatalog>();
                 AssetDatabase.CreateAsset(catalog, CatalogPath);
             }
-            catalog.SetDefinitions(definitions);
+            var catalogDefinitions = new System.Collections.Generic.List<
+                VoxelTypeDefinition>(catalog.Definitions);
+            for (int i = 0; i < definitions.Length; i++)
+            {
+                VoxelTypeDefinition replacement = definitions[i];
+                catalogDefinitions.RemoveAll(
+                    item => item == null || item.TypeId == replacement.TypeId);
+                catalogDefinitions.Add(replacement);
+            }
+            catalog.SetDefinitions(
+                catalogDefinitions.OrderBy(item => item.TypeId.Value));
             EditorUtility.SetDirty(catalog);
 
             MinecraftCaves.VoxelOreFeatureDefinition oreFeature =

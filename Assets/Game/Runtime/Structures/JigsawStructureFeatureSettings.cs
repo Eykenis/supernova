@@ -314,6 +314,10 @@ namespace Supernova.MinecraftCaves
                     AddHash(ref hash, connector.ActivationChance.GetHashCode());
                     AddHash(ref hash, connector.OpeningWidth);
                     AddHash(ref hash, connector.OpeningHeight);
+                    AddHash(ref hash, connector.HasTemplatePosition ? 1 : 0);
+                    AddHash(ref hash, connector.TemplatePosition.x);
+                    AddHash(ref hash, connector.TemplatePosition.y);
+                    AddHash(ref hash, connector.TemplatePosition.z);
                 }
                 for (int processorIndex = 0;
                     processorIndex < piece.Processors.Count;

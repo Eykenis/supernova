@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Supernova.MinecraftCaves;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -12,6 +13,8 @@ namespace Supernova.Voxels
     public sealed class VoxelStructureAuthoring : MonoBehaviour
     {
         [SerializeField] private VoxelStructureAsset structureToEdit;
+        [Tooltip("Optional random-world feature that consumes Structure To Edit as its template.")]
+        [SerializeField] private VoxelStructureFeatureDefinition structureFeatureToEdit;
         [SerializeField] private VoxelTypeCatalog voxelTypeCatalog;
         [SerializeField] private Vector3Int size = new Vector3Int(13, 7, 13);
         [SerializeField] private Vector3Int anchor = new Vector3Int(6, 1, 6);
@@ -21,6 +24,8 @@ namespace Supernova.Voxels
         [SerializeField] private string defaultAssetName = "VoxelStructure";
 
         public VoxelStructureAsset StructureToEdit => structureToEdit;
+        public VoxelStructureFeatureDefinition StructureFeatureToEdit =>
+            structureFeatureToEdit;
         public VoxelTypeCatalog TypeCatalog => voxelTypeCatalog;
         public Vector3Int Size => size;
         public Vector3Int Anchor => anchor;
@@ -45,6 +50,29 @@ namespace Supernova.Voxels
             playerSpawnOffset = spawnOffset;
             if (asset != null) defaultAssetName = asset.name;
             ClampConfiguration();
+        }
+
+        public void ConfigureFeature(
+            VoxelStructureFeatureDefinition feature,
+            VoxelTypeCatalog catalog)
+        {
+            structureFeatureToEdit = feature;
+            VoxelStructureAsset template = feature != null
+                ? feature.StructureTemplate
+                : null;
+            if (template != null)
+            {
+                Configure(
+                    template,
+                    catalog,
+                    template.Size,
+                    template.Anchor,
+                    template.PlayerSpawnOffset);
+            }
+            else
+            {
+                voxelTypeCatalog = catalog;
+            }
         }
 
         public bool TryBuildData(
