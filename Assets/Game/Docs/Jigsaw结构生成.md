@@ -5,6 +5,32 @@
 > 面向程序读者。若只想配置一个新结构而不改代码，请读同目录的 `Jigsaw结构配置手册.md`。
 >
 > 算法背景与 Minecraft 原版对照见 `Guideline/Minecraft生成式结构算法指南.md`。
+>
+> **未完成工作请直接看第 9 节**，那里逐项列出了缺口、影响、涉及文件与建议实现顺序。
+
+## 0. 实现状态一览
+
+| 能力 | 状态 | 章节 |
+|---|---|---|
+| RandomSpread 选址 | ✅ | §2.1 |
+| ConcentricRings 选址 | ✅ | §2.2 |
+| Structure set 加权竞争 | ✅ | §2.3 |
+| Frontier piece graph 布局 | ✅ | §3.1 |
+| 显式 socket 双向名称匹配 | ✅ | §3.3 |
+| min/maxCount、配额、必需目标、整图重试 | ✅ | §3.2 §3.5 |
+| Terminator fallback pool | ✅ | §3.2 |
+| Spatial hash 碰撞 | ✅ | §3.4 |
+| 布局缓存 + 柱裁剪索引 | ✅ | §4 §6 |
+| Shell/Air/Accent/Processor 四遍落地 | ✅ | §5.1 |
+| Voxel template piece（含旋转、保留调色板） | ✅ | §5.3 |
+| 模板内 socket marker | ✅ | §5.3 |
+| Processor：支柱/地基/清顶/风化 | ✅ | §5.4 |
+| 宝藏 / 怪物 spawn marker | ✅ | §5.6 |
+| **完整 Template Jigsaw（模板池、empty element）** | ❌ | §9.1 |
+| **Terrain matching / 高度图投影** | ❌ | §9.2 |
+| **Recursive Grammar（末地城式事务分支）** | ❌ | §9.3 |
+| **Biome 过滤** | ❌ | §9.4 |
+| **Loot / spawner / rail 等 marker processor** | ❌ | §9.5 |
 
 ## 1. 总览
 
@@ -327,6 +353,44 @@ Marching Cubes 曾按体素**类型**分别抽取等值面，并在实体/实体
 抽取：同组类型连成一体，不产生接缝；跨组仍然内缩分界。submesh 依然按
 类型划分，所以每种调色板保留自己的材质。详见 `VoxelGroup.cs`。
 
+### 5.6 宝藏与怪物 marker
+
+世界的自然散布（`TrySpawnNaturalTreasures` / `TrySpawnNaturalMonsters`）
+对结构一无所知，因此"传送门房间必定有 Boss""图书室台座上有战利品"这类
+设计意图无法表达。`StructureSpawnMarkerDefinition` 补上这一层。
+
+**数据流**
+
+```text
+piece.spawnMarkers[]  (或 template.spawnMarkers[]，piece 未配置时继承)
+  -> StructureSpawnMarkerSettings         不可变快照，携带 prefab 引用
+  -> JigsawStructureGenerator.CollectSpawnRequests(column, ...)
+       复用缓存布局，按世界坐标掷点
+  -> StructureSpawnRequest[]              体素坐标 + yaw + 落地策略
+  -> MinecraftCaveInfiniteWorld.SpawnStructureMarkers(column)
+       主线程实例化
+```
+
+**关键设计**
+
+- marker 的 `localOffset` 在 piece 自身坐标系内，随 piece 旋转，不会指向
+  世界正北；
+- 掷点键取 **marker 世界锚点**而非索引，因此任何柱、任意次访问都对同一
+  marker 得出相同结论；
+- `Count > 1` 时其余实例在 `scatterRadiusInVoxels` 内散开。散到邻柱的实例
+  会被当前柱丢弃，交由那一柱自己解析，避免同一实例被生成两次；
+- `snapToFloor` 向下最多找 `floorSearchDistance` 格，落在第一个"下方实体、
+  自身为空"的位置。找不到则该实例不生成——宁可缺一个，也不要把宝箱塞进
+  石头里；
+- marker 怪物走**独立名额** `MonsterSpawnTable.MaximumMarkerMonsters`，
+  不占用自然生成的 `MaximumActiveMonsters`。设计好的遭遇战不会因为世界
+  里怪物已满而被静默跳过，同时仍然有界；
+- marker 参与 `ContentHash`，编辑后缓存自动失效。
+
+实例化时机与自然生成一致：`FinalizeColumnPhysicsIfReady` 在该柱**全部**
+mesh section 建好、碰撞体就绪之后调用，因此 `snapToFloor` 看到的是完工
+地形。每柱只解析一次（`markerSpawnedColumns`）。
+
 ## 6. 缓存与性能
 
 ### 6.1 布局缓存
@@ -401,6 +465,9 @@ piece ID 重复、connector ID 重复、start piece 不唯一、`firstPieceId`
 - 四种处理器各自的行为边界（支柱遇地形停、地基不超厚、清顶不超高、
   风化确定且只碰本结构体素）；
 - 处理器不影响碰撞决策；
+- 宝藏 / 怪物 marker 解析确定、随 piece 旋转、只由拥有它的柱上报、
+  零概率不触发、编辑后 ContentHash 变化；
+- 模板 marker 被无自身 marker 的模块继承；
 - RandomSpread 的服务枚举与逐区域查询一致；
 - 环候选确定、跨多个半径带、窗口查询正确剪枝；
 - structure set 每格恰好一个胜者，且权重大者胜出更多；
@@ -410,24 +477,127 @@ piece ID 重复、connector ID 重复、start piece 不唯一、`firstPieceId`
 `VoxelTypeMarchingCubesTests.cs` 覆盖分组网格：同组连成一体、同组仍保留
 每类型材质、跨组仍有内缩接缝、未登记类型不误并组。
 
-## 9. 当前边界
+## 9. 未完成工作
 
-以下能力尚未实现，本文与代码都不把它们描述为已完成：
+以下能力**尚未实现**。每项都写明缺什么、造成什么限制、要改哪些文件，
+以便后续接手时能直接开工，不必重新调研。
 
-- **Terrain matching**：无高度图投影，道路无法逐列贴合地形。当前结构均为
-  地下（默认资产楼层高度 30~200），该能力价值有限。
-- **Recursive grammar layout**：无末地城式"一条规则产生一批 piece、
-  整组碰撞、失败整组回滚"的事务式布局器。当前每个 socket 独立选取单个
-  piece，无法忠实表达"桥末必须接建筑，否则不留半截桥"。
-- **Biome 过滤**：选址不检查生物群系。
-- **Marker / loot pipeline**：无箱子、刷怪笼、矿车轨道、门、光源、实体
-  等数据标记后处理。
-- **Empty element**：模板池不支持原版"高权重空元素"来控制密度，当前用
-  socket 的 `activationChance` 近似。
+建议顺序：9.1 → 9.5 → 9.4 → 9.2 → 9.3。前两项收益高、改动局部；
+9.3 工作量最大且需要重构布局提交模型，应放到最后。
 
-后续扩展应保持 placement / 缓存 / 空间索引 / rasterizer 基础设施共享，
-再分别增加 Template Jigsaw 与 Recursive Grammar 策略，而不是把所有结构
-语义继续塞进同一个随机队列。
+### 9.1 完整 Template Jigsaw（模板池与 empty element）
+
+**现状**：模块与模板是一对一的。`voxelTemplate` 是单个字段，一个模块只能
+长成一种样子。想要"5 种不同的农舍随机出一种"，必须建 5 个模块并让它们
+共用同一个 pool 和同一组 socket 名字。
+
+**缺什么**
+
+- pool 内的**加权模板列表**：一个模块持有 N 个模板 + 权重，选中模块后再
+  抽模板。原版 template pool 的 `elements[]` 即此。
+- **empty element**：原版村庄在房屋池里放高权重空元素来控制密度。当前只能
+  用 socket 的 `activationChance` 近似，但那控制的是"出口是否生长"，无法
+  表达"这个插口被占用了，但放的是空气"。
+- **list element**：一次放置多个模板（如房屋 + 门前小路）。
+
+**影响的文件**
+
+- `JigsawPieceDefinition.cs`：`voxelTemplate` 改为带权重的列表；
+- `JigsawPieceSettings.cs`：模板数据数组化，`GetTemplateSample` 需要模板
+  索引参数；`TemplateContentHash` 覆盖全部模板；
+- `JigsawStructureGenerator.cs`：`TryCreateCandidate` 在选中模块后再抽模板，
+  抽中的索引必须存进 `Piece`（新字段），否则落地时不知道用哪个模板；
+- `Piece` 结构体加 `TemplateIndex`，`LayoutCacheEntry` 随之变化。
+
+**注意**：模板索引必须进入 `Piece` 并参与布局缓存，否则同一 region 重放
+时可能抽到不同模板，破坏 §1.1 的确定性契约。
+
+### 9.2 Terrain Matching 与高度图投影
+
+**现状**：所有 piece 使用刚性（rigid）投影——整块保持形状，地板一个统一 Y。
+`Stairs` 是唯一例外，沿通道线性插值。
+
+**缺什么**
+
+- 世界生成阶段暴露**地表高度图**采样。当前 `GenerateColumn` 只拿到
+  `densities[]`，没有"这一列地表在哪"的廉价查询；
+- `terrainAdaptation` 字段（`Rigid` / `TerrainMatching` / `BeardThin`）；
+- 逐列落地高度：`Piece` 目前只有 `StartFloorY` / `EndFloorY`，无法表达
+  "道路每一列各自贴合地形"。需要 piece 携带逐列高度数组，或在落地阶段
+  按列查询高度图。
+
+**限制**：地表道路会悬空或硬切进山体。当前所有默认结构都在地下
+（楼层 30~200），所以优先级不高。**若要做地表村庄，这是前置条件。**
+
+**影响的文件**：`MinecraftCaveInfiniteWorld.GenerateChunkData`（传入高度图
+采样器）、`JigsawStructureGenerator`（落地阶段逐列取高）、`Piece`。
+
+### 9.3 Recursive Grammar 布局器（末地城式）
+
+**现状**：布局是逐 socket 独立选取**单个** piece 的 FIFO frontier。每个
+piece 一旦通过碰撞检查就立即提交，无法回滚。
+
+**缺什么**
+
+- **一条规则产生一批 piece**：`BUILDING` / `SMALL_TOWER` / `BRIDGE_PIECE`
+  / `FAT_TOWER` 这类非终结符，一次生成整组几何；
+- **事务式碰撞**：整组先在临时占用表中构造，与全局碰撞检查后**原子提交**，
+  任一非法则整组回滚；
+- **structure 级状态**：如"全城至多一艘船"的 `ShipGenerated` 标记；
+- **深度相关概率**：递归越深，某些分支概率越低。
+
+**限制**：无法表达"一段桥的末端必须接上建筑，否则不留下半截桥"。当前若
+桥末的建筑放不下，那段桥会留在原地成为断桥。
+
+**影响的文件**
+
+- `JigsawStructureGenerator.cs`：`BuildLayoutAttempt` 需要重构——把"提交
+  piece"从直接 `pieces.Add` + `spatialIndex.Add` 改为可回滚的事务；
+  `PieceSpatialIndex` 需要支持 `BeginTransaction` / `Commit` / `Rollback`；
+- 新增 `JigsawGrammarRuleDefinition`（规则资产）与
+  `RecursiveGrammarLayoutStrategy`；
+- `JigsawStructureFeatureDefinition` 加 `layoutStrategy` 字段，在
+  `PieceGraph` 与 `RecursiveGrammar` 间选择。
+
+**务必保留共享**：placement、缓存、空间索引、柱裁剪、rasterizer、processor
+都应被新策略复用。不要把两种布局语义压回同一个随机队列——这正是
+`Guideline/Minecraft生成式结构算法指南.md` §12 的结论。
+
+### 9.4 Biome 过滤
+
+**现状**：选址完全不看生物群系，`CaveBiomeCatalog` 与结构生成互不相识。
+
+**缺什么**：结构资产上的 biome tag 白名单，以及选址阶段的准入检查。
+
+**影响的文件**：`JigsawStructureFeatureDefinition`（加 biome 过滤字段）、
+`JigsawPlacementService.CollectPlacements`（候选点处查询 biome）。
+需要确认 biome 查询在 worker 线程安全且不依赖流送状态。
+
+### 9.5 Loot / spawner / rail 等 marker processor
+
+**现状**：`StructureSpawnMarkerDefinition` 已支持宝藏与怪物（§5.6），
+但仅此两类。
+
+**缺什么**
+
+- **箱子 + 战利品表**：marker 指定一个 loot table，生成带随机内容的容器；
+- **刷怪笼**：持续生成而非一次性；
+- **矿车轨道**：沿走廊铺设，需要感知 piece 朝向与长度；
+- **门 / 光源 / 装饰实体**：批量小物件，可能需要与 `CaveSurfaceBrush`
+  的实例化渲染合流以避免大量 GameObject。
+
+**影响的文件**：`StructureSpawnMarkerDefinition`（扩展 `Kind` 枚举 +
+对应字段）、`MinecraftCaveInfiniteWorld.SpawnStructureMarker`（新分支）。
+§5.6 的数据流可以直接复用，这是当前最容易扩展的一项。
+
+### 9.6 其他已知边界
+
+- `minimumCount` 在空间完全不可行时返回"缺失最少"的布局，而不是突破碰撞
+  强塞模块。这应由资产校验与多种子批量测试提前发现（见 §7、§8）。
+- 处理器只有四种，且都是逐列垂直操作。没有水平方向的形态处理（如"沿墙
+  加装饰带"）。
+- marker 不支持"整组同时生成或都不生成"的事务语义；每个实例独立判定。
+  Boss 房若需要"要么 3 只一起出、要么不出"，需等 9.3 的事务机制。
 
 ## 10. 代码索引
 
@@ -440,10 +610,16 @@ piece ID 重复、connector ID 重复、start piece 不唯一、`firstPieceId`
 | `Runtime/Structures/JigsawConnectorDefinition.cs` | socket 资产 |
 | `Runtime/Structures/JigsawConnectorSettings.cs` | socket 快照 + 名称匹配 |
 | `Runtime/Structures/JigsawProcessorDefinition.cs` | 处理器资产 + 快照 |
+| `Runtime/Structures/StructureSpawnMarkerDefinition.cs` | 宝藏 / 怪物 marker 资产、快照与解析结果 |
 | `Runtime/Structures/JigsawPlacementService.cs` | 选址策略 + structure set 竞争 |
-| `Runtime/Structures/JigsawStructureGenerator.cs` | 布局、缓存、裁剪、落地 |
+| `Runtime/Structures/JigsawStructureGenerator.cs` | 布局、缓存、裁剪、落地、marker 解析 |
 | `Runtime/Structures/JigsawStructureValidator.cs` | 图与配置校验 |
 | `Runtime/Voxels/VoxelStructureSocket.cs` | 模板内 socket 标记 |
+| `Runtime/Voxels/VoxelStructureAsset.cs` | 体素模板，含 socket 与 marker |
 | `Runtime/Voxels/VoxelGroup.cs` | 体素分组与网格连续性 |
-| `Editor/WorldGeneration/JigsawStructureAssetBuilder.cs` | 默认矿洞 / fortress 重建 |
+| `Runtime/Creatures/MonsterSpawnTable.cs` | 怪物表，含 marker 独立名额 |
+| `Runtime/MinecraftCaveInfiniteWorld.cs` | 世界流送、marker 实例化 |
 | `Editor/WorldGeneration/JigsawStructureFeatureDefinitionEditor.cs` | Inspector 与校验展示 |
+
+结构资产是**唯一**定义来源。项目里不存在用代码重建这些资产的 builder
+脚本——那类脚本会产生第二份定义并与资产漂移，已被删除。
