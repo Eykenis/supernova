@@ -105,11 +105,18 @@ namespace Supernova.MinecraftCaves
         [SerializeField] private List<JigsawProcessorDefinition> processors =
             new List<JigsawProcessorDefinition>();
 
+        [Header("Spawn Markers (optional)")]
+        [Tooltip("Authored treasure and monster spawn points carried by this module.")]
+        [SerializeField] private List<StructureSpawnMarkerDefinition> spawnMarkers =
+            new List<StructureSpawnMarkerDefinition>();
+
         public string StableId => stableId;
         public string DisplayName => displayName;
         public bool IsStartPiece => startPiece;
         public IReadOnlyList<JigsawConnectorDefinition> Connectors => connectors;
         public IReadOnlyList<JigsawProcessorDefinition> Processors => processors;
+        public IReadOnlyList<StructureSpawnMarkerDefinition> SpawnMarkers =>
+            spawnMarkers;
 
         public void ConfigureTemplate(
             VoxelStructureAsset template,
@@ -156,6 +163,19 @@ namespace Supernova.MinecraftCaves
                 processors = new List<JigsawProcessorDefinition>();
             }
             processors.Add(processor);
+        }
+
+        public void AddSpawnMarker(StructureSpawnMarkerDefinition marker)
+        {
+            if (marker == null)
+            {
+                throw new ArgumentNullException(nameof(marker));
+            }
+            if (spawnMarkers == null)
+            {
+                spawnMarkers = new List<StructureSpawnMarkerDefinition>();
+            }
+            spawnMarkers.Add(marker);
         }
 
         public void ConfigureBox(
@@ -259,6 +279,24 @@ namespace Supernova.MinecraftCaves
                 }
                 processorSettings[i] = processors[i].CreateSettings();
             }
+            var markerSettings =
+                new StructureSpawnMarkerSettings[spawnMarkers.Count];
+            for (int i = 0; i < spawnMarkers.Count; i++)
+            {
+                if (spawnMarkers[i] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Spawn marker at index {i} on piece '{stableId}' is null.");
+                }
+                markerSettings[i] = spawnMarkers[i].CreateSettings();
+            }
+            if (markerSettings.Length == 0)
+            {
+                // Mirror socket inheritance: a piece that authors no markers adopts
+                // whatever the assigned template carries, so a hand-painted room
+                // keeps its loot and encounters without restating them.
+                markerSettings = BuildTemplateSpawnMarkers();
+            }
             Vector3Int templateSize = default;
             Vector3Int templateAnchor = default;
             float[] templateDensities = null;
@@ -304,6 +342,7 @@ namespace Supernova.MinecraftCaves
                 decorationSpacing,
                 connectorSettings,
                 processorSettings,
+                markerSettings,
                 templateSize,
                 templateAnchor,
                 templateWritesAir,
@@ -368,6 +407,28 @@ namespace Supernova.MinecraftCaves
             return result;
         }
 
+        private StructureSpawnMarkerSettings[] BuildTemplateSpawnMarkers()
+        {
+            if (voxelTemplate == null || voxelTemplate.SpawnMarkers.Count == 0)
+            {
+                return Array.Empty<StructureSpawnMarkerSettings>();
+            }
+            var result = new StructureSpawnMarkerSettings[
+                voxelTemplate.SpawnMarkers.Count];
+            for (int i = 0; i < voxelTemplate.SpawnMarkers.Count; i++)
+            {
+                StructureSpawnMarkerDefinition marker =
+                    voxelTemplate.SpawnMarkers[i];
+                if (marker == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Template spawn marker at index {i} on piece '{stableId}' is null.");
+                }
+                result[i] = marker.CreateSettings();
+            }
+            return result;
+        }
+
         internal void ClampConfiguration()
         {
             stableId = string.IsNullOrWhiteSpace(stableId)
@@ -421,6 +482,14 @@ namespace Supernova.MinecraftCaves
             for (int i = 0; i < processors.Count; i++)
             {
                 processors[i]?.ClampConfiguration();
+            }
+            if (spawnMarkers == null)
+            {
+                spawnMarkers = new List<StructureSpawnMarkerDefinition>();
+            }
+            for (int i = 0; i < spawnMarkers.Count; i++)
+            {
+                spawnMarkers[i]?.ClampConfiguration();
             }
         }
 

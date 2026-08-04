@@ -333,6 +333,26 @@ namespace Supernova.MinecraftCaves
                     AddHash(ref hash, processor.Chance.GetHashCode());
                     AddHash(ref hash, processor.PerimeterOnly ? 1 : 0);
                 }
+                for (int markerIndex = 0;
+                    markerIndex < piece.SpawnMarkers.Count;
+                    markerIndex++)
+                {
+                    StructureSpawnMarkerSettings marker =
+                        piece.SpawnMarkers[markerIndex];
+                    AddHash(ref hash, marker.StableId);
+                    AddHash(ref hash, (int)marker.Kind);
+                    AddHash(ref hash, marker.LocalOffset.x);
+                    AddHash(ref hash, marker.LocalOffset.y);
+                    AddHash(ref hash, marker.LocalOffset.z);
+                    AddHash(ref hash, marker.Yaw.GetHashCode());
+                    AddHash(ref hash, marker.SpawnChance.GetHashCode());
+                    AddHash(ref hash, marker.Count);
+                    AddHash(
+                        ref hash,
+                        marker.ScatterRadiusInVoxels.GetHashCode());
+                    AddHash(ref hash, marker.SnapToFloor ? 1 : 0);
+                    AddHash(ref hash, marker.FloorSearchDistance);
+                }
             }
             return hash;
         }

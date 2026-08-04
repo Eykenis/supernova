@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using Supernova.Gameplay;
 using Supernova.MinecraftCaves;
+using Supernova.MinecraftCaves.Creatures;
 using Supernova.Voxels;
 using UnityEditor;
 using UnityEngine;
@@ -77,19 +79,8 @@ namespace Supernova.Tests
         {
             JigsawStructureFeatureSettings settings = LoadSettings(
                 ProjectAssetPaths.Config.AbandonedMineshaftJigsaw);
-            Assert.That(
-                JigsawStructureGenerator.TryGetPlacement(
-                    settings,
-                    114514,
-                    0,
-                    0,
-                    out JigsawStructureGenerator.Placement placement),
-                Is.True);
             IReadOnlyList<JigsawStructureGenerator.Piece> layout =
-                JigsawStructureGenerator.BuildLayout(
-                    settings,
-                    114514,
-                    placement);
+                FindLayoutContaining(settings, 114514, "mineshaft_corridor");
             JigsawStructureGenerator.Piece room = layout[0];
             JigsawStructureGenerator.Piece corridor = layout.First(piece =>
                 piece.ModuleId == "mineshaft_corridor");
@@ -532,14 +523,8 @@ namespace Supernova.Tests
             JigsawStructureFeatureSettings settings = LoadSettings(
                 ProjectAssetPaths.Config.AbandonedMineshaftJigsaw);
             const int seed = 114514;
-            JigsawStructureGenerator.TryGetPlacement(
-                settings,
-                seed,
-                0,
-                0,
-                out JigsawStructureGenerator.Placement placement);
             IReadOnlyList<JigsawStructureGenerator.Piece> layout =
-                JigsawStructureGenerator.BuildLayout(settings, seed, placement);
+                FindLayoutContaining(settings, seed, "mineshaft_corridor");
             JigsawStructureGenerator.Piece corridor = layout.First(piece =>
                 piece.ModuleId == "mineshaft_corridor");
             JigsawPieceSettings module = settings.GetPiece(corridor.ModuleIndex);
@@ -1591,6 +1576,421 @@ namespace Supernova.Tests
                 }
             }
             template.SetData(size, anchor, Vector3.zero, densities, types);
+        }
+
+        [Test]
+        public void SpawnMarkers_ResolveDeterministicallyAndRotateWithThePiece()
+        {
+            JigsawStructureFeatureSettings settings = BuildMarkerFixture(
+                StructureSpawnMarkerDefinition.Kind.Treasure,
+                new Vector3Int(2, 1, 3),
+                chance: 1f,
+                count: 1,
+                out int floorY);
+            JigsawStructureGenerator.Piece start = GetMarkerStartPiece(settings);
+            Vector3Int column = InfiniteVoxelWorld.WorldToChunk(
+                start.Origin.x,
+                start.Origin.y,
+                start.Origin.z);
+
+            var first = new List<StructureSpawnRequest>();
+            var second = new List<StructureSpawnRequest>();
+            JigsawStructureGenerator.CollectSpawnRequests(
+                column,
+                MarkerSeed,
+                new[] { settings },
+                first);
+            JigsawStructureGenerator.CollectSpawnRequests(
+                column,
+                MarkerSeed,
+                new[] { settings },
+                second);
+
+            Assert.That(first, Is.Not.Empty);
+            Assert.That(
+                second.Select(item => item.VoxelPosition),
+                Is.EqualTo(first.Select(item => item.VoxelPosition)));
+
+            // The authored offset lives in the piece's own axes, so it must rotate
+            // with the piece rather than always pointing at world north.
+            GetAxes(start.Direction, out Vector3Int forward, out Vector3Int right);
+            Vector3Int expected = new Vector3Int(
+                start.Origin.x + right.x * 2 + forward.x * 3,
+                start.Origin.y + 1,
+                start.Origin.z + right.z * 2 + forward.z * 3);
+            Assert.That(
+                first.Select(item => item.VoxelPosition),
+                Contains.Item(expected));
+            Assert.That(
+                first[0].Kind,
+                Is.EqualTo(StructureSpawnMarkerDefinition.Kind.Treasure));
+        }
+
+        [Test]
+        public void SpawnMarkers_AreOnlyReportedByTheColumnThatOwnsThem()
+        {
+            JigsawStructureFeatureSettings settings = BuildMarkerFixture(
+                StructureSpawnMarkerDefinition.Kind.Treasure,
+                new Vector3Int(0, 1, 0),
+                chance: 1f,
+                count: 1,
+                out int floorY);
+            JigsawStructureGenerator.Piece start = GetMarkerStartPiece(settings);
+            Vector3Int owner = InfiniteVoxelWorld.WorldToChunk(
+                start.Origin.x,
+                start.Origin.y,
+                start.Origin.z);
+
+            var ownerRequests = new List<StructureSpawnRequest>();
+            JigsawStructureGenerator.CollectSpawnRequests(
+                owner,
+                MarkerSeed,
+                new[] { settings },
+                ownerRequests);
+            Assert.That(ownerRequests, Is.Not.Empty);
+
+            // A far-away column must not report the same spawn, otherwise the
+            // world would instantiate one marker many times over.
+            var distantRequests = new List<StructureSpawnRequest>();
+            JigsawStructureGenerator.CollectSpawnRequests(
+                new Vector3Int(owner.x + 40, 0, owner.z + 40),
+                MarkerSeed,
+                new[] { settings },
+                distantRequests);
+            Assert.That(distantRequests, Is.Empty);
+        }
+
+        [Test]
+        public void SpawnMarkers_HonourZeroChanceAndInstanceCount()
+        {
+            JigsawStructureFeatureSettings never = BuildMarkerFixture(
+                StructureSpawnMarkerDefinition.Kind.Monster,
+                new Vector3Int(0, 1, 0),
+                chance: 0f,
+                count: 3,
+                out int neverFloor);
+            JigsawStructureGenerator.Piece neverPiece =
+                GetMarkerStartPiece(never);
+            var neverRequests = new List<StructureSpawnRequest>();
+            JigsawStructureGenerator.CollectSpawnRequests(
+                InfiniteVoxelWorld.WorldToChunk(
+                    neverPiece.Origin.x,
+                    neverPiece.Origin.y,
+                    neverPiece.Origin.z),
+                MarkerSeed,
+                new[] { never },
+                neverRequests);
+            Assert.That(neverRequests, Is.Empty);
+
+            JigsawStructureFeatureSettings always = BuildMarkerFixture(
+                StructureSpawnMarkerDefinition.Kind.Monster,
+                new Vector3Int(0, 1, 0),
+                chance: 1f,
+                count: 3,
+                out int alwaysFloor);
+            JigsawStructureGenerator.Piece alwaysPiece =
+                GetMarkerStartPiece(always);
+            var alwaysRequests = new List<StructureSpawnRequest>();
+            JigsawStructureGenerator.CollectSpawnRequests(
+                InfiniteVoxelWorld.WorldToChunk(
+                    alwaysPiece.Origin.x,
+                    alwaysPiece.Origin.y,
+                    alwaysPiece.Origin.z),
+                MarkerSeed,
+                new[] { always },
+                alwaysRequests);
+            // Scattered instances may land in a neighbouring column, so the owning
+            // column reports at least the anchor and at most the full count.
+            Assert.That(alwaysRequests.Count, Is.InRange(1, 3));
+            Assert.That(
+                alwaysRequests,
+                Has.All.Matches<StructureSpawnRequest>(
+                    item => item.Kind
+                        == StructureSpawnMarkerDefinition.Kind.Monster));
+        }
+
+        [Test]
+        public void SpawnMarkers_ChangeTheFeatureContentHash()
+        {
+            JigsawStructureFeatureSettings without = BuildMarkerFixture(
+                StructureSpawnMarkerDefinition.Kind.Treasure,
+                new Vector3Int(0, 1, 0),
+                chance: 1f,
+                count: 1,
+                out _,
+                includeMarker: false);
+            JigsawStructureFeatureSettings with = BuildMarkerFixture(
+                StructureSpawnMarkerDefinition.Kind.Treasure,
+                new Vector3Int(0, 1, 0),
+                chance: 1f,
+                count: 1,
+                out _);
+
+            // Editing markers must invalidate cached layouts.
+            Assert.That(with.ContentHash, Is.Not.EqualTo(without.ContentHash));
+        }
+
+        [Test]
+        public void TemplateSpawnMarkers_AreInheritedByPiecesThatAuthorNone()
+        {
+            var template = ScriptableObject.CreateInstance<VoxelStructureAsset>();
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                BuildSolidTemplate(
+                    template,
+                    new Vector3Int(7, 6, 9),
+                    new Vector3Int(3, 0, 4));
+                var marker = new StructureSpawnMarkerDefinition();
+                marker.Configure(
+                    "template_loot",
+                    StructureSpawnMarkerDefinition.Kind.Treasure,
+                    new Vector3Int(0, 2, 0));
+                marker.ConfigureTreasure(LoadAnyTreasure());
+                template.AddSpawnMarker(marker);
+
+                var start = new JigsawPieceDefinition();
+                start.ConfigureBox(
+                    "tpl_marker_start",
+                    "Template Marker Start",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    true,
+                    0,
+                    0,
+                    0,
+                    7,
+                    7,
+                    7,
+                    7,
+                    5,
+                    5);
+                start.ConfigureTemplate(template, true);
+                var exit = new JigsawConnectorDefinition();
+                exit.Configure(
+                    "exit",
+                    JigsawConnectorDefinition.Role.Output,
+                    JigsawConnectorDefinition.Face.Forward,
+                    "*",
+                    "*",
+                    "main");
+                start.AddConnector(exit);
+
+                VoxelTypeDefinition brick =
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.StructureBrickVoxel);
+                definition.Configure(
+                    true,
+                    "template_marker_test",
+                    brick,
+                    brick,
+                    5521,
+                    4,
+                    1f,
+                    100,
+                    100,
+                    2,
+                    1,
+                    16,
+                    string.Empty,
+                    new[] { start });
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+
+                // The piece authored no markers of its own, so it must adopt the
+                // template's.
+                JigsawPieceSettings module = settings.GetPiece(
+                    settings.StartPieceIndex);
+                Assert.That(module.HasSpawnMarkers, Is.True);
+                Assert.That(module.SpawnMarkers.Count, Is.EqualTo(1));
+                Assert.That(
+                    module.SpawnMarkers[0].StableId,
+                    Is.EqualTo("template_loot"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+                Object.DestroyImmediate(template);
+            }
+        }
+
+        private const int MarkerSeed = 771244;
+
+        private static TreasureDefinition LoadAnyTreasure()
+        {
+            string[] guids = AssetDatabase.FindAssets("t:TreasureDefinition");
+            Assert.That(guids, Is.Not.Empty, "project has no TreasureDefinition");
+            return AssetDatabase.LoadAssetAtPath<TreasureDefinition>(
+                AssetDatabase.GUIDToAssetPath(guids[0]));
+        }
+
+        private static MonsterSpawnDefinition LoadAnyMonster()
+        {
+            string[] guids = AssetDatabase.FindAssets("t:MonsterSpawnDefinition");
+            Assert.That(guids, Is.Not.Empty, "project has no MonsterSpawnDefinition");
+            return AssetDatabase.LoadAssetAtPath<MonsterSpawnDefinition>(
+                AssetDatabase.GUIDToAssetPath(guids[0]));
+        }
+
+        /// <summary>
+        /// Builds a one-room structure carrying a single authored marker.
+        /// </summary>
+        private static JigsawStructureFeatureSettings BuildMarkerFixture(
+            StructureSpawnMarkerDefinition.Kind kind,
+            Vector3Int localOffset,
+            float chance,
+            int count,
+            out int floorY,
+            bool includeMarker = true)
+        {
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                var start = new JigsawPieceDefinition();
+                start.ConfigureBox(
+                    "marker_start",
+                    "Marker Start",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    true,
+                    0,
+                    0,
+                    0,
+                    11,
+                    11,
+                    11,
+                    11,
+                    6,
+                    6);
+                var exit = new JigsawConnectorDefinition();
+                exit.Configure(
+                    "exit",
+                    JigsawConnectorDefinition.Role.Output,
+                    JigsawConnectorDefinition.Face.Forward,
+                    "*",
+                    "*",
+                    "main");
+                start.AddConnector(exit);
+                if (includeMarker)
+                {
+                    var marker = new StructureSpawnMarkerDefinition();
+                    marker.Configure(
+                        "fixture_marker",
+                        kind,
+                        localOffset,
+                        0f,
+                        chance,
+                        count,
+                        2f,
+                        false,
+                        0);
+                    if (kind == StructureSpawnMarkerDefinition.Kind.Treasure)
+                    {
+                        marker.ConfigureTreasure(LoadAnyTreasure());
+                    }
+                    else
+                    {
+                        marker.ConfigureMonster(LoadAnyMonster());
+                    }
+                    start.AddSpawnMarker(marker);
+                }
+
+                floorY = 110;
+                VoxelTypeDefinition brick =
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.StructureBrickVoxel);
+                definition.Configure(
+                    true,
+                    "marker_fixture",
+                    brick,
+                    brick,
+                    8812,
+                    4,
+                    1f,
+                    floorY,
+                    floorY,
+                    2,
+                    1,
+                    16,
+                    string.Empty,
+                    new[] { start });
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+                return settings;
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        private static JigsawStructureGenerator.Piece GetMarkerStartPiece(
+            JigsawStructureFeatureSettings settings)
+        {
+            JigsawStructureGenerator.TryGetPlacement(
+                settings,
+                MarkerSeed,
+                0,
+                0,
+                out JigsawStructureGenerator.Placement placement);
+            return JigsawStructureGenerator.BuildLayout(
+                settings,
+                MarkerSeed,
+                placement)[0];
+        }
+
+        /// <summary>
+        /// Scans regions for the first layout containing a module. Tests must not
+        /// assume region (0, 0) wins, because that depends on the asset's authored
+        /// placement chance, which designers tune freely.
+        /// </summary>
+        private static IReadOnlyList<JigsawStructureGenerator.Piece>
+            FindLayoutContaining(
+                JigsawStructureFeatureSettings settings,
+                int seed,
+                string moduleId)
+        {
+            for (int regionZ = -8; regionZ <= 8; regionZ++)
+            {
+                for (int regionX = -8; regionX <= 8; regionX++)
+                {
+                    if (!JigsawStructureGenerator.TryGetPlacement(
+                        settings,
+                        seed,
+                        regionX,
+                        regionZ,
+                        out JigsawStructureGenerator.Placement placement))
+                    {
+                        continue;
+                    }
+                    IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                        JigsawStructureGenerator.BuildLayout(
+                            settings,
+                            seed,
+                            placement);
+                    if (layout.Any(piece => piece.ModuleId == moduleId))
+                    {
+                        return layout;
+                    }
+                }
+            }
+            Assert.Fail(
+                $"No layout containing '{moduleId}' was found for seed {seed}.");
+            return null;
         }
 
         private static JigsawStructureFeatureSettings LoadSettings(string path)

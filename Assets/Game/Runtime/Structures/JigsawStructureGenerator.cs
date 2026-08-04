@@ -356,6 +356,172 @@ namespace Supernova.MinecraftCaves
             return GetOrCreateLayout(feature, worldSeed, placement).Pieces;
         }
 
+        /// <summary>
+        /// Resolves every authored spawn marker whose position falls inside the
+        /// given voxel column. Resolution reuses the cached layout and is keyed on
+        /// world coordinates, so the same column always yields the same spawns no
+        /// matter when it streams in or how many times it is revisited.
+        /// </summary>
+        public static void CollectSpawnRequests(
+            Vector3Int columnCoordinate,
+            int worldSeed,
+            IReadOnlyList<JigsawStructureFeatureSettings> features,
+            List<StructureSpawnRequest> results,
+            CancellationToken cancellationToken = default)
+        {
+            if (results == null)
+            {
+                throw new ArgumentNullException(nameof(results));
+            }
+            results.Clear();
+            if (features == null || features.Count == 0)
+            {
+                return;
+            }
+
+            int targetMinX = columnCoordinate.x * VoxelColumnChunkData.Width;
+            int targetMinZ = columnCoordinate.z * VoxelColumnChunkData.Depth;
+            int targetMaxX = targetMinX + VoxelColumnChunkData.Width - 1;
+            int targetMaxZ = targetMinZ + VoxelColumnChunkData.Depth - 1;
+            var placements = new List<Placement>();
+
+            for (int featureIndex = 0; featureIndex < features.Count; featureIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                JigsawStructureFeatureSettings feature = features[featureIndex];
+                if (feature.PlacementChance <= 0f)
+                {
+                    continue;
+                }
+
+                JigsawPlacementService.CollectPlacements(
+                    feature,
+                    worldSeed,
+                    targetMinX,
+                    targetMinZ,
+                    targetMaxX,
+                    targetMaxZ,
+                    placements);
+                for (int i = 0; i < placements.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Placement placement = placements[i];
+                    if (!JigsawPlacementService.WinsStructureSet(
+                        features,
+                        featureIndex,
+                        worldSeed,
+                        placement.RegionX,
+                        placement.RegionZ))
+                    {
+                        continue;
+                    }
+
+                    IReadOnlyList<Piece> pieces = GetOrCreateLayout(
+                        feature,
+                        worldSeed,
+                        placement).GetPiecesForColumn(
+                            columnCoordinate.x,
+                            columnCoordinate.z);
+                    for (int pieceIndex = 0; pieceIndex < pieces.Count; pieceIndex++)
+                    {
+                        ResolvePieceSpawnMarkers(
+                            feature,
+                            pieces[pieceIndex],
+                            worldSeed,
+                            targetMinX,
+                            targetMaxX,
+                            targetMinZ,
+                            targetMaxZ,
+                            results);
+                    }
+                }
+            }
+        }
+
+        private static void ResolvePieceSpawnMarkers(
+            JigsawStructureFeatureSettings feature,
+            Piece piece,
+            int worldSeed,
+            int targetMinX,
+            int targetMaxX,
+            int targetMinZ,
+            int targetMaxZ,
+            List<StructureSpawnRequest> results)
+        {
+            JigsawPieceSettings module = feature.GetPiece(piece.ModuleIndex);
+            if (!module.HasSpawnMarkers)
+            {
+                return;
+            }
+
+            Vector3Int forward = DirectionVector(piece.Direction);
+            Vector3Int right = DirectionVector((piece.Direction + 1) & 3);
+            for (int i = 0; i < module.SpawnMarkers.Count; i++)
+            {
+                StructureSpawnMarkerSettings marker = module.SpawnMarkers[i];
+                if (!marker.IsConfigured)
+                {
+                    continue;
+                }
+
+                // The marker's authored offset is in the piece's own axes, so it
+                // rotates with the piece rather than pointing at world north.
+                Vector3Int anchor = new Vector3Int(
+                    piece.Origin.x
+                        + right.x * marker.LocalOffset.x
+                        + forward.x * marker.LocalOffset.z,
+                    piece.Origin.y + marker.LocalOffset.y,
+                    piece.Origin.z
+                        + right.z * marker.LocalOffset.x
+                        + forward.z * marker.LocalOffset.z);
+                // Keyed on the anchor rather than an index, so every column that
+                // sees this marker agrees on whether it fired.
+                var random = new DeterministicRandom(BuildSeed(
+                    worldSeed,
+                    feature.SeedSalt ^ marker.Salt,
+                    anchor.x ^ (anchor.y << 16),
+                    anchor.z));
+                if (random.NextDouble() >= marker.SpawnChance)
+                {
+                    continue;
+                }
+
+                float pieceYaw = piece.Direction * 90f;
+                for (int instance = 0; instance < marker.Count; instance++)
+                {
+                    Vector3Int position = anchor;
+                    if (instance > 0 && marker.ScatterRadiusInVoxels > 0f)
+                    {
+                        double angle = random.NextDouble() * Math.PI * 2.0;
+                        double distance = Math.Sqrt(random.NextDouble())
+                            * marker.ScatterRadiusInVoxels;
+                        position = new Vector3Int(
+                            anchor.x + (int)Math.Round(Math.Cos(angle) * distance),
+                            anchor.y,
+                            anchor.z + (int)Math.Round(Math.Sin(angle) * distance));
+                    }
+                    // A scattered instance can land in a neighbouring column; that
+                    // column will resolve it itself, so drop it here to avoid
+                    // spawning the same instance twice.
+                    if (position.x < targetMinX
+                        || position.x > targetMaxX
+                        || position.z < targetMinZ
+                        || position.z > targetMaxZ)
+                    {
+                        continue;
+                    }
+                    results.Add(new StructureSpawnRequest(
+                        marker.Kind,
+                        marker.Treasure,
+                        marker.Monster,
+                        position,
+                        Mathf.Repeat(pieceYaw + marker.Yaw, 360f),
+                        marker.SnapToFloor,
+                        marker.FloorSearchDistance));
+                }
+            }
+        }
+
         private static LayoutCacheEntry GetOrCreateLayout(
             JigsawStructureFeatureSettings feature,
             int worldSeed,

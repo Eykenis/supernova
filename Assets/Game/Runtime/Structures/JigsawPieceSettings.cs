@@ -9,6 +9,7 @@ namespace Supernova.MinecraftCaves
     {
         private readonly JigsawConnectorSettings[] connectors;
         private readonly JigsawProcessorSettings[] processors;
+        private readonly StructureSpawnMarkerSettings[] spawnMarkers;
         private readonly float[] templateDensities;
         private readonly VoxelTypeId[] templateTypes;
 
@@ -45,6 +46,7 @@ namespace Supernova.MinecraftCaves
             int decorationSpacing,
             JigsawConnectorSettings[] connectorSettings,
             JigsawProcessorSettings[] processorSettings,
+            StructureSpawnMarkerSettings[] spawnMarkerSettings,
             Vector3Int templateSize,
             Vector3Int templateAnchor,
             bool templateWritesAir,
@@ -104,6 +106,9 @@ namespace Supernova.MinecraftCaves
             processors = processorSettings == null
                 ? Array.Empty<JigsawProcessorSettings>()
                 : (JigsawProcessorSettings[])processorSettings.Clone();
+            spawnMarkers = spawnMarkerSettings == null
+                ? Array.Empty<StructureSpawnMarkerSettings>()
+                : (StructureSpawnMarkerSettings[])spawnMarkerSettings.Clone();
             int downwardReach = 0;
             int upwardReach = 0;
             for (int i = 0; i < processors.Length; i++)
@@ -187,6 +192,9 @@ namespace Supernova.MinecraftCaves
         public System.Collections.Generic.IReadOnlyList<JigsawProcessorSettings>
             Processors => processors;
         public bool HasProcessors => processors.Length > 0;
+        public System.Collections.Generic.IReadOnlyList<StructureSpawnMarkerSettings>
+            SpawnMarkers => spawnMarkers;
+        public bool HasSpawnMarkers => spawnMarkers.Length > 0;
         public int ProcessorDownwardReach { get; }
         public int ProcessorUpwardReach { get; }
         public bool HasExplicitConnectors => connectors.Length > 0;

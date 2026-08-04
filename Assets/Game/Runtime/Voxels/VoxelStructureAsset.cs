@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Supernova.MinecraftCaves;
 using UnityEngine;
 
 namespace Supernova.Voxels
@@ -22,12 +23,38 @@ namespace Supernova.Voxels
         [Tooltip("Connection markers used when this template is a jigsaw piece.")]
         [SerializeField] private List<VoxelStructureSocket> sockets =
             new List<VoxelStructureSocket>();
+        [Tooltip("Authored treasure and monster spawn points inside this template.")]
+        [SerializeField] private List<StructureSpawnMarkerDefinition> spawnMarkers =
+            new List<StructureSpawnMarkerDefinition>();
 
         public Vector3Int Size => size;
         public Vector3Int Anchor => anchor;
         public Vector3 PlayerSpawnOffset => playerSpawnOffset;
         public int SampleCount => size.x * size.y * size.z;
         public IReadOnlyList<VoxelStructureSocket> Sockets => sockets;
+        public IReadOnlyList<StructureSpawnMarkerDefinition> SpawnMarkers =>
+            spawnMarkers;
+
+        public void SetSpawnMarkers(
+            IEnumerable<StructureSpawnMarkerDefinition> values)
+        {
+            spawnMarkers = values != null
+                ? new List<StructureSpawnMarkerDefinition>(values)
+                : new List<StructureSpawnMarkerDefinition>();
+        }
+
+        public void AddSpawnMarker(StructureSpawnMarkerDefinition marker)
+        {
+            if (marker == null)
+            {
+                throw new ArgumentNullException(nameof(marker));
+            }
+            if (spawnMarkers == null)
+            {
+                spawnMarkers = new List<StructureSpawnMarkerDefinition>();
+            }
+            spawnMarkers.Add(marker);
+        }
 
         public void SetSockets(IEnumerable<VoxelStructureSocket> values)
         {

@@ -74,8 +74,50 @@ namespace Supernova.MinecraftCaves
                         issues);
                 }
                 ValidateProcessors(feature, piece, issues);
+                ValidateSpawnMarkers(piece, issues);
             }
             return issues;
+        }
+
+        private static void ValidateSpawnMarkers(
+            JigsawPieceSettings piece,
+            List<Issue> issues)
+        {
+            var markerIds = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < piece.SpawnMarkers.Count; i++)
+            {
+                StructureSpawnMarkerSettings marker = piece.SpawnMarkers[i];
+                if (!markerIds.Add(marker.StableId))
+                {
+                    issues.Add(new Issue(
+                        Severity.Error,
+                        $"Piece '{piece.StableId}' has duplicate spawn marker ID '{marker.StableId}'."));
+                }
+                if (!marker.IsConfigured)
+                {
+                    issues.Add(new Issue(
+                        Severity.Error,
+                        $"Spawn marker '{piece.StableId}/{marker.StableId}' has no {marker.Kind} prefab assigned and will never spawn."));
+                }
+                if (marker.SpawnChance <= 0f)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Spawn marker '{piece.StableId}/{marker.StableId}' has a zero chance and never fires."));
+                }
+                if (marker.Count > 1 && marker.ScatterRadiusInVoxels <= 0f)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Spawn marker '{piece.StableId}/{marker.StableId}' places {marker.Count} instances with no scatter radius, so they will stack on one voxel."));
+                }
+                if (marker.SnapToFloor && marker.FloorSearchDistance == 0)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Spawn marker '{piece.StableId}/{marker.StableId}' snaps to floor with a zero search distance, so it only fires when the marker already sits on one."));
+                }
+            }
         }
 
         private static void ValidatePlacement(
