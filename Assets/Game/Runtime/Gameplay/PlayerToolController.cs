@@ -17,6 +17,7 @@ namespace Supernova.Gameplay
         SMG = 6,
         Cart = 7,
         GrabHook = 8,
+        Bomb = 9,
     }
 
     public enum PlayerUpgrade
@@ -116,6 +117,7 @@ namespace Supernova.Gameplay
         SMG = 6,
         Cart = 7,
         GrabHook = 8,
+        Bomb = 9,
     }
 
     /// <summary>

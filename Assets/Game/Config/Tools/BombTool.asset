@@ -1,0 +1,58 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6eac2d1eb75025b4dbb255c6dd3e15d9, type: 3}
+  m_Name: BombTool
+  m_EditorClassIdentifier: 
+  item: 9
+  primaryAction: 7
+  animationTriggerMode: 0
+  primaryActionAnimation: {fileID: 7400000, guid: dda84e517b3d82449bb6a3bf7bff6a04,
+    type: 2}
+  heldModelPrefab: {fileID: 7652149159904447336, guid: 6df483d8f9bcaff4fbc76d2b41ece736,
+    type: 3}
+  heldModelMountStrategy: 0
+  allowMovementWhileUsing: 1
+  actionTriggerDelay: 0.15
+  actionCyclePeriod: 0.6
+  actionIsPeriodic: 0
+  projectilePrefab: {fileID: 0}
+  throwSpeed: 9
+  upwardThrowSpeed: 2
+  throwSpinSpeed: 7
+  throwForwardOffset: 0.8
+  bombProjectilePrefab: {fileID: 7203289337683286975, guid: 92c058e2ae1425f49bb9fdaa856f90c3,
+    type: 3}
+  bombEntityExplosionImpulse: 240
+  firearmProjectilePrefab: {fileID: 0}
+  projectileSpeed: 180
+  initialAmmunition: 120
+  muzzleFlashPrefab: {fileID: 0}
+  muzzleFlashLifetime: 0.75
+  grabHookProjectileModelPrefab: {fileID: 0}
+  grabHookLaunchSpeed: 36
+  grabHookMaximumLength: 30
+  grabHookCollisionRadius: 0.12
+  grabHookRetractSpeed: 45
+  grabHookAimPredictionDuration: 3
+  grabHookAimPredictionStep: 0.05
+  grabHookArrivalDistance: 1.25
+  grabHookPullAcceleration: 32
+  grabHookMaximumPullSpeed: 18
+  grabHookRopeWidth: 0.035
+  miningPower: 1
+  miningEvenHitMultiplier: 4
+  miningPropagationDivisor: 2
+  miningRadius: 0.55
+  miningDepth: 0.75
+  miningFalloffExponent: 1.5
+  miningMinimumPowerFraction: 0.25
+  miningMaxAffectedSamples: 24

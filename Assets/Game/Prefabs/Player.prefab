@@ -644,6 +644,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: c99ab339e6d077241a993ce96bc6d966, type: 2}
   - {fileID: 11400000, guid: b45c9c9ae47c42ab831d847d563ae187, type: 2}
   - {fileID: 11400000, guid: e52711d138996854cb651e6b38b18ac5, type: 2}
+  - {fileID: 11400000, guid: de13f51e58e58df4985d8aa8b2fe88f8, type: 2}
   cartAttractor: {fileID: 2931897021740309335}
   grabHook: {fileID: 2746928921300727229}
   toolModelMount: {fileID: 9000000000000000002}

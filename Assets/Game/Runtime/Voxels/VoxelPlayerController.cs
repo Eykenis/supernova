@@ -1101,6 +1101,8 @@ namespace Supernova.Voxels
                     return cartAttractor != null && cartAttractor.CanOperate;
                 case PlayerToolPrimaryAction.ThrowPersistentLight:
                     return definition.ProjectilePrefab != null;
+                case PlayerToolPrimaryAction.ThrowBomb:
+                    return definition.BombProjectilePrefab != null;
                 case PlayerToolPrimaryAction.FireRifle:
                     return definition.FirearmProjectilePrefab != null
                         && toolController != null
@@ -1561,6 +1563,8 @@ namespace Supernova.Voxels
                         && cartAttractor.BeginAttraction();
                 case PlayerToolPrimaryAction.ThrowPersistentLight:
                     return ThrowConfiguredProjectile(definition) != null;
+                case PlayerToolPrimaryAction.ThrowBomb:
+                    return ThrowConfiguredBomb(definition) != null;
                 case PlayerToolPrimaryAction.FireRifle:
                     return FireConfiguredProjectile(definition) != null;
                 default:
@@ -1720,6 +1724,33 @@ namespace Supernova.Voxels
                 forward * definition.ThrowSpeed
                     + Vector3.up * definition.UpwardThrowSpeed,
                 Random.onUnitSphere * definition.ThrowSpinSpeed);
+            IgnoreOwnerCollisions(projectile);
+            return projectile;
+        }
+
+        private BombProjectile ThrowConfiguredBomb(
+            PlayerToolDefinition definition)
+        {
+            if (definition == null || definition.BombProjectilePrefab == null)
+                return null;
+
+            Transform origin = view != null ? view : transform;
+            Vector3 forward = origin.forward.sqrMagnitude > 0.0001f
+                ? origin.forward.normalized
+                : transform.forward;
+            Vector3 position = origin.position
+                + forward * definition.ThrowForwardOffset;
+            BombProjectile projectile = Instantiate(
+                definition.BombProjectilePrefab,
+                position,
+                Quaternion.LookRotation(forward, Vector3.up));
+            projectile.name = definition.BombProjectilePrefab.name;
+            projectile.Launch(
+                forward * definition.ThrowSpeed
+                    + Vector3.up * definition.UpwardThrowSpeed,
+                Random.onUnitSphere * definition.ThrowSpinSpeed,
+                voxelInteractor != null ? voxelInteractor.VoxelTerrain : null,
+                definition.BombEntityExplosionImpulse);
             IgnoreOwnerCollisions(projectile);
             return projectile;
         }

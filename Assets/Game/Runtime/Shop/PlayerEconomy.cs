@@ -40,7 +40,8 @@ namespace Supernova.Shop
                 return false;
             if (item == PlayerInventoryItem.Pickaxe
                 || item == PlayerInventoryItem.Magnet
-                || item == PlayerInventoryItem.GrabHook)
+                || item == PlayerInventoryItem.GrabHook
+                || item == PlayerInventoryItem.Bomb)
             {
                 return true;
             }

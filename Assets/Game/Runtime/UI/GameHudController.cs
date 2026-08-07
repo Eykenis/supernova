@@ -3114,6 +3114,8 @@ namespace Supernova.UI
                     return "CART";
                 case PlayerInventoryItem.GrabHook:
                     return "GRABHOOK";
+                case PlayerInventoryItem.Bomb:
+                    return "BOMB";
                 default:
                     return string.Empty;
             }

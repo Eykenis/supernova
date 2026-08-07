@@ -12,6 +12,7 @@ namespace Supernova.Gameplay
         FireRifle = 4,
         TowCart = 5,
         FireGrabHook = 6,
+        ThrowBomb = 7,
     }
 
     public enum PlayerToolAnimationTriggerMode
@@ -65,6 +66,13 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0f)] private float upwardThrowSpeed = 1.5f;
         [SerializeField, Min(0f)] private float throwSpinSpeed = 8f;
         [SerializeField, Min(0f)] private float throwForwardOffset = 0.75f;
+
+        [Header("Bomb")]
+        [Tooltip("Timed explosive spawned by the bomb tool.")]
+        [SerializeField] private BombProjectile bombProjectilePrefab;
+        [Tooltip("Maximum radial impulse applied to nearby dynamic bodies.")]
+        [SerializeField, Min(0f)]
+        private float bombEntityExplosionImpulse = 240f;
 
         [Header("Firearm")]
         [Tooltip("Fast physical projectile spawned by this firearm.")]
@@ -121,6 +129,9 @@ namespace Supernova.Gameplay
         public float UpwardThrowSpeed => Mathf.Max(0f, upwardThrowSpeed);
         public float ThrowSpinSpeed => Mathf.Max(0f, throwSpinSpeed);
         public float ThrowForwardOffset => Mathf.Max(0f, throwForwardOffset);
+        public BombProjectile BombProjectilePrefab => bombProjectilePrefab;
+        public float BombEntityExplosionImpulse =>
+            Mathf.Max(0f, bombEntityExplosionImpulse);
         public BallisticProjectile FirearmProjectilePrefab =>
             firearmProjectilePrefab;
         public float ProjectileSpeed => Mathf.Max(0f, projectileSpeed);

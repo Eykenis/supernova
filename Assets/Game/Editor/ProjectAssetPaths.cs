@@ -38,6 +38,7 @@ public static class ProjectAssetPaths
         public const string EquipmentPrefabs = Prefabs + "/Equipment";
         public const string ToolPrefabs = Prefabs + "/Tools";
         public const string FlashlightPrefabs = ToolPrefabs + "/Flashlight";
+        public const string BombPrefabs = ToolPrefabs + "/Bomb";
         public const string GrabHookPrefabs = ToolPrefabs + "/Grabhook";
         public const string GunPrefabs = ToolPrefabs + "/Guns";
         public const string ProjectilePrefabs = GunPrefabs + "/Projectiles";
@@ -145,6 +146,7 @@ public static class ProjectAssetPaths
         public const string MagnetTool = Folders.Tools + "/MagnetTool.asset";
         public const string FlashlightTool =
             Folders.Tools + "/FlashlightTool.asset";
+        public const string BombTool = Folders.Tools + "/BombTool.asset";
         public const string RifleTool = Folders.Tools + "/RifleTool.asset";
         public const string SmgTool = Folders.Tools + "/SMGTool.asset";
         public const string SolidGunTool =
@@ -214,6 +216,10 @@ public static class ProjectAssetPaths
             Folders.EquipmentPrefabs + "/Jetpack.prefab";
         public const string FlashlightProjectile =
             Folders.FlashlightPrefabs + "/FlashlightProjectile.prefab";
+        public const string BombHeld =
+            Folders.BombPrefabs + "/BombHeld.prefab";
+        public const string BombProjectile =
+            Folders.BombPrefabs + "/BombProjectile.prefab";
         public const string Smg = Folders.GunPrefabs + "/SMG.prefab";
         public const string SolidGun =
             Folders.GunPrefabs + "/SolidGun.prefab";
@@ -311,6 +317,10 @@ public static class ProjectAssetPaths
             Folders.SurfaceContentMaterials + "/VinePlaceholder.mat";
         public const string FlashlightGlow =
             Folders.ToolMaterials + "/FlashlightGlow.mat";
+        public const string FlashlightBody =
+            Folders.ToolMaterials + "/FlashlightBody.mat";
+        public const string BombBody =
+            Folders.ToolMaterials + "/BombBody.mat";
         public const string RifleProjectile =
             Folders.ToolMaterials + "/RifleProjectile.mat";
         public const string SolidPlatform =

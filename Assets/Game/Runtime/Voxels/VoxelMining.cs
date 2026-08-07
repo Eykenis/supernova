@@ -179,6 +179,10 @@ namespace Supernova.Voxels
             Vector3 worldDirection,
             VoxelMiningBrushSettings settings,
             out VoxelMiningBrushResult result);
+        bool TryMineExplosion(
+            Vector3 worldCenter,
+            VoxelExplosionSettings settings,
+            out VoxelExplosionResult result);
         bool TrySetVoxelAndRebuild(
             int worldX,
             int worldY,

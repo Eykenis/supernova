@@ -775,6 +775,232 @@ namespace Supernova.MinecraftCaves
             return damagedCount > 0;
         }
 
+        public bool TryMineExplosion(
+            Vector3 worldCenter,
+            VoxelExplosionSettings settings,
+            out VoxelExplosionResult result)
+        {
+            result = default;
+            if (world == null)
+                return false;
+
+            Vector3Int centerCoordinate = WorldPositionToVoxel(worldCenter);
+            Vector3 scale = transform.lossyScale;
+            float minimumScale = Mathf.Max(
+                0.0001f,
+                Mathf.Min(
+                    Mathf.Abs(scale.x),
+                    Mathf.Abs(scale.y),
+                    Mathf.Abs(scale.z)));
+            int coordinateRadius = Mathf.CeilToInt(
+                settings.Radius / (voxelSize * minimumScale)) + 1;
+            float radiusSquared = settings.Radius * settings.Radius;
+            var pending = new List<ExplosionPropagationNode>();
+            var strongestScheduledDamage =
+                new Dictionary<Vector3Int, float>();
+            var processed = new HashSet<Vector3Int>();
+            int candidateCount = 0;
+
+            for (int z = -coordinateRadius; z <= coordinateRadius; z++)
+            {
+                for (int y = -coordinateRadius; y <= coordinateRadius; y++)
+                {
+                    for (int x = -coordinateRadius; x <= coordinateRadius; x++)
+                    {
+                        Vector3Int coordinate = centerCoordinate
+                            + new Vector3Int(x, y, z);
+                        Vector3 sampleWorldPosition = transform.TransformPoint(
+                            (Vector3)coordinate * voxelSize);
+                        float distanceSquared =
+                            (sampleWorldPosition - worldCenter).sqrMagnitude;
+                        if (distanceSquared > radiusSquared
+                            || !world.TryGetSample(
+                                coordinate.x,
+                                coordinate.y,
+                                coordinate.z,
+                                out VoxelSample sample)
+                            || !sample.IsSolid(isoLevel))
+                        {
+                            continue;
+                        }
+
+                        float damage = settings.GetPower(
+                            Mathf.Sqrt(distanceSquared));
+                        if (damage <= 0f)
+                            continue;
+
+                        candidateCount++;
+                        pending.Add(
+                            new ExplosionPropagationNode(coordinate, damage));
+                        strongestScheduledDamage[coordinate] = damage;
+                    }
+                }
+            }
+
+            destructionDirtyMeshes.Clear();
+            int damagedCount = 0;
+            int destroyedCount = 0;
+            while (pending.Count > 0)
+            {
+                ExplosionPropagationNode node =
+                    RemoveStrongestExplosionNode(pending);
+                if (processed.Contains(node.Coordinate)
+                    || !strongestScheduledDamage.TryGetValue(
+                        node.Coordinate,
+                        out float strongestDamage)
+                    || node.Damage + 0.0001f < strongestDamage
+                    || !world.TryGetSample(
+                        node.Coordinate.x,
+                        node.Coordinate.y,
+                        node.Coordinate.z,
+                        out VoxelSample sample)
+                    || !sample.IsSolid(isoLevel))
+                {
+                    continue;
+                }
+
+                processed.Add(node.Coordinate);
+                int durability = VoxelTypeUtility.ResolveDurability(
+                    sample.Type,
+                    voxelTypeCatalog != null
+                        ? voxelTypeCatalog.Definitions
+                        : null);
+                if (!miningProgress.TryApplyDamage(
+                        node.Coordinate,
+                        sample,
+                        durability,
+                        node.Damage,
+                        false,
+                        out VoxelMiningResult damageResult))
+                {
+                    continue;
+                }
+
+                damagedCount++;
+                if (!damageResult.Destroyed)
+                    continue;
+
+                if (IsOreType(sample.Type))
+                {
+                    int harvestedCount = HarvestConnectedOreVein(
+                        node.Coordinate,
+                        sample.Type,
+                        destructionDirtyMeshes);
+                    if (harvestedCount > 0)
+                    {
+                        destroyedCount += harvestedCount;
+                    }
+                    else
+                    {
+                        RemoveExplosionVoxel(node.Coordinate);
+                        destroyedCount++;
+                    }
+                }
+                else
+                {
+                    RemoveExplosionVoxel(node.Coordinate);
+                    destroyedCount++;
+                }
+
+                float propagatedDamage = damageResult.ExcessDamage
+                    / settings.PropagationDivisor;
+                if (propagatedDamage <= 0f)
+                    continue;
+
+                for (int neighbourZ = -1; neighbourZ <= 1; neighbourZ++)
+                {
+                    for (int neighbourY = -1; neighbourY <= 1; neighbourY++)
+                    {
+                        for (int neighbourX = -1;
+                            neighbourX <= 1;
+                            neighbourX++)
+                        {
+                            if (neighbourX == 0
+                                && neighbourY == 0
+                                && neighbourZ == 0)
+                            {
+                                continue;
+                            }
+
+                            Vector3Int neighbour = node.Coordinate
+                                + new Vector3Int(
+                                    neighbourX,
+                                    neighbourY,
+                                    neighbourZ);
+                            Vector3 neighbourWorldPosition =
+                                transform.TransformPoint(
+                                    (Vector3)neighbour * voxelSize);
+                            if ((neighbourWorldPosition - worldCenter)
+                                    .sqrMagnitude > radiusSquared
+                                || processed.Contains(neighbour)
+                                || !world.TryGetSample(
+                                    neighbour.x,
+                                    neighbour.y,
+                                    neighbour.z,
+                                    out VoxelSample neighbourSample)
+                                || !neighbourSample.IsSolid(isoLevel)
+                                || neighbourSample.Type != sample.Type
+                                || (strongestScheduledDamage.TryGetValue(
+                                        neighbour,
+                                        out float scheduledDamage)
+                                    && scheduledDamage >= propagatedDamage))
+                            {
+                                continue;
+                            }
+
+                            strongestScheduledDamage[neighbour] =
+                                propagatedDamage;
+                            pending.Add(
+                                new ExplosionPropagationNode(
+                                    neighbour,
+                                    propagatedDamage));
+                        }
+                    }
+                }
+            }
+
+            if (destructionDirtyMeshes.Count > 0)
+                EnqueuePriorityMeshes(destructionDirtyMeshes);
+
+            result = new VoxelExplosionResult(
+                worldCenter,
+                candidateCount,
+                damagedCount,
+                destroyedCount);
+            return damagedCount > 0;
+        }
+
+        private void RemoveExplosionVoxel(Vector3Int coordinate)
+        {
+            world.SetVoxel(
+                coordinate.x,
+                coordinate.y,
+                coordinate.z,
+                isoLevel - 1f,
+                VoxelTypeId.Air);
+            miningProgress.Reset(coordinate);
+            CollectMeshesAffectedByVoxel(
+                coordinate,
+                destructionDirtyMeshes);
+        }
+
+        private static ExplosionPropagationNode RemoveStrongestExplosionNode(
+            List<ExplosionPropagationNode> pending)
+        {
+            int strongestIndex = 0;
+            for (int i = 1; i < pending.Count; i++)
+            {
+                if (pending[i].Damage > pending[strongestIndex].Damage)
+                    strongestIndex = i;
+            }
+
+            ExplosionPropagationNode node = pending[strongestIndex];
+            int lastIndex = pending.Count - 1;
+            pending[strongestIndex] = pending[lastIndex];
+            pending.RemoveAt(lastIndex);
+            return node;
+        }
+
         private int HarvestConnectedOreVein(
             Vector3Int start,
             VoxelTypeId type,
@@ -3983,6 +4209,20 @@ namespace Supernova.MinecraftCaves
         private readonly struct MiningPropagationNode
         {
             public MiningPropagationNode(
+                Vector3Int coordinate,
+                float damage)
+            {
+                Coordinate = coordinate;
+                Damage = damage;
+            }
+
+            public Vector3Int Coordinate { get; }
+            public float Damage { get; }
+        }
+
+        private readonly struct ExplosionPropagationNode
+        {
+            public ExplosionPropagationNode(
                 Vector3Int coordinate,
                 float damage)
             {
