@@ -34,17 +34,71 @@ namespace Supernova.Voxels
                 definitions = new List<VoxelTypeDefinition>();
             }
 
+#if UNITY_EDITOR
+            AutoRegisterDefinitions();
+#endif
+
             var ids = new HashSet<VoxelTypeId>();
             for (int i = definitions.Count - 1; i >= 0; i--)
             {
                 VoxelTypeDefinition definition = definitions[i];
                 if (definition == null || !ids.Add(definition.TypeId))
                 {
-                    Debug.LogWarning(
+                    Debug.LogError(
                         $"Voxel type catalog '{name}' contains a null or duplicate entry at index {i}.",
                         this);
                 }
             }
         }
+
+#if UNITY_EDITOR
+        private void AutoRegisterDefinitions()
+        {
+            string selfPath = UnityEditor.AssetDatabase.GetAssetPath(this);
+            if (string.IsNullOrEmpty(selfPath))
+            {
+                return;
+            }
+
+            string[] guids = UnityEditor.AssetDatabase.FindAssets(
+                "t:VoxelTypeDefinition");
+            var registeredGuids = new HashSet<string>();
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                if (definitions[i] != null)
+                {
+                    string path =
+                        UnityEditor.AssetDatabase.GetAssetPath(definitions[i]);
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        registeredGuids.Add(
+                            UnityEditor.AssetDatabase.AssetPathToGUID(path));
+                    }
+                }
+            }
+
+            foreach (string guid in guids)
+            {
+                if (registeredGuids.Contains(guid))
+                {
+                    continue;
+                }
+
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                var def = UnityEditor.AssetDatabase
+                    .LoadAssetAtPath<VoxelTypeDefinition>(path);
+                if (def == null)
+                {
+                    continue;
+                }
+
+                definitions.Add(def);
+                Debug.Log(
+                    $"Voxel type catalog '{name}' auto-registered "
+                    + $"'{def.name}' ({path}).",
+                    this);
+            }
+        }
+#endif
     }
 }

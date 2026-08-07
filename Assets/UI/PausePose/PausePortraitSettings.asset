@@ -1054,5 +1054,5 @@ MonoBehaviour:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-  selectionMode: 2
-  fixedPoseIndex: 3
+  selectionMode: 1
+  fixedPoseIndex: 0

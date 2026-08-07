@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 75bd51edeb6fce74b9ddc851c9eeb643, type: 3}
+  m_Name: DenseJigsawRegionWorld
+  m_EditorClassIdentifier: 
+  infiniteCavesLevelSource: {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f,
+    type: 2}
+  worldSectionCount: 3
+  regionColumnsPerSide: 6
+  useExternalLandingCell: 1
+  externalLandingCellDistanceInColumns: 2
+  preventStructureIntersections: 0
+  structureDensity: 2
+  structureRegionSizeInColumns: 4
+  floorHeight: 48
+  maxPiecesPerLayout: 128
+  maxDepth: 32
+  layoutRadius: 48
+  layoutAttempts: 16
+  connectorPlacementAttempts: 32

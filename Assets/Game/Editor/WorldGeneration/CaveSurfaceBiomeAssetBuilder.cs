@@ -19,7 +19,9 @@ namespace Supernova.MinecraftCaves.Editor
             EnsureFolder(ProjectAssetPaths.Folders.SurfaceContentMaterials);
             EnsureFolder(ProjectAssetPaths.Folders.SurfaceContentModels);
             EnsureFolder(ProjectAssetPaths.Folders.VegetationMaterials);
+            EnsureFolder(ProjectAssetPaths.Folders.TerrainMaterials);
             EnsureFolder(ProjectAssetPaths.Folders.VegetationModels);
+            EnsureFolder(ProjectAssetPaths.Folders.TerrainShaders);
 
             Material grassMaterial = EnsureMaterial(
                 ProjectAssetPaths.Materials.GrassSurfacePlaceholder,
@@ -40,6 +42,9 @@ namespace Supernova.MinecraftCaves.Editor
             Material bladeMaterial = EnsureShaderMaterial(
                 ProjectAssetPaths.Materials.CaveGrassBlade,
                 CaveVegetationShaderNames.CaveGrassBlade);
+            Material turfMaterial = EnsureShaderMaterial(
+                ProjectAssetPaths.Materials.CaveGrassTurfLayer,
+                CaveTerrainShaderNames.GrassTurfLayer);
             Mesh bladeLod0 = EnsureGeneratedBladeMesh(
                 ProjectAssetPaths.Models.CaveGrassBladeLod0,
                 CaveGrassBladeMeshSettings.Lod0);
@@ -116,6 +121,10 @@ namespace Supernova.MinecraftCaves.Editor
                 "grassy",
                 "Grassy",
                 new[] { grassBrush, vineBrush });
+            grassy.ConfigureTerrainSurface(
+                new Color(0.16f, 0.50f, 0.10f, 0.92f),
+                0.06f,
+                0.015f);
             grassy.ConfigureVegetationTint(
                 new Color(0.055f, 0.184f, 0.078f),
                 new Color(0.34f, 0.61f, 0.208f),
@@ -131,6 +140,7 @@ namespace Supernova.MinecraftCaves.Editor
                 "bald",
                 "Bald",
                 Array.Empty<CaveSurfaceBrushDefinition>());
+            bald.ConfigureTerrainSurface(Color.clear, 0f, 0f);
             EditorUtility.SetDirty(bald);
 
             CaveBiomeCatalog catalog = EnsureAsset<CaveBiomeCatalog>(
@@ -141,6 +151,7 @@ namespace Supernova.MinecraftCaves.Editor
                 15485863,
                 bald,
                 new[] { new CaveBiomeSelection(grassy, 0f, 1f) });
+            catalog.ConfigureTerrainSurfaceMaterial(turfMaterial);
             EditorUtility.SetDirty(catalog);
 
             MinecraftWorldGenerationConfiguration world = LoadRequired<
@@ -163,7 +174,7 @@ namespace Supernova.MinecraftCaves.Editor
             Debug.Log(
                 "Rebuilt grassy/bald cave biomes, the vine brush, and the "
                 + "stylised grass brush with three blade LOD tiers, its shader "
-                + "material and the biome vegetation tint.");
+                + "material, biome vegetation tint, and thin grass turf layer.");
         }
 
         private static GameObject RebuildGrassPrefab(

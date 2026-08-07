@@ -30,22 +30,41 @@ namespace Supernova.MinecraftCaves
             MinecraftCaveDensityField densityField,
             CancellationToken cancellationToken = default)
         {
+            return SampleColumn(
+                columnCoordinate,
+                densityField,
+                VoxelColumnChunkData.Height,
+                cancellationToken);
+        }
+
+        public static float[] SampleColumn(
+            Vector3Int columnCoordinate,
+            MinecraftCaveDensityField densityField,
+            int effectiveHeight,
+            CancellationToken cancellationToken = default)
+        {
             if (densityField == null)
             {
                 throw new ArgumentNullException(nameof(densityField));
             }
 
+            int sampledHeight = Math.Max(
+                VerticalCellSize,
+                Math.Min(VoxelColumnChunkData.Height, effectiveHeight));
+            int coarseSizeY = (sampledHeight - 1) / VerticalCellSize + 2;
+
             int originX =
                 columnCoordinate.x * VoxelColumnChunkData.Width;
             int originZ =
                 columnCoordinate.z * VoxelColumnChunkData.Depth;
-            var coarse = new float[CoarseSampleCount];
+            var coarse = new float[
+                CoarseSizeX * coarseSizeY * CoarseSizeZ];
             int coarseIndex = 0;
             for (int z = 0; z < CoarseSizeZ; z++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 int worldZ = originZ + z * HorizontalCellSize;
-                for (int y = 0; y < CoarseSizeY; y++)
+                for (int y = 0; y < coarseSizeY; y++)
                 {
                     int worldY = y * VerticalCellSize;
                     for (int x = 0; x < CoarseSizeX; x++)
@@ -60,17 +79,20 @@ namespace Supernova.MinecraftCaves
             }
 
             var densities = new float[VoxelColumnChunkData.VoxelCount];
-            int outputIndex = 0;
+            for (int index = 0; index < densities.Length; index++)
+            {
+                densities[index] = -1f;
+            }
             for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 int coarseZ = z / HorizontalCellSize;
                 float blendZ =
                     (z % HorizontalCellSize) / (float)HorizontalCellSize;
-                int zOffset = coarseZ * CoarseSizeX * CoarseSizeY;
-                int nextZOffset = zOffset + CoarseSizeX * CoarseSizeY;
+                int zOffset = coarseZ * CoarseSizeX * coarseSizeY;
+                int nextZOffset = zOffset + CoarseSizeX * coarseSizeY;
 
-                for (int y = 0; y < VoxelColumnChunkData.Height; y++)
+                for (int y = 0; y < sampledHeight; y++)
                 {
                     int coarseY = y / VerticalCellSize;
                     float blendY =
@@ -114,7 +136,7 @@ namespace Supernova.MinecraftCaves
                             bottomXNextZ,
                             topXNextZ,
                             blendY);
-                        densities[outputIndex++] = Lerp(
+                        densities[VoxelColumnChunkData.ToIndex(x, y, z)] = Lerp(
                             bottomPlane,
                             nextZPlane,
                             blendZ);

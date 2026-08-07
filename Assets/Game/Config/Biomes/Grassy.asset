@@ -17,6 +17,9 @@ MonoBehaviour:
   surfaceBrushes:
   - {fileID: 11400000, guid: a46fdb299e702dc479f9456cdf077b4c, type: 2}
   - {fileID: 11400000, guid: 3d0e8a39e2cd9f0458eb08d005de0c2d, type: 2}
+  terrainSurfaceColor: {r: 0.16, g: 0.5, b: 0.1, a: 0.92}
+  terrainSurfaceEdgeFade: 0.06
+  terrainSurfaceOffset: 0.015
   vegetationRootColor: {r: 0.055, g: 0.184, b: 0.078, a: 1}
   vegetationTipColor: {r: 0.34, g: 0.61, b: 0.208, a: 1}
   vegetationRimColor: {r: 0.53, g: 0.79, b: 0.35, a: 1}

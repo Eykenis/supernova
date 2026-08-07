@@ -13,6 +13,22 @@ namespace Supernova.MinecraftCaves
         [SerializeField] private List<CaveSurfaceBrushDefinition> surfaceBrushes =
             new List<CaveSurfaceBrushDefinition>();
 
+        [Header("Terrain Surface")]
+        [Tooltip(
+            "Colour of the thin turf layer placed above upward-facing natural "
+            + "terrain. Alpha controls the layer opacity; zero disables it.")]
+        [SerializeField] private Color terrainSurfaceColor = Color.clear;
+        [Tooltip(
+            "Width of the transparent transition at this biome's noise boundary. "
+            + "Larger values make a softer, wider edge.")]
+        [SerializeField, Range(0f, 0.25f)]
+        private float terrainSurfaceEdgeFade = 0.06f;
+        [Tooltip(
+            "Small world-space lift above the rock that prevents z-fighting and "
+            + "makes the turf read as a separate surface.")]
+        [SerializeField, Range(0f, 0.05f)]
+        private float terrainSurfaceOffset = 0.015f;
+
         [Header("Vegetation Tint")]
         [Tooltip("Colour at the base of a grass blade. Darker than the tip.")]
         [SerializeField]
@@ -36,6 +52,11 @@ namespace Supernova.MinecraftCaves
             : displayName.Trim();
         public IReadOnlyList<CaveSurfaceBrushDefinition> SurfaceBrushes =>
             surfaceBrushes;
+        public Color TerrainSurfaceColor => terrainSurfaceColor;
+        public float TerrainSurfaceEdgeFade =>
+            Mathf.Clamp(terrainSurfaceEdgeFade, 0f, 0.25f);
+        public float TerrainSurfaceOffset =>
+            Mathf.Clamp(terrainSurfaceOffset, 0f, 0.05f);
         public Color VegetationRootColor => vegetationRootColor;
         public Color VegetationTipColor => vegetationTipColor;
         public Color VegetationRimColor => vegetationRimColor;
@@ -76,6 +97,22 @@ namespace Supernova.MinecraftCaves
             vegetationWindResponse = Mathf.Max(0f, windResponse);
         }
 
+        /// <summary>
+        /// Configures the thin visual turf layer placed above natural terrain.
+        /// The underlying voxel type, material, collider, and gameplay behaviour
+        /// are not changed.
+        /// </summary>
+        public void ConfigureTerrainSurface(
+            Color color,
+            float edgeFade,
+            float surfaceOffset)
+        {
+            color.a = Mathf.Clamp01(color.a);
+            terrainSurfaceColor = color;
+            terrainSurfaceEdgeFade = Mathf.Clamp(edgeFade, 0f, 0.25f);
+            terrainSurfaceOffset = Mathf.Clamp(surfaceOffset, 0f, 0.05f);
+        }
+
         private void OnValidate()
         {
             if (stableId == null) stableId = string.Empty;
@@ -84,6 +121,15 @@ namespace Supernova.MinecraftCaves
             {
                 surfaceBrushes = new List<CaveSurfaceBrushDefinition>();
             }
+            terrainSurfaceColor.a = Mathf.Clamp01(terrainSurfaceColor.a);
+            terrainSurfaceEdgeFade = Mathf.Clamp(
+                terrainSurfaceEdgeFade,
+                0f,
+                0.25f);
+            terrainSurfaceOffset = Mathf.Clamp(
+                terrainSurfaceOffset,
+                0f,
+                0.05f);
             vegetationTintVariation = Mathf.Clamp01(vegetationTintVariation);
             vegetationWindResponse = Mathf.Max(0f, vegetationWindResponse);
         }

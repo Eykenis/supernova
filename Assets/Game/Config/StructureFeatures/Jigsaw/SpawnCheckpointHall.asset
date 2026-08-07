@@ -1,0 +1,154 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d96d5bdff9971149828a61965256e6a, type: 3}
+  m_Name: SpawnCheckpointHall
+  m_EditorClassIdentifier: 
+  enabled: 1
+  stableId: spawn_checkpoint_hall
+  primaryVoxelType: {fileID: 11400000, guid: 2c8e05f588ced714181b788fd544c5cb, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: 202a238be2391e34b89347de524ec2b3, type: 2}
+  placementStrategy: 2
+  seedSalt: 1511502046
+  regionSizeInChunks: 4
+  placementChance: 1
+  minFloorHeight: 48
+  maxFloorHeight: 48
+  ringStructureCount: 128
+  ringCount: 8
+  ringDistanceInChunks: 32
+  ringSpreadInChunks: 3
+  structureSetId: 
+  structureSetWeight: 1
+  maxPieces: 2
+  maxDepth: 1
+  maxHorizontalDistance: 24
+  firstPieceId: 
+  layoutAttempts: 1
+  connectorPlacementAttempts: 1
+  collisionPadding: 0
+  pieces:
+  - stableId: spawn_checkpoint_hall_room
+    displayName: Spawn Checkpoint Hall
+    poolId: checkpoint_hall
+    outputPoolId: checkpoint_hall
+    startPiece: 1
+    weight: 0
+    minimumGraphDepth: 0
+    maximumGraphDepth: 0
+    minimumCount: 0
+    maximumCount: 1
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 4
+    decoration: 3
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 25
+    maximumWidth: 25
+    minimumDepth: 25
+    maximumDepth: 25
+    minimumHeight: 9
+    maximumHeight: 9
+    minimumLength: 8
+    maximumLength: 12
+    width: 5
+    height: 7
+    verticalDelta: 4
+    sideBranchChance: 0
+    descendingChance: 0
+    decorationSpacing: 4
+    connectors:
+    - stableId: forward
+      role: 2
+      face: 0
+      joint: 0
+      socketName: '*'
+      targetName: '*'
+      targetPoolId: checkpoint_hall
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: right
+      role: 2
+      face: 1
+      joint: 0
+      socketName: '*'
+      targetName: '*'
+      targetPoolId: checkpoint_hall
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: back
+      role: 2
+      face: 2
+      joint: 0
+      socketName: '*'
+      targetName: '*'
+      targetPoolId: checkpoint_hall
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    - stableId: left
+      role: 2
+      face: 3
+      joint: 0
+      socketName: '*'
+      targetName: '*'
+      targetPoolId: checkpoint_hall
+      fallbackPoolId: 
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 5
+      openingHeight: 5
+    processors: []
+    spawnMarkers:
+    - stableId: checkpoint_disk
+      kind: 2
+      treasure: {fileID: 0}
+      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 569513102036810919, guid: 791ddfa151c04644e8b21f483462e124,
+        type: 3}
+      localOffset: {x: 0, y: 1, z: 0}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 0
+      snapToFloor: 1
+      floorSearchDistance: 6
+    - stableId: player_spawn
+      kind: 3
+      treasure: {fileID: 0}
+      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
+      localOffset: {x: 0, y: 2, z: -6}
+      yaw: 0
+      spawnChance: 1
+      count: 1
+      scatterRadiusInVoxels: 0
+      snapToFloor: 1
+      floorSearchDistance: 6

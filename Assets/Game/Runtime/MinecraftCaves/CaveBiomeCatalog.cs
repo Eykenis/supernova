@@ -31,6 +31,46 @@ namespace Supernova.MinecraftCaves
                 && noise >= MinimumNoise
                 && noise <= MaximumNoise;
         }
+
+        /// <summary>
+        /// Returns a smooth 0..1 coverage inside this selection. Noise-domain
+        /// endpoints (-1 and 1) are not treated as biome boundaries because
+        /// noise cannot cross beyond them.
+        /// </summary>
+        public float EvaluateInteriorCoverage(float noise, float fadeWidth)
+        {
+            if (!Contains(noise))
+            {
+                return 0f;
+            }
+
+            float width = Mathf.Max(0f, fadeWidth);
+            if (width <= Mathf.Epsilon)
+            {
+                return 1f;
+            }
+
+            float boundaryDistance = float.PositiveInfinity;
+            if (MinimumNoise > -1f)
+            {
+                boundaryDistance = noise - MinimumNoise;
+            }
+            if (MaximumNoise < 1f)
+            {
+                boundaryDistance = Mathf.Min(
+                    boundaryDistance,
+                    MaximumNoise - noise);
+            }
+            if (float.IsPositiveInfinity(boundaryDistance))
+            {
+                return 1f;
+            }
+
+            return Mathf.SmoothStep(
+                0f,
+                1f,
+                Mathf.Clamp01(boundaryDistance / width));
+        }
     }
 
     /// <summary>
@@ -44,21 +84,44 @@ namespace Supernova.MinecraftCaves
     {
         [SerializeField, Min(0.00001f)] private float noiseFrequency = 0.008f;
         [SerializeField] private int seedSalt = 15485863;
+        [SerializeField] private Material terrainSurfaceMaterial;
         [SerializeField] private CaveBiomeDefinition fallbackBiome;
         [SerializeField] private List<CaveBiomeSelection> selections =
             new List<CaveBiomeSelection>();
 
         public float NoiseFrequency => Mathf.Max(0.00001f, noiseFrequency);
         public int SeedSalt => seedSalt;
+        public Material TerrainSurfaceMaterial => terrainSurfaceMaterial;
         public CaveBiomeDefinition FallbackBiome => fallbackBiome;
         public IReadOnlyList<CaveBiomeSelection> Selections => selections;
 
         public CaveBiomeDefinition Evaluate(Vector3 worldVoxelPosition, int worldSeed)
         {
-            float noise = MinecraftCaveNoise.NormalNoise(
+            return EvaluateSurface(
+                worldVoxelPosition,
+                worldSeed,
+                out _);
+        }
+
+        public float EvaluateNoise(Vector3 worldVoxelPosition, int worldSeed)
+        {
+            return MinecraftCaveNoise.NormalNoise(
                 worldVoxelPosition * NoiseFrequency,
                 worldSeed ^ seedSalt,
                 2);
+        }
+
+        /// <summary>
+        /// Evaluates the biome and its smooth interior coverage at an exact
+        /// world-voxel position. The coverage is used by visual layers to fade
+        /// toward zero at selection boundaries.
+        /// </summary>
+        public CaveBiomeDefinition EvaluateSurface(
+            Vector3 worldVoxelPosition,
+            int worldSeed,
+            out float interiorCoverage)
+        {
+            float noise = EvaluateNoise(worldVoxelPosition, worldSeed);
             if (selections != null)
             {
                 for (int i = 0; i < selections.Count; i++)
@@ -66,10 +129,14 @@ namespace Supernova.MinecraftCaves
                     CaveBiomeSelection selection = selections[i];
                     if (selection != null && selection.Contains(noise))
                     {
+                        interiorCoverage = selection.EvaluateInteriorCoverage(
+                            noise,
+                            selection.Biome.TerrainSurfaceEdgeFade);
                         return selection.Biome;
                     }
                 }
             }
+            interiorCoverage = 1f;
             return fallbackBiome;
         }
 
@@ -85,6 +152,11 @@ namespace Supernova.MinecraftCaves
             selections = biomeSelections != null
                 ? new List<CaveBiomeSelection>(biomeSelections)
                 : new List<CaveBiomeSelection>();
+        }
+
+        public void ConfigureTerrainSurfaceMaterial(Material material)
+        {
+            terrainSurfaceMaterial = material;
         }
 
         private void OnValidate()

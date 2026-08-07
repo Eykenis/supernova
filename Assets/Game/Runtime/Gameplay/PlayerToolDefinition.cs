@@ -73,6 +73,10 @@ namespace Supernova.Gameplay
         [Tooltip("Maximum radial impulse applied to nearby dynamic bodies.")]
         [SerializeField, Min(0f)]
         private float bombEntityExplosionImpulse = 240f;
+        [Tooltip("Game-owned visual effect spawned when the bomb detonates.")]
+        [SerializeField] private GameObject bombExplosionEffectPrefab;
+        [SerializeField, Min(0.01f)]
+        private float bombExplosionEffectLifetime = 3f;
 
         [Header("Firearm")]
         [Tooltip("Fast physical projectile spawned by this firearm.")]
@@ -132,6 +136,10 @@ namespace Supernova.Gameplay
         public BombProjectile BombProjectilePrefab => bombProjectilePrefab;
         public float BombEntityExplosionImpulse =>
             Mathf.Max(0f, bombEntityExplosionImpulse);
+        public GameObject BombExplosionEffectPrefab =>
+            bombExplosionEffectPrefab;
+        public float BombExplosionEffectLifetime =>
+            Mathf.Max(0.01f, bombExplosionEffectLifetime);
         public BallisticProjectile FirearmProjectilePrefab =>
             firearmProjectilePrefab;
         public float ProjectileSpeed => Mathf.Max(0f, projectileSpeed);

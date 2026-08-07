@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
+using Supernova.MinecraftCaves.Creatures;
 using UnityEngine;
 
 namespace Supernova.Tests
@@ -286,6 +287,113 @@ namespace Supernova.Tests
             Assert.That(attractor.BeginAttraction(), Is.True);
             Assert.That(attractor.HeldBody, Is.SameAs(body));
         }
+
+        [Test]
+        public void MagnetAttraction_CatchesMonsterAndStopsItsNavigation()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            Rigidbody body = CreateBody("Monster", new Vector3(0f, 0f, 2f));
+            CreatureBehaviorAgent monster =
+                body.gameObject.AddComponent<CreatureBehaviorAgent>();
+            CreaturePhysicsMotor motor =
+                body.gameObject.GetComponent<CreaturePhysicsMotor>();
+            motor.Submit(new CreatureMovementCommand(
+                1,
+                Vector3.forward,
+                Vector3.up,
+                0));
+            FieldInfo pathField = typeof(CreatureBehaviorAgent).GetField(
+                "path",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(pathField, Is.Not.Null);
+            var path = (List<Vector3Int>)pathField.GetValue(monster);
+            path.Add(Vector3Int.zero);
+            path.Add(Vector3Int.forward);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HeldBody, Is.SameAs(body));
+            Assert.That(monster.IsCaught, Is.True);
+            Assert.That(
+                monster.CurrentState,
+                Is.EqualTo(CreatureBehaviorState.Caught));
+            Assert.That(monster.CurrentPath, Is.Empty);
+            Assert.That(motor.HasCommand, Is.False);
+
+            attractor.TickAttraction();
+
+            Assert.That(
+                monster.CurrentState,
+                Is.EqualTo(CreatureBehaviorState.Caught));
+
+            attractor.EndAttraction();
+
+            Assert.That(monster.IsCaught, Is.False);
+            Assert.That(
+                monster.CurrentState,
+                Is.EqualTo(CreatureBehaviorState.Idle));
+        }
+
+        [Test]
+        public void MagnetAttraction_AimAssistAcquiresSparseOffAxisBody()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody body = CreateBody(
+                "Sparse Magnet Target",
+                new Vector3(0f, 0f, 2f));
+            body.GetComponent<BoxCollider>().center =
+                new Vector3(0.25f, 0f, 0f);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HeldBody, Is.SameAs(body));
+        }
+
+        [Test]
+        public void MagnetAttraction_AimAssistDoesNotAcquireThroughWall()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+            Rigidbody body = CreateBody(
+                "Occluded Magnet Target",
+                new Vector3(0f, 0f, 2f));
+            body.GetComponent<BoxCollider>().center =
+                new Vector3(0.25f, 0f, 0f);
+            GameObject wall = Create("Wall");
+            wall.transform.position = new Vector3(0.125f, 0f, 1f);
+            BoxCollider wallCollider = wall.AddComponent<BoxCollider>();
+            wallCollider.size = new Vector3(1f, 1f, 0.1f);
+            Physics.SyncTransforms();
+
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HeldBody, Is.Null);
+        }
+
+
 
         [Test]
         public void MagnetAttraction_RejectsCartBody()

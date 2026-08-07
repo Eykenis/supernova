@@ -96,11 +96,6 @@ namespace Supernova.Voxels
             }
 
             Material transferredMaterial = ownedMaterial;
-            Texture transferredTexture =
-                transferredMaterial != null
-                && transferredMaterial.HasProperty("_BaseMap")
-                    ? transferredMaterial.GetTexture("_BaseMap")
-                    : null;
             LastBreakEffect =
                 BreakFragmentEffect.SpawnMeshes(
                     $"{gameObject.name} Fragments",
@@ -108,7 +103,7 @@ namespace Supernova.Voxels
                     sourceRenderer.sharedMaterials,
                     context,
                     transferredMaterial,
-                    transferredTexture);
+                    null);
             if (LastBreakEffect == null)
             {
                 return false;
@@ -135,16 +130,8 @@ namespace Supernova.Voxels
 
             if (ownedMaterial != null)
             {
-                Texture ownedTexture = ownedMaterial.HasProperty("_BaseMap")
-                    ? ownedMaterial.GetTexture("_BaseMap")
-                    : null;
                 if (Application.isPlaying) Destroy(ownedMaterial);
                 else DestroyImmediate(ownedMaterial);
-                if (ownedTexture != null)
-                {
-                    if (Application.isPlaying) Destroy(ownedTexture);
-                    else DestroyImmediate(ownedTexture);
-                }
                 ownedMaterial = null;
             }
         }

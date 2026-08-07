@@ -63,14 +63,40 @@ namespace Supernova.MinecraftCaves.Creatures
 
             if (behavior == null
                 || animator == null
-                || animator.runtimeAnimatorController == null
-                || behavior.CurrentState == lastState)
+                || animator.runtimeAnimatorController == null)
             {
                 return;
             }
 
-            lastState = behavior.CurrentState;
+            CreatureBehaviorState presentedState =
+                ResolvePresentationState(
+                    behavior.CurrentState,
+                    behavior.IsActuallyMoving);
+            if (presentedState == lastState)
+            {
+                return;
+            }
+
+            lastState = presentedState;
             animator.SetInteger(BehaviorStateId, (int)lastState);
+        }
+
+        public static CreatureBehaviorState ResolvePresentationState(
+            CreatureBehaviorState behaviorState,
+            bool isActuallyMoving)
+        {
+            if (behaviorState == CreatureBehaviorState.Caught)
+            {
+                return CreatureBehaviorState.Idle;
+            }
+
+            if (!isActuallyMoving
+                && (behaviorState == CreatureBehaviorState.Wander
+                    || behaviorState == CreatureBehaviorState.Pursue))
+            {
+                return CreatureBehaviorState.Idle;
+            }
+            return behaviorState;
         }
     }
 }

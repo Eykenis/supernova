@@ -3,6 +3,20 @@ using UnityEngine;
 namespace Supernova.Gameplay
 {
     /// <summary>
+    /// Receives an explicitly generated impulse as durability/health damage.
+    /// This is used when gameplay applies force without producing a resolved
+    /// Unity collision, such as a nearby explosion.
+    /// </summary>
+    public interface ICollisionImpulseDamageReceiver
+    {
+        GameObject CollisionImpulseOwner { get; }
+
+        bool ApplyCollisionImpulseDamage(
+            float impulseMagnitude,
+            Vector3 collisionPoint);
+    }
+
+    /// <summary>
     /// Converts a resolved collision impulse into durability damage. Impulse is
     /// normalized by the receiving body's mass so differently sized objects use
     /// the same impact-speed rule.

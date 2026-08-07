@@ -33,14 +33,16 @@ namespace Supernova.Missions
             if (TimeRemaining <= 0f) Outcome = MissionOutcome.Success;
         }
 
-        public bool TryStartEvacuationCountdown(int deliveredValue)
+        public bool TryStartEvacuationCountdown(int extractionStoredValue)
         {
             if (IsFinished || IsEvacuationCountdownActive) return false;
 
-            int availableValue = Math.Max(0, deliveredValue);
-            if (availableValue < RequiredValue) return false;
+            // Direct deliveries are already banked in DeliveredValue. The Cell
+            // contributes its live overlap tally when evacuation begins.
+            int available = DeliveredValue + Math.Max(0, extractionStoredValue);
+            if (available < RequiredValue) return false;
 
-            DeliveredValue = availableValue;
+            DeliveredValue = available;
             IsEvacuationCountdownActive = true;
             return true;
         }

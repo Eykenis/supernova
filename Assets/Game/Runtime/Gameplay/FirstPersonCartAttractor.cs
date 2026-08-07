@@ -1,3 +1,4 @@
+using Supernova.MinecraftCaves.Creatures;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -11,6 +12,8 @@ namespace Supernova.Gameplay
     [DisallowMultipleComponent]
     public sealed class FirstPersonCartAttractor : MonoBehaviour
     {
+        private const float MagnetAimAssistRadius = 0.35f;
+        private const float MagnetOcclusionTolerance = 0.05f;
         public const float AttractionModuleUpgradeForce = 400f;
 
         [Header("Interaction")]
@@ -58,6 +61,7 @@ namespace Supernova.Gameplay
         private Rigidbody heldBody;
         private CartHandle heldHandle;
         private ValuableObject heldValuableObject;
+        private CreatureBehaviorAgent heldCreature;
         private CharacterController playerController;
         private bool magnetActionActive;
         private Quaternion heldTargetRotation;
@@ -173,7 +177,11 @@ namespace Supernova.Gameplay
             if (IsTowingCart) return false;
 
             magnetActionActive = true;
-            if (heldBody == null) TryAcquireMagnetTarget();
+            if (heldBody == null)
+            {
+                ReleaseCaughtCreature();
+                TryAcquireMagnetTarget();
+            }
             return true;
         }
 
@@ -186,7 +194,11 @@ namespace Supernova.Gameplay
                 return;
             }
 
-            if (heldBody == null) TryAcquireMagnetTarget();
+            if (heldBody == null)
+            {
+                ReleaseCaughtCreature();
+                TryAcquireMagnetTarget();
+            }
         }
 
         public void TickAttraction(float scrollSteps)
@@ -252,7 +264,12 @@ namespace Supernova.Gameplay
 
         private void FixedUpdate()
         {
-            if ((!magnetActionActive && !IsTowingCart) || heldBody == null)
+            if (heldBody == null)
+            {
+                ReleaseCaughtCreature();
+                return;
+            }
+            if (!magnetActionActive && !IsTowingCart)
             {
                 return;
             }
@@ -461,6 +478,7 @@ namespace Supernova.Gameplay
 
         public void Release()
         {
+            ReleaseCaughtCreature();
             heldBody = null;
             heldValuableObject = null;
             cartTowWorldOffset = Vector3.zero;
@@ -556,32 +574,218 @@ namespace Supernova.Gameplay
             {
                 RaycastHit hit = acquisitionHits[i];
                 Collider collider = hit.collider;
-                if (collider == null || IsOwnedByPlayer(collider.transform)) continue;
+                if (collider == null || IsOwnedByPlayer(collider.transform))
+                {
+                    continue;
+                }
                 if (hit.distance >= focusedHitDistance) continue;
 
                 focusedHitDistance = hit.distance;
                 focusedCollider = collider;
             }
 
-            if (focusedCollider == null) return false;
+            Rigidbody focusedBody = focusedCollider != null
+                ? focusedCollider.attachedRigidbody
+                : null;
+            if (IsValidMagnetTarget(focusedBody))
+            {
+                CaptureMagnetTarget(focusedBody);
+                return true;
+            }
 
-            Rigidbody body = focusedCollider.attachedRigidbody;
-            if (body == null
-                || body.isKinematic
-                || body.GetComponentInChildren<CartHandle>(true) != null)
+            if (!TryFindMagnetTargetNearSightline(
+                cameraTransform,
+                out focusedBody))
             {
                 return false;
             }
 
+            CaptureMagnetTarget(focusedBody);
+            return true;
+        }
+
+        private bool TryFindMagnetTargetNearSightline(
+            Transform cameraTransform,
+            out Rigidbody focusedBody)
+        {
+            focusedBody = null;
+            float maximumDistance = Mathf.Max(0.1f, acquisitionDistance);
+            float bestScore = float.PositiveInfinity;
+            Rigidbody[] bodies = FindObjectsOfType<Rigidbody>();
+            for (int bodyIndex = 0; bodyIndex < bodies.Length; bodyIndex++)
+            {
+                Rigidbody body = bodies[bodyIndex];
+                if (!IsValidMagnetTarget(body)
+                    || !TryGetMagnetTargetBounds(body, out Bounds bounds))
+                {
+                    continue;
+                }
+
+                Vector3 toCenter = bounds.center - cameraTransform.position;
+                float forwardDistance = Vector3.Dot(
+                    toCenter,
+                    cameraTransform.forward);
+                if (forwardDistance <= 0f
+                    || forwardDistance > maximumDistance)
+                {
+                    continue;
+                }
+
+                Vector3 sightlinePoint = cameraTransform.position
+                    + cameraTransform.forward * forwardDistance;
+                float lateralDistanceSquared =
+                    bounds.SqrDistance(sightlinePoint);
+                if (lateralDistanceSquared
+                    > MagnetAimAssistRadius * MagnetAimAssistRadius)
+                {
+                    continue;
+                }
+
+                float surfaceDistance = Vector3.Distance(
+                    cameraTransform.position,
+                    bounds.ClosestPoint(cameraTransform.position));
+                if (surfaceDistance > maximumDistance
+                    || !HasClearMagnetLineOfSight(
+                        cameraTransform.position,
+                        bounds.center,
+                        body))
+                {
+                    continue;
+                }
+
+                float score = lateralDistanceSquared * 4f
+                    + surfaceDistance * 0.01f;
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    focusedBody = body;
+                }
+            }
+
+            return focusedBody != null;
+        }
+
+        private bool TryGetMagnetTargetBounds(
+            Rigidbody body,
+            out Bounds bounds)
+        {
+            bounds = default;
+            bool found = false;
+            Collider[] colliders = body.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider collider = colliders[i];
+                if (collider == null
+                    || !collider.enabled
+                    || collider.isTrigger
+                    || (targetLayers.value & (1 << collider.gameObject.layer)) == 0)
+                {
+                    continue;
+                }
+
+                if (!found)
+                {
+                    bounds = collider.bounds;
+                    found = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(collider.bounds);
+                }
+            }
+
+            return found;
+        }
+
+        private bool HasClearMagnetLineOfSight(
+            Vector3 origin,
+            Vector3 target,
+            Rigidbody targetBody)
+        {
+            Vector3 offset = target - origin;
+            float distance = offset.magnitude;
+            if (distance <= 0.001f)
+            {
+                return true;
+            }
+
+            int count = Physics.RaycastNonAlloc(
+                origin,
+                offset / distance,
+                acquisitionHits,
+                distance,
+                targetLayers,
+                QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
+            {
+                Collider collider = acquisitionHits[i].collider;
+                if (collider == null
+                    || IsOwnedByPlayer(collider.transform)
+                    || BelongsToBody(collider, targetBody)
+                    || acquisitionHits[i].distance
+                        >= distance - MagnetOcclusionTolerance)
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool IsValidMagnetTarget(Rigidbody body)
+        {
+            return body != null
+                && !body.isKinematic
+                && body.gameObject.activeInHierarchy
+                && !IsOwnedByPlayer(body.transform)
+                && body.GetComponentInChildren<CartHandle>(true) == null;
+        }
+
+        private void CaptureMagnetTarget(Rigidbody body)
+        {
+            ReleaseCaughtCreature();
             heldHandle = null;
             heldBody = body;
+            heldCreature = FindCreature(body);
+            heldCreature?.SetCaught(true);
             ResolveHeldValuableObject();
             heldTargetRotation = body.rotation;
             hasHeldTargetRotation = true;
             magnetHeightOffset = 0f;
             magnetPickupHeight = body.worldCenterOfMass.y;
             body.WakeUp();
-            return true;
+        }
+
+        private static CreatureBehaviorAgent FindCreature(Rigidbody body)
+        {
+            if (body == null)
+            {
+                return null;
+            }
+
+            CreatureBehaviorAgent creature =
+                body.GetComponent<CreatureBehaviorAgent>();
+            if (creature == null)
+            {
+                creature = body.GetComponentInParent<CreatureBehaviorAgent>();
+            }
+            if (creature == null)
+            {
+                creature =
+                    body.GetComponentInChildren<CreatureBehaviorAgent>(true);
+            }
+            return creature;
+        }
+
+        private void ReleaseCaughtCreature()
+        {
+            if (heldCreature != null)
+            {
+                heldCreature.SetCaught(false);
+            }
+            heldCreature = null;
         }
 
         private void ResolveHeldValuableObject()

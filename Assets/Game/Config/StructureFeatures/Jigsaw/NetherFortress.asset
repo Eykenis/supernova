@@ -19,9 +19,9 @@ MonoBehaviour:
   placementStrategy: 0
   seedSalt: 271828
   regionSizeInChunks: 6
-  placementChance: 0.5
+  placementChance: 0.6
   minFloorHeight: 56
-  maxFloorHeight: 180
+  maxFloorHeight: 190
   ringStructureCount: 128
   ringCount: 8
   ringDistanceInChunks: 32

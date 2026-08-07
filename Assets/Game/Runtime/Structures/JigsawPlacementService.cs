@@ -28,6 +28,12 @@ namespace Supernova.MinecraftCaves
         /// spawn instead of uniform scatter.
         /// </summary>
         ConcentricRings,
+
+        /// <summary>
+        /// A single deterministic placement centred on the world origin. This is
+        /// used for spawn-owned structures that must exist exactly once.
+        /// </summary>
+        FixedOrigin,
     }
 
     /// <summary>
@@ -92,6 +98,19 @@ namespace Supernova.MinecraftCaves
                 return;
             }
 
+            if (feature.PlacementStrategy
+                == JigsawPlacementStrategy.FixedOrigin)
+            {
+                CollectFixedOriginPlacement(
+                    feature,
+                    minWorldX,
+                    minWorldZ,
+                    maxWorldX,
+                    maxWorldZ,
+                    results);
+                return;
+            }
+
             int regionSize = feature.RegionSizeInChunks
                 * VoxelColumnChunkData.Width;
             int influence = feature.MaxHorizontalDistance;
@@ -141,7 +160,9 @@ namespace Supernova.MinecraftCaves
 
             int regionSize = feature.RegionSizeInChunks
                 * VoxelColumnChunkData.Width;
-            int margin = feature.MaxHorizontalDistance;
+            int margin = feature.AllowLayoutOutsidePlacementRegion
+                ? 0
+                : feature.MaxHorizontalDistance;
             int offsetRange = regionSize - margin * 2;
             if (offsetRange <= 0)
             {
@@ -163,6 +184,48 @@ namespace Supernova.MinecraftCaves
                     NextFloorHeight(feature, ref random),
                     centreZ));
             return true;
+        }
+
+        public static bool TryGetFixedOriginPlacement(
+            JigsawStructureFeatureSettings feature,
+            out JigsawStructureGenerator.Placement placement)
+        {
+            if (feature.PlacementChance <= 0f)
+            {
+                placement = default;
+                return false;
+            }
+
+            placement = new JigsawStructureGenerator.Placement(
+                0,
+                0,
+                new Vector3Int(0, feature.MinFloorHeight, 0));
+            return true;
+        }
+
+        private static void CollectFixedOriginPlacement(
+            JigsawStructureFeatureSettings feature,
+            int minWorldX,
+            int minWorldZ,
+            int maxWorldX,
+            int maxWorldZ,
+            List<JigsawStructureGenerator.Placement> results)
+        {
+            if (!TryGetFixedOriginPlacement(feature, out var placement))
+            {
+                return;
+            }
+
+            int influence = feature.MaxHorizontalDistance;
+            if (placement.Centre.x < minWorldX - influence
+                || placement.Centre.x > maxWorldX + influence
+                || placement.Centre.z < minWorldZ - influence
+                || placement.Centre.z > maxWorldZ + influence)
+            {
+                return;
+            }
+
+            results.Add(placement);
         }
 
         private static void CollectRingPlacements(

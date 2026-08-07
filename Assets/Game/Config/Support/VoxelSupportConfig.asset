@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cc0e1a8d3e24c7438aed5ce0bd3329f, type: 3}
+  m_Name: VoxelSupportConfig
+  m_EditorClassIdentifier: 
+  maxSearchRadius: 8
+  maxSubGraphVoxels: 512
+  maxCascadeIterations: 5
+  maxCollapsesPerFrame: 256
+  bedrockYThreshold: 0
+  highlightUnsupportedOnStart: 1
+  stableMaterial: {fileID: 0}
+  atRiskMaterial: {fileID: 0}
+  collapsedMaterial: {fileID: 0}

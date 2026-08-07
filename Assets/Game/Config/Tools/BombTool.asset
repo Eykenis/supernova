@@ -32,6 +32,9 @@ MonoBehaviour:
   bombProjectilePrefab: {fileID: 7203289337683286975, guid: 92c058e2ae1425f49bb9fdaa856f90c3,
     type: 3}
   bombEntityExplosionImpulse: 240
+  bombExplosionEffectPrefab: {fileID: 1224328841576138, guid: c1f8b783e6de4e11a4b43496f55ca178,
+    type: 3}
+  bombExplosionEffectLifetime: 3
   firearmProjectilePrefab: {fileID: 0}
   projectileSpeed: 180
   initialAmmunition: 120

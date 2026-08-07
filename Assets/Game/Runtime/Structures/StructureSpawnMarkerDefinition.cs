@@ -8,9 +8,8 @@ namespace Supernova.MinecraftCaves
 {
     /// <summary>
     /// An authored spawn point inside a structure. Markers let a designer place a
-    /// specific treasure or monster at a specific spot — a boss in a portal
-    /// chamber, loot on a library plinth — instead of relying on the world's
-    /// natural scatter, which knows nothing about structures.
+    /// specific gameplay object or player spawn at a specific spot instead of
+    /// relying on world-level scatter that knows nothing about structures.
     /// </summary>
     [Serializable]
     public sealed class StructureSpawnMarkerDefinition
@@ -19,12 +18,15 @@ namespace Supernova.MinecraftCaves
         {
             Treasure,
             Monster,
+            Checkpoint,
+            PlayerSpawn,
         }
 
         [SerializeField] private string stableId = "marker";
         [SerializeField] private Kind kind = Kind.Treasure;
         [SerializeField] private TreasureDefinition treasure;
         [SerializeField] private MonsterSpawnDefinition monster;
+        [SerializeField] private GameObject checkpointPrefab;
 
         [Header("Placement")]
         [Tooltip("Offset from the piece origin, in the piece's own axes.")]
@@ -48,14 +50,29 @@ namespace Supernova.MinecraftCaves
         public Kind MarkerKind => kind;
         public TreasureDefinition Treasure => treasure;
         public MonsterSpawnDefinition Monster => monster;
+        public GameObject CheckpointPrefab => checkpointPrefab;
 
         /// <summary>
         /// True when this marker can actually produce something. An unconfigured
         /// marker is skipped rather than logging every time a column streams in.
         /// </summary>
-        public bool IsConfigured => kind == Kind.Treasure
-            ? treasure != null && treasure.Prefab != null
-            : monster != null && monster.Prefab != null;
+        public bool IsConfigured
+        {
+            get
+            {
+                if (kind == Kind.Checkpoint)
+                {
+                    return checkpointPrefab != null;
+                }
+                if (kind == Kind.PlayerSpawn)
+                {
+                    return true;
+                }
+                return kind == Kind.Treasure
+                    ? treasure != null && treasure.Prefab != null
+                    : monster != null && monster.Prefab != null;
+            }
+        }
 
         public void Configure(
             string markerId,
@@ -100,6 +117,7 @@ namespace Supernova.MinecraftCaves
                 kind,
                 treasure,
                 monster,
+                checkpointPrefab,
                 localOffset,
                 yaw,
                 spawnChance,
@@ -133,6 +151,7 @@ namespace Supernova.MinecraftCaves
             StructureSpawnMarkerDefinition.Kind kind,
             TreasureDefinition treasure,
             MonsterSpawnDefinition monster,
+            GameObject checkpointPrefab,
             Vector3Int localOffset,
             float yaw,
             float spawnChance,
@@ -147,6 +166,7 @@ namespace Supernova.MinecraftCaves
             Kind = kind;
             Treasure = treasure;
             Monster = monster;
+            CheckpointPrefab = checkpointPrefab;
             LocalOffset = localOffset;
             Yaw = yaw;
             SpawnChance = spawnChance < 0f
@@ -163,6 +183,7 @@ namespace Supernova.MinecraftCaves
         public StructureSpawnMarkerDefinition.Kind Kind { get; }
         public TreasureDefinition Treasure { get; }
         public MonsterSpawnDefinition Monster { get; }
+        public GameObject CheckpointPrefab { get; }
         public Vector3Int LocalOffset { get; }
         public float Yaw { get; }
         public float SpawnChance { get; }
@@ -177,10 +198,23 @@ namespace Supernova.MinecraftCaves
         /// </summary>
         public int Salt { get; }
 
-        public bool IsConfigured => Kind
-                == StructureSpawnMarkerDefinition.Kind.Treasure
-            ? Treasure != null && Treasure.Prefab != null
-            : Monster != null && Monster.Prefab != null;
+        public bool IsConfigured
+        {
+            get
+            {
+                if (Kind == StructureSpawnMarkerDefinition.Kind.Checkpoint)
+                {
+                    return CheckpointPrefab != null;
+                }
+                if (Kind == StructureSpawnMarkerDefinition.Kind.PlayerSpawn)
+                {
+                    return true;
+                }
+                return Kind == StructureSpawnMarkerDefinition.Kind.Treasure
+                    ? Treasure != null && Treasure.Prefab != null
+                    : Monster != null && Monster.Prefab != null;
+            }
+        }
 
         private static int ComputeStableSalt(
             string stableId,
@@ -233,5 +267,49 @@ namespace Supernova.MinecraftCaves
         public float Yaw { get; }
         public bool SnapToFloor { get; }
         public int FloorSearchDistance { get; }
+    }
+
+    /// <summary>
+    /// One resolved checkpoint placement produced by the fixed spawn checkpoint
+    /// hall, in terrain-local voxel space. Mirrors
+    /// <see cref="StructureSpawnRequest"/> but carries the configured model,
+    /// its anchor voxel, and the piece yaw.
+    /// </summary>
+    public readonly struct CheckpointSpawnRequest
+    {
+        public CheckpointSpawnRequest(
+            GameObject prefab,
+            Vector3Int voxelPosition,
+            int floorY,
+            float yaw,
+            bool isSpawnCheckpoint = false)
+        {
+            Prefab = prefab;
+            VoxelPosition = voxelPosition;
+            FloorY = floorY;
+            Yaw = yaw;
+            IsSpawnCheckpoint = isSpawnCheckpoint;
+        }
+
+        public GameObject Prefab { get; }
+        public Vector3Int VoxelPosition { get; }
+        public int FloorY { get; }
+        public float Yaw { get; }
+        public bool IsSpawnCheckpoint { get; }
+    }
+
+    /// <summary>
+    /// One authored player spawn inside a fixed-origin jigsaw piece.
+    /// </summary>
+    public readonly struct PlayerSpawnRequest
+    {
+        public PlayerSpawnRequest(Vector3Int voxelPosition, float yaw)
+        {
+            VoxelPosition = voxelPosition;
+            Yaw = yaw;
+        }
+
+        public Vector3Int VoxelPosition { get; }
+        public float Yaw { get; }
     }
 }

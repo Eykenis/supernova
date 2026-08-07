@@ -11,7 +11,9 @@ namespace Supernova.Gameplay
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody))]
-    public sealed class ValuableObject : MonoBehaviour
+    public sealed class ValuableObject :
+        MonoBehaviour,
+        ICollisionImpulseDamageReceiver
     {
         public readonly struct BreakContext
         {
@@ -95,6 +97,7 @@ namespace Supernova.Gameplay
         public bool IsCollisionValueLossProtected =>
             protectionSources.Count > 0;
         public bool IsBroken => isBroken;
+        public GameObject CollisionImpulseOwner => gameObject;
 
         public void Configure(
             int value,
@@ -171,6 +174,13 @@ namespace Supernova.Gameplay
                 Break(collisionPoint, damagingMassNormalizedImpulse);
             }
             return actualLoss;
+        }
+
+        bool ICollisionImpulseDamageReceiver.ApplyCollisionImpulseDamage(
+            float impulseMagnitude,
+            Vector3 collisionPoint)
+        {
+            return ApplyCollisionImpulse(impulseMagnitude, collisionPoint) > 0;
         }
 
         public void SetCollisionValueLossProtected(

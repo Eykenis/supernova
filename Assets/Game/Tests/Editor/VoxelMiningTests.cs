@@ -484,6 +484,10 @@ namespace Supernova.Tests
                     Is.EqualTo(2.5f * component.Count).Within(0.001f));
                 Assert.That(drop.Body.isKinematic, Is.False);
                 Assert.That(drop.GetComponent<Collider>(), Is.Not.Null);
+                Assert.That(
+                    drop.GetComponent<MeshRenderer>().shadowCastingMode,
+                    Is.EqualTo(
+                        UnityEngine.Rendering.ShadowCastingMode.On));
                 CollectionAssert.AreEqual(
                     expectedTriangles,
                     drop.Mesh.triangles);
@@ -539,6 +543,100 @@ namespace Supernova.Tests
             {
                 Object.DestroyImmediate(feature);
                 Object.DestroyImmediate(catalog);
+            }
+        }
+
+        [Test]
+        public void RecoveredOreMaterial_PreservesTextureStackAndUsesSubduedLighting()
+        {
+            Shader shader = Shader.Find(
+                "Supernova/Lighting/Soft Falloff Lit");
+            Assert.That(shader, Is.Not.Null);
+
+            var source = new Material(shader);
+            var albedo = new Texture2D(2, 2);
+            var normal = new Texture2D(2, 2);
+            var metallic = new Texture2D(2, 2);
+            var height = new Texture2D(2, 2);
+            Material recovered = null;
+            GameObject owner = null;
+            try
+            {
+                source.SetTexture("_BaseMap", albedo);
+                source.SetTexture("_MainTex", albedo);
+                source.SetTexture("_BumpMap", normal);
+                source.SetTexture("_MetallicGlossMap", metallic);
+                source.SetTexture("_ParallaxMap", height);
+                var sourceColor = new Color(0.9f, 0.7f, 0.5f, 1f);
+                source.SetColor("_BaseColor", sourceColor);
+                source.SetColor("_Color", sourceColor);
+                source.SetFloat("_Metallic", 0.72f);
+                source.SetFloat("_Smoothness", 0.62f);
+                source.EnableKeyword("_EMISSION");
+                source.SetColor("_EmissionColor", Color.white);
+
+                MethodInfo createMaterial =
+                    typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                        "CreateRecoveredOreMaterial",
+                        BindingFlags.Static | BindingFlags.NonPublic);
+                Assert.That(createMaterial, Is.Not.Null);
+                recovered = (Material)createMaterial.Invoke(
+                    null,
+                    new object[] { source, "Test Ore" });
+
+                Assert.That(recovered, Is.Not.Null);
+                Assert.That(recovered.GetTexture("_BaseMap"), Is.SameAs(albedo));
+                Assert.That(recovered.GetTexture("_MainTex"), Is.SameAs(albedo));
+                Assert.That(recovered.GetTexture("_BumpMap"), Is.SameAs(normal));
+                Assert.That(
+                    recovered.GetTexture("_MetallicGlossMap"),
+                    Is.SameAs(metallic));
+                Assert.That(
+                    recovered.GetTexture("_ParallaxMap"),
+                    Is.SameAs(height));
+                Color recoveredColor = recovered.GetColor("_BaseColor");
+                Assert.That(
+                    recoveredColor.r,
+                    Is.EqualTo(sourceColor.r * 0.82f).Within(0.0001f));
+                Assert.That(
+                    recoveredColor.g,
+                    Is.EqualTo(sourceColor.g * 0.82f).Within(0.0001f));
+                Assert.That(
+                    recoveredColor.b,
+                    Is.EqualTo(sourceColor.b * 0.82f).Within(0.0001f));
+                Assert.That(recovered.GetFloat("_Metallic"), Is.EqualTo(0.35f));
+                Assert.That(recovered.GetFloat("_Smoothness"), Is.EqualTo(0.4f));
+                Assert.That(recovered.IsKeywordEnabled("_EMISSION"), Is.False);
+                Assert.That(
+                    recovered.GetColor("_EmissionColor").maxColorComponent,
+                    Is.EqualTo(0f));
+
+                owner = new GameObject("Recovered Ore Material Owner");
+                MinedOreDrop drop = owner.AddComponent<MinedOreDrop>();
+                drop.Configure(
+                    new VoxelTypeId(3),
+                    1,
+                    null,
+                    1f,
+                    recovered);
+                Object.DestroyImmediate(owner);
+                owner = null;
+                recovered = null;
+
+                Assert.That(
+                    albedo,
+                    Is.Not.Null,
+                    "Destroying a recovered material must not destroy its shared source textures.");
+            }
+            finally
+            {
+                if (owner != null) Object.DestroyImmediate(owner);
+                if (recovered != null) Object.DestroyImmediate(recovered);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(albedo);
+                Object.DestroyImmediate(normal);
+                Object.DestroyImmediate(metallic);
+                Object.DestroyImmediate(height);
             }
         }
 

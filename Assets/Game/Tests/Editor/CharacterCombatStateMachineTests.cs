@@ -872,6 +872,58 @@ namespace Supernova.Tests
             Assert.That(profile.CrouchKey, Is.EqualTo(KeyCode.LeftControl));
             Assert.That(profile.CrouchMoveSpeed, Is.EqualTo(2f));
             Assert.That(profile.CrouchMoveSpeed, Is.LessThan(profile.MoveSpeed));
+            Assert.That(profile.CrouchColliderHeight, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void PlayerCrouchCollider_ShortensWithoutMovingItsFeet()
+        {
+            GameObject playerObject = Create("Player");
+            CharacterController character =
+                playerObject.AddComponent<CharacterController>();
+            character.height = 1.6f;
+            character.radius = 0.3f;
+            character.center = new Vector3(0f, 0.8f, 0f);
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+
+            InvokeCrouchColliderUpdate(player, true);
+
+            Assert.That(character.height, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(character.center.y, Is.EqualTo(0.5f).Within(0.001f));
+            Assert.That(player.IsCrouching, Is.True);
+        }
+
+        [Test]
+        public void PlayerCrouchCollider_StaysLowUntilStandingSpaceIsClear()
+        {
+            GameObject playerObject = Create("Player");
+            CharacterController character =
+                playerObject.AddComponent<CharacterController>();
+            character.height = 1.6f;
+            character.radius = 0.3f;
+            character.center = new Vector3(0f, 0.8f, 0f);
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            InvokeCrouchColliderUpdate(player, true);
+
+            GameObject ceiling = Create("Ceiling");
+            BoxCollider ceilingCollider = ceiling.AddComponent<BoxCollider>();
+            ceilingCollider.size = new Vector3(2f, 0.2f, 2f);
+            ceiling.transform.position = new Vector3(0f, 1.2f, 0f);
+            Physics.SyncTransforms();
+
+            InvokeCrouchColliderUpdate(player, false);
+            Assert.That(character.height, Is.EqualTo(1f).Within(0.001f));
+            Assert.That(player.IsCrouching, Is.True);
+
+            ceiling.transform.position = new Vector3(0f, 3f, 0f);
+            Physics.SyncTransforms();
+            InvokeCrouchColliderUpdate(player, false);
+
+            Assert.That(character.height, Is.EqualTo(1.6f).Within(0.001f));
+            Assert.That(character.center.y, Is.EqualTo(0.8f).Within(0.001f));
+            Assert.That(player.IsCrouching, Is.False);
         }
 
         [Test]
@@ -1410,6 +1462,17 @@ namespace Supernova.Tests
                 name, BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null);
             field.SetValue(target, value);
+        }
+
+        private static void InvokeCrouchColliderUpdate(
+            VoxelPlayerController player,
+            bool crouchRequested)
+        {
+            MethodInfo update = typeof(VoxelPlayerController).GetMethod(
+                "UpdateCrouchCollider",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(update, Is.Not.Null);
+            update.Invoke(player, new object[] { crouchRequested });
         }
 
         private static void SetStaticField(Type type, string name, object value)

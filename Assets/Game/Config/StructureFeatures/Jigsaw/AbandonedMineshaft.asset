@@ -21,7 +21,7 @@ MonoBehaviour:
   regionSizeInChunks: 5
   placementChance: 0.34
   minFloorHeight: 40
-  maxFloorHeight: 170
+  maxFloorHeight: 190
   ringStructureCount: 128
   ringCount: 8
   ringDistanceInChunks: 32

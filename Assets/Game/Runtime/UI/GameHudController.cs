@@ -73,6 +73,10 @@ namespace Supernova.UI
         [SerializeField, Min(1f)] private float loadingSpinnerDegreesPerSecond = 140f;
         [SerializeField, Min(0.05f)] private float loadingFadeDuration = 0.35f;
 
+        [Header("Crosshair Info")]
+        [SerializeField] private Canvas crosshairInfoCanvas;
+        [SerializeField] private CrosshairInfoDisplay crosshairInfoDisplay;
+
         private IDamageable healthSource;
         private PlayerToolController inventorySource;
         private GameHudPresenter presenter;
@@ -117,6 +121,7 @@ namespace Supernova.UI
         public bool IsEquipmentMenuVisible =>
             equipmentMenu != null && equipmentMenu.IsOpen;
         public bool IsLoadingVisible => loadingPanel != null && loadingPanel.activeSelf;
+        public CrosshairInfoDisplay CrosshairInfo => crosshairInfoDisplay;
         public IDamageable HealthSource =>
             IsHealthSourceValid(healthSource) ? healthSource : null;
         public PlayerToolController InventorySource => inventorySource;
@@ -324,6 +329,7 @@ namespace Supernova.UI
 
             RefreshNow();
             AnimateLoading();
+            crosshairInfoDisplay?.Refresh();
         }
 
         public void TogglePauseMenu()
@@ -455,6 +461,8 @@ namespace Supernova.UI
                 pauseCanvas.gameObject.SetActive(visible);
             if (equipmentMenu != null && equipmentMenu.Canvas != null)
                 equipmentMenu.Canvas.gameObject.SetActive(visible);
+            if (crosshairInfoCanvas != null)
+                crosshairInfoCanvas.gameObject.SetActive(visible);
 
             if (!visible)
                 return;
@@ -609,6 +617,8 @@ namespace Supernova.UI
                 loadingCanvas.gameObject.SetActive(false);
             if (missionOverlayCanvas != null)
                 missionOverlayCanvas.gameObject.SetActive(false);
+            if (crosshairInfoCanvas != null)
+                crosshairInfoCanvas.gameObject.SetActive(false);
             enabled = false;
         }
 
@@ -703,6 +713,7 @@ namespace Supernova.UI
 
             BuildDefaultView();
             BuildMissionView();
+            BuildCrosshairInfoView();
             BuildLoadingView();
             BuildPauseView();
             EnsureEquipmentMenu();
@@ -756,6 +767,9 @@ namespace Supernova.UI
             }
 
             EnsureEquipmentMenu();
+
+            if (crosshairInfoCanvas == null || crosshairInfoDisplay == null)
+                BuildCrosshairInfoView();
 
             BindPauseMenuButtons();
             SciFiUiSkin.ApplyGameHud(transform);
@@ -882,6 +896,15 @@ namespace Supernova.UI
                 Transform itemLabel = slot.Find(UiHierarchyPaths.Hud.Item);
                 if (itemLabel != null) hotbarItemLabels[i] = itemLabel.GetComponent<TMP_Text>();
             }
+
+            Transform crosshairInfoRoot = transform.Find(
+                UiHierarchyPaths.Crosshair.Canvas);
+            if (crosshairInfoCanvas == null && crosshairInfoRoot != null)
+                crosshairInfoCanvas =
+                    crosshairInfoRoot.GetComponent<Canvas>();
+            if (crosshairInfoDisplay == null)
+                crosshairInfoDisplay =
+                    GetComponent<CrosshairInfoDisplay>();
         }
 
         private void CreatePresenter()
@@ -2396,6 +2419,142 @@ namespace Supernova.UI
             headingCompass.Configure(null, designTokens);
             compass.gameObject.SetActive(
                 designTokens == null || designTokens.ShowCompass);
+        }
+
+        private void BuildCrosshairInfoView()
+        {
+            Transform existing = transform.Find(
+                UiHierarchyPaths.Crosshair.Canvas);
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+
+            Color overlayPrimary = designTokens != null
+                ? designTokens.OverlayPrimary
+                : Color.white;
+            Color overlaySecondary = designTokens != null
+                ? designTokens.OverlaySecondary
+                : new Color(1f, 1f, 1f, 0.58f);
+            Color surface = designTokens != null
+                ? designTokens.HudSurface
+                : new Color(0.035f, 0.045f, 0.055f, 0.84f);
+            Color shadow = designTokens != null
+                ? designTokens.HudShadow
+                : new Color(0f, 0f, 0f, 0.72f);
+            Color highlight = designTokens != null
+                ? designTokens.HudMuted
+                : new Color(1f, 1f, 1f, 0.2f);
+            bool reverse = designTokens == null
+                || designTokens.HudHotbarReverseSlant;
+
+            RectTransform canvasRoot = CreateRect(
+                UiHierarchyPaths.Crosshair.Canvas,
+                transform);
+            crosshairInfoCanvas = canvasRoot.gameObject.AddComponent<Canvas>();
+            crosshairInfoCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            crosshairInfoCanvas.sortingOrder = 500;
+            CanvasScaler scaler =
+                canvasRoot.gameObject.AddComponent<CanvasScaler>();
+            ApplyCanvasPolicy(canvasRoot.gameObject, scaler);
+
+            GameObject panelObject = new GameObject("Info Panel");
+            RectTransform panelRect = panelObject.AddComponent<RectTransform>();
+            panelRect.SetParent(canvasRoot, false);
+            SetAnchoredRect(
+                panelRect,
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 180f),
+                new Vector2(340f, 72f));
+
+            AngledPanelGraphic panelGraphic =
+                panelObject.AddComponent<AngledPanelGraphic>();
+            float slant = designTokens != null
+                ? designTokens.HudElementSlant * 1.2f
+                : 10f;
+            float depth = designTokens != null
+                ? designTokens.HudExtrusionDepth * 0.6f
+                : 3f;
+            panelGraphic.Configure(
+                slant,
+                depth,
+                surface,
+                shadow,
+                highlight,
+                reverse);
+            panelGraphic.raycastTarget = false;
+
+            CanvasGroup panelGroup =
+                panelObject.AddComponent<CanvasGroup>();
+            panelGroup.alpha = 0f;
+
+            RectTransform rule = CreateRect(
+                UiHierarchyPaths.Crosshair.RuleLine,
+                panelRect);
+            SetAnchoredRect(
+                rule,
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -2f),
+                new Vector2(-16f, 1f));
+            Image ruleImage = rule.gameObject.AddComponent<Image>();
+            ruleImage.color = new Color(
+                overlayPrimary.r,
+                overlayPrimary.g,
+                overlayPrimary.b,
+                0.24f);
+            ruleImage.raycastTarget = false;
+
+            TMP_Text nameLabel = CreateText(
+                UiHierarchyPaths.Crosshair.NameLabel,
+                panelRect,
+                string.Empty,
+                TextAlignmentOptions.Center);
+            SetAnchoredRect(
+                (RectTransform)nameLabel.transform,
+                new Vector2(0f, 0.55f),
+                new Vector2(1f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -8f),
+                new Vector2(-24f, 0f));
+            nameLabel.fontSize = 16f;
+            nameLabel.fontStyle = FontStyles.Bold;
+            nameLabel.characterSpacing = 1.5f;
+            nameLabel.color = overlayPrimary;
+            nameLabel.enableWordWrapping = false;
+
+            TMP_Text statsLabel = CreateText(
+                UiHierarchyPaths.Crosshair.StatsLabel,
+                panelRect,
+                string.Empty,
+                TextAlignmentOptions.Center);
+            SetAnchoredRect(
+                (RectTransform)statsLabel.transform,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0.55f),
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                new Vector2(-24f, 0f));
+            statsLabel.fontSize = 12f;
+            statsLabel.fontStyle = FontStyles.Normal;
+            statsLabel.characterSpacing = 1f;
+            statsLabel.color = overlaySecondary;
+            statsLabel.enableWordWrapping = false;
+
+            crosshairInfoDisplay =
+                gameObject.AddComponent<CrosshairInfoDisplay>();
+            crosshairInfoDisplay.NameLabel = nameLabel;
+            crosshairInfoDisplay.StatsLabel = statsLabel;
+            crosshairInfoDisplay.RootObject = panelObject;
+            crosshairInfoDisplay.RootCanvasGroup = panelGroup;
+            crosshairInfoDisplay.DesignTokens = designTokens;
+
+            canvasRoot.gameObject.SetActive(
+                designTokens == null || designTokens.ShowCrosshair);
         }
 
         private void BuildHotbarView(RectTransform rootRect)

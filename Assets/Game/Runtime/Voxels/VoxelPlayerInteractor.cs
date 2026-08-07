@@ -1,6 +1,5 @@
 using Supernova.Effects;
 using Supernova.Gameplay;
-using Supernova.MinecraftCaves;
 using UnityEngine;
 
 namespace Supernova.Voxels
@@ -36,6 +35,14 @@ namespace Supernova.Voxels
         private float pendingMineTime;
 
         private IVoxelTerrain Terrain => terrain as IVoxelTerrain;
+        public IVoxelTerrain VoxelTerrain
+        {
+            get
+            {
+                ResolveReferences();
+                return Terrain;
+            }
+        }
 
         private PlayerProfile Profile
         {
@@ -524,13 +531,13 @@ namespace Supernova.Voxels
 
             var fallbackColor = new Color(0.46f, 0.49f, 0.5f, 1f);
             Color voxelColor = fallbackColor;
-            var minecraftTerrain = terrain as MinecraftCaveInfiniteWorld;
-            if (minecraftTerrain != null
-                && minecraftTerrain.VoxelTypeCatalog != null)
+            IVoxelTerrain voxelTerrain = Terrain;
+            if (voxelTerrain != null
+                && voxelTerrain.VoxelTypeCatalog != null)
             {
                 voxelColor = VoxelTypeUtility.ResolveMaterialColor(
                     result.TargetType,
-                    minecraftTerrain.VoxelTypeCatalog.Definitions,
+                    voxelTerrain.VoxelTypeCatalog.Definitions,
                     fallbackColor);
             }
 
@@ -555,7 +562,15 @@ namespace Supernova.Voxels
 
             if (Terrain == null)
             {
-                terrain = FindObjectOfType<MinecraftCaveInfiniteWorld>();
+                MonoBehaviour[] candidates = FindObjectsOfType<MonoBehaviour>();
+                for (int i = 0; i < candidates.Length; i++)
+                {
+                    if (candidates[i] is IVoxelTerrain)
+                    {
+                        terrain = candidates[i];
+                        break;
+                    }
+                }
             }
 
             if (miningImpactEffect == null)

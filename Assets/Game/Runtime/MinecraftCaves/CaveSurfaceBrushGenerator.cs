@@ -95,7 +95,8 @@ namespace Supernova.MinecraftCaves
             float voxelSize,
             float isoLevel,
             int worldSeed,
-            CaveBiomeCatalog biomeCatalog)
+            CaveBiomeCatalog biomeCatalog,
+            ISet<Vector3Int> carvedVoxels = null)
         {
             var placements = new List<CaveSurfacePlacement>();
             if (meshData == null
@@ -133,6 +134,12 @@ namespace Supernova.MinecraftCaves
                     Vector3 centroid = (first + second + third) / 3f;
                     Vector3 centroidVoxel = sectionVoxelOrigin
                         + centroid / voxelSize;
+                    if (CaveSurfaceDisturbance.IsNearCarvedVoxel(
+                        centroidVoxel,
+                        carvedVoxels))
+                    {
+                        continue;
+                    }
                     Vector3Int biomeSampleCell = GetBiomeSampleCell(
                         centroidVoxel);
                     if (!biomesBySampleCell.TryGetValue(
@@ -204,6 +211,14 @@ namespace Supernova.MinecraftCaves
                                 third,
                                 ref random,
                                 out Vector3 barycentric);
+                            Vector3 placementVoxel = sectionVoxelOrigin
+                                + position / voxelSize;
+                            if (CaveSurfaceDisturbance.IsNearCarvedVoxel(
+                                placementVoxel,
+                                carvedVoxels))
+                            {
+                                continue;
+                            }
                             if (!TryResolveAttachment(
                                 world,
                                 sectionVoxelOrigin,
@@ -257,8 +272,6 @@ namespace Supernova.MinecraftCaves
                                 stanceNormal = shadingNormal;
                             }
 
-                            Vector3 placementVoxel = sectionVoxelOrigin
-                                + position / voxelSize;
                             CaveSurfaceClumpAttributes clump =
                                 CaveSurfaceClumpField.Sample(
                                     placementVoxel,

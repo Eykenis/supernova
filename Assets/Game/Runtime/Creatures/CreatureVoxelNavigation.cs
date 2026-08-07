@@ -49,33 +49,42 @@ namespace Supernova.MinecraftCaves.Creatures
         ICreatureVoxelQuery,
         ICreatureTraversalLinkQuery
     {
+        private readonly IVoxelTerrain terrain;
         private readonly MinecraftCaveInfiniteWorld caveWorld;
         private readonly float solidDensityThreshold;
 
         public MinecraftCaveVoxelQuery(
-            MinecraftCaveInfiniteWorld caveWorld,
+            IVoxelTerrain terrain,
             float solidDensityThreshold = 0f)
         {
-            this.caveWorld = caveWorld != null
-                ? caveWorld
-                : throw new ArgumentNullException(nameof(caveWorld));
+            this.terrain = terrain
+                ?? throw new ArgumentNullException(nameof(terrain));
+            caveWorld = terrain as MinecraftCaveInfiniteWorld;
             this.solidDensityThreshold = solidDensityThreshold;
         }
 
-        public int NavigationRevision =>
-            DynamicCreatureNavigation.GetRevision(caveWorld);
+        public int NavigationRevision => caveWorld != null
+            ? DynamicCreatureNavigation.GetRevision(caveWorld)
+            : 0;
 
         public bool TryGetSolid(Vector3Int voxel, out bool isSolid)
         {
-            if (DynamicCreatureNavigation.ContainsSupport(caveWorld, voxel))
+            if (caveWorld != null
+                && DynamicCreatureNavigation.ContainsSupport(
+                    caveWorld,
+                    voxel))
             {
                 isSolid = true;
                 return true;
             }
 
-            InfiniteVoxelWorld world = caveWorld.World;
+            InfiniteVoxelWorld world = terrain.World;
             if (world == null
-                || !world.TryGetDensity(voxel.x, voxel.y, voxel.z, out float density))
+                || !world.TryGetDensity(
+                    voxel.x,
+                    voxel.y,
+                    voxel.z,
+                    out float density))
             {
                 isSolid = false;
                 return false;
@@ -89,10 +98,14 @@ namespace Supernova.MinecraftCaves.Creatures
             Vector3Int fromSupport,
             List<CreatureTraversalLink> results)
         {
-            DynamicCreatureNavigation.GetTraversalLinks(
-                caveWorld,
-                fromSupport,
-                results);
+            results.Clear();
+            if (caveWorld != null)
+            {
+                DynamicCreatureNavigation.GetTraversalLinks(
+                    caveWorld,
+                    fromSupport,
+                    results);
+            }
         }
 
         public bool TryGetTraversalLink(
@@ -100,6 +113,11 @@ namespace Supernova.MinecraftCaves.Creatures
             Vector3Int toSupport,
             out CreatureTraversalLink link)
         {
+            if (caveWorld == null)
+            {
+                link = default;
+                return false;
+            }
             return DynamicCreatureNavigation.TryGetTraversalLink(
                 caveWorld,
                 fromSupport,
@@ -117,12 +135,15 @@ namespace Supernova.MinecraftCaves.Creatures
         [Min(1)] public int maximumTraversalHorizontalDistance = 3;
         [Min(1)] public int maximumSingleMoveCost = 100;
         [Range(1, CreatureVoxelNavigation.MaximumExpandedNodeLimit)]
-        public int maximumExpandedNodes = CreatureVoxelNavigation.MaximumExpandedNodeLimit;
+        public int maximumExpandedNodes =
+            CreatureVoxelNavigation.MaximumExpandedNodeLimit;
+        [Range(2, 32)] public int maximumSmoothingLookahead = 16;
     }
 
     public static class CreatureVoxelNavigation
     {
-        public const int MaximumExpandedNodeLimit = 512;
+        public const int MaximumExpandedNodeLimit = 4096;
+        public const int MaximumPursuitPathNodeCount = 16;
 
         private static readonly Vector3Int[] HorizontalDirections =
         {
@@ -145,6 +166,19 @@ namespace Supernova.MinecraftCaves.Creatures
             CreatureVoxelShape shape,
             Vector3Int support)
         {
+            return IsStandable(
+                query,
+                shape,
+                support,
+                true);
+        }
+
+        private static bool IsStandable(
+            ICreatureVoxelQuery query,
+            CreatureVoxelShape shape,
+            Vector3Int support,
+            bool allowLowestBodyLayerOnFloorSurface)
+        {
             if (query == null || shape == null || shape.IsEmpty)
             {
                 return false;
@@ -156,7 +190,10 @@ namespace Supernova.MinecraftCaves.Creatures
             }
 
             Vector3Int foot = support + Vector3Int.up;
-            if (!IsKnownAirOrFloorSurface(query, foot))
+            bool footClear = allowLowestBodyLayerOnFloorSurface
+                ? IsKnownAirOrFloorSurface(query, foot)
+                : IsKnownAir(query, foot);
+            if (!footClear)
             {
                 return false;
             }
@@ -166,7 +203,8 @@ namespace Supernova.MinecraftCaves.Creatures
             for (int i = 0; i < occupied.Count; i++)
             {
                 Vector3Int offset = occupied[i];
-                bool clear = offset.y == lowestBodyLayer
+                bool clear = allowLowestBodyLayerOnFloorSurface
+                    && offset.y == lowestBodyLayer
                     ? IsKnownAirOrFloorSurface(query, foot + offset)
                     : IsKnownAir(query, foot + offset);
                 if (!clear)
@@ -197,7 +235,11 @@ namespace Supernova.MinecraftCaves.Creatures
                     requestedDestination,
                     out CreatureTraversalLink link)
                 && IsTraversalLinkAllowed(link, settings)
-                && IsStandable(query, shape, requestedDestination))
+                && IsStandable(
+                    query,
+                    shape,
+                    requestedDestination,
+                    false))
             {
                 destinationSupport = requestedDestination;
                 movementCost = link.MovementCost;
@@ -229,7 +271,7 @@ namespace Supernova.MinecraftCaves.Creatures
                 for (int rise = 0; rise <= settings.maximumJumpHeight; rise++)
                 {
                     Vector3Int raised = candidate + Vector3Int.up * rise;
-                    if (IsStandable(query, shape, raised))
+                    if (IsStandable(query, shape, raised, false))
                     {
                         int cost = horizontalMovementCost + rise * 2;
                         if (cost <= settings.maximumSingleMoveCost)
@@ -272,7 +314,7 @@ namespace Supernova.MinecraftCaves.Creatures
                     continue;
                 }
 
-                if (IsStandable(query, shape, lowered))
+                if (IsStandable(query, shape, lowered, false))
                 {
                     destinationSupport = lowered;
                     movementCost = costSoFar;
@@ -294,6 +336,64 @@ namespace Supernova.MinecraftCaves.Creatures
             List<Vector3Int> path,
             out int expandedNodeCount)
         {
+            return TryFindPathInternal(
+                query,
+                shape,
+                settings,
+                startSupport,
+                targetSupport,
+                path,
+                false,
+                1,
+                out expandedNodeCount,
+                out _);
+        }
+
+        public static bool TryFindPursuitPath(
+            ICreatureVoxelQuery query,
+            CreatureVoxelShape shape,
+            CreatureNavigationSettings settings,
+            Vector3Int startSupport,
+            Vector3Int targetSupport,
+            List<Vector3Int> path,
+            out int expandedNodeCount,
+            out bool reachedTarget)
+        {
+            bool found = TryFindPathInternal(
+                query,
+                shape,
+                settings,
+                startSupport,
+                targetSupport,
+                path,
+                true,
+                2,
+                out expandedNodeCount,
+                out reachedTarget);
+            if (!found || path.Count <= MaximumPursuitPathNodeCount)
+            {
+                return found;
+            }
+
+            path.RemoveRange(
+                MaximumPursuitPathNodeCount,
+                path.Count - MaximumPursuitPathNodeCount);
+            reachedTarget = false;
+            return true;
+        }
+
+        private static bool TryFindPathInternal(
+            ICreatureVoxelQuery query,
+            CreatureVoxelShape shape,
+            CreatureNavigationSettings settings,
+            Vector3Int startSupport,
+            Vector3Int targetSupport,
+            List<Vector3Int> path,
+            bool allowPartialPath,
+            int heuristicWeight,
+            out int expandedNodeCount,
+            out bool reachedTarget)
+        {
             if (query == null)
             {
                 throw new ArgumentNullException(nameof(query));
@@ -311,6 +411,7 @@ namespace Supernova.MinecraftCaves.Creatures
 
             path.Clear();
             expandedNodeCount = 0;
+            reachedTarget = false;
             // The dynamic Rigidbody and the actual Marching Cubes collider own the
             // creature's present placement. Its current support may not satisfy the
             // discrete density approximation even though physics says it is grounded.
@@ -329,10 +430,14 @@ namespace Supernova.MinecraftCaves.Creatures
             int startIndex = workspace.GetOrAddRecord(startSupport, out _);
             ref NodeRecord startRecord = ref workspace.GetRecord(startIndex);
             startRecord.G = 0;
+            int clampedHeuristicWeight = Mathf.Max(1, heuristicWeight);
+            int bestRecordIndex = startIndex;
+            int bestHeuristic = Heuristic(startSupport, targetSupport);
+            int bestCost = 0;
             workspace.Push(new OpenNode(
                 startIndex,
                 0,
-                Heuristic(startSupport, targetSupport)));
+                bestHeuristic * clampedHeuristicWeight));
 
             while (workspace.OpenCount > 0 && expandedNodeCount < expansionLimit)
             {
@@ -344,8 +449,21 @@ namespace Supernova.MinecraftCaves.Creatures
                     continue;
                 }
 
+                int currentHeuristic = Heuristic(
+                    currentRecord.Position,
+                    targetSupport);
+                if (currentHeuristic < bestHeuristic
+                    || (currentHeuristic == bestHeuristic
+                        && current.G < bestCost))
+                {
+                    bestRecordIndex = current.RecordIndex;
+                    bestHeuristic = currentHeuristic;
+                    bestCost = current.G;
+                }
+
                 if (currentRecord.Position == targetSupport)
                 {
+                    reachedTarget = true;
                     ReconstructPath(workspace, current.RecordIndex, path);
                     return true;
                 }
@@ -372,7 +490,8 @@ namespace Supernova.MinecraftCaves.Creatures
                         current.G,
                         neighbour,
                         stepCost,
-                        targetSupport);
+                        targetSupport,
+                        clampedHeuristicWeight);
                 }
 
                 if (query is ICreatureTraversalLinkQuery linkQuery)
@@ -401,12 +520,164 @@ namespace Supernova.MinecraftCaves.Creatures
                             current.G,
                             link.ToSupport,
                             link.MovementCost,
-                            targetSupport);
+                            targetSupport,
+                            clampedHeuristicWeight);
                     }
                 }
             }
 
+            if (allowPartialPath && bestRecordIndex != startIndex)
+            {
+                ReconstructPath(workspace, bestRecordIndex, path);
+                return path.Count > 1;
+            }
+
             return false;
+        }
+
+        /// <summary>
+        /// Removes intermediate flat-ground nodes when the complete horizontal
+        /// segment is physically clear for the baked creature shape.
+        /// </summary>
+        public static void SimplifyPath(
+            ICreatureVoxelQuery query,
+            CreatureVoxelShape shape,
+            CreatureNavigationSettings settings,
+            List<Vector3Int> path)
+        {
+            if (query == null
+                || shape == null
+                || settings == null
+                || path == null
+                || path.Count < 3)
+            {
+                return;
+            }
+
+            int lookahead = Mathf.Clamp(
+                settings.maximumSmoothingLookahead,
+                2,
+                32);
+            int writeIndex = 1;
+            int anchorIndex = 0;
+            while (anchorIndex < path.Count - 1)
+            {
+                int furthest = Mathf.Min(
+                    path.Count - 1,
+                    anchorIndex + lookahead);
+                int selected = anchorIndex + 1;
+                for (int candidate = furthest;
+                    candidate > anchorIndex + 1;
+                    candidate--)
+                {
+                    if (CanTraverseDirectHorizontalSegment(
+                        query,
+                        shape,
+                        settings,
+                        path[anchorIndex],
+                        path[candidate]))
+                    {
+                        selected = candidate;
+                        break;
+                    }
+                }
+
+                path[writeIndex++] = path[selected];
+                anchorIndex = selected;
+            }
+            if (writeIndex < path.Count)
+            {
+                path.RemoveRange(writeIndex, path.Count - writeIndex);
+            }
+        }
+
+        public static bool CanTraverseDirectHorizontalSegment(
+            ICreatureVoxelQuery query,
+            CreatureVoxelShape shape,
+            CreatureNavigationSettings settings,
+            Vector3Int fromSupport,
+            Vector3Int toSupport)
+        {
+            if (query == null
+                || shape == null
+                || settings == null
+                || fromSupport.y != toSupport.y)
+            {
+                return false;
+            }
+
+            int x = fromSupport.x;
+            int z = fromSupport.z;
+            int deltaX = Mathf.Abs(toSupport.x - x);
+            int deltaZ = Mathf.Abs(toSupport.z - z);
+            int stepX = Math.Sign(toSupport.x - x);
+            int stepZ = Math.Sign(toSupport.z - z);
+            int error = deltaX - deltaZ;
+            Vector3Int current = fromSupport;
+            while (x != toSupport.x || z != toSupport.z)
+            {
+                int doubledError = error * 2;
+                int horizontalX = 0;
+                int horizontalZ = 0;
+                if (doubledError > -deltaZ)
+                {
+                    error -= deltaZ;
+                    x += stepX;
+                    horizontalX = stepX;
+                }
+                if (doubledError < deltaX)
+                {
+                    error += deltaX;
+                    z += stepZ;
+                    horizontalZ = stepZ;
+                }
+
+                if (horizontalX != 0 && horizontalZ != 0)
+                {
+                    if (!TryResolveTransition(
+                            query,
+                            shape,
+                            settings,
+                            current,
+                            new Vector3Int(horizontalX, 0, 0),
+                            out Vector3Int sideX,
+                            out _)
+                        || sideX != current
+                            + new Vector3Int(horizontalX, 0, 0)
+                        || !TryResolveTransition(
+                            query,
+                            shape,
+                            settings,
+                            current,
+                            new Vector3Int(0, 0, horizontalZ),
+                            out Vector3Int sideZ,
+                            out _)
+                        || sideZ != current
+                            + new Vector3Int(0, 0, horizontalZ))
+                    {
+                        return false;
+                    }
+                }
+
+                Vector3Int direction =
+                    new Vector3Int(horizontalX, 0, horizontalZ);
+                Vector3Int expected =
+                    new Vector3Int(x, fromSupport.y, z);
+                if (!TryResolveTransition(
+                        query,
+                        shape,
+                        settings,
+                        current,
+                        direction,
+                        out Vector3Int resolved,
+                        out _)
+                    || resolved != expected)
+                {
+                    return false;
+                }
+                current = resolved;
+            }
+            return current == toSupport;
         }
 
         public static bool IsTraversalLinkAllowed(
@@ -457,7 +728,8 @@ namespace Supernova.MinecraftCaves.Creatures
             int currentG,
             Vector3Int neighbour,
             int stepCost,
-            Vector3Int targetSupport)
+            Vector3Int targetSupport,
+            int heuristicWeight)
         {
             int tentativeG = currentG + stepCost;
             int neighbourIndex = workspace.GetOrAddRecord(
@@ -472,7 +744,8 @@ namespace Supernova.MinecraftCaves.Creatures
 
             neighbourRecord.G = tentativeG;
             neighbourRecord.ParentIndex = currentIndex;
-            int f = tentativeG + Heuristic(neighbour, targetSupport);
+            int f = tentativeG
+                + Heuristic(neighbour, targetSupport) * heuristicWeight;
             workspace.Push(new OpenNode(neighbourIndex, tentativeG, f));
         }
 

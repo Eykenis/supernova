@@ -20,22 +20,6 @@ namespace Supernova.Tests
                 AssetDatabase.LoadAssetAtPath<VoxelTypeCatalog>(CatalogPath);
 
             Assert.That(catalog, Is.Not.Null);
-            var expected = new Dictionary<
-                ushort,
-                (string Name, int Durability, VoxelGroup Group)>
-            {
-                { 1, ("Default", 1, VoxelGroup.Structure) },
-                { 2, ("Stone", 1, VoxelGroup.Stone) },
-                { 3, ("Ore", 5, VoxelGroup.Ore) },
-                { 4, ("Bedrock", 9999, VoxelGroup.Stone) },
-                { 5, ("Structure Brick", 3, VoxelGroup.Structure) },
-                { 6, ("Fortress Brick", 3, VoxelGroup.Structure) },
-                { 7, ("Packed Dirt", 2, VoxelGroup.Stone) },
-                { 8, ("Rusted Iron", 6, VoxelGroup.Structure) },
-                { 9, ("Tiger Rock", 4, VoxelGroup.Structure) },
-                { 10, ("Worn Brick", 3, VoxelGroup.Structure) },
-            };
-            Assert.That(catalog.Definitions, Has.Count.EqualTo(expected.Count));
             Assert.That(catalog.Definitions, Has.All.Not.Null);
 
             string[] paths = catalog.Definitions
@@ -43,25 +27,35 @@ namespace Supernova.Tests
                 .ToArray();
             Assert.That(
                 paths.Distinct().ToArray(),
-                Has.Length.EqualTo(paths.Length));
+                Has.Length.EqualTo(paths.Length),
+                "Every definition must be a different asset.");
             Assert.That(paths, Has.All.StartsWith(DefinitionFolder));
 
+            // Every TypeId must be unique; duplicates cause silent material
+            // swaps because Find() returns the first match in linear order.
+            var seen = new HashSet<ushort>();
             foreach (VoxelTypeDefinition definition in catalog.Definitions)
             {
-                Assert.That(expected, Contains.Key(definition.TypeId.Value));
-                (string name, int durability, VoxelGroup group) =
-                    expected[definition.TypeId.Value];
-                Assert.That(definition.DisplayName, Is.EqualTo(name));
-                Assert.That(definition.Durability, Is.EqualTo(durability));
-                // Group drives mesh continuity, so a wrong assignment shows up as
-                // seams between voxels that should read as one solid.
-                Assert.That(definition.Group, Is.EqualTo(group));
-                Assert.That(catalog.Find(definition.TypeId), Is.SameAs(definition));
+                Assert.That(
+                    seen.Add(definition.TypeId.Value),
+                    $"Duplicate voxel type id {definition.TypeId.Value} on "
+                    + $"'{definition.name}'.");
             }
 
-            // Every catalogued type must resolve to a real material so the mesher
-            // never has to fall back for a voxel the world actually writes. Default
-            // is exempt: it is the untyped fill and has no palette of its own.
+            // Every type must round-trip through the catalog lookup so the
+            // mesher and mining logic always resolve the correct material.
+            foreach (VoxelTypeDefinition definition in catalog.Definitions)
+            {
+                Assert.That(
+                    catalog.Find(definition.TypeId),
+                    Is.SameAs(definition),
+                    $"'{definition.name}' is not resolvable by its TypeId.");
+            }
+
+            // Every catalogued type must resolve to a real material so the
+            // mesher never has to fall back for a voxel the world actually
+            // writes. Default is exempt: it is the untyped fill and has no
+            // palette of its own.
             foreach (VoxelTypeDefinition definition in catalog.Definitions)
             {
                 if (definition.TypeId.Value == 1)

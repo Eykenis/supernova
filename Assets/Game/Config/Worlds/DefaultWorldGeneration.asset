@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   generationMode: 0
   superflatStoneHeight: 10
-  worldSeed: 6667
+  worldSeed: 116
   settings:
     cheeseFrequency: 0.001
     cheeseThreshold: 0.02
@@ -64,8 +64,10 @@ MonoBehaviour:
   baseSolidVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
   bedrockVoxelType: {fileID: 11400000, guid: 2c50f434192e90a4fbd10cd5d9a7b8fb, type: 2}
   oreFeatures:
+  - {fileID: 11400000, guid: bd8ab16e47faf3447a9a266be576d816, type: 2}
   - {fileID: 11400000, guid: c9849f1b483ab07428f176c33113c20f, type: 2}
-  caveBiomeCatalog: {fileID: 11400000, guid: fc03765759f7a814a81e9613c4963c8b, type: 2}
+  - {fileID: 11400000, guid: 5235f4c2ab4c7f14cbd884d5badae2e7, type: 2}
+  caveBiomeCatalog: {fileID: 11400000, guid: 80a5fffc4eeddb047b303065c9a17bbc, type: 2}
   spawnPointStructureRule:
     enabled: 1
     structure: {fileID: 11400000, guid: 2dd6e02553075e844a374e1bb4c19dff, type: 2}

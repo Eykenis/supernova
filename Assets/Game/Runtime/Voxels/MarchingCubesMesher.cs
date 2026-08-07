@@ -1174,9 +1174,18 @@ namespace Supernova.Voxels
                 && solidB
                 && SurfaceKeyOf(sampleA.Type, forcedType, groupMap)
                     != SurfaceKeyOf(sampleB.Type, forcedType, groupMap);
+            // Ore is harvested as one connected rigid body, so exposing it by
+            // removing adjacent terrain must not reshape it. Keep an ore edge at
+            // the same inset position whether the non-ore endpoint is another
+            // solid group or air. Natural stone still uses density interpolation
+            // against air, preserving the smooth cave surface.
+            bool isStableOreBoundary = groupMap.IsConfigured
+                && surfaceKey == (int)VoxelGroup.Ore
+                && aIsTarget != bIsTarget;
 
             float t = 0.5f;
-            if (isDifferentSurfaceBoundary && aIsTarget != bIsTarget)
+            if ((isDifferentSurfaceBoundary || isStableOreBoundary)
+                && aIsTarget != bIsTarget)
             {
                 t = aIsTarget
                     ? 0.5f - TypeBoundaryInset

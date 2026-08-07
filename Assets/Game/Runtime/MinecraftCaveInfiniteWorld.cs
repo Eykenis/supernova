@@ -9,6 +9,7 @@ using Supernova.MinecraftCaves.Creatures;
 using Supernova.Missions;
 using Supernova.UI;
 using Supernova.Voxels;
+using Supernova.WorldGeneration;
 using Unity.Profiling;
 using UnityEngine;
 
@@ -85,6 +86,11 @@ namespace Supernova.MinecraftCaves
             Array.AsReadOnly(BuildRequiredOffsets());
         private static readonly ReadOnlyCollection<Vector3Int> PreviewOffsets =
             Array.AsReadOnly(BuildOffsets(PreviewRadiusInChunks));
+        private static readonly ReadOnlyCollection<Vector3Int>
+            DenseRegionOffsets =
+                Array.AsReadOnly(BuildSquareOffsets(
+                    DenseJigsawWorldConfiguration
+                        .DefaultRegionColumnsPerSide));
 
         [Header("Viewer")]
         [SerializeField] private Transform viewer;
@@ -100,6 +106,15 @@ namespace Supernova.MinecraftCaves
         [SerializeField]
         private MinecraftWorldGenerationConfiguration
             worldGenerationConfigurationOverride;
+        [Tooltip(
+            "Optional finite dense-jigsaw profile. When assigned, this world "
+            + "still runs the complete InfiniteCaves pipeline and only replaces "
+            + "the streaming extent and jigsaw snapshot.")]
+        [SerializeField]
+        private DenseJigsawWorldConfiguration
+            denseJigsawRegionConfigurationOverride;
+        private ReadOnlyCollection<Vector3Int> configuredDenseRegionOffsets;
+        private int configuredDenseRegionColumns;
         [Tooltip(
             "Generate only a diameter-16-chunk circular preview around spawn "
             + "and disable viewer-driven streaming.")]
@@ -182,6 +197,10 @@ namespace Supernova.MinecraftCaves
             new Dictionary<Vector3Int, GameObject>();
         private readonly Dictionary<Vector3Int, Mesh> chunkMeshes =
             new Dictionary<Vector3Int, Mesh>();
+        private readonly Dictionary<Vector3Int, Mesh> terrainSurfaceMeshes =
+            new Dictionary<Vector3Int, Mesh>();
+        private readonly HashSet<Vector3Int> gameplayCarvedVoxels =
+            new HashSet<Vector3Int>();
         private readonly Queue<Vector3Int> chunkDestructionQueue =
             new Queue<Vector3Int>();
         private readonly HashSet<Vector3Int> queuedChunkDestructions =
@@ -217,6 +236,20 @@ namespace Supernova.MinecraftCaves
             new List<CreatureBehaviorAgent>();
         private readonly List<StructureSpawnRequest> markerSpawnBuffer =
             new List<StructureSpawnRequest>();
+        private readonly HashSet<Vector3Int> checkpointSpawnedColumns =
+            new HashSet<Vector3Int>();
+        private readonly HashSet<Vector3Int> placedCheckpointVoxels =
+            new HashSet<Vector3Int>();
+        private readonly List<CheckpointSpawnRequest> checkpointSpawnBuffer =
+            new List<CheckpointSpawnRequest>();
+        private GameObject primarySpawnCheckpoint;
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip(
+            "Non-zero enables checkpoints authored by jigsaw piece markers.")]
+        private float checkpointSpawnChance = 0.35f;
+        [SerializeField] private JigsawStructureFeatureDefinition
+            spawnCheckpointJigsawFeature;
+        private const int CheckpointFloorSearchDistance = 6;
         private readonly Dictionary<Vector3Int, List<SuspendedBodyState>>
             suspendedBodiesByColumn =
                 new Dictionary<Vector3Int, List<SuspendedBodyState>>();
@@ -231,8 +264,12 @@ namespace Supernova.MinecraftCaves
             Array.Empty<MinecraftStructureFeatureSettings>();
         private JigsawStructureFeatureSettings[] jigsawStructureSettings =
             Array.Empty<JigsawStructureFeatureSettings>();
+        private DenseJigsawFeature denseJigsawFeature;
+        private JigsawPlacementSelection denseJigsawPlacementSelection;
         private CancellationTokenSource generationCancellation;
         private Material runtimeMaterial;
+        private Material runtimeTerrainSurfaceMaterial;
+        private bool terrainSurfaceShaderLookupFailed;
         private Vector3Int viewerChunk;
         private bool hasViewerChunk;
         private bool initialSpawnPlacementPending;
@@ -246,6 +283,8 @@ namespace Supernova.MinecraftCaves
         private Vector3 viewerInitialPosition;
         private Quaternion viewerInitialRotation;
         private Vector3Int spawnVoxel;
+        private Vector3 authoredSpawnWorldPosition;
+        private Quaternion authoredSpawnWorldRotation;
         private Vector3 targetSpawnWorldPosition;
         private Quaternion targetSpawnWorldRotation;
         private CharacterController frozenCharacterController;
@@ -258,7 +297,7 @@ namespace Supernova.MinecraftCaves
         public int SuperflatStoneHeight => Mathf.Clamp(
             superflatStoneHeight,
             1,
-            VoxelColumnChunkData.Height - 1);
+            EffectiveWorldHeight - 1);
         public float VoxelSize => voxelSize;
         public float IsoLevel => isoLevel;
         public MarchingCubesVertexPlacement VertexPlacement => vertexPlacement;
@@ -271,6 +310,11 @@ namespace Supernova.MinecraftCaves
         public Vector3Int ViewerChunk => viewerChunk;
         public Vector3Int SpawnVoxel => spawnVoxel;
         public Vector3 SpawnWorldPosition => targetSpawnWorldPosition;
+        public Vector3 AuthoredSpawnWorldPosition => authoredSpawnWorldPosition;
+        public Quaternion AuthoredSpawnWorldRotation =>
+            authoredSpawnWorldRotation;
+        public GameObject PrimarySpawnCheckpoint => primarySpawnCheckpoint;
+        public event Action<GameObject> PrimarySpawnCheckpointCreated;
         public MinecraftCaveGenerationStage GenerationStage => generationStage;
         public bool IsGlobalGravitySuspendedForInitialLoad => globalGravitySuspended;
         public bool IsInitialLoadComplete => initialLoadComplete;
@@ -316,6 +360,76 @@ namespace Supernova.MinecraftCaves
         public static IReadOnlyList<Vector3Int> StreamingOffsets => RequiredOffsets;
         public static IReadOnlyList<Vector3Int> PreviewStreamingOffsets =>
             PreviewOffsets;
+        public static IReadOnlyList<Vector3Int> DenseRegionStreamingOffsets =>
+            DenseRegionOffsets;
+        public IReadOnlyList<Vector3Int>
+            ConfiguredDenseRegionStreamingOffsets =>
+                ResolveConfiguredDenseRegionOffsets();
+        public bool IsFiniteDenseRegion =>
+            denseJigsawRegionConfigurationOverride != null;
+        public int EffectiveWorldHeight => IsFiniteDenseRegion
+            ? denseJigsawRegionConfigurationOverride.WorldHeight
+            : VoxelColumnChunkData.Height;
+        public int EffectiveMeshSectionsPerColumn =>
+            EffectiveWorldHeight / MeshSectionHeight;
+        private bool UsesFixedGenerationArea =>
+            fixedPreviewArea || IsFiniteDenseRegion;
+        public bool UsesExternalDenseLandingCell =>
+            IsFiniteDenseRegion
+            && denseJigsawRegionConfigurationOverride.UseExternalLandingCell
+            && spawnPointSceneStructure != null;
+        public DenseJigsawWorldConfiguration DenseRegionConfiguration =>
+            denseJigsawRegionConfigurationOverride;
+        public int DenseAcceptedJigsawPlacementCount =>
+            denseJigsawPlacementSelection != null
+                ? denseJigsawPlacementSelection.AcceptedPlacementCount
+                : 0;
+
+        public bool ConfigureDenseRegion(
+            DenseJigsawWorldConfiguration configuration,
+            Transform worldViewer = null)
+        {
+            if (configuration == null)
+            {
+                Debug.LogError(
+                    "Cannot configure a Dense region without a configuration.",
+                    this);
+                return false;
+            }
+            if (world != null)
+            {
+                Debug.LogError(
+                    "Cannot configure a Dense region after world "
+                    + "initialization has started.",
+                    this);
+                return false;
+            }
+
+            denseJigsawRegionConfigurationOverride = configuration;
+            if (worldViewer != null)
+            {
+                viewer = worldViewer;
+            }
+            return true;
+        }
+
+        public void ConfigureSpawnCheckpointJigsaw(
+            JigsawStructureFeatureDefinition feature)
+        {
+            spawnCheckpointJigsawFeature = feature;
+        }
+
+        public bool ConfigureSpawnPointSceneStructure(
+            SpawnPointSceneStructure structure)
+        {
+            if (world != null)
+            {
+                return false;
+            }
+
+            spawnPointSceneStructure = structure;
+            return true;
+        }
 
         public bool ApplyLevelConfiguration(LevelConfiguration value)
         {
@@ -393,13 +507,17 @@ namespace Supernova.MinecraftCaves
             if (Application.isPlaying)
             {
                 bool configurationApplied =
-                    worldGenerationConfigurationOverride != null
-                        ? ApplyWorldGenerationConfiguration(
-                            worldGenerationConfigurationOverride)
-                        : ApplyLevelConfiguration(
-                            levelConfigurationOverride != null
-                                ? levelConfigurationOverride
-                                : MissionGameLoop.CurrentLevelConfiguration);
+                    denseJigsawRegionConfigurationOverride != null
+                        ? ApplyLevelConfiguration(
+                            denseJigsawRegionConfigurationOverride
+                                .InfiniteCavesLevelSource)
+                        : worldGenerationConfigurationOverride != null
+                            ? ApplyWorldGenerationConfiguration(
+                                worldGenerationConfigurationOverride)
+                            : ApplyLevelConfiguration(
+                                levelConfigurationOverride != null
+                                    ? levelConfigurationOverride
+                                    : MissionGameLoop.CurrentLevelConfiguration);
                 if (!configurationApplied)
                 {
                     Debug.LogError(
@@ -473,7 +591,7 @@ namespace Supernova.MinecraftCaves
 
         private void RefreshStreamingForViewerMovement()
         {
-            if (fixedPreviewArea || initialSpawnPlacementPending)
+            if (UsesFixedGenerationArea || initialSpawnPlacementPending)
             {
                 return;
             }
@@ -501,22 +619,51 @@ namespace Supernova.MinecraftCaves
 
             bool isSuperflat =
                 generationMode == MinecraftWorldGenerationMode.Superflat;
+            PlayerSpawnRequest authoredPlayerSpawn = default;
+            bool hasAuthoredPlayerSpawn = !isSuperflat
+                && IsFiniteDenseRegion
+                && JigsawStructureGenerator.TryResolvePlayerSpawn(
+                    densityField.Seed,
+                    jigsawStructureSettings,
+                    out authoredPlayerSpawn);
             spawnVoxel = isSuperflat
                 ? new Vector3Int(0, SuperflatStoneHeight, 0)
-                : FindCaveSpawnVoxel();
-            Vector3 spawnVoxelPosition = isSuperflat || fixedPreviewArea
+                : hasAuthoredPlayerSpawn
+                    ? authoredPlayerSpawn.VoxelPosition
+                    : FindCaveSpawnVoxel();
+            Vector3 spawnVoxelPosition = isSuperflat || UsesFixedGenerationArea
                 ? (Vector3)spawnVoxel
                 : spawnPointStructureRule.GetPlayerSpawnVoxel(spawnVoxel);
-            targetSpawnWorldPosition =
+            authoredSpawnWorldPosition =
                 transform.TransformPoint(spawnVoxelPosition * voxelSize);
-            targetSpawnWorldRotation = viewer != null
-                ? viewer.rotation
-                : transform.rotation;
+            authoredSpawnWorldRotation = hasAuthoredPlayerSpawn
+                ? transform.rotation * Quaternion.Euler(
+                    0f,
+                    authoredPlayerSpawn.Yaw,
+                    0f)
+                : viewer != null
+                    ? viewer.rotation
+                    : transform.rotation;
+            targetSpawnWorldPosition = authoredSpawnWorldPosition;
+            targetSpawnWorldRotation = authoredSpawnWorldRotation;
             if (spawnPointSceneStructure != null)
             {
                 spawnPointSceneStructure.ClearExitTarget();
             }
-            if (!isSuperflat && !fixedPreviewArea)
+            if (UsesExternalDenseLandingCell)
+            {
+                Vector3 externalSpawnVoxel =
+                    denseJigsawRegionConfigurationOverride
+                        .ExternalLandingCellPlayerVoxelPosition;
+                targetSpawnWorldPosition = transform.TransformPoint(
+                    externalSpawnVoxel * voxelSize);
+                targetSpawnWorldRotation = Quaternion.LookRotation(
+                    -transform.right,
+                    transform.up);
+            }
+            if (!isSuperflat
+                && (!UsesFixedGenerationArea
+                    || UsesExternalDenseLandingCell))
             {
                 PlaceSpawnPointSceneStructure();
             }
@@ -701,6 +848,7 @@ namespace Supernova.MinecraftCaves
                     }
                     else
                     {
+                        gameplayCarvedVoxels.Add(coordinate);
                         world.SetVoxel(
                             coordinate.x,
                             coordinate.y,
@@ -716,6 +864,7 @@ namespace Supernova.MinecraftCaves
                 }
                 else
                 {
+                    gameplayCarvedVoxels.Add(coordinate);
                     world.SetVoxel(
                         coordinate.x,
                         coordinate.y,
@@ -972,6 +1121,7 @@ namespace Supernova.MinecraftCaves
 
         private void RemoveExplosionVoxel(Vector3Int coordinate)
         {
+            gameplayCarvedVoxels.Add(coordinate);
             world.SetVoxel(
                 coordinate.x,
                 coordinate.y,
@@ -1027,6 +1177,7 @@ namespace Supernova.MinecraftCaves
             CreateOreVeinBody(component, type, meshData);
             foreach (Vector3Int coordinate in component)
             {
+                gameplayCarvedVoxels.Add(coordinate);
                 world.SetVoxel(
                     coordinate.x,
                     coordinate.y,
@@ -1139,11 +1290,10 @@ namespace Supernova.MinecraftCaves
                     : EnsureMaterial();
             Material recoveredMaterial = CreateRecoveredOreMaterial(
                 sourceMaterial,
-                type,
                 displayName);
             renderer.sharedMaterial = recoveredMaterial;
             renderer.shadowCastingMode =
-                UnityEngine.Rendering.ShadowCastingMode.Off;
+                UnityEngine.Rendering.ShadowCastingMode.On;
 
             if (meshData.TriangleCount <= 255)
             {
@@ -1188,7 +1338,6 @@ namespace Supernova.MinecraftCaves
 
         private static Material CreateRecoveredOreMaterial(
             Material source,
-            VoxelTypeId type,
             string displayName)
         {
             Material material = new Material(source)
@@ -1198,41 +1347,38 @@ namespace Supernova.MinecraftCaves
             };
             Color baseColor = source != null && source.HasProperty("_BaseColor")
                 ? source.GetColor("_BaseColor")
-                : new Color(0.82f, 0.47f, 0.12f, 1f);
-            var texture = new Texture2D(32, 32, TextureFormat.RGBA32, false)
+                : source != null && source.HasProperty("_Color")
+                    ? source.GetColor("_Color")
+                    : new Color(0.82f, 0.47f, 0.12f, 1f);
+            Color recoveredColor = new Color(
+                baseColor.r * 0.82f,
+                baseColor.g * 0.82f,
+                baseColor.b * 0.82f,
+                baseColor.a);
+            if (material.HasProperty("_BaseColor"))
             {
-                name = $"Recovered {displayName} Strata",
-                hideFlags = HideFlags.DontSave,
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Repeat,
-            };
-            var pixels = new Color32[32 * 32];
-            int seed = type.Value * 1103515245 + 12345;
-            for (int y = 0; y < 32; y++)
-            {
-                for (int x = 0; x < 32; x++)
-                {
-                    float seam = Mathf.Abs(Mathf.Sin(
-                        x * 0.55f + y * 0.21f + seed * 0.0001f));
-                    float chip = Mathf.PerlinNoise(
-                        (x + seed % 17) * 0.19f,
-                        (y + seed % 29) * 0.19f);
-                    float brightness = seam > 0.82f
-                        ? 1.35f
-                        : Mathf.Lerp(0.42f, 0.82f, chip);
-                    pixels[y * 32 + x] = baseColor * brightness;
-                }
+                material.SetColor("_BaseColor", recoveredColor);
             }
-            texture.SetPixels32(pixels);
-            texture.Apply(false, true);
-            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", texture);
-            if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", texture);
-            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0.72f);
-            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.62f);
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", recoveredColor);
+            }
+            if (material.HasProperty("_Metallic"))
+            {
+                material.SetFloat(
+                    "_Metallic",
+                    Mathf.Min(material.GetFloat("_Metallic"), 0.35f));
+            }
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat(
+                    "_Smoothness",
+                    Mathf.Min(material.GetFloat("_Smoothness"), 0.4f));
+            }
             if (material.HasProperty("_EmissionColor"))
             {
-                material.EnableKeyword("_EMISSION");
-                material.SetColor("_EmissionColor", baseColor * 0.28f);
+                material.DisableKeyword("_EMISSION");
+                material.SetColor("_EmissionColor", Color.black);
             }
             return material;
         }
@@ -1312,8 +1458,16 @@ namespace Supernova.MinecraftCaves
             bool typeChanged = previous.Type != normalizedType;
             if (!occupancyChanged && !typeChanged) return false;
 
-            world.SetVoxel(worldX, worldY, worldZ, density, normalizedType);
             var coordinate = new Vector3Int(worldX, worldY, worldZ);
+            if (previous.IsSolid(isoLevel) && density < isoLevel)
+            {
+                gameplayCarvedVoxels.Add(coordinate);
+            }
+            else if (density >= isoLevel)
+            {
+                gameplayCarvedVoxels.Remove(coordinate);
+            }
+            world.SetVoxel(worldX, worldY, worldZ, density, normalizedType);
             miningProgress.Reset(coordinate);
             QueueMeshesAffectedByVoxel(coordinate);
             return true;
@@ -1344,7 +1498,7 @@ namespace Supernova.MinecraftCaves
             int section = Mathf.Clamp(
                 coordinate.y / MeshSectionHeight,
                 0,
-                MeshSectionsPerColumn - 1);
+                EffectiveMeshSectionsPerColumn - 1);
             int minimumSection = coordinate.y > 0
                 && coordinate.y % MeshSectionHeight == 0
                     ? section - 1
@@ -1375,6 +1529,11 @@ namespace Supernova.MinecraftCaves
 
         public bool IsWithinGenerationRadius(Vector3Int coordinate)
         {
+            if (IsFiniteDenseRegion)
+            {
+                return requiredChunks.Contains(coordinate);
+            }
+
             int deltaX = coordinate.x - viewerChunk.x;
             int deltaZ = coordinate.z - viewerChunk.z;
             if (fixedPreviewArea)
@@ -1426,25 +1585,39 @@ namespace Supernova.MinecraftCaves
             renderingReadyLogged = false;
             generationStage = MinecraftCaveGenerationStage.Terrain;
 
-            IReadOnlyList<Vector3Int> offsets = fixedPreviewArea
-                ? PreviewOffsets
-                : RequiredOffsets;
+            IReadOnlyList<Vector3Int> offsets = IsFiniteDenseRegion
+                ? ResolveConfiguredDenseRegionOffsets()
+                : fixedPreviewArea
+                    ? PreviewOffsets
+                    : RequiredOffsets;
+            // Dense can start the viewer in an external landing Cell. Its authored
+            // spawn is the portal destination that must be playable first.
+            Vector3Int initialLoadCenter = IsFiniteDenseRegion
+                ? WorldPositionToChunk(authoredSpawnWorldPosition)
+                : viewerChunk;
             foreach (Vector3Int offset in offsets)
             {
+                Vector3Int coordinate = IsFiniteDenseRegion
+                    ? offset
+                    : viewerChunk + offset;
                 if (initialSpawnAreaOnly
                     && !fixedPreviewArea
-                    && (Mathf.Abs(offset.x) > InitialSpawnRadiusInChunks
-                        || Mathf.Abs(offset.z) > InitialSpawnRadiusInChunks))
+                    && (Mathf.Abs(coordinate.x - initialLoadCenter.x)
+                            > InitialSpawnRadiusInChunks
+                        || Mathf.Abs(coordinate.z - initialLoadCenter.z)
+                            > InitialSpawnRadiusInChunks))
                 {
                     continue;
                 }
-                requiredChunks.Add(viewerChunk + offset);
+                requiredChunks.Add(coordinate);
             }
 
-            if (!structurePassApplied && !fixedPreviewArea)
+            if (!structurePassApplied && !UsesFixedGenerationArea)
             {
                 spawnPointStructureRule.CollectRequiredChunks(spawnVoxel, requiredChunks);
             }
+
+            RefreshDenseJigsawPlacementSelection();
 
             foreach (Vector3Int coordinate in requiredChunks)
             {
@@ -1464,6 +1637,43 @@ namespace Supernova.MinecraftCaves
 
             CancelGenerationTasksOutsideRequiredSet();
             CullMeshesOutsideRequiredSet();
+        }
+
+        private void RefreshDenseJigsawPlacementSelection()
+        {
+            denseJigsawPlacementSelection = null;
+            if (!IsFiniteDenseRegion
+                || !denseJigsawRegionConfigurationOverride
+                    .PreventStructureIntersections
+                || jigsawStructureSettings == null
+                || jigsawStructureSettings.Length == 0
+                || requiredChunks.Count == 0)
+            {
+                return;
+            }
+
+            int minimumChunkX = int.MaxValue;
+            int maximumChunkX = int.MinValue;
+            int minimumChunkZ = int.MaxValue;
+            int maximumChunkZ = int.MinValue;
+            IReadOnlyCollection<Vector3Int> selectionColumns =
+                ResolveConfiguredDenseRegionOffsets();
+            foreach (Vector3Int coordinate in selectionColumns)
+            {
+                minimumChunkX = Math.Min(minimumChunkX, coordinate.x);
+                maximumChunkX = Math.Max(maximumChunkX, coordinate.x);
+                minimumChunkZ = Math.Min(minimumChunkZ, coordinate.z);
+                maximumChunkZ = Math.Max(maximumChunkZ, coordinate.z);
+            }
+
+            denseJigsawPlacementSelection =
+                JigsawPlacementSelection.CreateNonIntersecting(
+                    jigsawStructureSettings,
+                    densityField != null ? densityField.Seed : worldSeed,
+                    minimumChunkX * VoxelColumnChunkData.Width,
+                    minimumChunkZ * VoxelColumnChunkData.Depth,
+                    (maximumChunkX + 1) * VoxelColumnChunkData.Width - 1,
+                    (maximumChunkZ + 1) * VoxelColumnChunkData.Depth - 1);
         }
 
         private void CancelGenerationTasksOutsideRequiredSet()
@@ -1503,9 +1713,12 @@ namespace Supernova.MinecraftCaves
                     structureFeatureSettings;
                 JigsawStructureFeatureSettings[] jigsaws =
                     jigsawStructureSettings;
+                JigsawPlacementSelection jigsawSelection =
+                    denseJigsawPlacementSelection;
                 DepthProbabilityProfile oreDepth = oreDepthProbability;
                 MinecraftWorldGenerationMode mode = generationMode;
                 int flatHeight = SuperflatStoneHeight;
+                int worldHeight = EffectiveWorldHeight;
                 float sampleIsoLevel = isoLevel;
                 generationTasks.Add(
                     coordinate,
@@ -1518,10 +1731,12 @@ namespace Supernova.MinecraftCaves
                                 boundaryType,
                                 features,
                                 jigsaws,
+                                jigsawSelection,
                                 structures,
                                 oreDepth,
                                 mode,
                                 flatHeight,
+                                worldHeight,
                                 sampleIsoLevel,
                                 token),
                             token),
@@ -1594,6 +1809,23 @@ namespace Supernova.MinecraftCaves
                 result.Coordinate,
                 result.Densities,
                 result.Types);
+            if (TryGetFiniteRegionChunkBounds(
+                    out int minimumChunkX,
+                    out int maximumChunkX,
+                    out int minimumChunkZ,
+                    out int maximumChunkZ)
+                && world.TryGetChunk(
+                    result.Coordinate,
+                    out InfiniteVoxelChunk chunk))
+            {
+                RestoreFiniteRegionSideBedrock(
+                    chunk.Data,
+                    result.Coordinate,
+                    minimumChunkX,
+                    maximumChunkX,
+                    minimumChunkZ,
+                    maximumChunkZ);
+            }
         }
 
 
@@ -1629,7 +1861,7 @@ namespace Supernova.MinecraftCaves
                     columnCoordinate.z),
                 forceRebuild);
             for (int distance = 1;
-                distance < MeshSectionsPerColumn;
+                distance < EffectiveMeshSectionsPerColumn;
                 distance++)
             {
                 int lower = preferredSection - distance;
@@ -1644,7 +1876,7 @@ namespace Supernova.MinecraftCaves
                 }
 
                 int upper = preferredSection + distance;
-                if (upper < MeshSectionsPerColumn)
+                if (upper < EffectiveMeshSectionsPerColumn)
                 {
                     QueueMesh(
                         new Vector3Int(
@@ -1669,7 +1901,7 @@ namespace Supernova.MinecraftCaves
             return Mathf.Clamp(
                 voxelY / MeshSectionHeight,
                 0,
-                MeshSectionsPerColumn - 1);
+                EffectiveMeshSectionsPerColumn - 1);
         }
 
         private void QueueMeshesAffectedByGeneratedColumn(
@@ -1855,7 +2087,7 @@ namespace Supernova.MinecraftCaves
                 int section = Mathf.Clamp(
                     coordinate.y,
                     0,
-                    MeshSectionsPerColumn - 1);
+                    EffectiveMeshSectionsPerColumn - 1);
                 int startY = section * MeshSectionHeight;
                 int sampleCount =
                     MarchingCubesMesher.GetCapturedColumnSectionSampleCount(
@@ -1938,7 +2170,7 @@ namespace Supernova.MinecraftCaves
             int section = Mathf.Clamp(
                 coordinate.y,
                 0,
-                MeshSectionsPerColumn - 1);
+                EffectiveMeshSectionsPerColumn - 1);
             int startY = section * MeshSectionHeight;
             VoxelMeshData data = MarchingCubesMesher.BuildColumnSection(
                 world,
@@ -1963,7 +2195,7 @@ namespace Supernova.MinecraftCaves
             int section = Mathf.Clamp(
                 coordinate.y,
                 0,
-                MeshSectionsPerColumn - 1);
+                EffectiveMeshSectionsPerColumn - 1);
             int startY = section * MeshSectionHeight;
             builtMeshes.Add(coordinate);
             if (section == 0)
@@ -1994,10 +2226,14 @@ namespace Supernova.MinecraftCaves
             MeshFilter filter = chunkObject.AddComponent<MeshFilter>();
             MeshRenderer renderer = chunkObject.AddComponent<MeshRenderer>();
             filter.sharedMesh = mesh;
+            IReadOnlyList<VoxelTypeDefinition> voxelDefinitions =
+                voxelTypeCatalog != null
+                    ? voxelTypeCatalog.Definitions
+                    : null;
             renderer.sharedMaterials = VoxelTypeUtility.ResolveMaterials(
                 data,
                 EnsureMaterial(),
-                voxelTypeCatalog != null ? voxelTypeCatalog.Definitions : null);
+                voxelDefinitions);
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
 
             if (generateColliders)
@@ -2007,11 +2243,65 @@ namespace Supernova.MinecraftCaves
                 collider.sharedMaterial = terrainPhysicsMaterial;
             }
 
+            SpawnTerrainSurfaceLayer(
+                chunkObject.transform,
+                coordinate,
+                startY,
+                data,
+                voxelDefinitions);
             SpawnSurfaceContent(chunkObject.transform, coordinate, startY, data);
 
             chunkObjects[coordinate] = chunkObject;
             chunkMeshes[coordinate] = mesh;
             FinalizeColumnPhysicsIfReady(columnCoordinate);
+        }
+
+        private void SpawnTerrainSurfaceLayer(
+            Transform sectionTransform,
+            Vector3Int coordinate,
+            int startY,
+            VoxelMeshData meshData,
+            IReadOnlyList<VoxelTypeDefinition> voxelDefinitions)
+        {
+            if (sectionTransform == null || caveBiomeCatalog == null)
+            {
+                return;
+            }
+
+            Mesh surfaceMesh = CaveTerrainSurfaceLayerBuilder.Build(
+                meshData,
+                coordinate,
+                startY,
+                voxelSize,
+                worldSeed,
+                caveBiomeCatalog,
+                voxelDefinitions,
+                gameplayCarvedVoxels,
+                $"Cave Turf {coordinate.x},{coordinate.z},{coordinate.y}");
+            if (surfaceMesh == null)
+            {
+                return;
+            }
+
+            Material surfaceMaterial = EnsureTerrainSurfaceMaterial();
+            if (surfaceMaterial == null)
+            {
+                DestroyGeneratedObject(surfaceMesh);
+                return;
+            }
+
+            var surfaceObject = new GameObject("TerrainSurfaceLayer");
+            surfaceObject.hideFlags = HideFlags.DontSave;
+            surfaceObject.transform.SetParent(sectionTransform, false);
+            MeshFilter surfaceFilter = surfaceObject.AddComponent<MeshFilter>();
+            MeshRenderer surfaceRenderer =
+                surfaceObject.AddComponent<MeshRenderer>();
+            surfaceFilter.sharedMesh = surfaceMesh;
+            surfaceRenderer.sharedMaterial = surfaceMaterial;
+            surfaceRenderer.shadowCastingMode =
+                UnityEngine.Rendering.ShadowCastingMode.Off;
+            surfaceRenderer.receiveShadows = true;
+            terrainSurfaceMeshes[coordinate] = surfaceMesh;
         }
 
         private void SpawnSurfaceContent(
@@ -2034,7 +2324,8 @@ namespace Supernova.MinecraftCaves
                     voxelSize,
                     isoLevel,
                     worldSeed,
-                    caveBiomeCatalog);
+                    caveBiomeCatalog,
+                    gameplayCarvedVoxels);
             if (placements.Count == 0)
             {
                 return;
@@ -2122,6 +2413,7 @@ namespace Supernova.MinecraftCaves
             // confirming that section has no surface).
             Physics.SyncTransforms();
             SpawnStructureMarkers(column);
+            SpawnCheckpoints(column);
             SpawnPendingTreasures(column);
             SpawnPendingMonsters(column);
             ResumeBodiesInColumn(column);
@@ -2148,12 +2440,133 @@ namespace Supernova.MinecraftCaves
                 column,
                 densityField != null ? densityField.Seed : worldSeed,
                 jigsawStructureSettings,
-                markerSpawnBuffer);
+                markerSpawnBuffer,
+                placementSelection: denseJigsawPlacementSelection);
             for (int i = 0; i < markerSpawnBuffer.Count; i++)
             {
                 SpawnStructureMarker(markerSpawnBuffer[i]);
             }
             markerSpawnBuffer.Clear();
+        }
+
+        /// <summary>
+        /// Instantiates the fixed checkpoint model at the center of the
+        /// dedicated spawn checkpoint hall. Mirrors
+        /// <see cref="SpawnStructureMarkers"/>: positions are resolved from the
+        /// cached layout, so they are deterministic and independent of streaming
+        /// order.
+        /// </summary>
+        private void SpawnCheckpoints(Vector3Int column)
+        {
+            if (!checkpointSpawnedColumns.Add(column))
+            {
+                return;
+            }
+            if (jigsawStructureSettings == null
+                || jigsawStructureSettings.Length == 0
+                || checkpointSpawnChance <= 0f)
+            {
+                return;
+            }
+
+            JigsawStructureGenerator.CollectCheckpointRequests(
+                column,
+                densityField != null ? densityField.Seed : worldSeed,
+                jigsawStructureSettings,
+                checkpointSpawnBuffer,
+                checkpointSpawnChance,
+                placementSelection: denseJigsawPlacementSelection);
+            for (int i = 0; i < checkpointSpawnBuffer.Count; i++)
+            {
+                SpawnCheckpoint(checkpointSpawnBuffer[i]);
+            }
+            checkpointSpawnBuffer.Clear();
+        }
+
+        private void SpawnCheckpoint(CheckpointSpawnRequest request)
+        {
+            if (request.Prefab == null)
+            {
+                return;
+            }
+            if (!placedCheckpointVoxels.Add(request.VoxelPosition))
+            {
+                return;
+            }
+            if (!TryResolveCheckpointPosition(request, out Vector3 localPosition))
+            {
+                return;
+            }
+
+            GameObject checkpoint = Instantiate(request.Prefab);
+            checkpoint.name = "Checkpoint";
+            Quaternion prefabRotation = checkpoint.transform.rotation;
+            checkpoint.transform.SetPositionAndRotation(
+                transform.TransformPoint(localPosition),
+                transform.rotation
+                    * Quaternion.Euler(0f, request.Yaw, 0f)
+                    * prefabRotation);
+            checkpoint.transform.SetParent(transform, true);
+
+            Rigidbody body = checkpoint.GetComponent<Rigidbody>();
+            if (body == null)
+            {
+                body = checkpoint.AddComponent<Rigidbody>();
+            }
+            body.isKinematic = true;
+            body.useGravity = false;
+            body.detectCollisions = true;
+
+            Collider[] checkpointColliders =
+                checkpoint.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < checkpointColliders.Length; i++)
+            {
+                if (!checkpointColliders[i].isTrigger)
+                {
+                    checkpointColliders[i].enabled = true;
+                }
+            }
+            if (request.IsSpawnCheckpoint)
+            {
+                primarySpawnCheckpoint = checkpoint;
+                PrimarySpawnCheckpointCreated?.Invoke(checkpoint);
+            }
+        }
+
+        private bool TryResolveCheckpointPosition(
+            CheckpointSpawnRequest request,
+            out Vector3 localPosition)
+        {
+            Vector3Int voxel = request.VoxelPosition;
+            if (!InfiniteVoxelWorld.IsWorldYInBounds(voxel.y))
+            {
+                localPosition = default;
+                return false;
+            }
+
+            // Drop the disc onto the first solid surface below the authored
+            // marker so it rests on the generated hall floor.
+            int spawnY = request.FloorY;
+            for (int step = 0; step <= CheckpointFloorSearchDistance; step++)
+            {
+                int candidateY = voxel.y - step;
+                if (candidateY <= 1)
+                {
+                    break;
+                }
+                if (IsSolidSampleAt(voxel.x, candidateY - 1, voxel.z)
+                    && !IsSolidSampleAt(voxel.x, candidateY, voxel.z))
+                {
+                    spawnY = candidateY;
+                    break;
+                }
+            }
+
+            localPosition = new Vector3(
+                voxel.x + 0.5f,
+                spawnY,
+                voxel.z + 0.5f) * voxelSize;
+            return true;
         }
 
         private void SpawnStructureMarker(StructureSpawnRequest request)
@@ -2258,7 +2671,9 @@ namespace Supernova.MinecraftCaves
 
         private bool HasBuiltAllColumnSections(Vector3Int column)
         {
-            for (int section = 0; section < MeshSectionsPerColumn; section++)
+            for (int section = 0;
+                section < EffectiveMeshSectionsPerColumn;
+                section++)
             {
                 if (!builtMeshes.Contains(
                     new Vector3Int(column.x, section, column.z)))
@@ -2336,7 +2751,7 @@ namespace Supernova.MinecraftCaves
                     attempt++)
                 {
                     NaturalSpawnAttempt candidate =
-                        SampleNaturalSpawnAttempt(random, column);
+                        SampleNaturalSpawnAttemptForWorld(random, column);
                     Vector3 candidateWorldPosition = transform.TransformPoint(
                         new Vector3(
                             candidate.X,
@@ -2429,7 +2844,7 @@ namespace Supernova.MinecraftCaves
                     attempt++)
                 {
                     NaturalSpawnAttempt candidate =
-                        SampleNaturalSpawnAttempt(random, column);
+                        SampleNaturalSpawnAttemptForWorld(random, column);
                     if (!TryFindFlatMonsterSurface(
                         candidate.X,
                         candidate.StartY,
@@ -2585,6 +3000,21 @@ namespace Supernova.MinecraftCaves
             return new System.Random(seed);
         }
 
+        private NaturalSpawnAttempt SampleNaturalSpawnAttemptForWorld(
+            System.Random random,
+            Vector3Int column)
+        {
+            double spawnRoll = random.NextDouble();
+            int x = column.x * VoxelColumnChunkData.Width
+                + random.Next(1, VoxelColumnChunkData.Width - 1);
+            int z = column.z * VoxelColumnChunkData.Depth
+                + random.Next(1, VoxelColumnChunkData.Depth - 1);
+            int startY = random.Next(
+                2,
+                EffectiveWorldHeight - 3);
+            return new NaturalSpawnAttempt(x, z, startY, spawnRoll);
+        }
+
         private static NaturalSpawnAttempt SampleNaturalSpawnAttempt(
             System.Random random,
             Vector3Int column)
@@ -2607,7 +3037,7 @@ namespace Supernova.MinecraftCaves
             return treasureDepthProbability.EvaluateProbability(
                 definition != null ? definition.SpawnChance : 0f,
                 surfaceY,
-                VoxelColumnChunkData.Height);
+                EffectiveWorldHeight);
         }
 
         private float EvaluateMonsterSpawnProbability(
@@ -2617,7 +3047,7 @@ namespace Supernova.MinecraftCaves
             return monsterDepthProbability.EvaluateProbability(
                 definition != null ? definition.SpawnChance : 0f,
                 surfaceY,
-                VoxelColumnChunkData.Height);
+                EffectiveWorldHeight);
         }
 
         private bool IsInsideTreasureSpawnExclusion(Vector3 worldPosition)
@@ -2641,9 +3071,9 @@ namespace Supernova.MinecraftCaves
             out Vector3 localPosition,
             out int surfaceY)
         {
-            for (int offset = 0; offset < VoxelColumnChunkData.Height; offset++)
+            for (int offset = 0; offset < EffectiveWorldHeight; offset++)
             {
-                int y = (startY + offset) % (VoxelColumnChunkData.Height - 2);
+                int y = (startY + offset) % (EffectiveWorldHeight - 2);
                 if (!IsFlatSpawnSurfaceAtY(x, y, z)
                     || !HasSpawnHeadroom(
                         x,
@@ -2672,9 +3102,9 @@ namespace Supernova.MinecraftCaves
             out Vector3 localPosition,
             out int surfaceY)
         {
-            for (int offset = 0; offset < VoxelColumnChunkData.Height; offset++)
+            for (int offset = 0; offset < EffectiveWorldHeight; offset++)
             {
-                int y = (startY + offset) % (VoxelColumnChunkData.Height - 2);
+                int y = (startY + offset) % (EffectiveWorldHeight - 2);
                 if (TryGetFlatMonsterSurfaceAtY(
                     x,
                     y,
@@ -2759,7 +3189,7 @@ namespace Supernova.MinecraftCaves
         private bool IsFlatSpawnSurfaceAtY(int x, int y, int z)
         {
             return y >= 1
-                && y < VoxelColumnChunkData.Height - 1
+                && y < EffectiveWorldHeight - 1
                 && IsSolid(x, y, z)
                 && !IsSolid(x, y + 1, z)
                 && IsSolid(x - 1, y, z)
@@ -2985,6 +3415,41 @@ namespace Supernova.MinecraftCaves
             return runtimeMaterial;
         }
 
+        private Material EnsureTerrainSurfaceMaterial()
+        {
+            if (caveBiomeCatalog != null
+                && caveBiomeCatalog.TerrainSurfaceMaterial != null)
+            {
+                return caveBiomeCatalog.TerrainSurfaceMaterial;
+            }
+            if (runtimeTerrainSurfaceMaterial != null)
+            {
+                return runtimeTerrainSurfaceMaterial;
+            }
+
+            Shader shader = Shader.Find(CaveTerrainShaderNames.GrassTurfLayer);
+            if (shader == null)
+            {
+                if (!terrainSurfaceShaderLookupFailed)
+                {
+                    Debug.LogWarning(
+                        "Grass turf layer shader is unavailable; terrain will "
+                        + "render without the biome surface layer.",
+                        this);
+                    terrainSurfaceShaderLookupFailed = true;
+                }
+                return null;
+            }
+
+            runtimeTerrainSurfaceMaterial = new Material(shader)
+            {
+                name = "Cave Grass Turf Layer",
+                hideFlags = HideFlags.DontSave,
+                enableInstancing = true,
+            };
+            return runtimeTerrainSurfaceMaterial;
+        }
+
         private void ApplyPunctualLightFalloffParameters()
         {
             Shader.SetGlobalVector(
@@ -3130,6 +3595,13 @@ namespace Supernova.MinecraftCaves
                 DestroyGeneratedObject(mesh);
                 chunkMeshes.Remove(coordinate);
             }
+            if (terrainSurfaceMeshes.TryGetValue(
+                coordinate,
+                out Mesh terrainSurfaceMesh))
+            {
+                DestroyGeneratedObject(terrainSurfaceMesh);
+                terrainSurfaceMeshes.Remove(coordinate);
+            }
             if (forgetBuildState)
             {
                 builtMeshes.Remove(coordinate);
@@ -3147,6 +3619,7 @@ namespace Supernova.MinecraftCaves
                 int readyChunkCount = requiredChunks.Count;
                 renderingReadyLogged = true;
                 generationStage = MinecraftCaveGenerationStage.Ready;
+                FinalizeReadyColumns();
                 ReleaseViewerAtSpawn();
                 initialLoadComplete = true;
                 initialLoadCompletedAtUnscaledTime = Time.unscaledTime;
@@ -3162,6 +3635,14 @@ namespace Supernova.MinecraftCaves
                 {
                     RefreshRequiredChunks();
                 }
+            }
+        }
+
+        private void FinalizeReadyColumns()
+        {
+            foreach (Vector3Int column in requiredChunks)
+            {
+                FinalizeColumnPhysicsIfReady(column);
             }
         }
 
@@ -3225,13 +3706,14 @@ namespace Supernova.MinecraftCaves
                     generationMode == MinecraftWorldGenerationMode.Superflat;
                 if (!isSuperflat)
                 {
-                    if (!fixedPreviewArea)
+                    if (!UsesFixedGenerationArea)
                     {
                         PrepareSpawnPointSceneStructure();
                         writtenSamples = spawnPointStructureRule.Apply(world, spawnVoxel);
                     }
                     restoredBedrockSamples = RestoreBoundaryBedrock();
-                    if (spawnPointSceneStructure != null)
+                    if (spawnPointSceneStructure != null
+                        && !UsesExternalDenseLandingCell)
                     {
                         clearedSamples = spawnPointSceneStructure.CarveTerrainClearance(
                             world,
@@ -3280,6 +3762,16 @@ namespace Supernova.MinecraftCaves
             }
 
             int restored = 0;
+            int minimumChunkX = int.MaxValue;
+            int maximumChunkX = int.MinValue;
+            int minimumChunkZ = int.MaxValue;
+            int maximumChunkZ = int.MinValue;
+            TryGetFiniteRegionChunkBounds(
+                out minimumChunkX,
+                out maximumChunkX,
+                out minimumChunkZ,
+                out maximumChunkZ);
+
             foreach (Vector3Int coordinate in requiredChunks)
             {
                 if (!world.TryGetChunk(coordinate, out InfiniteVoxelChunk chunk))
@@ -3299,11 +3791,99 @@ namespace Supernova.MinecraftCaves
                             bedrockType);
                         chunk.Data.SetSample(
                             x,
-                            VoxelColumnChunkData.Height - 1,
+                            EffectiveWorldHeight - 1,
                             z,
                             BoundaryBedrockDensity,
                             bedrockType);
                         restored += 2;
+                    }
+                }
+
+                if (IsFiniteDenseRegion)
+                {
+                    restored += RestoreFiniteRegionSideBedrock(
+                        chunk.Data,
+                        coordinate,
+                        minimumChunkX,
+                        maximumChunkX,
+                        minimumChunkZ,
+                        maximumChunkZ);
+                }
+            }
+            return restored;
+        }
+
+        private bool TryGetFiniteRegionChunkBounds(
+            out int minimumChunkX,
+            out int maximumChunkX,
+            out int minimumChunkZ,
+            out int maximumChunkZ)
+        {
+            minimumChunkX = 0;
+            maximumChunkX = 0;
+            minimumChunkZ = 0;
+            maximumChunkZ = 0;
+            if (!IsFiniteDenseRegion)
+            {
+                return false;
+            }
+
+            int columns = denseJigsawRegionConfigurationOverride
+                .RegionColumnsPerSide;
+            minimumChunkX = -(columns / 2);
+            maximumChunkX = minimumChunkX + columns - 1;
+            minimumChunkZ = minimumChunkX;
+            maximumChunkZ = maximumChunkX;
+            return true;
+        }
+
+        private int RestoreFiniteRegionSideBedrock(
+            VoxelColumnChunkData data,
+            Vector3Int coordinate,
+            int minimumChunkX,
+            int maximumChunkX,
+            int minimumChunkZ,
+            int maximumChunkZ)
+        {
+            int restored = 0;
+            if (coordinate.x == minimumChunkX
+                || coordinate.x == maximumChunkX)
+            {
+                int x = coordinate.x == minimumChunkX
+                    ? 0
+                    : VoxelColumnChunkData.Width - 1;
+                for (int y = 0; y < EffectiveWorldHeight; y++)
+                {
+                    for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
+                    {
+                        data.SetSample(
+                            x,
+                            y,
+                            z,
+                            BoundaryBedrockDensity,
+                            bedrockType);
+                        restored++;
+                    }
+                }
+            }
+
+            if (coordinate.z == minimumChunkZ
+                || coordinate.z == maximumChunkZ)
+            {
+                int z = coordinate.z == minimumChunkZ
+                    ? 0
+                    : VoxelColumnChunkData.Depth - 1;
+                for (int y = 0; y < EffectiveWorldHeight; y++)
+                {
+                    for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                    {
+                        data.SetSample(
+                            x,
+                            y,
+                            z,
+                            BoundaryBedrockDensity,
+                            bedrockType);
+                        restored++;
                     }
                 }
             }
@@ -3487,7 +4067,7 @@ namespace Supernova.MinecraftCaves
             Vector3 up = transform.up;
             float clearance = GetGroundClearance();
             float rayStartOffset = Mathf.Max(voxelSize * 0.25f, clearance);
-            float rayDistance = voxelSize * VoxelColumnChunkData.Height;
+            float rayDistance = voxelSize * EffectiveWorldHeight;
 
             Physics.SyncTransforms();
             RaycastHit[] hits = Physics.RaycastAll(
@@ -3521,7 +4101,7 @@ namespace Supernova.MinecraftCaves
             int sampleX = Mathf.RoundToInt(localSpawn.x);
             int sampleY = Mathf.FloorToInt(localSpawn.y);
             int sampleZ = Mathf.RoundToInt(localSpawn.z);
-            int maximumSamples = VoxelColumnChunkData.Height;
+            int maximumSamples = EffectiveWorldHeight;
             for (int offset = 0; offset < maximumSamples; offset++)
             {
                 int airY = sampleY - offset;
@@ -3572,7 +4152,7 @@ namespace Supernova.MinecraftCaves
             {
                 bool complete = true;
                 for (int section = 0;
-                    section < MeshSectionsPerColumn;
+                    section < EffectiveMeshSectionsPerColumn;
                     section++)
                 {
                     if (!builtMeshes.Contains(new Vector3Int(
@@ -3595,7 +4175,15 @@ namespace Supernova.MinecraftCaves
         private Vector3Int FindCaveSpawnVoxel()
         {
             var random = new System.Random(worldSeed ^ 0x51F15EED);
-            int middleSpawnY = (LowestSpawnY + HighestSpawnY) / 2;
+            int lowestSpawnY = IsFiniteDenseRegion
+                ? Math.Max(4, EffectiveWorldHeight / 4)
+                : LowestSpawnY;
+            int highestSpawnY = IsFiniteDenseRegion
+                ? Math.Min(
+                    EffectiveWorldHeight - 4,
+                    EffectiveWorldHeight * 3 / 4)
+                : HighestSpawnY;
+            int middleSpawnY = (lowestSpawnY + highestSpawnY) / 2;
             var best = new Vector3Int(0, middleSpawnY, 0);
             float bestDensity = float.PositiveInfinity;
             for (int attempt = 0; attempt < 2400; attempt++)
@@ -3604,7 +4192,7 @@ namespace Supernova.MinecraftCaves
                     ? best
                     : new Vector3Int(
                         random.Next(-72, 73),
-                        random.Next(LowestSpawnY, HighestSpawnY + 1),
+                        random.Next(lowestSpawnY, highestSpawnY + 1),
                         random.Next(-72, 73));
                 float density = densityField.SampleFeatureDensity(
                     point,
@@ -3663,10 +4251,12 @@ namespace Supernova.MinecraftCaves
             VoxelTypeId boundaryType,
             MinecraftOreFeatureSettings[] features,
             JigsawStructureFeatureSettings[] jigsaws,
+            JigsawPlacementSelection jigsawPlacementSelection,
             MinecraftStructureFeatureSettings[] structures,
             DepthProbabilityProfile oreDepthProbability,
             MinecraftWorldGenerationMode mode,
             int superflatHeight,
+            int effectiveWorldHeight,
             float sampleIsoLevel,
             CancellationToken token)
         {
@@ -3678,6 +4268,7 @@ namespace Supernova.MinecraftCaves
                     coordinate,
                     solidType,
                     superflatHeight,
+                    effectiveWorldHeight,
                     token);
                 densities = superflat.Densities;
                 types = superflat.Types;
@@ -3687,6 +4278,7 @@ namespace Supernova.MinecraftCaves
                 densities = MinecraftCaveDensityInterpolator.SampleColumn(
                     coordinate,
                     field,
+                    effectiveWorldHeight,
                     token);
                 types = new VoxelTypeId[VoxelColumnChunkData.VoxelCount];
                 for (int index = 0; index < densities.Length; index++)
@@ -3696,15 +4288,22 @@ namespace Supernova.MinecraftCaves
                         : VoxelTypeId.Air;
                 }
 
-                ApplyBoundaryBedrock(densities, types, boundaryType);
+                ApplyBoundaryBedrockWithinHeight(
+                    densities,
+                    types,
+                    boundaryType,
+                    effectiveWorldHeight);
                 MinecraftOreFeatureGenerator.GenerateColumn(
                     coordinate,
                     densities,
                     types,
                     field.Seed,
                     features,
-                    (x, y, z) => IsBoundaryBedrockY(y)
-                        || !InfiniteVoxelWorld.IsWorldYInBounds(y)
+                    (x, y, z) => IsBoundaryBedrockY(
+                            y,
+                            effectiveWorldHeight)
+                        || y < 0
+                        || y >= effectiveWorldHeight
                             ? BoundaryBedrockDensity
                             : field.SampleFeatureDensity(
                                 new Vector3(x, y, z),
@@ -3720,7 +4319,8 @@ namespace Supernova.MinecraftCaves
                 jigsaws,
                 sampleIsoLevel + 1f,
                 sampleIsoLevel - 1f,
-                token);
+                token,
+                jigsawPlacementSelection);
             MinecraftStructureFeatureGenerator.GenerateColumn(
                 coordinate,
                 densities,
@@ -3730,9 +4330,17 @@ namespace Supernova.MinecraftCaves
                 sampleIsoLevel + 1f,
                 sampleIsoLevel - 1f,
                 token);
+            ClearSamplesAboveHeight(
+                densities,
+                types,
+                effectiveWorldHeight);
             if (mode != MinecraftWorldGenerationMode.Superflat)
             {
-                ApplyBoundaryBedrock(densities, types, boundaryType);
+                ApplyBoundaryBedrockWithinHeight(
+                    densities,
+                    types,
+                    boundaryType,
+                    effectiveWorldHeight);
             }
             return new ChunkGenerationResult(coordinate, densities, types);
         }
@@ -3741,15 +4349,21 @@ namespace Supernova.MinecraftCaves
             Vector3Int coordinate,
             VoxelTypeId solidType,
             int height,
+            int effectiveWorldHeight,
             CancellationToken token)
         {
             var densities = new float[VoxelColumnChunkData.VoxelCount];
             var types = new VoxelTypeId[VoxelColumnChunkData.VoxelCount];
+            for (int index = 0; index < densities.Length; index++)
+            {
+                densities[index] = -1f;
+                types[index] = VoxelTypeId.Air;
+            }
             int clampedHeight = Mathf.Clamp(
                 height,
                 1,
-                VoxelColumnChunkData.Height - 1);
-            for (int y = 0; y < VoxelColumnChunkData.Height; y++)
+                effectiveWorldHeight - 1);
+            for (int y = 0; y < effectiveWorldHeight; y++)
             {
                 token.ThrowIfCancellationRequested();
                 bool isStone = y < clampedHeight;
@@ -3773,6 +4387,19 @@ namespace Supernova.MinecraftCaves
             VoxelTypeId[] types,
             VoxelTypeId boundaryType)
         {
+            return ApplyBoundaryBedrockWithinHeight(
+                densities,
+                types,
+                boundaryType,
+                VoxelColumnChunkData.Height);
+        }
+
+        private static int ApplyBoundaryBedrockWithinHeight(
+            float[] densities,
+            VoxelTypeId[] types,
+            VoxelTypeId boundaryType,
+            int effectiveWorldHeight)
+        {
             int written = 0;
             for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
             {
@@ -3781,7 +4408,7 @@ namespace Supernova.MinecraftCaves
                     int bottom = VoxelColumnChunkData.ToIndex(x, 0, z);
                     int top = VoxelColumnChunkData.ToIndex(
                         x,
-                        VoxelColumnChunkData.Height - 1,
+                        effectiveWorldHeight - 1,
                         z);
                     densities[bottom] = BoundaryBedrockDensity;
                     types[bottom] = boundaryType;
@@ -3793,9 +4420,32 @@ namespace Supernova.MinecraftCaves
             return written;
         }
 
-        private static bool IsBoundaryBedrockY(int y)
+        private static bool IsBoundaryBedrockY(
+            int y,
+            int effectiveWorldHeight)
         {
-            return y == 0 || y == VoxelColumnChunkData.Height - 1;
+            return y == 0 || y == effectiveWorldHeight - 1;
+        }
+
+        private static void ClearSamplesAboveHeight(
+            float[] densities,
+            VoxelTypeId[] types,
+            int effectiveWorldHeight)
+        {
+            for (int z = 0; z < VoxelColumnChunkData.Depth; z++)
+            {
+                for (int y = effectiveWorldHeight;
+                    y < VoxelColumnChunkData.Height;
+                    y++)
+                {
+                    for (int x = 0; x < VoxelColumnChunkData.Width; x++)
+                    {
+                        int index = VoxelColumnChunkData.ToIndex(x, y, z);
+                        densities[index] = -1f;
+                        types[index] = VoxelTypeId.Air;
+                    }
+                }
+            }
         }
 
         private void SnapshotVoxelGenerationSettings()
@@ -3832,6 +4482,15 @@ namespace Supernova.MinecraftCaves
                     }
                 }
             }
+            if (IsFiniteDenseRegion)
+            {
+                for (int i = 0; i < snapshots.Count; i++)
+                {
+                    snapshots[i] = ClampOreFeatureHeight(
+                        snapshots[i],
+                        EffectiveWorldHeight);
+                }
+            }
             oreFeatureSettings = snapshots.ToArray();
 
             var structureSnapshots =
@@ -3862,6 +4521,52 @@ namespace Supernova.MinecraftCaves
             }
             structureFeatureSettings = structureSnapshots.ToArray();
 
+            if (IsFiniteDenseRegion)
+            {
+                if (!DenseJigsawFeatureMixer.TryBuild(
+                        denseJigsawRegionConfigurationOverride,
+                        spawnCheckpointJigsawFeature,
+                        out denseJigsawFeature,
+                        out string denseError))
+                {
+                    throw new InvalidOperationException(denseError);
+                }
+
+                var denseSettings =
+                    new List<JigsawStructureFeatureSettings>
+                    {
+                        denseJigsawFeature.Settings,
+                    };
+                if (spawnCheckpointJigsawFeature != null)
+                {
+                    if (spawnCheckpointJigsawFeature.TryCreateSettings(
+                        out JigsawStructureFeatureSettings checkpointFamily,
+                        out string checkpointError))
+                    {
+                        if (DenseJigsawFeatureMixer.TryBuildFixedOriginFeature(
+                            denseJigsawFeature,
+                            checkpointFamily,
+                            out JigsawStructureFeatureSettings fixedCheckpoint,
+                            out string fixedCheckpointError))
+                        {
+                            denseSettings.Add(fixedCheckpoint);
+                        }
+                        else if (!string.IsNullOrEmpty(fixedCheckpointError))
+                        {
+                            Debug.LogWarning(
+                                fixedCheckpointError,
+                                spawnCheckpointJigsawFeature);
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(checkpointError))
+                    {
+                        Debug.LogWarning(checkpointError, spawnCheckpointJigsawFeature);
+                    }
+                }
+                jigsawStructureSettings = denseSettings.ToArray();
+                return;
+            }
+
             var jigsawSnapshots =
                 new List<JigsawStructureFeatureSettings>();
             if (jigsawStructures != null)
@@ -3889,6 +4594,27 @@ namespace Supernova.MinecraftCaves
             jigsawStructureSettings = jigsawSnapshots.ToArray();
         }
 
+        private static MinecraftOreFeatureSettings ClampOreFeatureHeight(
+            MinecraftOreFeatureSettings source,
+            int effectiveWorldHeight)
+        {
+            int maximumOreY = Math.Max(1, effectiveWorldHeight - 2);
+            int minimum = Mathf.Clamp(source.MinHeight, 1, maximumOreY);
+            int maximum = Mathf.Clamp(source.MaxHeight, minimum, maximumOreY);
+            return new MinecraftOreFeatureSettings(
+                source.ResultType,
+                source.ReplaceableTypes,
+                source.SeedSalt,
+                source.AttemptsPerRegion,
+                source.PlacementChance,
+                source.Distribution,
+                minimum,
+                maximum,
+                Math.Min(source.Plateau, maximum - minimum),
+                source.Size,
+                source.DiscardChanceOnAirExposure);
+        }
+
         private static Vector3Int[] BuildRequiredOffsets()
         {
             return BuildOffsets(GenerationRadiusInChunks);
@@ -3911,6 +4637,45 @@ namespace Supernova.MinecraftCaves
             }
             offsets.Sort((left, right) => left.sqrMagnitude.CompareTo(right.sqrMagnitude));
             return offsets.ToArray();
+        }
+
+        private static Vector3Int[] BuildSquareOffsets(int columnsPerSide)
+        {
+            int clampedColumns = Math.Max(1, columnsPerSide);
+            int minimum = -(clampedColumns / 2);
+            int maximum = minimum + clampedColumns - 1;
+            var offsets = new List<Vector3Int>(
+                clampedColumns * clampedColumns);
+            for (int z = minimum; z <= maximum; z++)
+            {
+                for (int x = minimum; x <= maximum; x++)
+                {
+                    offsets.Add(new Vector3Int(x, 0, z));
+                }
+            }
+            offsets.Sort(
+                (left, right) => left.sqrMagnitude.CompareTo(
+                    right.sqrMagnitude));
+            return offsets.ToArray();
+        }
+
+        private IReadOnlyList<Vector3Int> ResolveConfiguredDenseRegionOffsets()
+        {
+            if (!IsFiniteDenseRegion)
+            {
+                return DenseRegionOffsets;
+            }
+
+            int columns = denseJigsawRegionConfigurationOverride
+                .RegionColumnsPerSide;
+            if (configuredDenseRegionOffsets == null
+                || configuredDenseRegionColumns != columns)
+            {
+                configuredDenseRegionOffsets = Array.AsReadOnly(
+                    BuildSquareOffsets(columns));
+                configuredDenseRegionColumns = columns;
+            }
+            return configuredDenseRegionOffsets;
         }
 
         private void OnDisable()
@@ -3984,6 +4749,10 @@ namespace Supernova.MinecraftCaves
             activeMarkerMonsters.Clear();
             markerSpawnedColumns.Clear();
             markerSpawnBuffer.Clear();
+            checkpointSpawnedColumns.Clear();
+            placedCheckpointVoxels.Clear();
+            checkpointSpawnBuffer.Clear();
+            primarySpawnCheckpoint = null;
             monsterSpawnAttemptRounds.Clear();
             pendingMonsterSpawnGroups.Clear();
             activePendingMonsterSpawnGroup = null;
@@ -4008,6 +4777,18 @@ namespace Supernova.MinecraftCaves
             {
                 DestroyChunkObject(coordinate, true);
             }
+            foreach (Mesh terrainSurfaceMesh in terrainSurfaceMeshes.Values)
+            {
+                DestroyGeneratedObject(terrainSurfaceMesh);
+            }
+            terrainSurfaceMeshes.Clear();
+            gameplayCarvedVoxels.Clear();
+            if (runtimeTerrainSurfaceMaterial != null)
+            {
+                DestroyGeneratedObject(runtimeTerrainSurfaceMaterial);
+                runtimeTerrainSurfaceMaterial = null;
+            }
+            terrainSurfaceShaderLookupFailed = false;
             if (runtimeMaterial != null)
             {
                 DestroyGeneratedObject(runtimeMaterial);
@@ -4035,6 +4816,8 @@ namespace Supernova.MinecraftCaves
                 Array.Empty<MinecraftStructureFeatureSettings>();
             jigsawStructureSettings =
                 Array.Empty<JigsawStructureFeatureSettings>();
+            denseJigsawFeature = default;
+            denseJigsawPlacementSelection = null;
             hasViewerChunk = false;
 
             structurePassApplied = false;

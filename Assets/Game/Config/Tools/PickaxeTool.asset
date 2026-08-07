@@ -21,8 +21,8 @@ MonoBehaviour:
     type: 3}
   heldModelMountStrategy: 0
   allowMovementWhileUsing: 1
-  actionTriggerDelay: 0.42
-  actionCyclePeriod: 1.06
+  actionTriggerDelay: 0.315
+  actionCyclePeriod: 0.795
   actionIsPeriodic: 1
   projectilePrefab: {fileID: 0}
   throwSpeed: 8
@@ -34,8 +34,19 @@ MonoBehaviour:
   initialAmmunition: 120
   muzzleFlashPrefab: {fileID: 0}
   muzzleFlashLifetime: 0.75
-  miningPower: 1
-  miningEvenHitMultiplier: 4
+  grabHookProjectileModelPrefab: {fileID: 0}
+  grabHookLaunchSpeed: 36
+  grabHookMaximumLength: 30
+  grabHookCollisionRadius: 0.12
+  grabHookRetractSpeed: 45
+  grabHookAimPredictionDuration: 3
+  grabHookAimPredictionStep: 0.05
+  grabHookArrivalDistance: 1.25
+  grabHookPullAcceleration: 32
+  grabHookMaximumPullSpeed: 18
+  grabHookRopeWidth: 0.035
+  miningPower: 4
+  miningEvenHitMultiplier: 3
   miningPropagationDivisor: 2
   miningRadius: 0.55
   miningDepth: 0.75

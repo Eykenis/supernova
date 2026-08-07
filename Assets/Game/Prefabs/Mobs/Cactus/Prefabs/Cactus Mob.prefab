@@ -141,9 +141,11 @@ MonoBehaviour:
   shapeAuthoring: {fileID: 0}
   motor: {fileID: 0}
   simulationDistance: 160
-  pursuitDistance: 32
+  pursuitDistance: 64
+  pursuitRetentionDistance: 96
   attackDistance: 2
   wanderRadius: 32
+  wanderLegRadius: 8
   navigation:
     safeFallHeight: 3
     maximumJumpHeight: 1
@@ -151,11 +153,17 @@ MonoBehaviour:
     maximumTraversalHorizontalDistance: 3
     maximumSingleMoveCost: 200
     maximumExpandedNodes: 512
-  pursuitReplanInterval: 1
+    maximumSmoothingLookahead: 16
   wanderRetryInterval: 8
   wanderVerticalSearch: 8
   solidDensityThreshold: 0
   arrivalToleranceInVoxels: 0.999
+  actualMovementThreshold: 0.08
+  stuckSampleInterval: 0.5
+  stuckMinimumProgressInVoxels: 0.15
+  stuckSamplesBeforeRecovery: 2
+  stuckRecoveryDuration: 2
+  stuckSteeringAngle: 28
   maximumHealth: 90
   vitals:
     maximumHealth: 100

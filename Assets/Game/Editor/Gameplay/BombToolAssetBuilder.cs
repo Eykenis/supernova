@@ -14,7 +14,7 @@ namespace Supernova.Editor.Gameplay
     public static class BombToolAssetBuilder
     {
         private const string SessionKey =
-            "Supernova.BombToolAssetBuilder.Ensured.V3";
+            "Supernova.BombToolAssetBuilder.Ensured.V4";
 
         [InitializeOnLoadMethod]
         private static void ScheduleEnsureConfiguration()
@@ -60,12 +60,27 @@ namespace Supernova.Editor.Gameplay
         private static PlayerToolDefinition EnsureConfiguration(bool rebuild)
         {
             EnsureAssetFolder(ProjectAssetPaths.Folders.BombPrefabs);
+            EnsureAssetFolder(ProjectAssetPaths.Folders.ExplosionEffectPrefabs);
+            GameObject explosionEffect =
+                AssetDatabase.LoadAssetAtPath<GameObject>(
+                    ProjectAssetPaths.Prefabs.BombExplosionEffect);
+            if (explosionEffect == null)
+            {
+                throw new InvalidOperationException(
+                    "Cannot configure Bomb because its game-owned explosion "
+                    + "effect is missing: "
+                    + ProjectAssetPaths.Prefabs.BombExplosionEffect);
+            }
             Material material = EnsureBombMaterial();
             GameObject heldModel = EnsureHeldModel(material, rebuild);
-            BombProjectile projectile = EnsureProjectile(material, rebuild);
+            BombProjectile projectile = EnsureProjectile(
+                material,
+                explosionEffect,
+                rebuild);
             PlayerToolDefinition definition = EnsureDefinition(
                 heldModel,
-                projectile);
+                projectile,
+                explosionEffect);
             EnsurePlayerRegistration(definition);
             AssetDatabase.SaveAssets();
             return definition;
@@ -131,6 +146,7 @@ namespace Supernova.Editor.Gameplay
 
         private static BombProjectile EnsureProjectile(
             Material material,
+            GameObject explosionEffect,
             bool rebuild)
         {
             GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(
@@ -140,7 +156,7 @@ namespace Supernova.Editor.Gameplay
                 : null;
             if (!rebuild
                 && existingProjectile != null
-                && existingProjectile.ConfigurationVersion >= 3)
+                && existingProjectile.ConfigurationVersion >= 4)
             {
                 return existingProjectile;
             }
@@ -170,7 +186,12 @@ namespace Supernova.Editor.Gameplay
                 SetFloat(serialized, "propagationDivisor", 2f);
                 SetFloat(serialized, "entityExplosionImpulse", 240f);
                 SetFloat(serialized, "entityUpwardModifier", 0.6f);
-                SetInteger(serialized, "configurationVersion", 3);
+                SetReference(
+                    serialized,
+                    "explosionEffectPrefab",
+                    explosionEffect);
+                SetFloat(serialized, "explosionEffectLifetime", 3f);
+                SetInteger(serialized, "configurationVersion", 4);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
 
                 GameObject saved = PrefabUtility.SaveAsPrefabAsset(
@@ -215,9 +236,12 @@ namespace Supernova.Editor.Gameplay
 
         private static PlayerToolDefinition EnsureDefinition(
             GameObject heldModel,
-            BombProjectile projectile)
+            BombProjectile projectile,
+            GameObject explosionEffect)
         {
-            if (heldModel == null || projectile == null)
+            if (heldModel == null
+                || projectile == null
+                || explosionEffect == null)
             {
                 throw new InvalidOperationException(
                     "Cannot configure Bomb because a generated prefab is missing.");
@@ -262,6 +286,11 @@ namespace Supernova.Editor.Gameplay
             SetReference(serialized, "projectilePrefab", null);
             SetReference(serialized, "bombProjectilePrefab", projectile);
             SetFloat(serialized, "bombEntityExplosionImpulse", 240f);
+            SetReference(
+                serialized,
+                "bombExplosionEffectPrefab",
+                explosionEffect);
+            SetFloat(serialized, "bombExplosionEffectLifetime", 3f);
             SetFloat(serialized, "throwSpeed", 9f);
             SetFloat(serialized, "upwardThrowSpeed", 2f);
             SetFloat(serialized, "throwSpinSpeed", 7f);

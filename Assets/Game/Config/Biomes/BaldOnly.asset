@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 559776e75b145ac449cf1d682d3f1871, type: 3}
+  m_Name: BaldOnly
+  m_EditorClassIdentifier: 
+  noiseFrequency: 0.008
+  seedSalt: 15485863
+  terrainSurfaceMaterial: {fileID: 2100000, guid: feadd73792c83bf40845be3b1979e496,
+    type: 2}
+  fallbackBiome: {fileID: 11400000, guid: b904e0a3fa3aac14f937bf862630a52e, type: 2}
+  selections: []

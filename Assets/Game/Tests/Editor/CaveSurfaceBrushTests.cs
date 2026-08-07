@@ -208,6 +208,83 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void CarvedVoxel_EmitsNoGrassOnNewlyExposedSurface()
+        {
+            GameObject prefab = new GameObject("Grass Test Prefab");
+            VoxelTypeDefinition stoneDefinition = CreateStoneDefinition();
+            CaveSurfaceBrushDefinition brush = CreateBrush(
+                prefab,
+                stoneDefinition,
+                CaveSurfaceOrientation.Upward,
+                8f);
+            CaveBiomeDefinition grassy = CreateBiome("grassy", brush);
+            CaveBiomeCatalog catalog = CreateCatalog(grassy);
+            InfiniteVoxelWorld world = CreateHorizontalSurface(
+                stoneDefinition.TypeId,
+                solidBelow: true);
+            var carvedVoxel = new Vector3Int(8, 12, 8);
+            world.SetVoxel(
+                carvedVoxel.x,
+                carvedVoxel.y,
+                carvedVoxel.z,
+                -1f,
+                VoxelTypeId.Air);
+            VoxelMeshData mesh = MarchingCubesMesher.BuildColumnSection(
+                world,
+                Vector3Int.zero,
+                0,
+                MinecraftCaveInfiniteWorld.MeshSectionHeight,
+                0f,
+                1f,
+                MarchingCubesVertexPlacement.EdgeMidpoint,
+                stoneDefinition.TypeId,
+                stoneDefinition.TypeId);
+            var carvedVoxels = new HashSet<Vector3Int> { carvedVoxel };
+
+            try
+            {
+                List<CaveSurfacePlacement> unfiltered =
+                    CaveSurfaceBrushGenerator.Generate(
+                        mesh,
+                        world,
+                        Vector3Int.zero,
+                        0,
+                        1f,
+                        0f,
+                        42,
+                        catalog);
+                List<CaveSurfacePlacement> filtered =
+                    CaveSurfaceBrushGenerator.Generate(
+                        mesh,
+                        world,
+                        Vector3Int.zero,
+                        0,
+                        1f,
+                        0f,
+                        42,
+                        catalog,
+                        carvedVoxels);
+
+                Assert.That(
+                    HasPlacementNearCarvedVoxel(unfiltered, carvedVoxels),
+                    Is.True,
+                    "The fixture must attempt grass on the disturbed surface.");
+                Assert.That(
+                    HasPlacementNearCarvedVoxel(filtered, carvedVoxels),
+                    Is.False);
+                Assert.That(filtered.Count, Is.LessThan(unfiltered.Count));
+            }
+            finally
+            {
+                Object.DestroyImmediate(catalog);
+                Object.DestroyImmediate(grassy);
+                Object.DestroyImmediate(brush);
+                Object.DestroyImmediate(stoneDefinition);
+                Object.DestroyImmediate(prefab);
+            }
+        }
+
+        [Test]
         public void DefaultAssets_ConfigureGrassyAndBaldBiomes()
         {
             MinecraftWorldGenerationConfiguration world =
@@ -231,6 +308,10 @@ namespace Supernova.Tests
             Assert.That(catalog, Is.Not.Null);
             Assert.That(world.CaveBiomeCatalog, Is.SameAs(catalog));
             Assert.That(catalog.FallbackBiome, Is.SameAs(bald));
+            Assert.That(catalog.TerrainSurfaceMaterial, Is.Not.Null);
+            Assert.That(
+                catalog.TerrainSurfaceMaterial.shader.name,
+                Is.EqualTo(CaveTerrainShaderNames.GrassTurfLayer));
             Assert.That(bald.SurfaceBrushes, Is.Empty);
             Assert.That(grassy.SurfaceBrushes, Is.EquivalentTo(new[] { grass, vine }));
             Assert.That(grass.Orientation, Is.EqualTo(CaveSurfaceOrientation.Upward));
@@ -279,6 +360,15 @@ namespace Supernova.Tests
             Assert.That(
                 grassy.VegetationRootColor.grayscale,
                 Is.LessThan(grassy.VegetationTipColor.grayscale));
+            Assert.That(
+                grassy.TerrainSurfaceColor.g,
+                Is.GreaterThan(grassy.TerrainSurfaceColor.r));
+            Assert.That(
+                grassy.TerrainSurfaceColor.a,
+                Is.GreaterThan(0f));
+            Assert.That(grassy.TerrainSurfaceEdgeFade, Is.GreaterThan(0f));
+            Assert.That(grassy.TerrainSurfaceOffset, Is.GreaterThan(0f));
+            Assert.That(bald.TerrainSurfaceColor.a, Is.Zero);
 
             Assert.That(
                 vine.RenderMode,
@@ -454,6 +544,22 @@ namespace Supernova.Tests
                 }
             }
             return world;
+        }
+
+        private static bool HasPlacementNearCarvedVoxel(
+            IReadOnlyList<CaveSurfacePlacement> placements,
+            ISet<Vector3Int> carvedVoxels)
+        {
+            for (int i = 0; i < placements.Count; i++)
+            {
+                if (CaveSurfaceDisturbance.IsNearCarvedVoxel(
+                    placements[i].LocalPosition,
+                    carvedVoxels))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

@@ -84,6 +84,27 @@ namespace Supernova.MinecraftCaves.Creatures
         private int lastJumpCommandId = int.MinValue;
 
         public bool HasCommand => hasCommand;
+        public float MaximumHorizontalSpeed =>
+            Mathf.Max(0.01f, maximumHorizontalSpeed);
+        public float HorizontalSpeed
+        {
+            get
+            {
+                if (body == null)
+                {
+                    return 0f;
+                }
+                Vector3 up = hasCommand
+                    && command.WorldUp.sqrMagnitude > 0.5f
+                        ? command.WorldUp
+                        : hasFacing && facingUp.sqrMagnitude > 0.5f
+                            ? facingUp
+                            : Vector3.up;
+                return Vector3.ProjectOnPlane(body.velocity, up).magnitude;
+            }
+        }
+        public float NormalizedHorizontalSpeed =>
+            HorizontalSpeed / MaximumHorizontalSpeed;
 
         private void Reset()
         {

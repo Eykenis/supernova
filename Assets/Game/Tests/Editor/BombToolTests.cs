@@ -3,6 +3,7 @@ using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using Supernova.MinecraftCaves;
+using Supernova.MinecraftCaves.Creatures;
 using Supernova.Shop;
 using Supernova.Voxels;
 using UnityEditor;
@@ -113,6 +114,8 @@ namespace Supernova.Tests
             Assert.That(definition.HeldModelPrefab, Is.Not.Null);
             Assert.That(definition.BombProjectilePrefab, Is.Not.Null);
             Assert.That(definition.BombEntityExplosionImpulse, Is.EqualTo(240f));
+            Assert.That(definition.BombExplosionEffectPrefab, Is.Not.Null);
+            Assert.That(definition.BombExplosionEffectLifetime, Is.EqualTo(3f));
             Assert.That(definition.ThrowSpeed, Is.GreaterThan(0f));
             Assert.That(definition.ActionIsPeriodic, Is.False);
             Assert.That(PlayerEconomy.IsItemOwned(PlayerInventoryItem.Bomb), Is.True);
@@ -131,6 +134,24 @@ namespace Supernova.Tests
             Assert.That(projectile.PropagationDivisor, Is.EqualTo(2f));
             Assert.That(projectile.EntityExplosionImpulse, Is.EqualTo(240f));
             Assert.That(projectile.EntityUpwardModifier, Is.EqualTo(0.6f));
+            Assert.That(
+                projectile.ExplosionEffectPrefab,
+                Is.SameAs(definition.BombExplosionEffectPrefab));
+            Assert.That(projectile.ExplosionEffectLifetime, Is.EqualTo(3f));
+            Assert.That(projectile.ConfigurationVersion, Is.EqualTo(4));
+
+            string effectPath = AssetDatabase.GetAssetPath(
+                definition.BombExplosionEffectPrefab).Replace('\\', '/');
+            StringAssert.StartsWith("Assets/Game/", effectPath);
+            string[] dependencies = AssetDatabase.GetDependencies(
+                effectPath,
+                true);
+            for (int i = 0; i < dependencies.Length; i++)
+            {
+                StringAssert.DoesNotStartWith(
+                    "Assets/3rd/",
+                    dependencies[i].Replace('\\', '/'));
+            }
         }
 
         [Test]
@@ -198,6 +219,92 @@ namespace Supernova.Tests
             Assert.That(expectedImpulse.x, Is.GreaterThan(100f));
             Assert.That(expectedImpulse.y, Is.GreaterThan(0f));
             Assert.That(distantBody.velocity, Is.EqualTo(Vector3.zero));
+        }
+
+        [Test]
+        public void BombProjectile_ImmediatelyDamagesNearbyTreasureOnce()
+        {
+            Vector3 explosionCenter = new Vector3(1100f, 1000f, 1000f);
+            BombProjectile bomb = CreateBomb(explosionCenter);
+
+            var treasureObject = new GameObject("Nearby Treasure");
+            objects.Add(treasureObject);
+            treasureObject.transform.position = explosionCenter + Vector3.right;
+            Rigidbody treasureBody = treasureObject.AddComponent<Rigidbody>();
+            treasureBody.useGravity = false;
+            treasureObject.AddComponent<SphereCollider>();
+            ValuableObject valuable = treasureObject.AddComponent<ValuableObject>();
+            valuable.Configure(100, 1f, 1f, 0.01f);
+            var extraColliderObject = new GameObject("Extra Treasure Collider");
+            extraColliderObject.transform.SetParent(treasureObject.transform, false);
+            extraColliderObject.AddComponent<BoxCollider>();
+            Physics.SyncTransforms();
+
+            bomb.Launch(Vector3.zero, Vector3.zero, null, 10f);
+            Assert.That(bomb.Detonate(), Is.True);
+
+            Assert.That(valuable.CurrentValue, Is.LessThan(100));
+            Assert.That(bomb.LastDamagedEntityCount, Is.EqualTo(1));
+            Assert.That(bomb.LastImpulsedBodyCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BombProjectile_ImmediatelyDamagesNearbyMonster()
+        {
+            Vector3 explosionCenter = new Vector3(1200f, 1000f, 1000f);
+            BombProjectile bomb = CreateBomb(explosionCenter);
+
+            var monsterObject = new GameObject("Nearby Monster");
+            objects.Add(monsterObject);
+            monsterObject.transform.position = explosionCenter + Vector3.right;
+            Rigidbody monsterBody = monsterObject.AddComponent<Rigidbody>();
+            monsterBody.useGravity = false;
+            monsterObject.AddComponent<CapsuleCollider>();
+            CreatureBehaviorAgent monster =
+                monsterObject.AddComponent<CreatureBehaviorAgent>();
+            float initialHealth = monster.CurrentHealth;
+            Physics.SyncTransforms();
+
+            bomb.Launch(Vector3.zero, Vector3.zero, null, 20f);
+            Assert.That(bomb.Detonate(), Is.True);
+
+            Assert.That(monster.CurrentHealth, Is.LessThan(initialHealth));
+            Assert.That(bomb.LastDamagedEntityCount, Is.EqualTo(1));
+            Assert.That(bomb.LastImpulsedBodyCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BombProjectile_SpawnsConfiguredExplosionEffect()
+        {
+            Vector3 explosionCenter = new Vector3(1300f, 1000f, 1000f);
+            BombProjectile bomb = CreateBomb(explosionCenter);
+            var effectPrefab = new GameObject("Configured Explosion Effect");
+            objects.Add(effectPrefab);
+
+            bomb.Launch(
+                Vector3.zero,
+                Vector3.zero,
+                null,
+                0f,
+                effectPrefab,
+                1.5f);
+            Assert.That(bomb.Detonate(), Is.True);
+
+            Assert.That(bomb.LastExplosionEffect, Is.Not.Null);
+            Assert.That(bomb.LastExplosionEffect, Is.Not.SameAs(effectPrefab));
+            Assert.That(bomb.ActiveExplosionEffectLifetime, Is.EqualTo(1.5f));
+            objects.Add(bomb.LastExplosionEffect);
+        }
+
+        private BombProjectile CreateBomb(Vector3 position)
+        {
+            var bombObject = new GameObject("Bomb");
+            objects.Add(bombObject);
+            bombObject.transform.position = position;
+            Rigidbody body = bombObject.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            bombObject.AddComponent<SphereCollider>();
+            return bombObject.AddComponent<BombProjectile>();
         }
 
         private VoxelTypeDefinition CreateDefinition(

@@ -68,6 +68,9 @@ namespace Supernova.Gameplay
         [FormerlySerializedAs("restoreSmoothTime")]
         [SerializeField, Min(0.01f)] private float cameraRestoreSmoothTime = 0.12f;
 
+        [Header("Portal transition")]
+        [SerializeField, Min(0f)] private float portalTransitionDuration = 0.2f;
+
         private readonly RaycastHit[] obstructionHits = new RaycastHit[64];
         private PlayerViewMode currentMode;
         private float lookPitch;
@@ -75,6 +78,10 @@ namespace Supernova.Gameplay
         private bool hasThirdPersonYaw;
         private float currentExternalDistance;
         private float restoreVelocity;
+        private Vector3 portalTransitionStartPosition;
+        private Quaternion portalTransitionStartRotation = Quaternion.identity;
+        private float portalTransitionStartTime;
+        private bool portalTransitionActive;
         private Vector3 animatedHeadRestLocalScale = Vector3.one;
         private bool hasAnimatedHeadRestScale;
         private Animator characterAnimator;
@@ -235,11 +242,32 @@ namespace Supernova.Gameplay
             {
                 UpdateThirdPersonPose();
             }
+            ApplyPortalTransition();
         }
 
         public void SetLookPitch(float pitch)
         {
             lookPitch = Mathf.Clamp(pitch, -89f, 89f);
+        }
+
+        public void BeginPortalTransition(
+            Vector3 mappedCameraPosition,
+            Quaternion mappedCameraRotation)
+        {
+            ResolveReferences();
+            if (controlledCamera == null || portalTransitionDuration <= 0f)
+            {
+                portalTransitionActive = false;
+                return;
+            }
+
+            portalTransitionStartPosition = mappedCameraPosition;
+            portalTransitionStartRotation = mappedCameraRotation;
+            portalTransitionStartTime = Time.unscaledTime;
+            portalTransitionActive = true;
+            controlledCamera.transform.SetPositionAndRotation(
+                mappedCameraPosition,
+                mappedCameraRotation);
         }
 
         public void AddLookYaw(float yawDelta)
@@ -393,6 +421,35 @@ namespace Supernova.Gameplay
             controlledCamera.transform.SetPositionAndRotation(
                 pivot + direction * currentExternalDistance,
                 viewRotation);
+        }
+
+        private void ApplyPortalTransition()
+        {
+            if (!portalTransitionActive || controlledCamera == null)
+            {
+                return;
+            }
+
+            float progress = Mathf.Clamp01(
+                (Time.unscaledTime - portalTransitionStartTime)
+                / Mathf.Max(0.0001f, portalTransitionDuration));
+            Vector3 targetPosition = controlledCamera.transform.position;
+            Quaternion targetRotation = controlledCamera.transform.rotation;
+            float easedProgress = progress * progress * (3f - 2f * progress);
+            controlledCamera.transform.SetPositionAndRotation(
+                Vector3.Lerp(
+                    portalTransitionStartPosition,
+                    targetPosition,
+                    easedProgress),
+                Quaternion.Slerp(
+                    portalTransitionStartRotation,
+                    targetRotation,
+                    easedProgress));
+
+            if (progress >= 1f)
+            {
+                portalTransitionActive = false;
+            }
         }
 
         private void EnsureThirdPersonYaw()

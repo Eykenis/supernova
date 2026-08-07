@@ -169,4 +169,5 @@ Shader "Supernova/Lighting/Soft Falloff Lit"
     }
 
     Fallback "Hidden/Universal Render Pipeline/FallbackError"
+    CustomEditor "UnityEditor.Rendering.Universal.ShaderGUI.LitShader"
 }

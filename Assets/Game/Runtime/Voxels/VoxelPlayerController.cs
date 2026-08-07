@@ -67,6 +67,7 @@ namespace Supernova.Voxels
         private const float ToolUpperBodyLayerBlendDuration = 0.12f;
         private const float CrouchArmsLayerBlendDuration = 0.12f;
         private const float RifleLocomotionLayerBlendDuration = 0.12f;
+        private const int CrouchClearanceHitCapacity = 32;
 
         [SerializeField] private Transform view;
         [SerializeField] private Animator animator;
@@ -143,6 +144,14 @@ namespace Supernova.Voxels
         private float rifleArmsLayerTargetWeight;
         private float rifleArmsLayerWeight;
         private bool toolUpperBodyActionObserved;
+        private readonly Collider[] crouchClearanceHits =
+            new Collider[CrouchClearanceHitCapacity];
+        private bool controllerDimensionsCached;
+        private bool crouchColliderActive;
+        private float standingControllerHeight;
+        private Vector3 standingControllerCenter;
+        private float crouchingControllerHeight;
+        private Vector3 crouchingControllerCenter;
 
         private readonly struct ScheduledToolAction
         {
@@ -169,8 +178,7 @@ namespace Supernova.Voxels
         public Animator CharacterAnimator => animator;
         public float VerticalVelocity => motor != null ? motor.VerticalVelocity : 0f;
         public PlayerCharacterState CurrentState => currentState;
-        public bool IsCrouching => currentState == PlayerCharacterState.CrouchIdle
-            || currentState == PlayerCharacterState.CrouchMove;
+        public bool IsCrouching => crouchColliderActive;
 
         private PlayerProfile Profile
         {
@@ -236,6 +244,10 @@ namespace Supernova.Voxels
 
             if (Input.GetKeyDown(Profile.DebugToggleKey)) SetDebugFlyMode(!debugFlyMode);
             input = CaptureInput();
+            UpdateCrouchCollider(
+                input.CrouchHeld
+                && motor != null
+                && motor.IsGrounded);
             equipmentController?.TickEquippedInteraction();
             if (debugFlyMode)
             {
@@ -356,9 +368,9 @@ namespace Supernova.Voxels
                 : Vector2.zero;
             Vector3 worldMovement = GetWorldMovement(movement);
             UpdateThirdPersonFacing(worldMovement, deltaTime);
-            // Crouch pose follows the held key regardless of acceptInput: an attack or
-            // magnet action locks movement but should still show the crouched lower body.
-            bool crouching = input.CrouchHeld && motor.IsGrounded;
+            // The physical posture owns crouch state so a blocked stand-up keeps the
+            // slower movement and crouch animation even after the key is released.
+            bool crouching = crouchColliderActive && motor.IsGrounded;
             ConfigureMotor(crouching ? Profile.CrouchMoveSpeed : Profile.MoveSpeed);
             motor.Tick(worldMovement, deltaTime);
 
@@ -450,7 +462,10 @@ namespace Supernova.Voxels
                 return true;
             }
 
-            if (input.JumpPressed && motor.IsGrounded && !input.CrouchHeld)
+            if (input.JumpPressed
+                && motor.IsGrounded
+                && !input.CrouchHeld
+                && !crouchColliderActive)
             {
                 stateMachine.Change(PlayerCharacterState.Jump);
                 return true;
@@ -471,7 +486,9 @@ namespace Supernova.Voxels
             {
                 bool moving = input.Move.sqrMagnitude
                     >= Profile.MovingThreshold * Profile.MovingThreshold;
-                stateMachine.Change(ResolveGroundedLocomotionState(input.CrouchHeld, moving));
+                stateMachine.Change(ResolveGroundedLocomotionState(
+                    crouchColliderActive,
+                    moving));
             }
         }
 
@@ -545,7 +562,7 @@ namespace Supernova.Voxels
                 return false;
             }
 
-            if (input.CrouchHeld)
+            if (input.CrouchHeld || crouchColliderActive)
             {
                 equipmentController?.CancelActiveLocomotionOverride();
                 StopEquipmentLocomotionAnimation(true);
@@ -683,6 +700,7 @@ namespace Supernova.Voxels
             {
                 characterController = GetComponent<CharacterController>();
             }
+            CacheControllerDimensions();
             if (perspectiveCamera == null)
             {
                 perspectiveCamera = GetComponent<PerspectiveCameraController>();
@@ -772,6 +790,108 @@ namespace Supernova.Voxels
                 Profile.JumpHeight,
                 gravity,
                 Profile.GroundedForce);
+        }
+
+        private void CacheControllerDimensions()
+        {
+            if (controllerDimensionsCached || characterController == null) return;
+
+            standingControllerHeight = characterController.height;
+            standingControllerCenter = characterController.center;
+            float minimumHeight = characterController.radius * 2f;
+            crouchingControllerHeight = Mathf.Clamp(
+                Profile.CrouchColliderHeight,
+                minimumHeight,
+                standingControllerHeight);
+            crouchingControllerCenter = standingControllerCenter;
+            crouchingControllerCenter.y = standingControllerCenter.y
+                - (standingControllerHeight - crouchingControllerHeight) * 0.5f;
+            controllerDimensionsCached = true;
+        }
+
+        private void UpdateCrouchCollider(bool crouchRequested)
+        {
+            if (characterController == null)
+                characterController = GetComponent<CharacterController>();
+            CacheControllerDimensions();
+            if (!controllerDimensionsCached || characterController == null) return;
+
+            if (crouchRequested)
+            {
+                ApplyControllerDimensions(
+                    crouchingControllerHeight,
+                    crouchingControllerCenter,
+                    true);
+                return;
+            }
+
+            if (!crouchColliderActive || CanUseStandingControllerDimensions())
+            {
+                ApplyControllerDimensions(
+                    standingControllerHeight,
+                    standingControllerCenter,
+                    false);
+            }
+        }
+
+        private void ApplyControllerDimensions(
+            float height,
+            Vector3 center,
+            bool crouching)
+        {
+            characterController.height = height;
+            characterController.center = center;
+            crouchColliderActive = crouching
+                && crouchingControllerHeight < standingControllerHeight;
+        }
+
+        private bool CanUseStandingControllerDimensions()
+        {
+            if (standingControllerHeight <= crouchingControllerHeight) return true;
+
+            Vector3 lossyScale = transform.lossyScale;
+            float heightScale = Mathf.Abs(lossyScale.y);
+            float radiusScale = Mathf.Max(
+                Mathf.Abs(lossyScale.x),
+                Mathf.Abs(lossyScale.z));
+            float worldRadius = characterController.radius * radiusScale;
+            float worldHeight = standingControllerHeight * heightScale;
+            float worldSkinWidth = characterController.skinWidth * radiusScale;
+            float queryRadius = Mathf.Max(0.001f, worldRadius - worldSkinWidth);
+            float halfSegment = Mathf.Max(0f, worldHeight * 0.5f - worldRadius);
+            Vector3 worldCenter = transform.TransformPoint(standingControllerCenter);
+            Vector3 axisOffset = transform.up * halfSegment;
+            int hitCount = Physics.OverlapCapsuleNonAlloc(
+                worldCenter - axisOffset,
+                worldCenter + axisOffset,
+                queryRadius,
+                crouchClearanceHits,
+                ~0,
+                QueryTriggerInteraction.Ignore);
+
+            bool blocked = false;
+            for (int i = 0; i < hitCount; i++)
+            {
+                Collider candidate = crouchClearanceHits[i];
+                crouchClearanceHits[i] = null;
+                if (candidate == null
+                    || candidate == characterController
+                    || candidate.transform == transform
+                    || candidate.transform.IsChildOf(transform)
+                    || Physics.GetIgnoreLayerCollision(
+                        gameObject.layer,
+                        candidate.gameObject.layer)
+                    || Physics.GetIgnoreCollision(characterController, candidate))
+                {
+                    continue;
+                }
+
+                blocked = true;
+            }
+
+            // A full buffer can hide an uninspected overlap. Staying crouched is the
+            // safe fallback in an unusually dense collision area.
+            return !blocked && hitCount < crouchClearanceHits.Length;
         }
 
         private void EnsureVitals(bool refill)
@@ -951,7 +1071,7 @@ namespace Supernova.Voxels
                 return;
             }
 
-            float targetWeight = input.CrouchHeld
+            float targetWeight = crouchColliderActive
                 && motor != null
                 && motor.IsGrounded
                 ? 1f
@@ -1054,7 +1174,7 @@ namespace Supernova.Voxels
 
         private int ResolveToolActionLayerIndex()
         {
-            bool crouching = input.CrouchHeld
+            bool crouching = crouchColliderActive
                 && motor != null
                 && motor.IsGrounded;
             PlayerToolDefinition definition = activeToolDefinition != null
@@ -1432,7 +1552,7 @@ namespace Supernova.Voxels
                 ? toolController.SelectedDefinition
                 : null;
             bool grounded = motor != null && motor.IsGrounded;
-            bool crouching = input.CrouchHeld && grounded;
+            bool crouching = crouchColliderActive && grounded;
             SetAnimationState(false, !grounded, false, crouching);
             ApplyToolActionAnimation(activeToolDefinition);
             StartConfiguredToolActionAnimation();
@@ -1750,7 +1870,9 @@ namespace Supernova.Voxels
                     + Vector3.up * definition.UpwardThrowSpeed,
                 Random.onUnitSphere * definition.ThrowSpinSpeed,
                 voxelInteractor != null ? voxelInteractor.VoxelTerrain : null,
-                definition.BombEntityExplosionImpulse);
+                definition.BombEntityExplosionImpulse,
+                definition.BombExplosionEffectPrefab,
+                definition.BombExplosionEffectLifetime);
             IgnoreOwnerCollisions(projectile);
             return projectile;
         }

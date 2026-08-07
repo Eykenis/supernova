@@ -251,7 +251,8 @@ namespace Supernova.MinecraftCaves
             IReadOnlyList<JigsawStructureFeatureSettings> features,
             float solidDensity,
             float airDensity,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            JigsawPlacementSelection placementSelection = null)
         {
             ValidateColumnData(densities, types);
             if (features == null || features.Count == 0)
@@ -293,6 +294,11 @@ namespace Supernova.MinecraftCaves
                         worldSeed,
                         placement.RegionX,
                         placement.RegionZ))
+                    {
+                        continue;
+                    }
+                    if (placementSelection != null
+                        && !placementSelection.Allows(feature, placement))
                     {
                         continue;
                     }
@@ -340,6 +346,13 @@ namespace Supernova.MinecraftCaves
             int regionZ,
             out Placement placement)
         {
+            if (feature.PlacementStrategy == JigsawPlacementStrategy.FixedOrigin)
+            {
+                return JigsawPlacementService.TryGetFixedOriginPlacement(
+                    feature,
+                    out placement);
+            }
+
             return JigsawPlacementService.TryGetRandomSpreadPlacement(
                 feature,
                 worldSeed,
@@ -357,6 +370,76 @@ namespace Supernova.MinecraftCaves
         }
 
         /// <summary>
+        /// Resolves the first authored player spawn in a fixed-origin structure.
+        /// The structure asset owns the piece, position, and facing direction.
+        /// </summary>
+        public static bool TryResolvePlayerSpawn(
+            int worldSeed,
+            IReadOnlyList<JigsawStructureFeatureSettings> features,
+            out PlayerSpawnRequest request)
+        {
+            request = default;
+            if (features == null || features.Count == 0)
+            {
+                return false;
+            }
+
+            for (int featureIndex = 0; featureIndex < features.Count; featureIndex++)
+            {
+                JigsawStructureFeatureSettings feature = features[featureIndex];
+                if (feature.PlacementStrategy != JigsawPlacementStrategy.FixedOrigin
+                    || feature.PlacementChance <= 0f
+                    || !TryGetPlacement(
+                        feature,
+                        worldSeed,
+                        0,
+                        0,
+                        out Placement placement)
+                    || !JigsawPlacementService.WinsStructureSet(
+                        features,
+                        featureIndex,
+                        worldSeed,
+                        placement.RegionX,
+                        placement.RegionZ))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<Piece> pieces = GetOrCreateLayout(
+                    feature,
+                    worldSeed,
+                    placement).Pieces;
+                for (int pieceIndex = 0; pieceIndex < pieces.Count; pieceIndex++)
+                {
+                    Piece piece = pieces[pieceIndex];
+                    JigsawPieceSettings module = feature.GetPiece(piece.ModuleIndex);
+                    for (int markerIndex = 0;
+                        markerIndex < module.SpawnMarkers.Count;
+                        markerIndex++)
+                    {
+                        StructureSpawnMarkerSettings marker =
+                            module.SpawnMarkers[markerIndex];
+                        if (marker.Kind
+                                != StructureSpawnMarkerDefinition.Kind.PlayerSpawn
+                            || marker.SpawnChance <= 0f
+                            || !marker.IsConfigured)
+                        {
+                            continue;
+                        }
+
+                        request = new PlayerSpawnRequest(
+                            ResolveMarkerAnchor(piece, marker),
+                            Mathf.Repeat(
+                                piece.Direction * 90f + marker.Yaw,
+                                360f));
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Resolves every authored spawn marker whose position falls inside the
         /// given voxel column. Resolution reuses the cached layout and is keyed on
         /// world coordinates, so the same column always yields the same spawns no
@@ -367,7 +450,8 @@ namespace Supernova.MinecraftCaves
             int worldSeed,
             IReadOnlyList<JigsawStructureFeatureSettings> features,
             List<StructureSpawnRequest> results,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            JigsawPlacementSelection placementSelection = null)
         {
             if (results == null)
             {
@@ -415,6 +499,11 @@ namespace Supernova.MinecraftCaves
                     {
                         continue;
                     }
+                    if (placementSelection != null
+                        && !placementSelection.Allows(feature, placement))
+                    {
+                        continue;
+                    }
 
                     IReadOnlyList<Piece> pieces = GetOrCreateLayout(
                         feature,
@@ -438,6 +527,142 @@ namespace Supernova.MinecraftCaves
             }
         }
 
+        /// <summary>
+        /// Resolves checkpoint markers from every generated jigsaw piece. This
+        /// covers both the fixed-origin start layout and random Dense layouts.
+        /// </summary>
+        public static void CollectCheckpointRequests(
+            Vector3Int columnCoordinate,
+            int worldSeed,
+            IReadOnlyList<JigsawStructureFeatureSettings> features,
+            List<CheckpointSpawnRequest> results,
+            float chance,
+            CancellationToken cancellationToken = default,
+            JigsawPlacementSelection placementSelection = null)
+        {
+            if (results == null)
+            {
+                throw new ArgumentNullException(nameof(results));
+            }
+            results.Clear();
+            if (features == null || features.Count == 0 || chance <= 0f)
+            {
+                return;
+            }
+
+            int targetMinX = columnCoordinate.x * VoxelColumnChunkData.Width;
+            int targetMinZ = columnCoordinate.z * VoxelColumnChunkData.Depth;
+            int targetMaxX = targetMinX + VoxelColumnChunkData.Width - 1;
+            int targetMaxZ = targetMinZ + VoxelColumnChunkData.Depth - 1;
+            var placements = new List<Placement>();
+
+            for (int featureIndex = 0; featureIndex < features.Count; featureIndex++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                JigsawStructureFeatureSettings feature = features[featureIndex];
+                if (feature.PlacementChance <= 0f)
+                {
+                    continue;
+                }
+
+                JigsawPlacementService.CollectPlacements(
+                    feature,
+                    worldSeed,
+                    targetMinX,
+                    targetMinZ,
+                    targetMaxX,
+                    targetMaxZ,
+                    placements);
+                for (int i = 0; i < placements.Count; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    Placement placement = placements[i];
+                    if (!JigsawPlacementService.WinsStructureSet(
+                        features,
+                        featureIndex,
+                        worldSeed,
+                        placement.RegionX,
+                        placement.RegionZ))
+                    {
+                        continue;
+                    }
+                    if (placementSelection != null
+                        && !placementSelection.Allows(feature, placement))
+                    {
+                        continue;
+                    }
+
+                    IReadOnlyList<Piece> pieces = GetOrCreateLayout(
+                        feature,
+                        worldSeed,
+                        placement).GetPiecesForColumn(
+                            columnCoordinate.x,
+                            columnCoordinate.z);
+                    for (int pieceIndex = 0; pieceIndex < pieces.Count; pieceIndex++)
+                    {
+                        ResolvePieceCheckpoint(
+                            feature,
+                            pieces[pieceIndex],
+                            chance,
+                            targetMinX,
+                            targetMaxX,
+                            targetMinZ,
+                            targetMaxZ,
+                            results);
+                    }
+                }
+            }
+        }
+
+        private static void ResolvePieceCheckpoint(
+            JigsawStructureFeatureSettings feature,
+            Piece piece,
+            float chance,
+            int targetMinX,
+            int targetMaxX,
+            int targetMinZ,
+            int targetMaxZ,
+            List<CheckpointSpawnRequest> results)
+        {
+            if (chance <= 0f)
+            {
+                return;
+            }
+
+            JigsawPieceSettings module = feature.GetPiece(piece.ModuleIndex);
+            if (!module.HasSpawnMarkers)
+            {
+                return;
+            }
+
+            for (int i = 0; i < module.SpawnMarkers.Count; i++)
+            {
+                StructureSpawnMarkerSettings marker = module.SpawnMarkers[i];
+                if (marker.Kind
+                    != StructureSpawnMarkerDefinition.Kind.Checkpoint
+                    || marker.SpawnChance <= 0f
+                    || !marker.IsConfigured)
+                {
+                    continue;
+                }
+
+                Vector3Int anchor = ResolveMarkerAnchor(piece, marker);
+                if (anchor.x < targetMinX || anchor.x > targetMaxX
+                    || anchor.z < targetMinZ || anchor.z > targetMaxZ)
+                {
+                    continue;
+                }
+
+                results.Add(new CheckpointSpawnRequest(
+                    marker.CheckpointPrefab,
+                    anchor,
+                    anchor.y,
+                    Mathf.Repeat(piece.Direction * 90f + marker.Yaw, 360f),
+                    feature.PlacementStrategy
+                        == JigsawPlacementStrategy.FixedOrigin));
+            }
+        }
+
         private static void ResolvePieceSpawnMarkers(
             JigsawStructureFeatureSettings feature,
             Piece piece,
@@ -454,11 +679,15 @@ namespace Supernova.MinecraftCaves
                 return;
             }
 
-            Vector3Int forward = DirectionVector(piece.Direction);
-            Vector3Int right = DirectionVector((piece.Direction + 1) & 3);
             for (int i = 0; i < module.SpawnMarkers.Count; i++)
             {
                 StructureSpawnMarkerSettings marker = module.SpawnMarkers[i];
+                if (marker.Kind == StructureSpawnMarkerDefinition.Kind.Checkpoint
+                    || marker.Kind
+                        == StructureSpawnMarkerDefinition.Kind.PlayerSpawn)
+                {
+                    continue;
+                }
                 if (!marker.IsConfigured)
                 {
                     continue;
@@ -466,14 +695,7 @@ namespace Supernova.MinecraftCaves
 
                 // The marker's authored offset is in the piece's own axes, so it
                 // rotates with the piece rather than pointing at world north.
-                Vector3Int anchor = new Vector3Int(
-                    piece.Origin.x
-                        + right.x * marker.LocalOffset.x
-                        + forward.x * marker.LocalOffset.z,
-                    piece.Origin.y + marker.LocalOffset.y,
-                    piece.Origin.z
-                        + right.z * marker.LocalOffset.x
-                        + forward.z * marker.LocalOffset.z);
+                Vector3Int anchor = ResolveMarkerAnchor(piece, marker);
                 // Keyed on the anchor rather than an index, so every column that
                 // sees this marker agrees on whether it fired.
                 var random = new DeterministicRandom(BuildSeed(
@@ -520,6 +742,22 @@ namespace Supernova.MinecraftCaves
                         marker.FloorSearchDistance));
                 }
             }
+        }
+
+        private static Vector3Int ResolveMarkerAnchor(
+            Piece piece,
+            StructureSpawnMarkerSettings marker)
+        {
+            Vector3Int forward = DirectionVector(piece.Direction);
+            Vector3Int right = DirectionVector((piece.Direction + 1) & 3);
+            return new Vector3Int(
+                piece.Origin.x
+                    + right.x * marker.LocalOffset.x
+                    + forward.x * marker.LocalOffset.z,
+                piece.Origin.y + marker.LocalOffset.y,
+                piece.Origin.z
+                    + right.z * marker.LocalOffset.x
+                    + forward.z * marker.LocalOffset.z);
         }
 
         private static LayoutCacheEntry GetOrCreateLayout(
@@ -1362,7 +1600,7 @@ namespace Supernova.MinecraftCaves
             int parentIndex)
         {
             if (candidate.Bounds.MinY <= 1
-                || candidate.Bounds.MaxY >= VoxelColumnChunkData.Height - 1)
+                || candidate.Bounds.MaxY >= feature.WorldHeight - 1)
             {
                 return false;
             }

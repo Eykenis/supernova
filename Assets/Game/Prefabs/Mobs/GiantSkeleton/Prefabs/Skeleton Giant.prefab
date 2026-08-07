@@ -1191,9 +1191,11 @@ MonoBehaviour:
   shapeAuthoring: {fileID: 2124314162224642738}
   motor: {fileID: 1799253441549810362}
   simulationDistance: 160
-  pursuitDistance: 32
+  pursuitDistance: 64
+  pursuitRetentionDistance: 96
   attackDistance: 2
   wanderRadius: 32
+  wanderLegRadius: 8
   navigation:
     safeFallHeight: 3
     maximumJumpHeight: 1
@@ -1201,7 +1203,6 @@ MonoBehaviour:
     maximumTraversalHorizontalDistance: 3
     maximumSingleMoveCost: 200
     maximumExpandedNodes: 512
-  pursuitReplanInterval: 1
   wanderRetryInterval: 8
   wanderVerticalSearch: 8
   solidDensityThreshold: 0

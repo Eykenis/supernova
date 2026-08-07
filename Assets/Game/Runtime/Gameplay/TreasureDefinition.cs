@@ -6,6 +6,7 @@ namespace Supernova.Gameplay
     [CreateAssetMenu(fileName = "Treasure", menuName = "Supernova/World/Treasure")]
     public sealed class TreasureDefinition : ScriptableObject
     {
+        [SerializeField] private string displayName = string.Empty;
         [SerializeField] private GameObject prefab;
         [SerializeField, Min(0)] private int value = 50;
         [SerializeField, Min(0.01f)] private float weight = 2f;
@@ -20,6 +21,9 @@ namespace Supernova.Gameplay
         [SerializeField] private List<GameObject> fractureVariants =
             new List<GameObject>();
 
+        public string DisplayName => string.IsNullOrWhiteSpace(displayName)
+            ? name
+            : displayName.Trim();
         public GameObject Prefab => prefab;
         public int Value => Mathf.Max(0, value);
         public float Weight => Mathf.Max(0.01f, weight);

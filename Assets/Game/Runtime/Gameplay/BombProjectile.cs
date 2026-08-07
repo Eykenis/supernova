@@ -26,11 +26,18 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0f)] private float entityExplosionImpulse = 240f;
         [Tooltip("Raises the explosion origin to give nearby bodies an upward kick.")]
         [SerializeField, Min(0f)] private float entityUpwardModifier = 0.6f;
-        [SerializeField, HideInInspector] private int configurationVersion = 3;
+
+        [Header("Explosion Effect")]
+        [SerializeField] private GameObject explosionEffectPrefab;
+        [SerializeField, Min(0.01f)]
+        private float explosionEffectLifetime = 3f;
+        [SerializeField, HideInInspector] private int configurationVersion = 4;
 
         private IVoxelTerrain terrain;
         private float detonationTime;
         private float activeEntityExplosionImpulse;
+        private GameObject activeExplosionEffectPrefab;
+        private float activeExplosionEffectLifetime;
         private bool isArmed;
         private bool hasExploded;
 
@@ -50,11 +57,20 @@ namespace Supernova.Gameplay
             Mathf.Max(0f, activeEntityExplosionImpulse);
         public float EntityUpwardModifier =>
             Mathf.Max(0f, entityUpwardModifier);
+        public GameObject ExplosionEffectPrefab => explosionEffectPrefab;
+        public GameObject ActiveExplosionEffectPrefab =>
+            activeExplosionEffectPrefab;
+        public float ExplosionEffectLifetime =>
+            Mathf.Max(0.01f, explosionEffectLifetime);
+        public float ActiveExplosionEffectLifetime =>
+            Mathf.Max(0.01f, activeExplosionEffectLifetime);
         public bool IsArmed => isArmed;
         public bool HasExploded => hasExploded;
         public int ConfigurationVersion => configurationVersion;
         public bool LastExplosionAffectedTerrain { get; private set; }
         public int LastImpulsedBodyCount { get; private set; }
+        public int LastDamagedEntityCount { get; private set; }
+        public GameObject LastExplosionEffect { get; private set; }
         public VoxelExplosionResult LastExplosionResult { get; private set; }
         public VoxelExplosionSettings ExplosionSettings =>
             new VoxelExplosionSettings(
@@ -76,8 +92,12 @@ namespace Supernova.Gameplay
             hasExploded = false;
             LastExplosionAffectedTerrain = false;
             LastImpulsedBodyCount = 0;
+            LastDamagedEntityCount = 0;
+            LastExplosionEffect = null;
             LastExplosionResult = default;
             activeEntityExplosionImpulse = EntityExplosionImpulse;
+            activeExplosionEffectPrefab = ExplosionEffectPrefab;
+            activeExplosionEffectLifetime = ExplosionEffectLifetime;
         }
 
         private void Update()
@@ -90,12 +110,20 @@ namespace Supernova.Gameplay
             Vector3 velocity,
             Vector3 angularVelocity,
             IVoxelTerrain voxelTerrain,
-            float configuredEntityExplosionImpulse = -1f)
+            float configuredEntityExplosionImpulse = -1f,
+            GameObject configuredExplosionEffectPrefab = null,
+            float configuredExplosionEffectLifetime = -1f)
         {
             terrain = voxelTerrain;
             activeEntityExplosionImpulse = configuredEntityExplosionImpulse >= 0f
                 ? configuredEntityExplosionImpulse
                 : EntityExplosionImpulse;
+            activeExplosionEffectPrefab = configuredExplosionEffectPrefab != null
+                ? configuredExplosionEffectPrefab
+                : ExplosionEffectPrefab;
+            activeExplosionEffectLifetime = configuredExplosionEffectLifetime >= 0f
+                ? configuredExplosionEffectLifetime
+                : ExplosionEffectLifetime;
             Rigidbody resolvedBody = ResolveBody();
             resolvedBody.velocity = velocity;
             resolvedBody.angularVelocity = angularVelocity;
@@ -120,6 +148,7 @@ namespace Supernova.Gameplay
                 LastExplosionResult = result;
             }
 
+            SpawnExplosionEffect(transform.position);
             LastImpulsedBodyCount = ApplyEntityExplosionImpulse(
                 transform.position);
 
@@ -139,34 +168,98 @@ namespace Supernova.Gameplay
                 ~0,
                 QueryTriggerInteraction.Collide);
             var affectedBodies = new HashSet<Rigidbody>();
+            var damagedOwners = new HashSet<int>();
             Rigidbody bombBody = ResolveBody();
+            int damagedEntityCount = 0;
             for (int i = 0; i < hits.Length; i++)
             {
                 Collider hit = hits[i];
+                if (hit == null)
+                    continue;
+
                 Rigidbody affectedBody = hit != null
                     ? hit.attachedRigidbody
                     : null;
-                if (affectedBody == null
-                    || affectedBody == bombBody
-                    || affectedBody.isKinematic
-                    || affectedBodies.Contains(affectedBody))
-                {
+                if (affectedBody == bombBody)
                     continue;
-                }
 
+                Vector3 bodyCenter = affectedBody != null
+                    ? affectedBody.worldCenterOfMass
+                    : hit.bounds.center;
                 Vector3 bodyImpulse = CalculateEntityImpulse(
                     explosionCenter,
-                    affectedBody.worldCenterOfMass,
+                    bodyCenter,
                     impulse,
                     ExplosionRadius,
                     EntityUpwardModifier);
                 if (bodyImpulse.sqrMagnitude <= 0f)
                     continue;
 
-                affectedBodies.Add(affectedBody);
-                affectedBody.AddForce(bodyImpulse, ForceMode.Impulse);
+                if (TryFindCollisionImpulseDamageReceiver(
+                        hit,
+                        out ICollisionImpulseDamageReceiver receiver))
+                {
+                    GameObject owner = receiver.CollisionImpulseOwner;
+                    if (owner != null
+                        && owner.transform.root != transform.root
+                        && damagedOwners.Add(owner.GetInstanceID())
+                        && receiver.ApplyCollisionImpulseDamage(
+                            bodyImpulse.magnitude,
+                            hit.ClosestPoint(explosionCenter)))
+                    {
+                        damagedEntityCount++;
+                    }
+                }
+
+                if (affectedBody != null
+                    && !affectedBody.isKinematic
+                    && affectedBodies.Add(affectedBody))
+                {
+                    affectedBody.AddForce(bodyImpulse, ForceMode.Impulse);
+                }
             }
+            LastDamagedEntityCount = damagedEntityCount;
             return affectedBodies.Count;
+        }
+
+        private void SpawnExplosionEffect(Vector3 explosionCenter)
+        {
+            if (ActiveExplosionEffectPrefab == null)
+                return;
+
+            GameObject instance = Instantiate(
+                ActiveExplosionEffectPrefab,
+                explosionCenter,
+                Quaternion.identity);
+            instance.name = ActiveExplosionEffectPrefab.name;
+            LastExplosionEffect = instance;
+            if (Application.isPlaying)
+                Destroy(instance, ActiveExplosionEffectLifetime);
+        }
+
+        private static bool TryFindCollisionImpulseDamageReceiver(
+            Component component,
+            out ICollisionImpulseDamageReceiver receiver)
+        {
+            receiver = null;
+            if (component == null)
+                return false;
+
+            Transform cursor = component.transform;
+            while (cursor != null)
+            {
+                MonoBehaviour[] behaviours = cursor.GetComponents<MonoBehaviour>();
+                for (int i = 0; i < behaviours.Length; i++)
+                {
+                    if (behaviours[i] is ICollisionImpulseDamageReceiver candidate)
+                    {
+                        receiver = candidate;
+                        return true;
+                    }
+                }
+                cursor = cursor.parent;
+            }
+            return false;
         }
 
         public static Vector3 CalculateEntityImpulse(

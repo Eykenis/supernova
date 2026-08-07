@@ -237,6 +237,15 @@ namespace Supernova.UI
             public const string Distance = Marker + "/" + DistanceName;
         }
 
+        public static class Crosshair
+        {
+            public const string Canvas = "Crosshair Info Canvas";
+            public const string Panel = Canvas + "/Info Panel";
+            public const string NameLabel = Panel + "/Name";
+            public const string StatsLabel = Panel + "/Stats";
+            public const string RuleLine = Panel + "/Rule";
+        }
+
         public static class Decoration
         {
             public const string Frame = "__SciFi Frame";

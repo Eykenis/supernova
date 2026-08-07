@@ -15,6 +15,8 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0f)] private float crouchMoveSpeed = 2f;
         [SerializeField] private KeyCode crouchKey = KeyCode.LeftControl;
         [SerializeField, Min(0.01f)] private float crouchBlendDuration = 0.15f;
+        [Tooltip("CharacterController height used while crouching. The feet stay at the standing height.")]
+        [SerializeField, Min(0.01f)] private float crouchColliderHeight = 1f;
         [SerializeField, Min(0f)] private float jumpHeight = 1.1f;
         [SerializeField, Min(0f)] private float gravity = 20f;
         [SerializeField, Min(0f)] private float groundedForce = 2f;
@@ -56,6 +58,7 @@ namespace Supernova.Gameplay
         public float CrouchMoveSpeed => Mathf.Max(0f, crouchMoveSpeed);
         public KeyCode CrouchKey => crouchKey;
         public float CrouchBlendDuration => Mathf.Max(0.01f, crouchBlendDuration);
+        public float CrouchColliderHeight => Mathf.Max(0.01f, crouchColliderHeight);
         public float JumpHeight => Mathf.Max(0f, jumpHeight);
         public float Gravity => Mathf.Max(0f, gravity);
         public float GroundedForce => Mathf.Max(0f, groundedForce);

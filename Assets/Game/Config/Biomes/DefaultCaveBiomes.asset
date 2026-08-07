@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   noiseFrequency: 0.008
   seedSalt: 15485863
+  terrainSurfaceMaterial: {fileID: 2100000, guid: feadd73792c83bf40845be3b1979e496,
+    type: 2}
   fallbackBiome: {fileID: 11400000, guid: b904e0a3fa3aac14f937bf862630a52e, type: 2}
   selections:
   - biome: {fileID: 11400000, guid: b98b66dbd27055d48a3d9ae8f9a04b00, type: 2}

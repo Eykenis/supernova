@@ -32,6 +32,11 @@ namespace Supernova.Missions
 
         public MissionRun CurrentRun => run;
         public int Credits => PlayerEconomy.Credits;
+        /// <summary>
+        /// The active mission loop, or null. Scene-owned mission interactions use
+        /// this without holding their own serialized reference.
+        /// </summary>
+        public static MissionGameLoop Instance => instance;
         public static bool IsSceneTransitioning =>
             instance != null && instance.transitioning;
         public static LevelConfiguration CurrentLevelConfiguration
@@ -155,6 +160,25 @@ namespace Supernova.Missions
             RefreshObjective();
         }
 
+        /// <summary>
+        /// The value shown to the player as collected. Before evacuation this
+        /// includes the extraction Cell's live overlap tally; once evacuation
+        /// starts that tally has been banked into DeliveredValue, so only the
+        /// fixed total is shown.
+        /// </summary>
+        private int DisplayedCollectedValue
+        {
+            get
+            {
+                if (run == null) return 0;
+                if (run.IsEvacuationCountdownActive) return run.DeliveredValue;
+                int extraction = extractionZone != null
+                    ? extractionZone.CurrentStoredValue
+                    : 0;
+                return run.DeliveredValue + extraction;
+            }
+        }
+
         public bool RequestEvacuation()
         {
             if (run == null || run.IsFinished || transitioning) return false;
@@ -164,18 +188,17 @@ namespace Supernova.Missions
                 : 0;
             if (!run.TryStartEvacuationCountdown(storedValue))
             {
+                int total = DisplayedCollectedValue;
                 if (run.IsEvacuationCountdownActive)
                 {
                     SetPrompt("EVACUATION COUNTDOWN ALREADY ACTIVE");
                 }
                 else
                 {
-                    int missingValue = Mathf.Max(
-                        0,
-                        run.RequiredValue - storedValue);
+                    int missingValue = Mathf.Max(0, run.RequiredValue - total);
                     SetPrompt(
                         "RETURN LOCKED · NEED $" + missingValue
-                        + " MORE    STORED $" + storedValue
+                        + " MORE    STORED $" + total
                         + " / $" + run.RequiredValue);
                 }
                 return false;
@@ -204,9 +227,7 @@ namespace Supernova.Missions
                 return;
             }
 
-            int storedValue = extractionZone != null
-                ? extractionZone.CurrentStoredValue
-                : 0;
+            int storedValue = DisplayedCollectedValue;
             SetPrompt(storedValue >= run.RequiredValue
                 ? "PRESS E AT CELL CONSOLE TO BEGIN EVACUATION"
                 : "RETURN LOCKED · STORED $" + storedValue
@@ -231,7 +252,8 @@ namespace Supernova.Missions
 
         public void NotifyStoredValueChanged(int value)
         {
-            SetPrompt("TOTAL STORED VALUE: $" + Mathf.Max(0, value));
+            SetPrompt(
+                "TOTAL STORED VALUE: $" + Mathf.Max(0, DisplayedCollectedValue));
             RefreshObjective();
             cellZone?.RefreshActionPrompt();
         }
@@ -294,35 +316,38 @@ namespace Supernova.Missions
             if (player == null || world == null || !world.IsInitialLoadComplete) return;
 
             CreateCellTrigger(FindCell(), false);
-            Vector3 cartPosition;
-            Quaternion cartRotation;
-            SpawnPointSceneStructure spawnStructure =
-                FindObjectOfType<SpawnPointSceneStructure>();
-            if (spawnStructure != null)
+            if (!world.UsesExternalDenseLandingCell)
             {
-                spawnStructure.GetMissionCartSpawnPose(
-                    out cartPosition,
-                    out cartRotation);
-            }
-            else
-            {
-                cartPosition = player.transform.position
-                    + player.transform.right * 2.2f
-                    + player.transform.forward * 1.5f
-                    + Vector3.up * 0.5f;
-                cartRotation = player.transform.rotation;
-            }
+                Vector3 cartPosition;
+                Quaternion cartRotation;
+                SpawnPointSceneStructure spawnStructure =
+                    FindObjectOfType<SpawnPointSceneStructure>();
+                if (spawnStructure != null)
+                {
+                    spawnStructure.GetMissionCartSpawnPose(
+                        out cartPosition,
+                        out cartRotation);
+                }
+                else
+                {
+                    cartPosition = player.transform.position
+                        + player.transform.right * 2.2f
+                        + player.transform.forward * 1.5f
+                        + Vector3.up * 0.5f;
+                    cartRotation = player.transform.rotation;
+                }
 
-            string authoredCartName = GameAssetCatalog.Current != null
-                ? GameAssetCatalog.Current.SceneLookups.AuthoredCartObjectName
-                : string.Empty;
-            GameObject authoredCart = string.IsNullOrWhiteSpace(authoredCartName)
-                ? null
-                : GameObject.Find(authoredCartName);
-            MissionCart.ConfigureExisting(
-                authoredCart,
-                cartPosition,
-                cartRotation);
+                string authoredCartName = GameAssetCatalog.Current != null
+                    ? GameAssetCatalog.Current.SceneLookups.AuthoredCartObjectName
+                    : string.Empty;
+                GameObject authoredCart = string.IsNullOrWhiteSpace(authoredCartName)
+                    ? null
+                    : GameObject.Find(authoredCartName);
+                MissionCart.ConfigureExisting(
+                    authoredCart,
+                    cartPosition,
+                    cartRotation);
+            }
             ProximitySlidingDoor[] levelDoors =
                 FindObjectsOfType<ProximitySlidingDoor>(true);
             for (int i = 0; i < levelDoors.Length; i++)
@@ -351,6 +376,7 @@ namespace Supernova.Missions
             BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
             trigger.isTrigger = true;
             trigger.size = new Vector3(5f, 3f, 5f);
+            FitTriggerToCellRenderers(cell, trigger);
             MissionCellZone zone = triggerObject.AddComponent<MissionCellZone>();
             zone.Configure(this, home);
             cellZone = zone;
@@ -360,6 +386,63 @@ namespace Supernova.Missions
                 extractionZone = triggerObject.AddComponent<OreExtractionZone>();
                 extractionZone.Configure(this);
             }
+        }
+
+        private static void FitTriggerToCellRenderers(
+            Transform cell,
+            BoxCollider trigger)
+        {
+            Renderer[] renderers = cell.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+            {
+                return;
+            }
+
+            bool hasBounds = false;
+            Bounds localBounds = default;
+            for (int rendererIndex = 0;
+                rendererIndex < renderers.Length;
+                rendererIndex++)
+            {
+                Bounds worldBounds = renderers[rendererIndex].bounds;
+                Vector3 minimum = worldBounds.min;
+                Vector3 maximum = worldBounds.max;
+                for (int x = 0; x <= 1; x++)
+                {
+                    for (int y = 0; y <= 1; y++)
+                    {
+                        for (int z = 0; z <= 1; z++)
+                        {
+                            Vector3 worldCorner = new Vector3(
+                                x == 0 ? minimum.x : maximum.x,
+                                y == 0 ? minimum.y : maximum.y,
+                                z == 0 ? minimum.z : maximum.z);
+                            Vector3 localCorner =
+                                cell.InverseTransformPoint(worldCorner);
+                            if (!hasBounds)
+                            {
+                                localBounds = new Bounds(
+                                    localCorner,
+                                    Vector3.zero);
+                                hasBounds = true;
+                            }
+                            else
+                            {
+                                localBounds.Encapsulate(localCorner);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!hasBounds)
+            {
+                return;
+            }
+
+            trigger.transform.localPosition = Vector3.zero;
+            trigger.center = localBounds.center;
+            trigger.size = localBounds.size + Vector3.one * 0.1f;
         }
 
         private static Transform FindCell()
@@ -505,9 +588,7 @@ namespace Supernova.Missions
             {
                 gameUi?.SetMissionTimeRemaining(run.TimeRemaining);
             }
-            int storedValue = extractionZone != null
-                ? extractionZone.CurrentStoredValue
-                : 0;
+            int storedValue = DisplayedCollectedValue;
             int requiredValue = run.RequiredValue;
             string missionName = MissionName;
             if (seconds == displayedObjectiveSeconds

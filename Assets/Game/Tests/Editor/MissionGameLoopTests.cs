@@ -152,5 +152,53 @@ namespace Supernova.Tests
                 caveButton.transform.parent,
                 Is.EqualTo(caveCellObject.transform));
         }
+
+        [Test]
+        public void CellValueTrigger_CoversTheAuthoredCellBounds()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo createCellTrigger = typeof(MissionGameLoop).GetMethod(
+                "CreateCellTrigger",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(createCellTrigger, Is.Not.Null);
+
+            var cellObject = new GameObject("Cave Cell");
+            cellObject.transform.SetParent(loopObject.transform);
+            cellObject.transform.SetPositionAndRotation(
+                new Vector3(12f, 4f, -7f),
+                Quaternion.Euler(0f, 90f, 0f));
+            cellObject.transform.localScale = Vector3.one * 0.7f;
+
+            GameObject authoredRoom = GameObject.CreatePrimitive(
+                PrimitiveType.Cube);
+            authoredRoom.name = "Authored Cell Bounds";
+            authoredRoom.transform.SetParent(cellObject.transform, false);
+            authoredRoom.transform.localPosition = new Vector3(1f, 2f, -0.5f);
+            authoredRoom.transform.localScale = new Vector3(8f, 4f, 7f);
+            Renderer roomRenderer = authoredRoom.GetComponent<Renderer>();
+
+            createCellTrigger.Invoke(
+                loop,
+                new object[] { cellObject.transform, false });
+
+            OreExtractionZone extraction =
+                cellObject.GetComponentInChildren<OreExtractionZone>();
+            Assert.That(extraction, Is.Not.Null);
+            BoxCollider trigger = extraction.GetComponent<BoxCollider>();
+            Assert.That(trigger, Is.Not.Null);
+            Assert.That(trigger.bounds.min.x,
+                Is.LessThanOrEqualTo(roomRenderer.bounds.min.x));
+            Assert.That(trigger.bounds.min.y,
+                Is.LessThanOrEqualTo(roomRenderer.bounds.min.y));
+            Assert.That(trigger.bounds.min.z,
+                Is.LessThanOrEqualTo(roomRenderer.bounds.min.z));
+            Assert.That(trigger.bounds.max.x,
+                Is.GreaterThanOrEqualTo(roomRenderer.bounds.max.x));
+            Assert.That(trigger.bounds.max.y,
+                Is.GreaterThanOrEqualTo(roomRenderer.bounds.max.y));
+            Assert.That(trigger.bounds.max.z,
+                Is.GreaterThanOrEqualTo(roomRenderer.bounds.max.z));
+        }
     }
 }

@@ -35,7 +35,9 @@ namespace Supernova.MinecraftCaves
             int ringDistanceInChunks = 32,
             int ringSpreadInChunks = 3,
             string structureSetId = null,
-            int structureSetWeight = 1)
+            int structureSetWeight = 1,
+            int worldHeight = VoxelColumnChunkData.Height,
+            bool allowLayoutOutsidePlacementRegion = false)
         {
             if (string.IsNullOrWhiteSpace(stableId))
             {
@@ -60,7 +62,7 @@ namespace Supernova.MinecraftCaves
             PrimaryType = primaryType;
             AccentType = accentType.IsAir ? primaryType : accentType;
             SeedSalt = seedSalt;
-            RegionSizeInChunks = Math.Max(4, regionSizeInChunks);
+            RegionSizeInChunks = Math.Max(1, regionSizeInChunks);
             PlacementChance = Clamp01(placementChance);
             MinFloorHeight = Math.Min(minFloorHeight, maxFloorHeight);
             MaxFloorHeight = Math.Max(minFloorHeight, maxFloorHeight);
@@ -84,6 +86,11 @@ namespace Supernova.MinecraftCaves
                 ? string.Empty
                 : structureSetId.Trim();
             StructureSetWeight = Math.Max(1, structureSetWeight);
+            WorldHeight = Math.Max(
+                MinecraftCaveInfiniteWorld.MeshSectionHeight,
+                Math.Min(VoxelColumnChunkData.Height, worldHeight));
+            AllowLayoutOutsidePlacementRegion =
+                allowLayoutOutsidePlacementRegion;
             pieces = (JigsawPieceSettings[])pieceSettings.Clone();
 
             int startIndex = -1;
@@ -183,6 +190,7 @@ namespace Supernova.MinecraftCaves
             // wider than the layout influence. Ring candidates are absolute world
             // positions and carry no region box.
             if (PlacementStrategy == JigsawPlacementStrategy.RandomSpread
+                && !AllowLayoutOutsidePlacementRegion
                 && regionVoxelSize <= MaxHorizontalDistance * 2)
             {
                 throw new ArgumentOutOfRangeException(
@@ -191,7 +199,7 @@ namespace Supernova.MinecraftCaves
             }
             if (MinFloorHeight < maximumBelowAnchor + 2
                 || MaxFloorHeight
-                    > VoxelColumnChunkData.Height - maximumPieceHeight - 2)
+                    > WorldHeight - maximumPieceHeight - 2)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(minFloorHeight),
@@ -225,6 +233,8 @@ namespace Supernova.MinecraftCaves
         public int RingSpreadInChunks { get; }
         public string StructureSetId { get; }
         public int StructureSetWeight { get; }
+        public int WorldHeight { get; }
+        public bool AllowLayoutOutsidePlacementRegion { get; }
         public bool HasStructureSet => StructureSetId.Length > 0;
         public ulong ContentHash { get; }
         public IReadOnlyList<JigsawPieceSettings> Pieces => pieces;
@@ -259,6 +269,8 @@ namespace Supernova.MinecraftCaves
             AddHash(ref hash, RingSpreadInChunks);
             AddHash(ref hash, StructureSetId);
             AddHash(ref hash, StructureSetWeight);
+            AddHash(ref hash, WorldHeight);
+            AddHash(ref hash, AllowLayoutOutsidePlacementRegion ? 1 : 0);
             for (int i = 0; i < pieces.Length; i++)
             {
                 JigsawPieceSettings piece = pieces[i];

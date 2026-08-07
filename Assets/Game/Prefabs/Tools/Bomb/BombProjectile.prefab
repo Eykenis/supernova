@@ -280,4 +280,7 @@ MonoBehaviour:
   propagationDivisor: 2
   entityExplosionImpulse: 240
   entityUpwardModifier: 0.6
-  configurationVersion: 3
+  explosionEffectPrefab: {fileID: 1224328841576138, guid: c1f8b783e6de4e11a4b43496f55ca178,
+    type: 3}
+  explosionEffectLifetime: 3
+  configurationVersion: 4

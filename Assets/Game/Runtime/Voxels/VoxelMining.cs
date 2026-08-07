@@ -170,6 +170,7 @@ namespace Supernova.Voxels
     {
         Transform TerrainTransform { get; }
         InfiniteVoxelWorld World { get; }
+        VoxelTypeCatalog VoxelTypeCatalog { get; }
         float VoxelSize { get; }
         float IsoLevel { get; }
         Vector3Int WorldPositionToVoxel(Vector3 worldPosition);

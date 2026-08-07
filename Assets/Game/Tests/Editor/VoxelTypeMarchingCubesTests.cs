@@ -207,6 +207,46 @@ public sealed class VoxelTypeMarchingCubesTests
     }
 
     [Test]
+    public void MarchingCubes_ExposingOreDoesNotReshapeItsSurface()
+    {
+        var volume = new VoxelVolume(-1f);
+        var stone = new VoxelTypeId(2);
+        var ore = new VoxelTypeId(3);
+        volume.SetSample(10, 10, 10, 0.1f, stone);
+        volume.SetSample(11, 10, 10, 0.1f, ore);
+        VoxelGroupMap groupMap = BuildGroupMap(
+            new KeyValuePair<VoxelTypeId, VoxelGroup>(stone, VoxelGroup.Stone),
+            new KeyValuePair<VoxelTypeId, VoxelGroup>(ore, VoxelGroup.Ore));
+
+        VoxelMeshData embedded = MarchingCubesMesher.Build(
+            volume,
+            0f,
+            1f,
+            MarchingCubesVertexPlacement.DensityInterpolated,
+            groupMap);
+        List<Vector3> embeddedOreVertices = GetReferencedVertices(embedded, ore);
+
+        volume.SetSample(10, 10, 10, -1f, VoxelTypeId.Air);
+        VoxelMeshData exposed = MarchingCubesMesher.Build(
+            volume,
+            0f,
+            1f,
+            MarchingCubesVertexPlacement.DensityInterpolated,
+            groupMap);
+        List<Vector3> exposedOreVertices = GetReferencedVertices(exposed, ore);
+
+        Assert.That(exposedOreVertices, Has.Count.EqualTo(embeddedOreVertices.Count));
+        for (int i = 0; i < embeddedOreVertices.Count; i++)
+        {
+            Assert.That(
+                Vector3.Distance(embeddedOreVertices[i], exposedOreVertices[i]),
+                Is.LessThan(0.0001f),
+                $"Ore vertex {i} moved when adjacent stone became air.");
+        }
+        Assert.IsTrue(ContainsReferencedVertexAtX(exposed, ore, 10.55f));
+    }
+
+    [Test]
     public void MarchingCubes_SameGroupTypesFormOneContinuousSurface()
     {
         var volume = new VoxelVolume(-1f);
@@ -413,6 +453,18 @@ public sealed class VoxelTypeMarchingCubesTests
             }
         }
         return false;
+    }
+
+    private static List<Vector3> GetReferencedVertices(
+        VoxelMeshData data,
+        VoxelTypeId type)
+    {
+        var vertices = new List<Vector3>();
+        foreach (int index in data.GetTriangles(type))
+        {
+            vertices.Add(data.Vertices[index]);
+        }
+        return vertices;
     }
 
     private static void AssertProjectedUv(

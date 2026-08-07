@@ -38,7 +38,7 @@ namespace Supernova.Tests
             Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
             Assert.That(level.RequiredFunds, Is.EqualTo(100));
             Assert.That(level.HomeSceneName, Is.EqualTo("Home"));
-            Assert.That(level.CaveSceneName, Is.EqualTo("InfiniteCaves"));
+            Assert.That(level.CaveSceneName, Is.EqualTo("DenseJigsawRegion"));
         }
 
         [Test]
@@ -107,15 +107,31 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void BuildStartsAtHomeAndIncludesInfiniteCaves()
+        public void BuildStartsAtHomeAndIncludesDefaultCaveScenes()
         {
             EditorBuildSettingsScene[] scenes = EditorBuildSettings.scenes;
 
             Assert.That(scenes, Has.Length.GreaterThanOrEqualTo(2));
+            // The game boots into the Home scene at build index 0.
             Assert.That(scenes[0].enabled, Is.True);
             Assert.That(scenes[0].path, Is.EqualTo(ProjectAssetPaths.Scenes.Home));
-            Assert.That(scenes[1].enabled, Is.True);
-            Assert.That(scenes[1].path, Is.EqualTo(ProjectAssetPaths.Scenes.InfiniteCaves));
+            // DenseJigsawRegion is the default mission cave (FirstLevel) and must
+            // be loadable at runtime by name.
+            Assert.That(
+                scenes.Any(scene =>
+                    scene.path == ProjectAssetPaths.Scenes.DenseJigsawRegion
+                    && scene.enabled),
+                Is.True,
+                "The default mission cave scene (DenseJigsawRegion) must be "
+                + "enabled in the build.");
+            // InfiniteCaves remains a valid cave scene for other levels
+            // (e.g. SecondLevel) and must stay loadable.
+            Assert.That(
+                scenes.Any(scene =>
+                    scene.path == ProjectAssetPaths.Scenes.InfiniteCaves
+                    && scene.enabled),
+                Is.True,
+                "InfiniteCaves must remain enabled for non-default levels.");
             Assert.That(
                 scenes.Any(scene =>
                     scene.path == ProjectAssetPaths.Scenes.MainMenu && scene.enabled),
