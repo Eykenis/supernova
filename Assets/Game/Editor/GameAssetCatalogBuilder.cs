@@ -42,6 +42,12 @@ public static class GameAssetCatalogBuilder
             serialized,
             "missions.defaultLevel",
             ProjectAssetPaths.Config.FirstLevel);
+        SetReferenceArray<LevelConfiguration>(
+            serialized,
+            "missions.levels",
+            ProjectAssetPaths.Config.FirstLevel,
+            ProjectAssetPaths.Config.SecondLevel,
+            ProjectAssetPaths.Config.ThirdLevel);
         SetReference<Font>(
             serialized,
             "missions.uiFont",
@@ -171,6 +177,29 @@ public static class GameAssetCatalogBuilder
             throw new InvalidOperationException(
                 $"Catalog property was not found: {propertyPath}");
         property.stringValue = value;
+    }
+
+    private static void SetReferenceArray<T>(
+        SerializedObject serialized,
+        string propertyPath,
+        params string[] assetPaths)
+        where T : UnityEngine.Object
+    {
+        SerializedProperty property = serialized.FindProperty(propertyPath);
+        if (property == null || !property.isArray)
+            throw new InvalidOperationException(
+                $"Catalog array property was not found: {propertyPath}");
+
+        property.arraySize = assetPaths.Length;
+        for (int i = 0; i < assetPaths.Length; i++)
+        {
+            T asset = AssetDatabase.LoadAssetAtPath<T>(assetPaths[i]);
+            if (asset == null)
+                throw new InvalidOperationException(
+                    $"Missing {typeof(T).Name} required by the game asset catalog: "
+                    + assetPaths[i]);
+            property.GetArrayElementAtIndex(i).objectReferenceValue = asset;
+        }
     }
 
     private static void EnsureEquipmentPortraitSettingsAsset()

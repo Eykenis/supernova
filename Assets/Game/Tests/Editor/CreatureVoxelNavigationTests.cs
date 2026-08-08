@@ -320,6 +320,59 @@ namespace Supernova.Tests
                 Is.EqualTo(expectedMultiplier));
         }
 
+        [Test]
+        public void CreatureMotors_DoNotPhysicallyBlockEachOther()
+        {
+            var firstObject = new GameObject("First Creature");
+            var secondObject = new GameObject("Second Creature");
+            var terrainObject = new GameObject("Terrain");
+            firstObject.SetActive(false);
+            secondObject.SetActive(false);
+            CapsuleCollider firstCollider =
+                firstObject.AddComponent<CapsuleCollider>();
+            CapsuleCollider secondCollider =
+                secondObject.AddComponent<CapsuleCollider>();
+            BoxCollider terrainCollider =
+                terrainObject.AddComponent<BoxCollider>();
+            firstObject.AddComponent<CreaturePhysicsMotor>();
+            secondObject.AddComponent<CreaturePhysicsMotor>();
+
+            try
+            {
+                firstObject.SetActive(true);
+                secondObject.SetActive(true);
+
+                Assert.That(
+                    Physics.GetIgnoreCollision(firstCollider, secondCollider),
+                    Is.True,
+                    "Active creature motors should pass through each other so "
+                    + "crowds cannot deadlock on a shared voxel path.");
+                Assert.That(
+                    Physics.GetIgnoreCollision(firstCollider, terrainCollider),
+                    Is.False,
+                    "Creature collision with terrain and other non-creatures "
+                    + "must remain enabled.");
+
+                secondObject.SetActive(false);
+                Assert.That(
+                    Physics.GetIgnoreCollision(firstCollider, secondCollider),
+                    Is.False,
+                    "Disabling a creature should restore its collision pair.");
+
+                secondObject.SetActive(true);
+                Assert.That(
+                    Physics.GetIgnoreCollision(firstCollider, secondCollider),
+                    Is.True,
+                    "Re-enabled creatures should rejoin crowd collision handling.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(terrainObject);
+                Object.DestroyImmediate(secondObject);
+                Object.DestroyImmediate(firstObject);
+            }
+        }
+
         private sealed class BlockedCornerQuery : ICreatureVoxelQuery
         {
             public bool TryGetSolid(

@@ -93,7 +93,12 @@ namespace Supernova.Tests
                 externalHudObject.AddComponent<GameHudController>();
 
             loopObject = new GameObject("Mission Game Loop Test");
-            loopObject.AddComponent<MissionGameLoop>();
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo ensureUi = typeof(MissionGameLoop).GetMethod(
+                "EnsureUi",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(ensureUi, Is.Not.Null);
+            ensureUi.Invoke(loop, null);
 
             GameHudController ownedHud =
                 loopObject.GetComponentInChildren<GameHudController>(true);

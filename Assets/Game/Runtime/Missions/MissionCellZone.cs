@@ -62,13 +62,19 @@ namespace Supernova.Missions
 
         private IEnumerator HomeLaunchSequence()
         {
+            if (owner == null || !owner.CanBeginCurrentMission)
+            {
+                owner?.ShowCellActionPrompt(true);
+                yield break;
+            }
+
             sequenceRunning = true;
             // owner?.SetPrompt("DROP POD LOCKED · HATCH CLOSED");
             for (int i = 0; i < proximityDoors.Length; i++)
                 proximityDoors[i].CloseForLaunch();
             yield return CloseDoors(0.65f);
             yield return new WaitForSeconds(0.35f);
-            if (owner == null || !owner.BeginFirstMission())
+            if (!owner.BeginFirstMission())
                 sequenceRunning = false;
         }
 

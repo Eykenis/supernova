@@ -17,6 +17,7 @@ namespace Supernova.Missions
         private static MissionGameLoop instance;
 
         private LevelConfiguration definition;
+        private MissionCampaignProgress campaign;
         private MissionRun run;
         private GameHudController gameUi;
         private MissionUiView missionUi;
@@ -32,6 +33,12 @@ namespace Supernova.Missions
 
         public MissionRun CurrentRun => run;
         public int Credits => PlayerEconomy.Credits;
+        public bool CanBeginCurrentMission =>
+            !transitioning
+            && campaign != null
+            && !campaign.IsComplete
+            && definition != null
+            && definition.HasCompleteGenerationConfiguration;
         /// <summary>
         /// The active mission loop, or null. Scene-owned mission interactions use
         /// this without holding their own serialized reference.
@@ -72,9 +79,15 @@ namespace Supernova.Missions
             instance = this;
             DontDestroyOnLoad(gameObject);
             Application.runInBackground = true;
-            definition = GameAssetCatalog.Current != null
-                ? GameAssetCatalog.Current.Missions.DefaultLevel
+            MissionAssetReferences missions = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.Missions
                 : null;
+            definition = missions != null ? missions.DefaultLevel : null;
+            campaign = new MissionCampaignProgress(
+                missions != null ? missions.Levels : null,
+                definition);
+            if (campaign.CurrentLevel != null)
+                definition = campaign.CurrentLevel;
             if (definition == null)
             {
                 Debug.LogError(
@@ -133,6 +146,8 @@ namespace Supernova.Missions
 
         public bool BeginFirstMission()
         {
+            if (campaign != null && campaign.IsComplete)
+                return false;
             return BeginLevel(definition);
         }
 
@@ -145,6 +160,7 @@ namespace Supernova.Missions
             }
 
             definition = level;
+            campaign?.SelectLevel(level);
             run = new MissionRun(
                 definition.EvacuationCountdownSeconds,
                 definition.RequiredFunds);
@@ -216,7 +232,9 @@ namespace Supernova.Missions
         {
             if (home)
             {
-                SetPrompt("PRESS E AT CELL CONSOLE TO START MISSION");
+                SetPrompt(campaign != null && campaign.IsComplete
+                    ? "ALL MISSIONS COMPLETE"
+                    : "PRESS E AT CELL CONSOLE TO START " + MissionName);
                 return;
             }
 
@@ -238,7 +256,9 @@ namespace Supernova.Missions
         {
             if (home)
             {
-                SetPrompt("SHOP ONLINE    BALANCE: $" + Credits);
+                SetPrompt(campaign != null && campaign.IsComplete
+                    ? "CAMPAIGN COMPLETE    BALANCE: $" + Credits
+                    : "SHOP ONLINE    BALANCE: $" + Credits);
             }
             else if (run != null && run.IsEvacuationCountdownActive)
             {
@@ -303,10 +323,20 @@ namespace Supernova.Missions
         {
             CreateCellTrigger(FindCell(), true);
             gameUi?.HideMissionTimer();
-            missionUi.SetObjective(
-                "SHIP BASE\n");
-            missionUi.SetPrompt(
-                "SHOP ONLINE    BALANCE: $" + Credits);
+            if (campaign != null && campaign.IsComplete)
+            {
+                missionUi.SetObjective("CAMPAIGN COMPLETE\nALL DESCENTS CLEARED");
+                missionUi.SetPrompt(
+                    "CAMPAIGN COMPLETE    BALANCE: $" + Credits);
+            }
+            else
+            {
+                missionUi.SetObjective(
+                    "SHIP BASE\nNEXT: LEVEL " + LevelNumberText
+                    + " · " + MissionName);
+                missionUi.SetPrompt(
+                    "SHOP ONLINE    BALANCE: $" + Credits);
+            }
         }
 
         private void TrySetupCave()
@@ -478,9 +508,17 @@ namespace Supernova.Missions
                 case MissionOutcome.Success:
                     int reward = run.ExcessValue;
                     PlayerEconomy.AddCredits(reward);
+                    bool advanced = campaign != null
+                        && campaign.RecordOutcome(run.Outcome);
+                    if (advanced)
+                        definition = campaign.CurrentLevel;
                     message = "MISSION COMPLETE"
                         + "\n\nCOLLECTED $" + run.DeliveredValue
                         + "\nBALANCE INCREASED $" + reward
+                        + (advanced
+                            ? "\nNEXT: LEVEL " + LevelNumberText
+                                + " · " + MissionName
+                            : "\nALL DESCENTS CLEARED")
                         + "\n\nPRESS ENTER TO RETURN";
                     break;
                 case MissionOutcome.LostInCaves:
@@ -603,7 +641,8 @@ namespace Supernova.Missions
             displayedObjectiveStoredValue = storedValue;
             displayedObjectiveRequiredValue = requiredValue;
             displayedObjectiveMissionName = missionName;
-            missionUi.SetObjective("LEVEL 01 · " + missionName
+            missionUi.SetObjective(
+                "LEVEL " + LevelNumberText + " · " + missionName
                 + "\nCOLLECTED  $"
                 + storedValue
                 + " / $" + requiredValue);
@@ -642,6 +681,9 @@ namespace Supernova.Missions
         private string MissionName => definition != null
             ? definition.DisplayName
             : string.Empty;
+        private string LevelNumberText => definition != null
+            ? definition.LevelNumber.ToString("00")
+            : "--";
 
         private static string FormatCountdown(float secondsRemaining)
         {

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -62,9 +63,16 @@ namespace Supernova.MinecraftCaves.Creatures
         public bool ShouldJump => RiseInVoxels > 0;
     }
 
+    [ExecuteAlways]
     [DisallowMultipleComponent]
     public sealed class CreaturePhysicsMotor : MonoBehaviour
     {
+        // Voxel path search intentionally ignores transient creature occupancy.
+        // Keep movers non-blocking to prevent a shared path from becoming a
+        // permanent physics queue in narrow passages.
+        private static readonly List<CreaturePhysicsMotor> ActiveMotors =
+            new List<CreaturePhysicsMotor>();
+
         [SerializeField] private Rigidbody body;
         [FormerlySerializedAs("movementSpeed")]
         [Tooltip("Maximum speed along the commanded movement direction.")]
@@ -82,6 +90,7 @@ namespace Supernova.MinecraftCaves.Creatures
         private Vector3 facingDirection;
         private Vector3 facingUp = Vector3.up;
         private int lastJumpCommandId = int.MinValue;
+        private bool isRegisteredForCrowdCollisions;
 
         public bool HasCommand => hasCommand;
         public float MaximumHorizontalSpeed =>
@@ -114,6 +123,21 @@ namespace Supernova.MinecraftCaves.Creatures
         private void Awake()
         {
             body = body != null ? body : GetComponent<Rigidbody>();
+        }
+
+        private void OnEnable()
+        {
+            RegisterCrowdCollisionPairs();
+        }
+
+        private void OnDisable()
+        {
+            UnregisterCrowdCollisionPairs();
+        }
+
+        private void OnDestroy()
+        {
+            UnregisterCrowdCollisionPairs();
         }
 
         public void Configure(Rigidbody rigidbody, float worldVoxelSize)
@@ -150,6 +174,82 @@ namespace Supernova.MinecraftCaves.Creatures
             if (body == null) body = GetComponent<Rigidbody>();
             if (body == null || body.isKinematic || impulse.sqrMagnitude <= 0f) return;
             body.AddForce(impulse, ForceMode.Impulse);
+        }
+
+        private void RegisterCrowdCollisionPairs()
+        {
+            if (isRegisteredForCrowdCollisions)
+            {
+                return;
+            }
+
+            for (int i = ActiveMotors.Count - 1; i >= 0; i--)
+            {
+                CreaturePhysicsMotor other = ActiveMotors[i];
+                if (other == null)
+                {
+                    ActiveMotors.RemoveAt(i);
+                    continue;
+                }
+
+                SetCollisionIgnored(other, true);
+            }
+
+            ActiveMotors.Add(this);
+            isRegisteredForCrowdCollisions = true;
+        }
+
+        private void UnregisterCrowdCollisionPairs()
+        {
+            if (!isRegisteredForCrowdCollisions)
+            {
+                return;
+            }
+
+            for (int i = ActiveMotors.Count - 1; i >= 0; i--)
+            {
+                CreaturePhysicsMotor other = ActiveMotors[i];
+                if (other == null || other == this)
+                {
+                    ActiveMotors.RemoveAt(i);
+                    continue;
+                }
+
+                SetCollisionIgnored(other, false);
+            }
+
+            isRegisteredForCrowdCollisions = false;
+        }
+
+        private void SetCollisionIgnored(
+            CreaturePhysicsMotor other,
+            bool ignored)
+        {
+            Collider[] ownColliders = GetComponentsInChildren<Collider>(true);
+            Collider[] otherColliders =
+                other.GetComponentsInChildren<Collider>(true);
+            for (int ownIndex = 0; ownIndex < ownColliders.Length; ownIndex++)
+            {
+                Collider ownCollider = ownColliders[ownIndex];
+                if (ownCollider == null || ownCollider.isTrigger)
+                {
+                    continue;
+                }
+
+                for (int otherIndex = 0;
+                    otherIndex < otherColliders.Length;
+                    otherIndex++)
+                {
+                    Collider otherCollider = otherColliders[otherIndex];
+                    if (otherCollider != null && !otherCollider.isTrigger)
+                    {
+                        Physics.IgnoreCollision(
+                            ownCollider,
+                            otherCollider,
+                            ignored);
+                    }
+                }
+            }
         }
 
         private void FixedUpdate()

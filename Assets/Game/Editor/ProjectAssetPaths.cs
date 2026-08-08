@@ -107,6 +107,8 @@ public static class ProjectAssetPaths
         public const string GameAssetCatalog =
             Folders.Config + "/GameAssetCatalog.asset";
         public const string FirstLevel = Folders.Levels + "/FirstLevel.asset";
+        public const string SecondLevel = Folders.Levels + "/SecondLevel.asset";
+        public const string ThirdLevel = Folders.Levels + "/ThirdLevel.asset";
         public const string CombatTestLevel =
             Folders.Levels + "/CombatTestLevel.asset";
         public const string WorldGeneration =

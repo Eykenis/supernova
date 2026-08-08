@@ -75,6 +75,8 @@ public sealed class GameAssetCatalogTests
         ProjectAssetPaths.Config.EquipmentIconCatalog,
         ProjectAssetPaths.Config.EquipmentPortraitSettings,
         ProjectAssetPaths.Config.FirstLevel,
+        ProjectAssetPaths.Config.SecondLevel,
+        ProjectAssetPaths.Config.ThirdLevel,
         ProjectAssetPaths.Config.WorldGeneration,
         ProjectAssetPaths.Config.MonsterSpawnTable,
         ProjectAssetPaths.Config.TreasureSpawnTable,

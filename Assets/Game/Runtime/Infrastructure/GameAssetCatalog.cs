@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Supernova.Missions;
 using Supernova.UI;
 using UnityEngine;
@@ -9,11 +10,32 @@ namespace Supernova.Infrastructure
     public sealed class MissionAssetReferences
     {
         [SerializeField] private LevelConfiguration defaultLevel;
+        [SerializeField] private List<LevelConfiguration> levels =
+            new List<LevelConfiguration>();
         [SerializeField] private Font uiFont;
 
         public LevelConfiguration DefaultLevel => defaultLevel;
+        public IReadOnlyList<LevelConfiguration> Levels => levels;
         public Font UiFont => uiFont;
-        public bool IsComplete => defaultLevel != null && uiFont != null;
+        public bool IsComplete
+        {
+            get
+            {
+                if (defaultLevel == null || uiFont == null
+                    || levels == null || levels.Count == 0
+                    || levels[0] != defaultLevel)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < levels.Count; i++)
+                {
+                    if (levels[i] == null)
+                        return false;
+                }
+                return true;
+            }
+        }
     }
 
     [Serializable]

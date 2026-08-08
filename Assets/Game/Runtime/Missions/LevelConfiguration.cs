@@ -14,6 +14,7 @@ namespace Supernova.Missions
         [Header("Identity")]
         [SerializeField] private int levelNumber = 1;
         [SerializeField] private string displayName = "FIRST DESCENT";
+        [SerializeField] private int worldSeed = 6667;
 
         [Header("Configuration Composition")]
         [SerializeField]
@@ -34,6 +35,7 @@ namespace Supernova.Missions
 
         public int LevelNumber => Mathf.Max(1, levelNumber);
         public string DisplayName => displayName;
+        public int WorldSeed => worldSeed;
         public MinecraftWorldGenerationConfiguration WorldGeneration =>
             worldGeneration;
         public MonsterSpawnTable MonsterGeneration => monsterGeneration;

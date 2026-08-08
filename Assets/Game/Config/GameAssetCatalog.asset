@@ -14,6 +14,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   missions:
     defaultLevel: {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f, type: 2}
+    levels:
+    - {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f, type: 2}
+    - {fileID: 11400000, guid: 9b9069f23a9c51045a86971436581ffa, type: 2}
+    - {fileID: 11400000, guid: ed744e9ce4b448c469b3db949beea913, type: 2}
     uiFont: {fileID: 12800000, guid: e3265ab4bf004d28a9537516768c1c75, type: 3}
   ui:
     mainMenuPrefab: {fileID: 6511628367817102686, guid: d725abd71f6ceb24b8a0f1cd750651c6,

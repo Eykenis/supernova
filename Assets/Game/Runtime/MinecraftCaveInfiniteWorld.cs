@@ -443,6 +443,7 @@ namespace Supernova.MinecraftCaves
             }
 
             levelConfiguration = value;
+            worldSeed = value.WorldSeed;
             treasureSpawnTable = value.TreasureGeneration;
             monsterSpawnTable = value.MonsterGeneration;
             return true;

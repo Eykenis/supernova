@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 62201d1b98f8bb9408692b537ed6887b, type: 3}
-  m_Name: SecondLevel
-  m_EditorClassIdentifier: 
-  levelNumber: 2
-  displayName: SECOND DESCENT
-  worldSeed: 16667
+  m_Name: ThirdLevel
+  m_EditorClassIdentifier:
+  levelNumber: 3
+  displayName: THIRD DESCENT
+  worldSeed: 26667
   worldGeneration: {fileID: 11400000, guid: aae73aa900a741345aad2a073c4a6054, type: 2}
   monsterGeneration: {fileID: 11400000, guid: 09d92db632bafda4096a3f8350baafa2, type: 2}
   treasureGeneration: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
   evacuationCountdownSeconds: 180
-  requiredFunds: 500
+  requiredFunds: 900
   caveSceneName: InfiniteCaves
   homeSceneName: Home

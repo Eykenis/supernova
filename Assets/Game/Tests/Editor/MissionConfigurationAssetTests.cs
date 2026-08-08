@@ -2,6 +2,7 @@ using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
+using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
 using Supernova.MinecraftCaves.Creatures;
 using Supernova.Missions;
@@ -12,8 +13,12 @@ namespace Supernova.Tests
 {
     public sealed class MissionConfigurationAssetTests
     {
-        private const string LevelPath =
-            ProjectAssetPaths.Config.FirstLevel;
+        private static readonly string[] LevelPaths =
+        {
+            ProjectAssetPaths.Config.FirstLevel,
+            ProjectAssetPaths.Config.SecondLevel,
+            ProjectAssetPaths.Config.ThirdLevel,
+        };
         private const string WorldGenerationPath =
             ProjectAssetPaths.Config.WorldGeneration;
 
@@ -21,7 +26,7 @@ namespace Supernova.Tests
         public void FirstLevel_ComposesAllGenerationAndEvacuationConfiguration()
         {
             LevelConfiguration level =
-                AssetDatabase.LoadAssetAtPath<LevelConfiguration>(LevelPath);
+                AssetDatabase.LoadAssetAtPath<LevelConfiguration>(LevelPaths[0]);
             MinecraftWorldGenerationConfiguration worldGeneration =
                 AssetDatabase.LoadAssetAtPath<
                     MinecraftWorldGenerationConfiguration>(
@@ -36,7 +41,8 @@ namespace Supernova.Tests
             Assert.That(level.TreasureGeneration, Is.Not.Null);
             Assert.That(level.HasCompleteGenerationConfiguration, Is.True);
             Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
-            Assert.That(level.RequiredFunds, Is.EqualTo(100));
+            Assert.That(level.WorldSeed, Is.EqualTo(6667));
+            Assert.That(level.RequiredFunds, Is.EqualTo(200));
             Assert.That(level.HomeSceneName, Is.EqualTo("Home"));
             Assert.That(level.CaveSceneName, Is.EqualTo("DenseJigsawRegion"));
         }
@@ -45,10 +51,92 @@ namespace Supernova.Tests
         public void FirstLevel_UsesThreeMinuteEvacuationCountdown()
         {
             LevelConfiguration level =
-                AssetDatabase.LoadAssetAtPath<LevelConfiguration>(LevelPath);
+                AssetDatabase.LoadAssetAtPath<LevelConfiguration>(LevelPaths[0]);
 
             Assert.That(level, Is.Not.Null);
             Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
+        }
+
+        [Test]
+        public void Campaign_ContainsThreeOrderedLevelsWithDistinctSeedsAndFunds()
+        {
+            LevelConfiguration[] levels = LevelPaths
+                .Select(AssetDatabase.LoadAssetAtPath<LevelConfiguration>)
+                .ToArray();
+            GameAssetCatalog catalog =
+                AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                    ProjectAssetPaths.Config.GameAssetCatalog);
+
+            Assert.That(levels, Has.All.Not.Null);
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.Missions.Levels, Has.Count.EqualTo(3));
+            Assert.That(catalog.Missions.DefaultLevel, Is.SameAs(levels[0]));
+
+            for (int i = 0; i < levels.Length; i++)
+            {
+                Assert.That(levels[i].LevelNumber, Is.EqualTo(i + 1));
+                Assert.That(levels[i].HasCompleteGenerationConfiguration, Is.True);
+                Assert.That(catalog.Missions.Levels[i], Is.SameAs(levels[i]));
+            }
+
+            Assert.That(levels.Select(level => level.WorldSeed).Distinct().Count(),
+                Is.EqualTo(levels.Length));
+            Assert.That(levels.Select(level => level.RequiredFunds).Distinct().Count(),
+                Is.EqualTo(levels.Length));
+        }
+
+        [Test]
+        public void CampaignProgress_SuccessAdvancesAndFailureRetriesCurrentLevel()
+        {
+            LevelConfiguration[] levels = LevelPaths
+                .Select(AssetDatabase.LoadAssetAtPath<LevelConfiguration>)
+                .ToArray();
+            var progress = new MissionCampaignProgress(levels, levels[0]);
+
+            Assert.That(progress.CurrentLevel, Is.SameAs(levels[0]));
+            Assert.That(progress.RecordOutcome(MissionOutcome.Fired), Is.False);
+            Assert.That(progress.CurrentLevel, Is.SameAs(levels[0]));
+
+            Assert.That(progress.RecordOutcome(MissionOutcome.Success), Is.True);
+            Assert.That(progress.CurrentLevel, Is.SameAs(levels[1]));
+            Assert.That(progress.RecordOutcome(MissionOutcome.LostInCaves), Is.False);
+            Assert.That(progress.CurrentLevel, Is.SameAs(levels[1]));
+
+            Assert.That(progress.RecordOutcome(MissionOutcome.Success), Is.True);
+            Assert.That(progress.CurrentLevel, Is.SameAs(levels[2]));
+            Assert.That(progress.RecordOutcome(MissionOutcome.Success), Is.False);
+            Assert.That(progress.CurrentLevel, Is.SameAs(levels[2]));
+            Assert.That(progress.IsComplete, Is.True);
+        }
+
+        [Test]
+        public void EachLevel_OverridesTheSharedWorldConfigurationSeed()
+        {
+            LevelConfiguration[] levels = LevelPaths
+                .Select(path =>
+                    AssetDatabase.LoadAssetAtPath<LevelConfiguration>(path))
+                .ToArray();
+
+            foreach (LevelConfiguration level in levels)
+            {
+                var worldObject = new GameObject("Level Seed World");
+                try
+                {
+                    MinecraftCaveInfiniteWorld world =
+                        worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
+                    Assert.That(world.ApplyLevelConfiguration(level), Is.True);
+                    FieldInfo seedField = typeof(MinecraftCaveInfiniteWorld).GetField(
+                        "worldSeed",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+
+                    Assert.That(seedField, Is.Not.Null);
+                    Assert.That(seedField.GetValue(world), Is.EqualTo(level.WorldSeed));
+                }
+                finally
+                {
+                    Object.DestroyImmediate(worldObject);
+                }
+            }
         }
 
         [Test]
@@ -60,7 +148,7 @@ namespace Supernova.Tests
                     WorldGenerationPath);
 
             Assert.That(configuration, Is.Not.Null);
-            Assert.That(configuration.WorldSeed, Is.EqualTo(114514));
+            Assert.That(configuration.WorldSeed, Is.EqualTo(116));
             Assert.That(configuration.Settings, Is.Not.Null);
             Assert.That(
                 configuration.Settings.spaghettiFrequency,
@@ -73,7 +161,7 @@ namespace Supernova.Tests
             Assert.That(configuration.BedrockVoxelType, Is.Not.Null);
             Assert.That(configuration.OreFeatures, Is.Not.Empty);
             Assert.That(configuration.SpawnPointStructureRule.IsConfigured, Is.True);
-            Assert.That(configuration.MaxConcurrentGenerationJobs, Is.EqualTo(4));
+            Assert.That(configuration.MaxConcurrentGenerationJobs, Is.EqualTo(1));
             Assert.That(configuration.MeshesBuiltPerFrame, Is.EqualTo(1));
             AssertDepthScaling(configuration.OreDepthProbability);
             AssertDepthScaling(configuration.TreasureDepthProbability);
