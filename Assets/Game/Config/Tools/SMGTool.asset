@@ -29,6 +29,10 @@ MonoBehaviour:
   upwardThrowSpeed: 1.5
   throwSpinSpeed: 1
   throwForwardOffset: 0.75
+  bombProjectilePrefab: {fileID: 0}
+  bombEntityExplosionImpulse: 240
+  bombExplosionEffectPrefab: {fileID: 0}
+  bombExplosionEffectLifetime: 3
   firearmProjectilePrefab: {fileID: 1140100000000000001, guid: 9e5474d4c7324c2388c63589056fb642,
     type: 3}
   projectileSpeed: 70
