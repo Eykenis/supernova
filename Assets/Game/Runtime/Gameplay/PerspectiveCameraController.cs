@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using System.Collections.Generic;
 using Supernova.UI;
 using Supernova.Voxels;
@@ -31,8 +32,6 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0.01f)] private float mouseSensitivity = 2f;
         [SerializeField] private bool lockCursorOnEnable = true;
         [SerializeField] private bool clickToRecaptureCursor = true;
-        [FormerlySerializedAs("switchKey")]
-        [SerializeField] private KeyCode switchViewKey = KeyCode.F5;
         [FormerlySerializedAs("initialMode")]
         [SerializeField] private PlayerViewMode initialViewMode = PlayerViewMode.FirstPerson;
 
@@ -95,6 +94,8 @@ namespace Supernova.Gameplay
         private float smoothedUpperBodyPitch;
         private float smoothedUpperBodyYaw;
         private bool cursorLockRequested;
+        private const int LookInputSuppressionFrameCount = 5;
+        private int suppressLookInputThroughFrame = -1;
         private bool hasApplicationFocus = true;
         private readonly List<ShadowBoneProxy> shadowBoneProxies =
             new List<ShadowBoneProxy>();
@@ -179,6 +180,7 @@ namespace Supernova.Gameplay
 
         private void Awake()
         {
+            lookPitch = 0f;
             ResolveReferences();
             SetMode(initialViewMode, true);
         }
@@ -205,7 +207,7 @@ namespace Supernova.Gameplay
 
             if (Cursor.lockState != CursorLockMode.Locked
                 && clickToRecaptureCursor
-                && Input.GetMouseButtonDown(0))
+                && GameInput.Pressed(GameInputActionId.PrimaryAction))
             {
                 cursorLockRequested = true;
                 SetCursorLocked(true);
@@ -218,11 +220,15 @@ namespace Supernova.Gameplay
                 SetCursorLocked(true);
             }
 
-            if (Input.GetKeyDown(switchViewKey))
+            if (GameInput.Pressed(GameInputActionId.TogglePerspective))
             {
                 CycleMode();
             }
-            if (Cursor.lockState == CursorLockMode.Locked) UpdateLook();
+            if (Cursor.lockState == CursorLockMode.Locked)
+            {
+                if (!ShouldSuppressLookInput())
+                    UpdateLook();
+            }
         }
 
         private void LateUpdate()
@@ -284,8 +290,11 @@ namespace Supernova.Gameplay
             {
                 return;
             }
-            float mouseX = Input.GetAxis("Mouse X") * Mathf.Max(0.01f, mouseSensitivity);
-            float mouseY = Input.GetAxis("Mouse Y") * Mathf.Max(0.01f, mouseSensitivity);
+            Vector2 look = GameInput.ReadVector2(GameInputActionId.Look);
+            float sensitivity = Mathf.Max(0.01f, mouseSensitivity)
+                * LookSensitivitySettings.Multiplier;
+            float mouseX = look.x * sensitivity;
+            float mouseY = look.y * sensitivity;
             if (currentMode == PlayerViewMode.ThirdPerson)
             {
                 AddLookYaw(mouseX);
@@ -938,11 +947,25 @@ namespace Supernova.Gameplay
             if (Application.isPlaying) SetCursorLocked(false);
         }
 
-        private static void SetCursorLocked(bool locked)
+        private void SetCursorLocked(bool locked)
         {
-            Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.lockState = locked
+                ? CursorLockMode.Locked
+                : CursorLockMode.None;
             Cursor.visible = !locked;
+            if (locked)
+            {
+                suppressLookInputThroughFrame = Mathf.Max(
+                    suppressLookInputThroughFrame,
+                    Time.frameCount + LookInputSuppressionFrameCount);
+            }
         }
+
+        private bool ShouldSuppressLookInput()
+        {
+            return Time.frameCount <= suppressLookInputThroughFrame;
+        }
+
 
         private void ResolveReferences()
         {

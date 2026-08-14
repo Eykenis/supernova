@@ -47,10 +47,6 @@ MonoBehaviour:
     shallowMultiplier: 0.2
     deepMultiplier: 1
     curveExponent: 1.5
-  monsterDepthProbability:
-    shallowMultiplier: 0.35
-    deepMultiplier: 1
-    curveExponent: 1.2
   voxelSize: 0.42
   isoLevel: 0
   vertexPlacement: 1

@@ -6,6 +6,7 @@ using Supernova.Missions;
 using Supernova.UI;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public static class GameAssetCatalogBuilder
 {
@@ -26,6 +27,7 @@ public static class GameAssetCatalogBuilder
 
     public static GameAssetCatalog EnsureCatalog()
     {
+        GameInputAssetBuilder.EnsureInputActionsAsset();
         GameAssetCatalog catalog =
             AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
                 ProjectAssetPaths.Config.GameAssetCatalog);
@@ -52,6 +54,10 @@ public static class GameAssetCatalogBuilder
             serialized,
             "missions.uiFont",
             ProjectAssetPaths.Ui.RuntimeFont);
+        SetReference<InputActionAsset>(
+            serialized,
+            "input.actions",
+            ProjectAssetPaths.Config.GameInputActions);
         SetReference<GameObject>(
             serialized,
             "ui.mainMenuPrefab",
@@ -74,6 +80,10 @@ public static class GameAssetCatalogBuilder
             serialized,
             "ui.equipmentPortraitSettings",
             ProjectAssetPaths.Config.EquipmentPortraitSettings);
+        SetReference<Material>(
+            serialized,
+            "ui.missionCellConsoleMaterial",
+            ProjectAssetPaths.Materials.MissionCellConsole);
         SetReference<Material>(
             serialized,
             "ui.pauseBodyMaterial",

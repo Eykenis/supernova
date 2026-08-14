@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 3
   primaryAction: 3
+  magnetHoldAnimation: {fileID: 0}
   animationTriggerMode: 0
   primaryActionAnimation: {fileID: 7400000, guid: bf09cb92192700342b5f07ada8d665a5,
     type: 2}
@@ -22,7 +23,7 @@ MonoBehaviour:
   heldModelMountStrategy: 0
   allowMovementWhileUsing: 1
   actionTriggerDelay: 1
-  actionCyclePeriod: 0.35
+  actionCyclePeriod: 0.2625
   actionIsPeriodic: 0
   projectilePrefab: {fileID: 7762888090113509500, guid: 31e6be5c396b6fc4580a7706cc1ea32b,
     type: 3}
@@ -30,6 +31,18 @@ MonoBehaviour:
   upwardThrowSpeed: 1.6
   throwSpinSpeed: 7
   throwForwardOffset: 0.8
+  bombProjectilePrefab: {fileID: 0}
+  bombEntityExplosionImpulse: 240
+  bombExplosionEffectPrefab: {fileID: 0}
+  bombExplosionEffectLifetime: 3
+  thrownPickaxePrefab: {fileID: 0}
+  pickaxeThrowSpeed: 22
+  pickaxeSpinRevolutions: 2.4
+  pickaxePickupDistance: 1.6
+  pickaxeMagnetPullAcceleration: 34
+  pickaxeMagnetMaximumPullSpeed: 16
+  pickaxeMagnetRange: 60
+  pickaxeMagnetAimAngle: 20
   firearmProjectilePrefab: {fileID: 0}
   projectileSpeed: 180
   initialAmmunition: 120

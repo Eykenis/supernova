@@ -9,14 +9,14 @@ EditorBuildSettings:
     path: Assets/Scenes/Home.scene
     guid: 99c9720ab356a0642a771bea13969a05
   - enabled: 1
-    path: Assets/Scenes/InfiniteCaves.scene
-    guid: aee9e00ad7e5b96468da36f5125cdfcb
-  - enabled: 0
-    path: Assets/Scenes/MainMenu.unity
-    guid: 7beea06eabbe97042bf09a0d9c28189b
-  - enabled: 1
     path: Assets/Scenes/DenseJigsawRegion.scene
     guid: 3a7598f4ba9f5774ca69a1b78103d638
+  - enabled: 0
+    path: Assets/Scenes/InfiniteCaves.scene
+    guid: aee9e00ad7e5b96468da36f5125cdfcb
+  - enabled: 1
+    path: Assets/Scenes/MainMenu.unity
+    guid: 7beea06eabbe97042bf09a0d9c28189b
   m_BuildProfiles: []
   m_configObjects: {}
   m_SlimFeaturesWeixinMiniGame:

@@ -1,6 +1,4 @@
 using System.Collections;
-using Supernova.MinecraftCaves;
-using Supernova.MinecraftCaves.Creatures;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -23,8 +21,6 @@ namespace Supernova.Voxels
         private bool destroyedByMining;
         private float worldDiameter;
         private float worldThickness;
-        private MinecraftCaveInfiniteWorld navigationWorld;
-        private bool navigationRegistered;
 
         public Mesh GeneratedMesh => generatedMesh;
         public bool IsGrowthComplete { get; private set; }
@@ -178,7 +174,6 @@ namespace Supernova.Voxels
             {
                 transform.localScale = Vector3.one;
                 IsGrowthComplete = true;
-                RegisterNavigationSupport();
             }
         }
 
@@ -197,62 +192,10 @@ namespace Supernova.Voxels
 
             transform.localScale = Vector3.one;
             IsGrowthComplete = true;
-            RegisterNavigationSupport();
-        }
-
-        private void OnEnable()
-        {
-            if (IsGrowthComplete && generatedMesh != null)
-            {
-                RegisterNavigationSupport();
-            }
-        }
-
-        private void OnDisable()
-        {
-            UnregisterNavigationSupport();
-        }
-
-        private void RegisterNavigationSupport()
-        {
-            if (navigationRegistered)
-            {
-                return;
-            }
-
-            navigationWorld = navigationWorld != null
-                ? navigationWorld
-                : FindObjectOfType<MinecraftCaveInfiniteWorld>();
-            if (navigationWorld == null)
-            {
-                return;
-            }
-
-            DynamicCreatureNavigation.RegisterPlatform(
-                navigationWorld,
-                this,
-                transform.position,
-                worldDiameter * 0.5f,
-                worldThickness * 0.5f);
-            navigationRegistered = true;
-        }
-
-        private void UnregisterNavigationSupport()
-        {
-            if (!navigationRegistered)
-            {
-                return;
-            }
-
-            DynamicCreatureNavigation.UnregisterPlatform(
-                navigationWorld,
-                this);
-            navigationRegistered = false;
         }
 
         private void OnDestroy()
         {
-            UnregisterNavigationSupport();
             if (generatedMesh == null) return;
             if (Application.isPlaying)
                 Destroy(generatedMesh);

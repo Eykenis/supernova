@@ -4555,7 +4555,6 @@ MonoBehaviour:
   - stableId: house_cauldron
     kind: 0
     treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-    monster: {fileID: 0}
     localOffset: {x: 0, y: 2, z: 12}
     yaw: 0
     spawnChance: 0.55

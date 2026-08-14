@@ -18,9 +18,9 @@ MonoBehaviour:
   accentVoxelType: {fileID: 11400000, guid: 202a238be2391e34b89347de524ec2b3, type: 2}
   placementStrategy: 0
   seedSalt: 577215
-  regionSizeInChunks: 7
+  regionSizeInChunks: 5
   placementChance: 0.4
-  minFloorHeight: 40
+  minFloorHeight: 20
   maxFloorHeight: 190
   ringStructureCount: 128
   ringCount: 8
@@ -30,7 +30,7 @@ MonoBehaviour:
   structureSetWeight: 1
   maxPieces: 40
   maxDepth: 9
-  maxHorizontalDistance: 98
+  maxHorizontalDistance: 79
   firstPieceId: village_road
   layoutAttempts: 8
   connectorPlacementAttempts: 10
@@ -81,7 +81,7 @@ MonoBehaviour:
     - stableId: well_offering
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 3, y: 1, z: 3}
       yaw: 0
       spawnChance: 0.5
@@ -386,7 +386,7 @@ MonoBehaviour:
     - stableId: granary_stores
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
       spawnChance: 0.9
@@ -443,21 +443,10 @@ MonoBehaviour:
       openingHeight: 5
     processors: []
     spawnMarkers:
-    - stableId: ruin_raiders
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.8
-      count: 3
-      scatterRadiusInVoxels: 3
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: ruin_remains
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: 2}
       yaw: 0
       spawnChance: 0.7

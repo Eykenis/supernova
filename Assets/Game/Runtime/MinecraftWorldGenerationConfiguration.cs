@@ -29,9 +29,6 @@ namespace Supernova.MinecraftCaves
         [Tooltip("Depth scaling applied to every configured treasure.")]
         [SerializeField] private DepthProbabilityProfile treasureDepthProbability =
             new DepthProbabilityProfile();
-        [Tooltip("Depth scaling applied to every configured monster.")]
-        [SerializeField] private DepthProbabilityProfile monsterDepthProbability =
-            new DepthProbabilityProfile();
 
         [Header("Rendering")]
         [SerializeField, Min(0.01f)] private float voxelSize = 0.42f;
@@ -88,8 +85,6 @@ namespace Supernova.MinecraftCaves
             oreDepthProbability;
         public DepthProbabilityProfile TreasureDepthProbability =>
             treasureDepthProbability;
-        public DepthProbabilityProfile MonsterDepthProbability =>
-            monsterDepthProbability;
         public float VoxelSize => Mathf.Max(0.01f, voxelSize);
         public float IsoLevel => isoLevel;
         public MarchingCubesVertexPlacement VertexPlacement => vertexPlacement;
@@ -160,10 +155,6 @@ namespace Supernova.MinecraftCaves
             if (treasureDepthProbability == null)
             {
                 treasureDepthProbability = new DepthProbabilityProfile();
-            }
-            if (monsterDepthProbability == null)
-            {
-                monsterDepthProbability = new DepthProbabilityProfile();
             }
             if (oreFeatures == null)
             {

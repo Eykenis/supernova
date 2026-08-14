@@ -10,16 +10,21 @@ public static class ProjectAssetPaths
 
     public static class Folders
     {
-        public const string Game = "Assets/Game";
+        public const string AssetsRoot = "Assets";
+        public const string Game = AssetsRoot + "/Game";
         public const string Config = Game + "/Config";
+        public const string InputConfig = Config + "/Input";
         public const string Levels = Config + "/Levels";
         public const string Equipment = Config + "/Equipment";
         public const string Tools = Config + "/Tools";
         public const string Shop = Config + "/Shop";
         public const string VoxelTypes = Config + "/VoxelTypes";
+        public const string TerrainVoxelTypes = VoxelTypes + "/Terrain";
+        public const string StructuralVoxelTypes = VoxelTypes + "/Structural";
         public const string OreFeatures = Config + "/OreFeatures";
         public const string Biomes = Config + "/Biomes";
         public const string SurfaceBrushes = Config + "/SurfaceBrushes";
+        public const string StructureConfigs = Config + "/Structures";
         public const string StructureFeatures = Config + "/StructureFeatures";
         public const string JigsawStructureFeatures =
             StructureFeatures + "/Jigsaw";
@@ -39,7 +44,7 @@ public static class ProjectAssetPaths
         public const string ToolPrefabs = Prefabs + "/Tools";
         public const string FlashlightPrefabs = ToolPrefabs + "/Flashlight";
         public const string BombPrefabs = ToolPrefabs + "/Bomb";
-        public const string GrabHookPrefabs = ToolPrefabs + "/Grabhook";
+        public const string PickaxePrefabs = ToolPrefabs + "/Pickaxe";
         public const string GunPrefabs = ToolPrefabs + "/Guns";
         public const string ProjectilePrefabs = GunPrefabs + "/Projectiles";
         public const string EffectPrefabs = Prefabs + "/Effects";
@@ -93,7 +98,10 @@ public static class ProjectAssetPaths
         public const string PhysicsMaterials = Materials + "/Physics";
         public const string ShopMaterials = Materials + "/Shop";
         public const string Scenes = "Assets/Scenes";
-        public const string PortalExampleScenes = "Assets/Scene";
+        public const string VoxelIntegrityExperimentScenes =
+            Scenes + "/Experiments/VoxelIntegrity";
+        public const string TestScenes = AssetsRoot + "/Scene";
+        public const string PortalExampleScenes = TestScenes;
         public const string PortalExampleModels = Models + "/PortalExample";
         public const string Ui = "Assets/UI";
         public const string UiViews = Ui + "/UI";
@@ -106,6 +114,10 @@ public static class ProjectAssetPaths
     {
         public const string GameAssetCatalog =
             Folders.Config + "/GameAssetCatalog.asset";
+        public const string GameInputActions =
+            Folders.InputConfig + "/GameInputActions.inputactions";
+        public const string PlayerShaderVariants =
+            Folders.Config + "/PlayerShaderVariants.shadervariants";
         public const string FirstLevel = Folders.Levels + "/FirstLevel.asset";
         public const string SecondLevel = Folders.Levels + "/SecondLevel.asset";
         public const string ThirdLevel = Folders.Levels + "/ThirdLevel.asset";
@@ -134,11 +146,14 @@ public static class ProjectAssetPaths
             Folders.SurfaceBrushes + "/Grass.asset";
         public const string VineSurfaceBrush =
             Folders.SurfaceBrushes + "/Vine.asset";
-        public const string StoneVoxel = Folders.VoxelTypes + "/Stone.asset";
+        public const string StoneVoxel =
+            Folders.TerrainVoxelTypes + "/Stone.asset";
+        public const string SolidStoneVoxel =
+            Folders.TerrainVoxelTypes + "/Solid Stone.asset";
         public const string StructureBrickVoxel =
-            Folders.VoxelTypes + "/StructureBrick.asset";
+            Folders.StructuralVoxelTypes + "/StructureBrick.asset";
         public const string FortressBrickVoxel =
-            Folders.VoxelTypes + "/FortressBrick.asset";
+            Folders.StructuralVoxelTypes + "/FortressBrick.asset";
         public const string TrialChamberFeature =
             Folders.StructureFeatures + "/TrialChamber.asset";
         public const string AbandonedMineshaftJigsaw =
@@ -158,7 +173,6 @@ public static class ProjectAssetPaths
         public const string SpawnCheckpointHallJigsaw =
             Folders.JigsawStructureFeatures + "/SpawnCheckpointHall.asset";
         public const string PickaxeTool = Folders.Tools + "/PickaxeTool.asset";
-        public const string MagnetTool = Folders.Tools + "/MagnetTool.asset";
         public const string FlashlightTool =
             Folders.Tools + "/FlashlightTool.asset";
         public const string BombTool = Folders.Tools + "/BombTool.asset";
@@ -166,9 +180,9 @@ public static class ProjectAssetPaths
         public const string SmgTool = Folders.Tools + "/SMGTool.asset";
         public const string SolidGunTool =
             Folders.Tools + "/SolidGunTool.asset";
+        public const string PortalGunTool =
+            Folders.Tools + "/PortalGunTool.asset";
         public const string CartTool = Folders.Tools + "/CartTool.asset";
-        public const string GrabHookTool =
-            Folders.Tools + "/GrabHookTool.asset";
         public const string GunProduct =
             Folders.Shop + "/GunProduct.asset";
         public const string SmgProduct =
@@ -177,6 +191,8 @@ public static class ProjectAssetPaths
             Folders.Shop + "/FlashlightProduct.asset";
         public const string SolidGunProduct =
             Folders.Shop + "/SolidGunProduct.asset";
+        public const string PortalGunProduct =
+            Folders.Shop + "/PortalGunProduct.asset";
         public const string AttractionModuleProduct =
             Folders.Shop + "/AttractionModuleProduct.asset";
         public const string CartProduct =
@@ -203,6 +219,12 @@ public static class ProjectAssetPaths
         public const string ToolPrimaryActionPlaceholder =
             Folders.PlayerAnimations + "/ToolPrimaryActionPlaceholder.anim";
         public const string Mining = Folders.PlayerAnimations + "/mining_aki.anim";
+        public const string PickaxeSpin =
+            Folders.Animations + "/pickaxe_spin.anim";
+        public const string PickaxeThrown =
+            Folders.Animations + "/pickaxe_thrown.anim";
+        public const string ThrownPickaxeController =
+            Folders.Animations + "/ThrownPickaxe.controller";
         public const string Hover = Folders.PlayerAnimations + "/HoverLoop.anim";
         public const string SciFiDoorController =
             Folders.SciFiAnimations + "/Door_Vert_01.controller";
@@ -239,19 +261,19 @@ public static class ProjectAssetPaths
             Folders.BombPrefabs + "/BombProjectile.prefab";
         public const string BombExplosionEffect =
             Folders.ExplosionEffectPrefabs + "/BombExplosion.prefab";
+        public const string ThrownPickaxe =
+            Folders.PickaxePrefabs + "/ThrownPickaxe.prefab";
         public const string Smg = Folders.GunPrefabs + "/SMG.prefab";
         public const string SolidGun =
             Folders.GunPrefabs + "/SolidGun.prefab";
         public const string AttractionModuleDisplay =
             Folders.ToolPrefabs + "/AttractionModuleDisplay.prefab";
-        public const string GrabHook =
-            Folders.GrabHookPrefabs + "/GrabHook.prefab";
-        public const string GrabHookSourceModel =
-            Folders.GrabHookPrefabs + "/hook_exported.fbx";
         public const string RifleProjectile =
             Folders.ProjectilePrefabs + "/RifleProjectile.prefab";
         public const string SolidVoxelProjectile =
             Folders.ProjectilePrefabs + "/SolidVoxelProjectile.prefab";
+        public const string PortalGunProjectile =
+            Folders.ProjectilePrefabs + "/PortalGunProjectile.prefab";
         public const string MuzzleFlash =
             Folders.MuzzleFlashPrefabs + "/MuzzleFlash1.prefab";
         public const string GrassSurfacePlaceholder =
@@ -295,6 +317,9 @@ public static class ProjectAssetPaths
     {
         public const string PortalExampleSurface =
             Folders.PortalExampleShaders + "/PortalExampleSurface.shader";
+        public const string PortalExampleClippedLit =
+            Folders.PortalExampleShaders
+            + "/PortalExampleClippedLit.shader";
         public const string SoftFalloffLit =
             Folders.LightingMaterials + "/SoftFalloffLit.shader";
         public const string SoftFalloffAttenuation =
@@ -334,6 +359,8 @@ public static class ProjectAssetPaths
             Folders.PhysicsMaterials + "/CaveTerrain.physicMaterial";
         // Voxel materials each live in their own folder alongside their textures.
         public const string Ore = Folders.Materials + "/Voxels/Ore/Ore.mat";
+        public const string RecoveredOre =
+            Folders.Materials + "/Voxels/Ore/RecoveredOre.mat";
         public const string Bedrock =
             Folders.Materials + "/Voxels/Bedrock/Bedrock.mat";
         public const string Marble =
@@ -367,6 +394,8 @@ public static class ProjectAssetPaths
             Folders.ToolMaterials + "/RifleProjectile.mat";
         public const string SolidPlatform =
             Folders.ToolMaterials + "/SolidPlatform.mat";
+        public const string MissionCellConsole =
+            Folders.Materials + "/Prototypes/SolidStone.mat";
         public const string MuzzleFlashFlame =
             Folders.MuzzleFlashMaterials + "/Flame1.mat";
         public const string MuzzleFlashCore =
@@ -402,15 +431,22 @@ public static class ProjectAssetPaths
     public static class Structures
     {
         public const string SpawnShelter =
-            Folders.Structures + "/SpawnShelter.asset";
+            Folders.StructureConfigs + "/SpawnShelter.asset";
         public const string TrialChamberTemplate =
             Folders.Structures + "/TrialChamberTemplate.asset";
     }
 
     public static class Scenes
     {
+        public const string VoxelIntegrityExperiment =
+            Folders.VoxelIntegrityExperimentScenes
+            + "/VoxelIntegrityExperiment.scene";
         public const string PortalExample =
             Folders.PortalExampleScenes + "/PortalExample.scene";
+        // Lives beside the other playable scenes rather than under Scene/, which
+        // only holds the Portal example.
+        public const string SpawnShelterStoneTest =
+            Folders.Scenes + "/SpawnShelterStoneTest.scene";
         public const string Home = Folders.Scenes + "/Home.scene";
         public const string InfiniteCaves =
             Folders.Scenes + "/InfiniteCaves.scene";
@@ -481,12 +517,26 @@ public static class ProjectAssetPaths
             "Assets/3rd/Suriyun/Animations/Anim@Angpose.fbx";
         public const string SuriyunPoseCast =
             "Assets/3rd/Suriyun/Animations/Anim@CastspellC.fbx";
+        /// <summary>Looping two-handed cast pose used as the magnet hold animation.</summary>
+        public const string SuriyunMagnetHold =
+            "Assets/3rd/Suriyun/Animations/Anim@CastspellB.fbx";
         public const string SuriyunPoseAttack =
             "Assets/3rd/Suriyun/Animations/Anim@Atk4.fbx";
         public const string SuriyunPoseThinking =
             "Assets/3rd/Suriyun/Animations/Anim@Thinking.fbx";
         public const string SuriyunIdle =
             "Assets/3rd/Suriyun/Animations/Anim@Idle_A.fbx";
+        public const string StylizedToolsFolder = "Assets/3rd/Stylized 3D Tools";
+        public const string StylizedPickaxeModel =
+            StylizedToolsFolder + "/Models/pickaxe01.obj";
+        public const string StylizedPickaxeMaterial =
+            StylizedToolsFolder + "/Materials/Pickaxe01.mat";
+        public const string StylizedPickaxePrefab =
+            StylizedToolsFolder + "/Prefabs/pickaxe01.prefab";
+        public const string StylizedPickaxeAnimation =
+            StylizedToolsFolder + "/Prefabs/pickaxe01.anim";
+        public const string StylizedPickaxeController =
+            StylizedToolsFolder + "/Prefabs/pickaxe01.controller";
     }
 
     public static class LookupNames

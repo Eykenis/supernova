@@ -249,6 +249,13 @@
       },
       "url": "https://packages.tuanjie.cn"
     },
+    "info.flandre.coacd": {
+      "version": "https://github.com/SarahWeiii/CoACD.git?path=/Packages/info.flandre.coacd#9dd8431f3b2e7e4654e5a6284e3b8c36b4071c2f",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "9dd8431f3b2e7e4654e5a6284e3b8c36b4071c2f"
+    },
     "jp.lilxyzw.liltoon": {
       "version": "file:jp.lilxyzw.liltoon",
       "depth": 0,

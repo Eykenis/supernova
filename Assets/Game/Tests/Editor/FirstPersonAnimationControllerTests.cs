@@ -43,6 +43,30 @@ namespace Supernova.Tests
             Assert.That(animator.GetBool("jumpFlag"), Is.False);
             Assert.That(animator.GetBool("idleFlag"), Is.False);
         }
+
+        [Test]
+        public void MagnetHoldAnimation_WrapsOnlyConfiguredTail()
+        {
+            MethodInfo wrap = typeof(VoxelPlayerController).GetMethod(
+                "WrapMagnetHoldNormalizedTime",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(wrap, Is.Not.Null);
+
+            float introTime = (float)wrap.Invoke(
+                null,
+                new object[] { 0.65f, 0.7f, 1f });
+            float loopStart = (float)wrap.Invoke(
+                null,
+                new object[] { 1f, 0.7f, 1f });
+            float overshoot = (float)wrap.Invoke(
+                null,
+                new object[] { 1.06f, 0.7f, 1f });
+
+            Assert.That(introTime, Is.EqualTo(0.65f).Within(0.0001f));
+            Assert.That(loopStart, Is.EqualTo(0.7f).Within(0.0001f));
+            Assert.That(overshoot, Is.EqualTo(0.76f).Within(0.0001f));
+        }
+
     }
 }
 

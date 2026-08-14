@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using Supernova.Missions;
 using UnityEngine;
 
@@ -12,7 +13,6 @@ namespace Supernova.Shop
         [SerializeField] private Vector3 productLocalPosition =
             new Vector3(0f, 1.25f, 0f);
         [SerializeField, Min(0.5f)] private float interactionDistance = 5f;
-        [SerializeField] private KeyCode purchaseKey = KeyCode.E;
 
         private ShopProductDisplay productDisplay;
 
@@ -31,7 +31,7 @@ namespace Supernova.Shop
             bool targeted = IsProductTargeted();
             if (productDisplay != null)
                 productDisplay.SetTargeted(targeted);
-            if (targeted && Input.GetKeyDown(purchaseKey))
+            if (targeted && GameInput.Pressed(GameInputActionId.Interact))
                 TryPurchaseTargetedProduct();
         }
 

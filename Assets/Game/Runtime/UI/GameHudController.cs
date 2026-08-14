@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Supernova.Gameplay;
+using Supernova.Inputs;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
 using Supernova.Missions;
@@ -31,6 +32,10 @@ namespace Supernova.UI
         [Header("UGUI View")]
         [SerializeField] private Canvas rootCanvas;
         [SerializeField] private Canvas crosshairCanvas;
+        [SerializeField] private RectTransform crosshairRoot;
+        [SerializeField] private Image crosshairHorizontal;
+        [SerializeField] private Image crosshairVertical;
+        [SerializeField] private Image crosshairCenter;
         [SerializeField] private GameObject healthPanel;
         [SerializeField] private RectTransform healthFill;
         [SerializeField] private Image healthFillImage;
@@ -56,7 +61,10 @@ namespace Supernova.UI
         [SerializeField] private Button pauseSettingsBackButton;
         [SerializeField] private Toggle pauseFullscreenToggle;
         [SerializeField] private Slider pauseVolumeSlider;
-        [SerializeField] private TMP_Text pauseVolumeValueLabel;
+                [SerializeField] private Button pauseControlsButton;
+        [SerializeField] private InputBindingSettingsView inputBindingSettingsView;
+
+[SerializeField] private TMP_Text pauseVolumeValueLabel;
 
         [Header("Equipment Menu")]
         [SerializeField] private EquipmentLoadoutMenu equipmentMenu;
@@ -77,6 +85,12 @@ namespace Supernova.UI
         [SerializeField] private Canvas crosshairInfoCanvas;
         [SerializeField] private CrosshairInfoDisplay crosshairInfoDisplay;
 
+        [Header("Debug View")]
+        [SerializeField] private Canvas debugCanvas;
+        [SerializeField] private GameObject fpsDebugWindow;
+        [SerializeField] private TMP_Text fpsDebugValueLabel;
+        [SerializeField, Min(0.05f)] private float fpsRefreshInterval = 0.25f;
+
         private IDamageable healthSource;
         private PlayerToolController inventorySource;
         private GameHudPresenter presenter;
@@ -85,6 +99,9 @@ namespace Supernova.UI
         private float nextInventorySourceSearchTime;
         private float nextWorldSourceSearchTime;
         private MinecraftCaveInfiniteWorld loadingSource;
+        private FirstPersonCartAttractor magnetAttractor;
+        private PlayerToolController magnetToolController;
+        private float magnetCrosshairBlend;
         private bool loadingRequestedVisible;
         private float displayedCurrentHealth = float.NaN;
         private float displayedMaximumHealth = float.NaN;
@@ -104,8 +121,23 @@ namespace Supernova.UI
         private readonly Image[] hotbarSlotBackgrounds = new Image[PlayerInventory.SlotCount];
         private readonly Outline[] hotbarSlotOutlines = new Outline[PlayerInventory.SlotCount];
         private readonly TMP_Text[] hotbarItemLabels = new TMP_Text[PlayerInventory.SlotCount];
+        private float fpsAccumulatedTime;
+        private int fpsAccumulatedFrames;
         private const string FullscreenPreferenceKey = "ui.fullscreen";
         private const string VolumePreferenceKey = "ui.master-volume";
+        /// <summary>
+        /// Crosshair tint while the magnet has something to grab. The crosshair is
+        /// only two pixels thick, so a pale gold reads as warm white; this is heavily
+        /// saturated on purpose.
+        /// </summary>
+        private static readonly Color MagnetTargetCrosshairColor =
+            new Color(1f, 0.55f, 0f, 1f);
+        /// <summary>
+        /// Scale applied on top of the tint. Hue alone is hard to judge on a 2px
+        /// shape, so the crosshair also grows to signal the state change.
+        /// </summary>
+        private const float MagnetTargetCrosshairScale = 1.6f;
+        private const float CrosshairStateBlendSpeed = 14f;
 
         public Canvas RootCanvas => rootCanvas;
         public Canvas CrosshairCanvas => crosshairCanvas;
@@ -122,6 +154,10 @@ namespace Supernova.UI
             equipmentMenu != null && equipmentMenu.IsOpen;
         public bool IsLoadingVisible => loadingPanel != null && loadingPanel.activeSelf;
         public CrosshairInfoDisplay CrosshairInfo => crosshairInfoDisplay;
+        public Canvas DebugCanvas => debugCanvas;
+        public TMP_Text FpsDebugValueLabel => fpsDebugValueLabel;
+        public bool IsFpsDebugVisible =>
+            fpsDebugWindow != null && fpsDebugWindow.activeSelf;
         public IDamageable HealthSource =>
             IsHealthSourceValid(healthSource) ? healthSource : null;
         public PlayerToolController InventorySource => inventorySource;
@@ -264,6 +300,7 @@ namespace Supernova.UI
             nextSourceSearchTime = 0f;
             nextInventorySourceSearchTime = 0f;
             nextWorldSourceSearchTime = 0f;
+            ResetFpsDebugCounter();
             if (inventorySource != null)
                 BindInventorySource(inventorySource);
             RefreshNow();
@@ -288,13 +325,18 @@ namespace Supernova.UI
 
         private void Update()
         {
+            if (GameInput.Pressed(GameInputActionId.DebugHud))
+                ToggleFpsDebugWindow();
+
+            UpdateFpsDebugWindow(Time.unscaledDeltaTime);
+
             if (pauseMenuOpen && !CanPauseGame)
                 ResumeGame();
 
             if (IsEquipmentMenuVisible && !CanOpenEquipmentMenu)
                 equipmentMenu.Close();
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (GameInput.Pressed(GameInputActionId.Pause))
             {
                 if (IsEquipmentMenuVisible)
                     equipmentMenu.Close();
@@ -302,7 +344,7 @@ namespace Supernova.UI
                     TogglePauseMenu();
             }
 
-            if (Input.GetKeyDown(KeyCode.Tab))
+            if (GameInput.Pressed(GameInputActionId.ToggleLoadout))
             {
                 ToggleEquipmentMenu();
             }
@@ -330,6 +372,100 @@ namespace Supernova.UI
             RefreshNow();
             AnimateLoading();
             crosshairInfoDisplay?.Refresh();
+            RefreshMagnetCrosshairTint();
+        }
+
+        /// <summary>
+        /// Highlights the crosshair while right click would actually latch onto
+        /// something. The crosshair is a thin two-pixel cross, so colour alone is hard
+        /// to read: it also scales up and brightens its outline into a glow.
+        /// </summary>
+        private void RefreshMagnetCrosshairTint()
+        {
+            if (!ResolveCrosshairArms()) return;
+
+            bool available = false;
+            if (magnetAttractor == null)
+            {
+                magnetAttractor = FindObjectOfType<FirstPersonCartAttractor>();
+            }
+            if (magnetAttractor != null)
+            {
+                if (magnetToolController == null)
+                {
+                    magnetToolController =
+                        magnetAttractor.GetComponent<PlayerToolController>();
+                }
+                PlayerToolDefinition pickaxe = magnetToolController != null
+                    ? magnetToolController.GetDefinition(
+                        PlayerInventoryItem.Pickaxe)
+                    : null;
+                available = magnetAttractor.HasAvailableMagnetTarget(pickaxe);
+            }
+
+            // Ease the change so it reads as a deliberate state, not a flicker when
+            // the target briefly leaves the sightline.
+            magnetCrosshairBlend = Mathf.MoveTowards(
+                magnetCrosshairBlend,
+                available ? 1f : 0f,
+                CrosshairStateBlendSpeed * Time.unscaledDeltaTime);
+
+            Color tint = Color.Lerp(
+                Color.white,
+                MagnetTargetCrosshairColor,
+                magnetCrosshairBlend);
+            float scale = Mathf.Lerp(
+                1f,
+                MagnetTargetCrosshairScale,
+                magnetCrosshairBlend);
+            crosshairRoot.localScale = new Vector3(scale, scale, 1f);
+            ApplyCrosshairArmState(crosshairHorizontal, tint);
+            ApplyCrosshairArmState(crosshairVertical, tint);
+            if (crosshairCenter != null)
+                crosshairCenter.color = tint;
+        }
+
+        private static void ApplyCrosshairArmState(Image arm, Color tint)
+        {
+            if (arm == null) return;
+
+            arm.color = tint;
+            arm.rectTransform.localScale = Vector3.one;
+            Outline outline = arm.GetComponent<Outline>();
+            // UGUI Outline draws four displaced copies of the source mesh. When the
+            // crosshair is scaled those copies look like several overlapping crosses,
+            // not a thicker contour, so this effect must not be used here.
+            if (outline != null)
+                outline.enabled = false;
+        }
+
+        private bool ResolveCrosshairArms()
+        {
+            if (crosshairRoot != null
+                && crosshairHorizontal != null
+                && crosshairVertical != null)
+                return true;
+
+            crosshairRoot = transform.Find(
+                UiHierarchyPaths.Hud.Crosshair) as RectTransform;
+            Transform horizontal =
+                transform.Find(UiHierarchyPaths.Hud.CrosshairHorizontal);
+            if (horizontal != null)
+                crosshairHorizontal = horizontal.GetComponent<Image>();
+            Transform vertical =
+                transform.Find(UiHierarchyPaths.Hud.CrosshairVertical);
+            if (vertical != null)
+                crosshairVertical = vertical.GetComponent<Image>();
+            if (crosshairRoot != null)
+            {
+                Transform center = crosshairRoot.Find(
+                    UiHierarchyPaths.Decoration.Center);
+                if (center != null)
+                    crosshairCenter = center.GetComponent<Image>();
+            }
+            return crosshairRoot != null
+                && crosshairHorizontal != null
+                && crosshairVertical != null;
         }
 
         public void TogglePauseMenu()
@@ -348,6 +484,27 @@ namespace Supernova.UI
                 equipmentMenu.Close();
             else if (CanOpenEquipmentMenu)
                 equipmentMenu.Open();
+        }
+
+        public void ToggleFpsDebugWindow()
+        {
+            SetFpsDebugVisible(!IsFpsDebugVisible);
+        }
+
+        public void SetFpsDebugVisible(bool visible)
+        {
+            if (fpsDebugWindow == null)
+            {
+                CacheViewReferences();
+                if (fpsDebugWindow == null)
+                    BuildFpsDebugView();
+            }
+
+            if (fpsDebugWindow == null)
+                return;
+
+            fpsDebugWindow.SetActive(visible);
+            ResetFpsDebugCounter();
         }
 
         internal void SetGameplayHudVisibleForModal(bool visible)
@@ -463,6 +620,8 @@ namespace Supernova.UI
                 equipmentMenu.Canvas.gameObject.SetActive(visible);
             if (crosshairInfoCanvas != null)
                 crosshairInfoCanvas.gameObject.SetActive(visible);
+            if (debugCanvas != null)
+                debugCanvas.gameObject.SetActive(visible);
 
             if (!visible)
                 return;
@@ -619,6 +778,8 @@ namespace Supernova.UI
                 missionOverlayCanvas.gameObject.SetActive(false);
             if (crosshairInfoCanvas != null)
                 crosshairInfoCanvas.gameObject.SetActive(false);
+            if (debugCanvas != null)
+                debugCanvas.gameObject.SetActive(false);
             enabled = false;
         }
 
@@ -714,6 +875,7 @@ namespace Supernova.UI
             BuildDefaultView();
             BuildMissionView();
             BuildCrosshairInfoView();
+            BuildFpsDebugView();
             BuildLoadingView();
             BuildPauseView();
             EnsureEquipmentMenu();
@@ -759,7 +921,9 @@ namespace Supernova.UI
                 transform.Find(UiHierarchyPaths.Pause.FullSettings) == null
                 || transform.Find(UiHierarchyPaths.Pause.FullQuitToMenu) == null
                 || transform.Find(UiHierarchyPaths.Pause.FullQuitToDesktop) == null
-                || transform.Find(UiHierarchyPaths.Pause.FullSettingsPanel) == null;
+                || transform.Find(UiHierarchyPaths.Pause.FullSettingsPanel) == null
+                || transform.Find(UiHierarchyPaths.Pause.FullControls) == null
+                || transform.Find(UiHierarchyPaths.Pause.FullInputBindingsPanel) == null;
             if (pauseCanvas == null || pausePanel == null || resumeButton == null
                 || pauseViewNeedsUpgrade)
             {
@@ -770,6 +934,12 @@ namespace Supernova.UI
 
             if (crosshairInfoCanvas == null || crosshairInfoDisplay == null)
                 BuildCrosshairInfoView();
+
+            if (debugCanvas == null || fpsDebugWindow == null
+                || fpsDebugValueLabel == null)
+            {
+                BuildFpsDebugView();
+            }
 
             BindPauseMenuButtons();
             SciFiUiSkin.ApplyGameHud(transform);
@@ -884,6 +1054,21 @@ namespace Supernova.UI
             if (missionTimerValueLabel == null && missionTimerValue != null)
                 missionTimerValueLabel =
                     missionTimerValue.GetComponent<TMP_Text>();
+
+            Transform debugCanvasTransform = transform.Find(
+                UiHierarchyPaths.Debug.Canvas);
+            if (debugCanvas == null && debugCanvasTransform != null)
+                debugCanvas = debugCanvasTransform.GetComponent<Canvas>();
+
+            Transform debugWindow = transform.Find(
+                UiHierarchyPaths.Debug.Window);
+            if (fpsDebugWindow == null && debugWindow != null)
+                fpsDebugWindow = debugWindow.gameObject;
+
+            Transform fpsValue = transform.Find(
+                UiHierarchyPaths.Debug.FpsValue);
+            if (fpsDebugValueLabel == null && fpsValue != null)
+                fpsDebugValueLabel = fpsValue.GetComponent<TMP_Text>();
 
             if (hotbar == null) return;
 
@@ -1006,6 +1191,146 @@ namespace Supernova.UI
             hotbarRoot.SetActive(designTokens == null || designTokens.ShowHotbar);
             crosshairRoot.gameObject.SetActive(
                 designTokens == null || designTokens.ShowCrosshair);
+        }
+
+        private void BuildFpsDebugView()
+        {
+            Transform existing = transform.Find(UiHierarchyPaths.Debug.Canvas);
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+
+            Color primary = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            Color surface = designTokens != null
+                ? designTokens.HudSurface
+                : new Color(0.035f, 0.045f, 0.055f, 0.9f);
+            Color muted = designTokens != null
+                ? designTokens.HudMuted
+                : new Color(0.96f, 0.98f, 1f, 0.45f);
+
+            RectTransform canvasRoot = CreateRect(
+                UiHierarchyPaths.Debug.CanvasName,
+                transform);
+            debugCanvas = canvasRoot.gameObject.AddComponent<Canvas>();
+            debugCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            debugCanvas.sortingOrder = designTokens != null
+                ? designTokens.PauseSortingOrder + 100
+                : 1200;
+
+            CanvasScaler scaler =
+                canvasRoot.gameObject.AddComponent<CanvasScaler>();
+            ApplyCanvasPolicy(canvasRoot.gameObject, scaler);
+
+            RectTransform window = CreateRect(
+                UiHierarchyPaths.Debug.WindowName,
+                canvasRoot);
+            SetAnchoredRect(
+                window,
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(24f, -24f),
+                new Vector2(210f, 66f));
+            Image windowImage = window.gameObject.AddComponent<Image>();
+            windowImage.color = new Color(
+                surface.r,
+                surface.g,
+                surface.b,
+                Mathf.Max(0.9f, surface.a));
+            windowImage.raycastTarget = false;
+            Outline outline = window.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(
+                primary.r,
+                primary.g,
+                primary.b,
+                0.22f);
+            outline.effectDistance = new Vector2(1f, -1f);
+            outline.useGraphicAlpha = false;
+            fpsDebugWindow = window.gameObject;
+
+            RectTransform accent = CreateRect(
+                UiHierarchyPaths.Debug.AccentName,
+                window);
+            SetAnchoredRect(
+                accent,
+                new Vector2(0f, 0f),
+                new Vector2(0f, 1f),
+                new Vector2(0f, 0.5f),
+                Vector2.zero,
+                new Vector2(3f, 0f));
+            Image accentImage = accent.gameObject.AddComponent<Image>();
+            accentImage.color = primary;
+            accentImage.raycastTarget = false;
+
+            TMP_Text header = CreateText(
+                UiHierarchyPaths.Debug.HeaderName,
+                window,
+                "PERFORMANCE / {{input:Debug/Hud}}",
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)header.transform,
+                new Vector2(0f, 1f),
+                new Vector2(1f, 1f),
+                new Vector2(0f, 1f),
+                new Vector2(14f, -7f),
+                new Vector2(-24f, 18f));
+            header.fontSize = 10f;
+            header.characterSpacing = 2f;
+            header.color = new Color(
+                muted.r,
+                muted.g,
+                muted.b,
+                Mathf.Max(0.58f, muted.a));
+
+            fpsDebugValueLabel = CreateText(
+                UiHierarchyPaths.Debug.FpsValueName,
+                window,
+                "FPS  --",
+                TextAlignmentOptions.Left);
+            SetAnchoredRect(
+                (RectTransform)fpsDebugValueLabel.transform,
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(0f, 0f),
+                new Vector2(14f, 7f),
+                new Vector2(-24f, 34f));
+            fpsDebugValueLabel.fontSize = 24f;
+            fpsDebugValueLabel.characterSpacing = 1f;
+            fpsDebugValueLabel.color = primary;
+
+            fpsDebugWindow.SetActive(false);
+            ResetFpsDebugCounter();
+        }
+
+        private void UpdateFpsDebugWindow(float unscaledDeltaTime)
+        {
+            if (!IsFpsDebugVisible || fpsDebugValueLabel == null
+                || unscaledDeltaTime <= 0f)
+            {
+                return;
+            }
+
+            fpsAccumulatedTime += unscaledDeltaTime;
+            fpsAccumulatedFrames++;
+            if (fpsAccumulatedTime < Mathf.Max(0.05f, fpsRefreshInterval))
+                return;
+
+            float framesPerSecond = fpsAccumulatedFrames / fpsAccumulatedTime;
+            fpsDebugValueLabel.SetText("FPS  {0:0}", framesPerSecond);
+            fpsAccumulatedTime = 0f;
+            fpsAccumulatedFrames = 0;
+        }
+
+        private void ResetFpsDebugCounter()
+        {
+            fpsAccumulatedTime = 0f;
+            fpsAccumulatedFrames = 0;
+            if (fpsDebugValueLabel != null)
+                fpsDebugValueLabel.text = "FPS  --";
         }
 
         private void ResolveConfiguration()
@@ -1483,6 +1808,9 @@ namespace Supernova.UI
                 overlayDivider,
                 overlaySecondary);
             pauseSettingsPanel.SetActive(false);
+            inputBindingSettingsView = InputBindingSettingsView.Create(
+                menu,
+                ShowPauseSettings);
 
             BindPauseMenuButtons();
             LoadPauseSettings();
@@ -1503,7 +1831,7 @@ namespace Supernova.UI
                 parent,
                 1,
                 "RESUME",
-                "ESC",
+                "{{input:UI/Pause}}",
                 -174f,
                 buttonInk,
                 buttonDivider);
@@ -1556,24 +1884,38 @@ namespace Supernova.UI
                 UiHierarchyPaths.Pause.Fullscreen,
                 parent,
                 "FULLSCREEN",
-                -202f,
+                -186f,
                 systemInk,
                 systemDivider);
             pauseVolumeSlider = CreatePauseSlider(
                 UiHierarchyPaths.Pause.MasterVolume,
                 parent,
                 "MASTER VOLUME",
-                -306f,
+                -282f,
                 systemInk,
                 systemDivider,
                 out pauseVolumeValueLabel);
+            pauseControlsButton = CreatePauseMenuButton(
+                UiHierarchyPaths.Pause.Controls,
+                parent,
+                0,
+                "CONTROLS",
+                string.Empty,
+                -392f,
+                buttonInk,
+                buttonDivider);
+            TMP_Text controlsIndex = pauseControlsButton.transform
+                .Find("Index")?.GetComponent<TMP_Text>();
+            if (controlsIndex != null)
+                controlsIndex.text = ">";
+
             pauseSettingsBackButton = CreatePauseMenuButton(
                 UiHierarchyPaths.Pause.SettingsBack,
                 parent,
                 0,
                 "BACK",
                 string.Empty,
-                -470f,
+                -486f,
                 buttonInk,
                 buttonDivider);
 
@@ -1988,7 +2330,10 @@ namespace Supernova.UI
             pauseMainOptions = FindPauseObject(
                 UiHierarchyPaths.Pause.FullMainOptions,
                 pauseMainOptions);
-            pauseSettingsPanel = FindPauseObject(
+                        inputBindingSettingsView = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullInputBindingsPanel,
+                inputBindingSettingsView);
+pauseSettingsPanel = FindPauseObject(
                 UiHierarchyPaths.Pause.FullSettingsPanel,
                 pauseSettingsPanel);
             resumeButton = FindPauseComponent(
@@ -2003,7 +2348,10 @@ namespace Supernova.UI
             quitToDesktopButton = FindPauseComponent(
                 UiHierarchyPaths.Pause.FullQuitToDesktop,
                 quitToDesktopButton);
-            pauseSettingsBackButton = FindPauseComponent(
+                        pauseControlsButton = FindPauseComponent(
+                UiHierarchyPaths.Pause.FullControls,
+                pauseControlsButton);
+pauseSettingsBackButton = FindPauseComponent(
                 UiHierarchyPaths.Pause.FullSettingsBack,
                 pauseSettingsBackButton);
             pauseFullscreenToggle = FindPauseComponent(
@@ -2064,7 +2412,12 @@ namespace Supernova.UI
                 quitToDesktopButton.onClick.RemoveListener(QuitToDesktop);
                 quitToDesktopButton.onClick.AddListener(QuitToDesktop);
             }
-            if (pauseSettingsBackButton != null)
+                        if (pauseControlsButton != null)
+            {
+                pauseControlsButton.onClick.RemoveListener(ShowInputBindings);
+                pauseControlsButton.onClick.AddListener(ShowInputBindings);
+            }
+if (pauseSettingsBackButton != null)
             {
                 pauseSettingsBackButton.onClick.RemoveListener(
                     ShowPauseMainOptions);
@@ -2109,6 +2462,7 @@ namespace Supernova.UI
         {
             if (pauseMainOptions != null)
                 pauseMainOptions.SetActive(false);
+            inputBindingSettingsView?.Hide();
             if (pauseSettingsPanel != null)
                 pauseSettingsPanel.SetActive(true);
             LoadPauseSettings();
@@ -2119,12 +2473,25 @@ namespace Supernova.UI
             }
         }
 
+        private void ShowInputBindings()
+        {
+            if (pauseMainOptions != null)
+                pauseMainOptions.SetActive(false);
+            if (pauseSettingsPanel != null)
+                pauseSettingsPanel.SetActive(false);
+            inputBindingSettingsView?.Show();
+            if (EventSystem.current != null)
+                EventSystem.current.SetSelectedGameObject(null);
+        }
+
+
         private void ShowPauseMainOptions()
         {
             if (pauseMainOptions != null)
                 pauseMainOptions.SetActive(true);
             if (pauseSettingsPanel != null)
                 pauseSettingsPanel.SetActive(false);
+            inputBindingSettingsView?.Hide();
             if (EventSystem.current != null && resumeButton != null)
                 EventSystem.current.SetSelectedGameObject(resumeButton.gameObject);
         }
@@ -3227,6 +3594,7 @@ namespace Supernova.UI
                 itemLabels[i].fontSize =
                     item == PlayerInventoryItem.Flashlight
                         || item == PlayerInventoryItem.SolidGun
+                        || item == PlayerInventoryItem.PortalGun
                             ? 7f
                             : 9f;
                 ApplyLabelColor(i, i == selectedSlotIndex);
@@ -3259,8 +3627,6 @@ namespace Supernova.UI
             {
                 case PlayerInventoryItem.Pickaxe:
                     return "PICKAXE";
-                case PlayerInventoryItem.Magnet:
-                    return "MAGNET";
                 case PlayerInventoryItem.Flashlight:
                     return "FLASHLIGHT";
                 case PlayerInventoryItem.Gun:
@@ -3269,10 +3635,10 @@ namespace Supernova.UI
                     return "SMG";
                 case PlayerInventoryItem.SolidGun:
                     return "SOLIDGUN";
+                case PlayerInventoryItem.PortalGun:
+                    return "PORTALGUN";
                 case PlayerInventoryItem.Cart:
                     return "CART";
-                case PlayerInventoryItem.GrabHook:
-                    return "GRABHOOK";
                 case PlayerInventoryItem.Bomb:
                     return "BOMB";
                 default:

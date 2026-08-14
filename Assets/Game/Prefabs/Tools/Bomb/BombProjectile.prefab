@@ -278,9 +278,9 @@ MonoBehaviour:
   innerMiningPower: 30
   outerMiningPower: 10
   propagationDivisor: 2
-  entityExplosionImpulse: 240
+  entityExplosionImpulse: 600
   entityUpwardModifier: 0.6
   explosionEffectPrefab: {fileID: 1224328841576138, guid: c1f8b783e6de4e11a4b43496f55ca178,
     type: 3}
   explosionEffectLifetime: 3
-  configurationVersion: 4
+  configurationVersion: 5

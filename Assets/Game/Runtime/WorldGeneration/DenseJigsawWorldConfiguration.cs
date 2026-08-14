@@ -9,7 +9,7 @@ namespace Supernova.WorldGeneration
 {
     /// <summary>
     /// Describes only the intentional differences from InfiniteCaves:
-    /// a finite configurable column extent and a high-frequency mixed jigsaw pool.
+    /// a configurable horizontal extent and a high-frequency mixed jigsaw pool.
     /// Terrain, ores, meshing, mining, drops, markers, mobs, and all other
     /// runtime behaviour come from the referenced level unchanged.
     /// </summary>
@@ -19,7 +19,7 @@ namespace Supernova.WorldGeneration
     public sealed class DenseJigsawWorldConfiguration : ScriptableObject
     {
         public const int DefaultRegionColumnsPerSide = 6;
-        public const int DefaultWorldSectionCount = 3;
+        public const int DefaultWorldSectionCount = 2;
         public const float DefaultStructureDensity = 1f;
         public const int DefaultExternalLandingCellDistanceInColumns = 2;
         public const int MinimumWorldSectionCount = 2;
@@ -32,7 +32,12 @@ namespace Supernova.WorldGeneration
         [Header("Inherited InfiniteCaves level")]
         [SerializeField] private LevelConfiguration infiniteCavesLevelSource;
 
-        [Header("Finite world volume")]
+        [Header("World volume")]
+        [Tooltip(
+            "Streams the Dense jigsaw world without a horizontal boundary. "
+            + "Height, terrain, structures, density, and all other generation "
+            + "settings remain identical to the finite world.")]
+        [SerializeField] private bool generateInfiniteWorld;
         [Tooltip("Vertical section count. Every section is 32 voxels high.")]
         [SerializeField, Range(
             MinimumWorldSectionCount,
@@ -106,6 +111,7 @@ namespace Supernova.WorldGeneration
                 : null;
         public bool PreventStructureIntersections =>
             preventStructureIntersections;
+        public bool GenerateInfiniteWorld => generateInfiniteWorld;
         public int WorldSectionCount => Mathf.Clamp(
             worldSectionCount,
             MinimumWorldSectionCount,
@@ -200,6 +206,11 @@ namespace Supernova.WorldGeneration
         public void ConfigureStructureIntersections(bool preventIntersections)
         {
             preventStructureIntersections = preventIntersections;
+        }
+
+        public void ConfigureInfiniteWorld(bool generateInfinite)
+        {
+            generateInfiniteWorld = generateInfinite;
         }
 
         public void ConfigureGenerationVolume(

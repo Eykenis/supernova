@@ -769,6 +769,247 @@ namespace Supernova.Voxels
                 (Vector3)cellOrigin * voxelSize);
         }
 
+        /// <summary>
+        /// Rebuilds one connected type component from a detached body's sample
+        /// snapshot. Samples outside the requested ore component still contribute
+        /// their captured densities, matching the live-world extraction surface.
+        /// </summary>
+        public static VoxelMeshData BuildCapturedTypeComponent(
+            HashSet<Vector3Int> component,
+            IReadOnlyDictionary<Vector3Int, VoxelSample> samples,
+            VoxelTypeId targetType,
+            float isoLevel = 0f,
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint)
+        {
+            if (component == null)
+            {
+                throw new ArgumentNullException(nameof(component));
+            }
+            if (samples == null)
+            {
+                throw new ArgumentNullException(nameof(samples));
+            }
+            if (component.Count == 0)
+            {
+                throw new ArgumentException(
+                    "A captured type component must contain at least one sample.",
+                    nameof(component));
+            }
+            if (targetType.IsAir)
+            {
+                throw new ArgumentException(
+                    "Air cannot be extracted as a mesh component.",
+                    nameof(targetType));
+            }
+
+            Vector3Int minimum = new Vector3Int(
+                int.MaxValue,
+                int.MaxValue,
+                int.MaxValue);
+            Vector3Int maximum = new Vector3Int(
+                int.MinValue,
+                int.MinValue,
+                int.MinValue);
+            foreach (Vector3Int coordinate in component)
+            {
+                minimum = Vector3Int.Min(minimum, coordinate);
+                maximum = Vector3Int.Max(maximum, coordinate);
+            }
+
+            Vector3Int cellOrigin = minimum - Vector3Int.one;
+            Vector3Int cellCounts = maximum - minimum
+                + Vector3Int.one * 2;
+            VoxelTypeId excludedType = targetType != VoxelTypeId.Default
+                ? VoxelTypeId.Default
+                : new VoxelTypeId(ushort.MaxValue);
+            float outsideDensity = isoLevel + 1f;
+
+            return BuildGrid(
+                (x, y, z) =>
+                {
+                    Vector3Int coordinate = cellOrigin
+                        + new Vector3Int(x, y, z);
+                    VoxelSample sample = samples.TryGetValue(
+                        coordinate,
+                        out VoxelSample captured)
+                            ? captured
+                            : new VoxelSample(
+                                outsideDensity,
+                                VoxelTypeId.Default);
+                    return sample.Type == targetType
+                        && !component.Contains(coordinate)
+                            ? new VoxelSample(sample.Density, excludedType)
+                            : sample;
+                },
+                cellCounts.x,
+                cellCounts.y,
+                cellCounts.z,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                targetType,
+                (Vector3)cellOrigin * voxelSize);
+        }
+
+        /// <summary>
+        /// Rebuilds a detached, potentially multi-type solid component in
+        /// terrain-local world coordinates. Samples outside the component are
+        /// treated as air, which closes the newly cut faces while preserving the
+        /// world's density interpolation, surface grouping, and submesh types.
+        /// </summary>
+        public static VoxelMeshData BuildComponent(
+            InfiniteVoxelWorld world,
+            HashSet<Vector3Int> component,
+            float isoLevel = 0f,
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint,
+            VoxelGroupMap groupMap = default)
+        {
+            if (world == null)
+            {
+                throw new ArgumentNullException(nameof(world));
+            }
+            if (component == null)
+            {
+                throw new ArgumentNullException(nameof(component));
+            }
+            if (component.Count == 0)
+            {
+                throw new ArgumentException(
+                    "A component must contain at least one sample.",
+                    nameof(component));
+            }
+
+            Vector3Int minimum = new Vector3Int(
+                int.MaxValue,
+                int.MaxValue,
+                int.MaxValue);
+            Vector3Int maximum = new Vector3Int(
+                int.MinValue,
+                int.MinValue,
+                int.MinValue);
+            foreach (Vector3Int coordinate in component)
+            {
+                minimum = Vector3Int.Min(minimum, coordinate);
+                maximum = Vector3Int.Max(maximum, coordinate);
+            }
+
+            Vector3Int cellOrigin = minimum - Vector3Int.one;
+            Vector3Int cellCounts = maximum - minimum
+                + Vector3Int.one * 2;
+            float airDensity = isoLevel - 1f;
+            return BuildGrid(
+                (x, y, z) =>
+                {
+                    Vector3Int coordinate = cellOrigin
+                        + new Vector3Int(x, y, z);
+                    if (!component.Contains(coordinate)
+                        || !world.TryGetSample(
+                            coordinate.x,
+                            coordinate.y,
+                            coordinate.z,
+                            out VoxelSample sample)
+                        || !sample.IsSolid(isoLevel))
+                    {
+                        return new VoxelSample(
+                            airDensity,
+                            VoxelTypeId.Air);
+                    }
+
+                    return sample;
+                },
+                cellCounts.x,
+                cellCounts.y,
+                cellCounts.z,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                null,
+                (Vector3)cellOrigin * voxelSize,
+                groupMap);
+        }
+
+        /// <summary>
+        /// Builds a detached component from an immutable sample snapshot. The
+        /// caller may run this method on a worker thread as long as neither
+        /// collection is mutated until the method returns.
+        /// </summary>
+        public static VoxelMeshData BuildCapturedComponent(
+            HashSet<Vector3Int> component,
+            IReadOnlyDictionary<Vector3Int, VoxelSample> samples,
+            float isoLevel = 0f,
+            float voxelSize = 1f,
+            MarchingCubesVertexPlacement vertexPlacement =
+                MarchingCubesVertexPlacement.EdgeMidpoint,
+            VoxelGroupMap groupMap = default)
+        {
+            if (component == null)
+            {
+                throw new ArgumentNullException(nameof(component));
+            }
+            if (samples == null)
+            {
+                throw new ArgumentNullException(nameof(samples));
+            }
+            if (component.Count == 0)
+            {
+                throw new ArgumentException(
+                    "A captured component must contain at least one sample.",
+                    nameof(component));
+            }
+
+            Vector3Int minimum = new Vector3Int(
+                int.MaxValue,
+                int.MaxValue,
+                int.MaxValue);
+            Vector3Int maximum = new Vector3Int(
+                int.MinValue,
+                int.MinValue,
+                int.MinValue);
+            foreach (Vector3Int coordinate in component)
+            {
+                minimum = Vector3Int.Min(minimum, coordinate);
+                maximum = Vector3Int.Max(maximum, coordinate);
+            }
+
+            Vector3Int cellOrigin = minimum - Vector3Int.one;
+            Vector3Int cellCounts = maximum - minimum
+                + Vector3Int.one * 2;
+            float airDensity = isoLevel - 1f;
+            return BuildGrid(
+                (x, y, z) =>
+                {
+                    Vector3Int coordinate = cellOrigin
+                        + new Vector3Int(x, y, z);
+                    if (!component.Contains(coordinate)
+                        || !samples.TryGetValue(
+                            coordinate,
+                            out VoxelSample sample)
+                        || !sample.IsSolid(isoLevel))
+                    {
+                        return new VoxelSample(
+                            airDensity,
+                            VoxelTypeId.Air);
+                    }
+
+                    return sample;
+                },
+                cellCounts.x,
+                cellCounts.y,
+                cellCounts.z,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                null,
+                (Vector3)cellOrigin * voxelSize,
+                groupMap);
+        }
+
+
+
         private static VoxelMeshData BuildGrid(
             SampleSampler sample,
             int cellCountX,

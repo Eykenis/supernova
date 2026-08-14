@@ -1,11 +1,12 @@
 using Supernova.Gameplay;
 using Supernova.Voxels;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Supernova.Effects
 {
     /// <summary>
-    /// Draws a curved, flowing beam between the player and whatever the magnet tool is
+    /// Draws a stable energy arc between the player and whatever the magnet tool is
     /// currently holding. Purely visual: it never touches the held Rigidbody.
     /// </summary>
     [DisallowMultipleComponent]
@@ -15,32 +16,38 @@ namespace Supernova.Effects
         [SerializeField] private FirstPersonCartAttractor attractor;
         [SerializeField] private Camera viewCamera;
         [SerializeField] private Animator characterAnimator;
+        [Tooltip("Optional explicit beam origin. Assign the first-person right-palm bone or a child anchor here.")]
+        [SerializeField] private Transform rightPalmAnchor;
 
-        private Transform leftHand;
         private Transform rightHand;
+        private Transform rightMiddleProximal;
 
         [Header("Shape")]
-        [SerializeField, Range(4, 64)] private int segments = 24;
-        [SerializeField, Min(0f)] private float sag = 0.6f;
-        [SerializeField, Min(0f)] private float waveAmplitude = 0.12f;
-        [SerializeField, Min(0.01f)] private float waveFrequency = 2.5f;
-        [SerializeField, Min(0f)] private float startWidth = 0.05f;
-        [SerializeField, Min(0f)] private float endWidth = 0.14f;
+        [SerializeField, Range(4, 32)] private int segments = 16;
+        [FormerlySerializedAs("sag")]
+        [SerializeField, Min(0f)] private float arcHeight = 0.4f;
+        [SerializeField, Min(0f)] private float startWidth = 0.035f;
+        [SerializeField, Min(0f)] private float endWidth = 0.065f;
 
-        [Header("Flow")]
-        [SerializeField, Min(0f)] private float flowSpeed = 2.5f;
-        [SerializeField, Min(0.01f)] private float flowBandLength = 0.35f;
-        [Tooltip("Normalized beam length used to fade smoothly from transparent at the hand.")]
-        [SerializeField, Range(0.01f, 0.5f)] private float startFadeLength = 0.2f;
-        [SerializeField] private Color baseColor = new Color(0.25f, 0.85f, 1f, 0.35f);
-        [SerializeField] private Color flowColor = new Color(0.85f, 0.98f, 1f, 0.9f);
+        [Header("Energy")]
+        [FormerlySerializedAs("flowSpeed")]
+        [SerializeField, Min(0f)] private float pulseSpeed = 1.5f;
+        [SerializeField, Range(0f, 0.5f)] private float pulseStrength = 0.12f;
+        [Tooltip("Normalized beam length used for the source-end color transition.")]
+        [SerializeField, Range(0.01f, 0.5f)] private float startFadeLength = 0.12f;
+        [FormerlySerializedAs("baseColor")]
+        [SerializeField, ColorUsage(true, true)]
+        private Color energyColor = new Color(0.08f, 0.95f, 0.48f, 0.65f);
+        [FormerlySerializedAs("flowColor")]
+        [SerializeField, ColorUsage(true, true)]
+        private Color targetColor = new Color(0.55f, 1f, 0.7f, 0.95f);
 
         private LineRenderer line;
         private Material material;
         private Gradient gradient;
         private GradientColorKey[] colorKeys;
         private GradientAlphaKey[] alphaKeys;
-        private float flowPhase;
+        private float pulsePhase;
 
         private void Awake()
         {
@@ -64,75 +71,82 @@ namespace Supernova.Effects
             ResolveReferences();
             EnsureLine();
 
-            if (attractor == null
-                || !attractor.IsHolding
-                || attractor.HeldBody == null
-                || attractor.IsTowingCart)
+            if (attractor == null || !attractor.HasAttractionBeamTarget)
             {
                 line.enabled = false;
                 return;
             }
 
             line.enabled = true;
-            flowPhase += Time.deltaTime * flowSpeed;
+            pulsePhase = Mathf.Repeat(
+                pulsePhase + Time.deltaTime * pulseSpeed * Mathf.PI * 2f,
+                Mathf.PI * 2f);
 
             Vector3 start = ResolveBeamStart();
-            Vector3 end = attractor.HeldBody.worldCenterOfMass;
-            Vector3 chord = end - start;
-            Vector3 up = Vector3.up;
-            Vector3 side = Vector3.Cross(chord.normalized, up);
-            if (side.sqrMagnitude < 0.0001f)
-            {
-                side = viewCamera != null ? viewCamera.transform.right : transform.right;
-            }
-            side.Normalize();
+            Vector3 end = attractor.AttractionBeamTarget;
 
             for (int i = 0; i <= segments; i++)
             {
                 float t = (float)i / segments;
-                Vector3 point = Vector3.Lerp(start, end, t);
-                float arcAmount = CalculateArcHeight(t);
-                float wave = Mathf.Sin(t * waveFrequency * Mathf.PI * 2f - flowPhase) * waveAmplitude
-                    * Mathf.Sin(t * Mathf.PI);
-                point += up * arcAmount + side * wave;
-                line.SetPosition(i, point);
+                line.SetPosition(i, CalculateCurvePoint(start, end, t));
             }
 
-            UpdateFlowColor();
+            UpdateBeamColor();
+        }
+
+        private Vector3 CalculateCurvePoint(Vector3 start, Vector3 end, float t)
+        {
+            return Vector3.Lerp(start, end, t)
+                + Vector3.up * CalculateArcHeight(t);
         }
 
         private float CalculateArcHeight(float t)
         {
-            return Mathf.Sin(t * Mathf.PI) * sag;
+            t = Mathf.Clamp01(t);
+            return 4f * t * (1f - t) * arcHeight;
         }
 
-        private void UpdateFlowColor()
+        private void UpdateBeamColor()
         {
             if (gradient == null)
             {
                 gradient = new Gradient();
-                colorKeys = new GradientColorKey[8];
-                alphaKeys = new GradientAlphaKey[8];
+                colorKeys = new GradientColorKey[3];
+                alphaKeys = new GradientAlphaKey[4];
             }
 
-            float loopedPhase = Mathf.Repeat(flowPhase * 0.15f, 1f);
-            for (int i = 0; i < colorKeys.Length; i++)
-            {
-                float t = (float)i / (colorKeys.Length - 1);
-                float wrappedDistance = Mathf.Abs(t - loopedPhase);
-                wrappedDistance = Mathf.Min(wrappedDistance, 1f - wrappedDistance);
-                float intensity = 1f - Mathf.Clamp01(wrappedDistance / flowBandLength);
-                Color color = Color.Lerp(baseColor, flowColor, intensity);
-                float startFade = Mathf.SmoothStep(
-                    0f,
-                    1f,
-                    Mathf.InverseLerp(0f, startFadeLength, t));
-                colorKeys[i] = new GradientColorKey(color, t);
-                alphaKeys[i] = new GradientAlphaKey(color.a * startFade, t);
-            }
+            float pulse = 1f + Mathf.Sin(pulsePhase) * pulseStrength;
+            Color pulsedEnergy = MultiplyRgb(energyColor, pulse);
+            Color pulsedTarget = MultiplyRgb(targetColor, pulse);
+
+            colorKeys[0] = new GradientColorKey(pulsedEnergy, 0f);
+            colorKeys[1] = new GradientColorKey(pulsedEnergy, 0.82f);
+            colorKeys[2] = new GradientColorKey(pulsedTarget, 1f);
+
+            alphaKeys[0] = new GradientAlphaKey(
+                Mathf.Clamp01(energyColor.a * pulse),
+                0f);
+            alphaKeys[1] = new GradientAlphaKey(
+                Mathf.Clamp01(energyColor.a * pulse),
+                startFadeLength);
+            alphaKeys[2] = new GradientAlphaKey(
+                Mathf.Clamp01(energyColor.a * pulse),
+                0.82f);
+            alphaKeys[3] = new GradientAlphaKey(
+                Mathf.Clamp01(targetColor.a * pulse),
+                1f);
 
             gradient.SetKeys(colorKeys, alphaKeys);
             line.colorGradient = gradient;
+        }
+
+        private static Color MultiplyRgb(Color color, float multiplier)
+        {
+            return new Color(
+                color.r * multiplier,
+                color.g * multiplier,
+                color.b * multiplier,
+                color.a);
         }
 
         private void ResolveReferences()
@@ -155,26 +169,43 @@ namespace Supernova.Effects
             if (resolvedAnimator != null && resolvedAnimator != characterAnimator)
             {
                 characterAnimator = resolvedAnimator;
-                leftHand = null;
                 rightHand = null;
+                rightMiddleProximal = null;
             }
 
             if (characterAnimator == null || !characterAnimator.isHuman) return;
-            if (leftHand == null)
-            {
-                leftHand = characterAnimator.GetBoneTransform(HumanBodyBones.LeftHand);
-            }
+
             if (rightHand == null)
             {
                 rightHand = characterAnimator.GetBoneTransform(HumanBodyBones.RightHand);
+            }
+            if (rightMiddleProximal == null)
+            {
+                rightMiddleProximal = characterAnimator.GetBoneTransform(
+                    HumanBodyBones.RightMiddleProximal);
             }
         }
 
         private Vector3 ResolveBeamStart()
         {
-            if (leftHand != null && rightHand != null)
+            if (rightPalmAnchor != null)
             {
-                return (leftHand.position + rightHand.position) * 0.5f;
+                return rightPalmAnchor.position;
+            }
+
+            if (rightHand != null && rightMiddleProximal != null)
+            {
+                // Humanoid hand bones originate at the wrist. Halfway towards the
+                // middle-finger knuckle gives a stable point in the palm itself.
+                return Vector3.Lerp(
+                    rightHand.position,
+                    rightMiddleProximal.position,
+                    0.5f);
+            }
+
+            if (rightHand != null)
+            {
+                return rightHand.position;
             }
 
             if (viewCamera != null)
@@ -203,6 +234,8 @@ namespace Supernova.Effects
             line.textureMode = LineTextureMode.Stretch;
             line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             line.receiveShadows = false;
+            line.numCapVertices = 2;
+            line.numCornerVertices = 2;
             line.widthCurve = AnimationCurve.Linear(0f, startWidth, 1f, endWidth);
             line.enabled = false;
 

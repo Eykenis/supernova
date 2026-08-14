@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.PortalExample
@@ -17,7 +18,7 @@ namespace Supernova.PortalExample
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.E))
+            if (GameInput.Pressed(GameInputActionId.Interact))
             {
                 if (heldBody == null)
                 {
@@ -29,7 +30,8 @@ namespace Supernova.PortalExample
                 }
             }
 
-            if (heldBody != null && Input.GetMouseButtonDown(0))
+            if (heldBody != null
+                && GameInput.Pressed(GameInputActionId.PrimaryAction))
             {
                 Release(view.forward * throwSpeed);
             }

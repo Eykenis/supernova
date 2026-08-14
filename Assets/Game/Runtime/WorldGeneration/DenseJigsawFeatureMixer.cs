@@ -204,7 +204,9 @@ namespace Supernova.WorldGeneration
                         original.TemplateAnchor,
                         original.TemplateWritesAir,
                         templateDensities,
-                        templateTypes));
+                        templateTypes,
+                        settings.PrimaryType,
+                        settings.AccentType));
                     families.Add(familyId);
                 }
             }
@@ -273,7 +275,8 @@ namespace Supernova.WorldGeneration
                     modules.ToArray(),
                     worldHeight: worldHeight,
                     allowLayoutOutsidePlacementRegion:
-                        allowsCrossRegionLayouts);
+                        allowsCrossRegionLayouts,
+                    startPieceCandidates: familyStartPieceIndices.ToArray());
                 mixedFeature = new DenseJigsawFeature(
                     settings,
                     families.ToArray(),
@@ -329,8 +332,8 @@ namespace Supernova.WorldGeneration
                     startFamily.SeedSalt,
                     source.RegionSizeInChunks,
                     1f,
-                    startFamily.MinFloorHeight,
-                    startFamily.MaxFloorHeight,
+                    source.MinFloorHeight,
+                    source.MaxFloorHeight,
                     source.MaxPieces,
                     source.MaxDepth,
                     source.MaxHorizontalDistance,
@@ -361,25 +364,42 @@ namespace Supernova.WorldGeneration
             for (int i = 0; i < result.Length; i++)
             {
                 JigsawConnectorSettings source = piece.Connectors[i];
+                bool verticalTransit =
+                    source.Face == JigsawConnectorDefinition.Face.Up
+                    || source.Face == JigsawConnectorDefinition.Face.Down
+                    || source.TargetPoolId.StartsWith(
+                        "vertical",
+                        StringComparison.Ordinal);
                 result[i] = new JigsawConnectorSettings(
                     familyId + "__" + source.StableId,
-                    JigsawConnectorDefinition.Role.Bidirectional,
+                    verticalTransit
+                        ? source.Role
+                        : JigsawConnectorDefinition.Role.Bidirectional,
                     source.Face,
                     source.Joint,
-                    "*",
-                    "*",
+                    verticalTransit
+                        ? PrefixMatchName(familyId, source.SocketName)
+                        : "*",
+                    verticalTransit
+                        ? PrefixMatchName(familyId, source.TargetName)
+                        : "*",
                     MixedPoolId,
                     MixedPoolId,
                     source.AlongOffset,
                     source.LateralOffset,
                     source.VerticalOffset,
-                    1f,
+                    verticalTransit ? source.ActivationChance : 1f,
                     source.OpeningWidth,
                     source.OpeningHeight,
                     source.HasTemplatePosition,
                     source.TemplatePosition);
             }
             return result;
+        }
+
+        private static string PrefixMatchName(string familyId, string value)
+        {
+            return value == "*" ? "*" : familyId + "__" + value;
         }
 
         private static JigsawPieceSettings CloneMixedPiece(
@@ -429,7 +449,9 @@ namespace Supernova.WorldGeneration
                 source.TemplateAnchor,
                 source.TemplateWritesAir,
                 templateDensities,
-                templateTypes);
+                templateTypes,
+                source.PrimaryTypeOverride,
+                source.AccentTypeOverride);
         }
 
         private static JigsawConnectorSettings[] CopyConnectors(

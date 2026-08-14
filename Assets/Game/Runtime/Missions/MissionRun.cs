@@ -74,9 +74,9 @@ namespace Supernova.Missions
 
     public sealed class MissionRun
     {
-        public MissionRun(float evacuationCountdownSeconds, int requiredValue)
+        public MissionRun(float timeLimitSeconds, int requiredValue)
         {
-            TimeRemaining = Math.Max(0f, evacuationCountdownSeconds);
+            TimeRemaining = Math.Max(0f, timeLimitSeconds);
             RequiredValue = Math.Max(1, requiredValue);
         }
 
@@ -84,7 +84,8 @@ namespace Supernova.Missions
         public int RequiredValue { get; }
         public int DeliveredValue { get; private set; }
         public MissionOutcome Outcome { get; private set; }
-        public bool IsEvacuationCountdownActive { get; private set; }
+        public bool IsCountdownActive => !IsFinished && TimeRemaining > 0f;
+        public bool IsEvacuationCountdownActive => IsCountdownActive;
         public bool IsFinished => Outcome != MissionOutcome.None;
         public int ExcessValue => Outcome == MissionOutcome.Success
             ? Math.Max(0, DeliveredValue - RequiredValue) : 0;
@@ -96,23 +97,25 @@ namespace Supernova.Missions
 
         public void Tick(float deltaTime)
         {
-            if (IsFinished || !IsEvacuationCountdownActive) return;
+            Tick(deltaTime, 0);
+        }
+
+        public void Tick(float deltaTime, int extractionStoredValue)
+        {
+            if (IsFinished) return;
             TimeRemaining = Math.Max(0f, TimeRemaining - Math.Max(0f, deltaTime));
-            if (TimeRemaining <= 0f) Outcome = MissionOutcome.Success;
+            if (TimeRemaining > 0f) return;
+
+            DeliveredValue += Math.Max(0, extractionStoredValue);
+            Outcome = DeliveredValue >= RequiredValue
+                ? MissionOutcome.Success
+                : MissionOutcome.Fired;
         }
 
         public bool TryStartEvacuationCountdown(int extractionStoredValue)
         {
-            if (IsFinished || IsEvacuationCountdownActive) return false;
-
-            // Direct deliveries are already banked in DeliveredValue. The Cell
-            // contributes its live overlap tally when evacuation begins.
-            int available = DeliveredValue + Math.Max(0, extractionStoredValue);
-            if (available < RequiredValue) return false;
-
-            DeliveredValue = available;
-            IsEvacuationCountdownActive = true;
-            return true;
+            // Timed missions evacuate automatically when the mission clock ends.
+            return false;
         }
     }
 }

@@ -15,6 +15,11 @@ namespace Supernova.MinecraftCaves
     {
         private const int MaximumCachedLayouts = 512;
         private const int CollisionCellSize = 16;
+        private const int HorizontalDirectionCount = 4;
+        private const int UpDirection =
+            (int)JigsawConnectorDefinition.Face.Up;
+        private const int DownDirection =
+            (int)JigsawConnectorDefinition.Face.Down;
         private static readonly ConcurrentDictionary<LayoutCacheKey, Lazy<LayoutCacheEntry>>
             LayoutCache = new ConcurrentDictionary<LayoutCacheKey, Lazy<LayoutCacheEntry>>();
         private static readonly ConcurrentQueue<LayoutCacheKey> LayoutCacheOrder =
@@ -162,7 +167,7 @@ namespace Supernova.MinecraftCaves
                 int height)
             {
                 Boundary = boundary;
-                Direction = direction & 3;
+                Direction = NormalizeConnectionDirection(direction);
                 Width = Math.Max(1, width);
                 Height = Math.Max(1, height);
             }
@@ -202,7 +207,7 @@ namespace Supernova.MinecraftCaves
                 int openingHeight)
             {
                 Position = position;
-                Direction = direction & 3;
+                Direction = NormalizeConnectionDirection(direction);
                 Depth = depth;
                 ParentIndex = parentIndex;
                 PoolId = poolId;
@@ -682,9 +687,8 @@ namespace Supernova.MinecraftCaves
             for (int i = 0; i < module.SpawnMarkers.Count; i++)
             {
                 StructureSpawnMarkerSettings marker = module.SpawnMarkers[i];
-                if (marker.Kind == StructureSpawnMarkerDefinition.Kind.Checkpoint
-                    || marker.Kind
-                        == StructureSpawnMarkerDefinition.Kind.PlayerSpawn)
+                if (marker.Kind
+                    != StructureSpawnMarkerDefinition.Kind.Treasure)
                 {
                     continue;
                 }
@@ -735,7 +739,6 @@ namespace Supernova.MinecraftCaves
                     results.Add(new StructureSpawnRequest(
                         marker.Kind,
                         marker.Treasure,
-                        marker.Monster,
                         position,
                         Mathf.Repeat(pieceYaw + marker.Yaw, 360f),
                         marker.SnapToFloor,
@@ -833,17 +836,26 @@ namespace Supernova.MinecraftCaves
             var spatialIndex = new PieceSpatialIndex();
             var counts = new int[feature.Pieces.Count];
 
+            // Mixed pools list one hub per family. Rolling before the graph grows
+            // keeps every family's signature entrance in rotation instead of
+            // always opening with whichever family was authored first.
+            IReadOnlyList<int> startCandidates =
+                feature.StartPieceCandidateIndices;
+            int startPieceIndex = startCandidates.Count > 1
+                ? startCandidates[random.NextInt(startCandidates.Count)]
+                : feature.StartPieceIndex;
+
             JigsawPieceSettings startModule = feature.GetPiece(
-                feature.StartPieceIndex);
+                startPieceIndex);
             int firstDirection = random.NextInt(4);
             Piece start = CreateStartPiece(
-                feature.StartPieceIndex,
+                startPieceIndex,
                 startModule,
                 placement.Centre,
                 firstDirection,
                 ref random);
             pieces.Add(start);
-            counts[feature.StartPieceIndex]++;
+            counts[startPieceIndex]++;
             spatialIndex.Add(0, start.Bounds);
             var startOpenings = new List<Opening>();
             int startConnectorMask = EnqueueConnectors(
@@ -896,10 +908,23 @@ namespace Supernova.MinecraftCaves
                     }
                     excludedModules.Add(moduleIndex);
                     JigsawPieceSettings module = feature.GetPiece(moduleIndex);
+                    bool priorityContinuation =
+                        RequiresPriorityContinuation(module);
+                    if (priorityContinuation
+                        && (pieces.Count > feature.MaxPieces - 2
+                            || connector.Depth >= feature.MaxDepth))
+                    {
+                        // A vertical corridor is only useful when its far-side
+                        // landing can also be committed. Reject the entrance
+                        // before it becomes an opening if the graph has no
+                        // remaining piece/depth budget for that continuation.
+                        continue;
+                    }
                     if (!TryCreateCandidate(
                         moduleIndex,
                         module,
                         connector,
+                        pieces[connector.ParentIndex].Direction,
                         ref random,
                         out Piece candidate,
                         out Opening entranceOpening,
@@ -917,30 +942,202 @@ namespace Supernova.MinecraftCaves
                     {
                         continue;
                     }
+                    if (priorityContinuation
+                        && !CanReservePriorityContinuation(
+                            feature,
+                            placement,
+                            pieces,
+                            spatialIndex,
+                            counts,
+                            candidate,
+                            module,
+                            usedInputConnector,
+                            random))
+                    {
+                        // Do not open the source-room door unless the far-side
+                        // landing has valid graph budget and collision space.
+                        continue;
+                    }
 
                     int pieceIndex = pieces.Count;
                     pieces.Add(candidate);
                     counts[moduleIndex]++;
                     spatialIndex.Add(pieceIndex, candidate.Bounds);
                     var openings = new List<Opening> { entranceOpening };
+                    Queue<Connector> childConnectors = priorityContinuation
+                        ? new Queue<Connector>()
+                        : connectors;
                     int connectorMask = EnqueueConnectors(
                         candidate,
                         module,
                         pieceIndex,
-                        connectors,
+                        childConnectors,
                         openings,
                         ref random,
                         false,
                         usedInputConnector);
+                    if (priorityContinuation)
+                    {
+                        PrependConnectors(connectors, childConnectors);
+                    }
                     connectorMask |= 1 << entranceOpening.Direction;
                     pieces[pieceIndex] = candidate.WithConnections(
                         connectorMask,
                         openings.ToArray());
+                    pieces[connector.ParentIndex] = AddConnectedOpening(
+                        pieces[connector.ParentIndex],
+                        connector);
                     added = true;
                 }
             }
 
             return pieces;
+        }
+
+        private static bool RequiresPriorityContinuation(
+            JigsawPieceSettings module)
+        {
+            if (module.Shape != JigsawPieceDefinition.Shape.VerticalShaft)
+            {
+                return false;
+            }
+
+            int mandatoryOutputs = 0;
+            for (int i = 0; i < module.Connectors.Count; i++)
+            {
+                JigsawConnectorSettings connector = module.Connectors[i];
+                if (connector.CanEmitOutput
+                    && connector.ActivationChance >= 1f)
+                {
+                    mandatoryOutputs++;
+                }
+            }
+            return mandatoryOutputs == 1;
+        }
+
+        private static bool CanReservePriorityContinuation(
+            JigsawStructureFeatureSettings feature,
+            Placement placement,
+            List<Piece> pieces,
+            PieceSpatialIndex spatialIndex,
+            int[] counts,
+            Piece candidate,
+            JigsawPieceSettings module,
+            int usedInputConnector,
+            DeterministicRandom random)
+        {
+            for (int connectorIndex = 0;
+                connectorIndex < module.Connectors.Count;
+                connectorIndex++)
+            {
+                JigsawConnectorSettings authored =
+                    module.Connectors[connectorIndex];
+                if (connectorIndex == usedInputConnector
+                    || !authored.CanEmitOutput
+                    || authored.ActivationChance < 1f)
+                {
+                    continue;
+                }
+
+                int direction = GetWorldDirection(
+                    candidate.Direction,
+                    authored.Face);
+                Vector3Int boundary = GetAuthoredConnectorBoundary(
+                    candidate,
+                    module,
+                    authored);
+                var continuationConnector = new Connector(
+                    boundary + DirectionVector(direction),
+                    direction,
+                    candidate.Depth + 1,
+                    pieces.Count,
+                    authored.TargetPoolId,
+                    authored.FallbackPoolId,
+                    authored.SocketName,
+                    authored.TargetName,
+                    authored.OpeningWidth,
+                    authored.OpeningHeight);
+
+                for (int targetIndex = 0;
+                    targetIndex < feature.Pieces.Count;
+                    targetIndex++)
+                {
+                    JigsawPieceSettings target = feature.GetPiece(targetIndex);
+                    if (!target.IsEligible(
+                            continuationConnector.PoolId,
+                            continuationConnector.Depth,
+                            counts[targetIndex],
+                            candidate.ModuleIndex,
+                            targetIndex)
+                        || !HasCompatibleInput(target, continuationConnector))
+                    {
+                        continue;
+                    }
+
+                    DeterministicRandom previewRandom = random;
+                    if (TryCreateCandidate(
+                            targetIndex,
+                            target,
+                            continuationConnector,
+                            candidate.Direction,
+                            ref previewRandom,
+                            out Piece continuation,
+                            out _,
+                            out _)
+                        && CanAddPiece(
+                            feature,
+                            placement,
+                            pieces,
+                            spatialIndex,
+                            continuation,
+                            pieces.Count))
+                    {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        private static void PrependConnectors(
+            Queue<Connector> connectors,
+            Queue<Connector> priority)
+        {
+            if (priority.Count == 0)
+            {
+                return;
+            }
+
+            Connector[] existing = connectors.ToArray();
+            connectors.Clear();
+            while (priority.Count > 0)
+            {
+                connectors.Enqueue(priority.Dequeue());
+            }
+            for (int i = 0; i < existing.Length; i++)
+            {
+                connectors.Enqueue(existing[i]);
+            }
+        }
+
+        private static Piece AddConnectedOpening(
+            Piece piece,
+            Connector connector)
+        {
+            var opening = new Opening(
+                connector.Position - DirectionVector(connector.Direction),
+                connector.Direction,
+                connector.OpeningWidth,
+                connector.OpeningHeight);
+            var openings = new Opening[piece.Openings.Count + 1];
+            for (int i = 0; i < piece.Openings.Count; i++)
+            {
+                openings[i] = piece.Openings[i];
+            }
+            openings[openings.Length - 1] = opening;
+            return piece.WithConnections(
+                piece.ConnectorMask | 1 << opening.Direction,
+                openings);
         }
 
         private static int CountRequiredDeficit(
@@ -1162,7 +1359,7 @@ namespace Supernova.MinecraftCaves
         {
             if (!module.HasExplicitConnectors)
             {
-                return true;
+                return !IsVerticalDirection(connector.Direction);
             }
             for (int i = 0; i < module.Connectors.Count; i++)
             {
@@ -1179,6 +1376,7 @@ namespace Supernova.MinecraftCaves
             int moduleIndex,
             JigsawPieceSettings module,
             Connector connector,
+            int parentDirection,
             ref DeterministicRandom random,
             out Piece candidate,
             out Opening entranceOpening,
@@ -1219,7 +1417,22 @@ namespace Supernova.MinecraftCaves
                 }
                 JigsawConnectorSettings input =
                     module.Connectors[usedInputConnector];
-                direction = ((connector.Direction + 2) - (int)input.Face) & 3;
+                if (IsVerticalDirection(connector.Direction))
+                {
+                    // Consume the historical yaw roll so subsequent seeded
+                    // choices remain stable, but keep vertically connected
+                    // pieces in the same frame. Spiral ramp lanes are authored
+                    // relative to that frame; rotating the child independently
+                    // makes its lower lane cross and block the parent's upper
+                    // lane inside the shared aperture.
+                    random.NextInt(HorizontalDirectionCount);
+                    direction = parentDirection & 3;
+                }
+                else
+                {
+                    direction = (OppositeDirection(connector.Direction)
+                        - (int)input.Face) & 3;
+                }
                 placementConnector = new Connector(
                     Vector3Int.zero,
                     direction,
@@ -1247,6 +1460,7 @@ namespace Supernova.MinecraftCaves
             {
                 case JigsawPieceDefinition.Shape.Room:
                 case JigsawPieceDefinition.Shape.Crossing:
+                case JigsawPieceDefinition.Shape.VerticalShaft:
                     candidate = CreateBox(
                         moduleIndex,
                         module,
@@ -1308,7 +1522,7 @@ namespace Supernova.MinecraftCaves
                     candidate,
                     connector.Position - boundary);
             }
-            int entranceDirection = (connector.Direction + 2) & 3;
+            int entranceDirection = OppositeDirection(connector.Direction);
             entranceOpening = new Opening(
                 connector.Position,
                 entranceDirection,
@@ -1472,8 +1686,37 @@ namespace Supernova.MinecraftCaves
             JigsawConnectorSettings input)
         {
             return input.CanAcceptInput
+                && CanOrientInput(output.Direction, input.Face)
+                && CanUseWildcardSocketNames(output, input)
                 && NamesMatch(output.TargetName, input.SocketName)
                 && NamesMatch(input.TargetName, output.SocketName);
+        }
+
+        private static bool CanUseWildcardSocketNames(
+            Connector output,
+            JigsawConnectorSettings input)
+        {
+            bool reservedLiftSocket = IsLiftSocketName(output.SocketName)
+                || IsLiftSocketName(output.TargetName)
+                || IsLiftSocketName(input.SocketName)
+                || IsLiftSocketName(input.TargetName);
+            if (!reservedLiftSocket)
+            {
+                return true;
+            }
+
+            return output.SocketName != "*"
+                && output.TargetName != "*"
+                && input.SocketName != "*"
+                && input.TargetName != "*";
+        }
+
+        private static bool IsLiftSocketName(string value)
+        {
+            return value != null
+                && value.IndexOf(
+                    "fort_lift_",
+                    StringComparison.Ordinal) >= 0;
         }
 
         private static bool NamesMatch(string expected, string actual)
@@ -1511,10 +1754,39 @@ namespace Supernova.MinecraftCaves
                         + templateForward.z * localZ);
             }
 
-            int worldDirection = (piece.Direction + (int)connector.Face) & 3;
-            bool box = module.HasTemplate
-                || piece.Shape == JigsawPieceDefinition.Shape.Room
-                || piece.Shape == JigsawPieceDefinition.Shape.Crossing;
+            int worldDirection = GetWorldDirection(
+                piece.Direction,
+                connector.Face);
+            bool box = module.HasTemplate || IsBoxShape(piece.Shape);
+            if (IsVerticalDirection(worldDirection))
+            {
+                Vector3Int verticalForward = DirectionVector(piece.Direction);
+                Vector3Int verticalRight = DirectionVector(
+                    (piece.Direction + 1) & 3);
+                int verticalAlong = connector.AlongOffset < 0
+                    ? (box ? 0 : piece.Length / 2)
+                    : (box
+                        ? connector.AlongOffset
+                        : Math.Min(piece.Length - 1, connector.AlongOffset));
+                int surfaceY;
+                if (box)
+                {
+                    surfaceY = worldDirection == UpDirection
+                        ? piece.Bounds.MaxY
+                        : piece.Bounds.MinY;
+                }
+                else
+                {
+                    int verticalFloorY = GetFloorY(piece, verticalAlong);
+                    surfaceY = worldDirection == UpDirection
+                        ? verticalFloorY + module.Height
+                        : verticalFloorY;
+                }
+                return piece.Origin
+                    + verticalForward * verticalAlong
+                    + verticalRight * connector.LateralOffset
+                    + Vector3Int.up * (surfaceY - piece.Origin.y);
+            }
             if (box)
             {
                 Vector3Int side = DirectionVector(worldDirection);
@@ -1653,7 +1925,9 @@ namespace Supernova.MinecraftCaves
                     {
                         continue;
                     }
-                    int direction = (piece.Direction + (int)authored.Face) & 3;
+                    int direction = GetWorldDirection(
+                        piece.Direction,
+                        authored.Face);
                     Vector3Int boundary = GetAuthoredConnectorBoundary(
                         piece,
                         module,
@@ -1668,11 +1942,6 @@ namespace Supernova.MinecraftCaves
                         authored.FallbackPoolId,
                         authored.SocketName,
                         authored.TargetName,
-                        authored.OpeningWidth,
-                        authored.OpeningHeight));
-                    openings.Add(new Opening(
-                        boundary,
-                        direction,
                         authored.OpeningWidth,
                         authored.OpeningHeight));
                     mask |= 1 << direction;
@@ -1848,8 +2117,7 @@ namespace Supernova.MinecraftCaves
             List<Opening> openings)
         {
             Vector3Int position;
-            bool box = piece.Shape == JigsawPieceDefinition.Shape.Room
-                || piece.Shape == JigsawPieceDefinition.Shape.Crossing;
+            bool box = IsBoxShape(piece.Shape);
             if (!box && direction == piece.Direction)
             {
                 Vector3Int forward = DirectionVector(piece.Direction);
@@ -1907,11 +2175,6 @@ namespace Supernova.MinecraftCaves
                 string.Empty,
                 "*",
                 "*",
-                3,
-                3));
-            openings.Add(new Opening(
-                position - DirectionVector(direction) + Vector3Int.up,
-                direction,
                 3,
                 3));
         }
@@ -1998,17 +2261,27 @@ namespace Supernova.MinecraftCaves
 
             int changed = 0;
             float isoDensity = (solidDensity + airDensity) * 0.5f;
+            VoxelTypeId primaryType = ResolvePrimaryType(module, feature);
+            VoxelTypeId accentType = ResolveAccentType(module, feature);
             for (int worldZ = minZ; worldZ <= maxZ; worldZ++)
             {
                 int localZ = worldZ - targetMinZ;
                 for (int worldX = minX; worldX <= maxX; worldX++)
                 {
                     int localX = worldX - targetMinX;
+                    int maximumSampleY = pass == VoxelPass.Accent
+                            && module.Decoration
+                                == JigsawPieceDefinition.Decoration.SpiralStairs
+                        ? Math.Min(
+                            VoxelColumnChunkData.Height - 1,
+                            piece.Bounds.MaxY + 1)
+                        : piece.Bounds.MaxY;
                     for (int worldY = piece.Bounds.MinY;
-                        worldY <= piece.Bounds.MaxY;
+                        worldY <= maximumSampleY;
                         worldY++)
                     {
                         bool conditionalFloor = false;
+                        bool mergeSpiralRamp = false;
                         float targetDensity;
                         VoxelTypeId targetType;
                         if (module.HasTemplate)
@@ -2026,6 +2299,27 @@ namespace Supernova.MinecraftCaves
                             {
                                 continue;
                             }
+                        }
+                        else if (pass == VoxelPass.Accent
+                            && module.BuildStyle
+                                == JigsawPieceDefinition.BuildStyle.Masonry
+                            && IsBoxShape(module.Shape)
+                            && module.Decoration
+                                == JigsawPieceDefinition.Decoration.SpiralStairs
+                            && TryEvaluateSpiralRampSample(
+                                piece,
+                                worldX,
+                                worldY,
+                                worldZ,
+                                solidDensity,
+                                airDensity,
+                                out targetDensity,
+                                out bool solidRampSample))
+                        {
+                            targetType = solidRampSample
+                                ? accentType
+                                : VoxelTypeId.Air;
+                            mergeSpiralRamp = true;
                         }
                         else
                         {
@@ -2045,8 +2339,8 @@ namespace Supernova.MinecraftCaves
                             targetType = air
                                 ? VoxelTypeId.Air
                                 : pass == VoxelPass.Accent
-                                    ? feature.AccentType
-                                    : feature.PrimaryType;
+                                    ? accentType
+                                    : primaryType;
                         }
 
                         int index = VoxelColumnChunkData.ToIndex(
@@ -2055,6 +2349,18 @@ namespace Supernova.MinecraftCaves
                             localZ);
                         if (conditionalFloor && densities[index] >= isoDensity)
                         {
+                            continue;
+                        }
+                        if (mergeSpiralRamp
+                            && types[index] == accentType
+                            && densities[index] >= targetDensity)
+                        {
+                            // Adjacent vertical pieces may both contribute a
+                            // ramp tongue inside the shared aperture. Treat the
+                            // ramp fields as a solid union so a later spiral's
+                            // empty slab samples cannot erase the earlier
+                            // piece's walkable connection. Primary shell voxels
+                            // are still carved when the ramp needs headroom.
                             continue;
                         }
                         if (densities[index] == targetDensity
@@ -2120,6 +2426,7 @@ namespace Supernova.MinecraftCaves
                     {
                         changed += ApplyProcessorColumn(
                             piece,
+                            module,
                             feature,
                             processor,
                             worldX,
@@ -2138,6 +2445,7 @@ namespace Supernova.MinecraftCaves
 
         private static int ApplyProcessorColumn(
             Piece piece,
+            JigsawPieceSettings module,
             JigsawStructureFeatureSettings feature,
             JigsawProcessorSettings processor,
             int worldX,
@@ -2152,8 +2460,23 @@ namespace Supernova.MinecraftCaves
             int localX = worldX - targetMinX;
             int localZ = worldZ - targetMinZ;
             VoxelTypeId writeType = processor.ResolveType(
-                feature.PrimaryType,
-                feature.AccentType);
+                ResolvePrimaryType(module, feature),
+                ResolveAccentType(module, feature));
+            bool fillsBelow =
+                processor.Kind
+                    == JigsawProcessorDefinition.Kind.SupportToGround
+                || processor.Kind
+                    == JigsawProcessorDefinition.Kind.FoundationFill;
+            if (fillsBelow
+                && HasOpeningInDirection(piece, DownDirection))
+            {
+                // A connected Down socket means the complete volume below this
+                // floor belongs to a playable vertical passage. Foundation and
+                // support processors run after every accent pass, so even a
+                // write outside the socket aperture can re-seal the spiral
+                // ramp that approaches the upper floor around that aperture.
+                return 0;
+            }
 
             switch (processor.Kind)
             {
@@ -2207,6 +2530,7 @@ namespace Supernova.MinecraftCaves
                 case JigsawProcessorDefinition.Kind.Weathering:
                     return ApplyWeathering(
                         piece,
+                        module,
                         feature,
                         processor,
                         worldX,
@@ -2302,6 +2626,7 @@ namespace Supernova.MinecraftCaves
         /// </summary>
         private static int ApplyWeathering(
             Piece piece,
+            JigsawPieceSettings module,
             JigsawStructureFeatureSettings feature,
             JigsawProcessorSettings processor,
             int worldX,
@@ -2314,6 +2639,8 @@ namespace Supernova.MinecraftCaves
             VoxelTypeId writeType)
         {
             int changed = 0;
+            VoxelTypeId ownedPrimary = ResolvePrimaryType(module, feature);
+            VoxelTypeId ownedAccent = ResolveAccentType(module, feature);
             for (int worldY = piece.Bounds.MinY;
                 worldY <= piece.Bounds.MaxY;
                 worldY++)
@@ -2323,8 +2650,8 @@ namespace Supernova.MinecraftCaves
                 {
                     continue;
                 }
-                bool ownedByStructure = types[index] == feature.PrimaryType
-                    || types[index] == feature.AccentType;
+                bool ownedByStructure = types[index] == ownedPrimary
+                    || types[index] == ownedAccent;
                 if (!ownedByStructure)
                 {
                     continue;
@@ -2338,6 +2665,29 @@ namespace Supernova.MinecraftCaves
                 changed++;
             }
             return changed;
+        }
+
+        /// <summary>
+        /// A mixed pool carries modules from several families, so the module's own
+        /// authored palette wins when it has one. Single-family features leave the
+        /// override unset and keep using the feature palette.
+        /// </summary>
+        private static VoxelTypeId ResolvePrimaryType(
+            JigsawPieceSettings module,
+            JigsawStructureFeatureSettings feature)
+        {
+            return module.HasPaletteOverride
+                ? module.PrimaryTypeOverride
+                : feature.PrimaryType;
+        }
+
+        private static VoxelTypeId ResolveAccentType(
+            JigsawPieceSettings module,
+            JigsawStructureFeatureSettings feature)
+        {
+            return module.HasPaletteOverride
+                ? module.AccentTypeOverride
+                : feature.AccentType;
         }
 
         private static bool IsPerimeterColumn(
@@ -2455,8 +2805,7 @@ namespace Supernova.MinecraftCaves
             out bool conditionalFloor)
         {
             conditionalFloor = false;
-            bool box = piece.Shape == JigsawPieceDefinition.Shape.Room
-                || piece.Shape == JigsawPieceDefinition.Shape.Crossing;
+            bool box = IsBoxShape(piece.Shape);
             if (module.BuildStyle == JigsawPieceDefinition.BuildStyle.Masonry)
             {
                 return box
@@ -2681,9 +3030,191 @@ namespace Supernova.MinecraftCaves
                         && portalY == 5;
                     return portalPlane && (portalSide || portalTop);
 
+                case JigsawPieceDefinition.Decoration.SpiralStairs:
+                    // Spiral ramps need fractional densities so marching cubes
+                    // produces a walkable slope. ApplyPiecePass handles them
+                    // before the boolean accent path reaches this switch.
+                    return false;
+
                 default:
                     return false;
             }
+        }
+
+        private static bool TryEvaluateSpiralRampSample(
+            Piece piece,
+            int worldX,
+            int worldY,
+            int worldZ,
+            float solidDensity,
+            float airDensity,
+            out float targetDensity,
+            out bool solidSample)
+        {
+            targetDensity = 0f;
+            solidSample = false;
+            if (!TryGetOpeningInDirection(
+                    piece,
+                    UpDirection,
+                    out Opening upperOpening)
+                || worldY < piece.Bounds.MinY
+                || worldY > piece.Bounds.MaxY + 1)
+            {
+                return false;
+            }
+
+            GetLocalCoordinates(
+                piece,
+                worldX,
+                worldZ,
+                out int along,
+                out int lateral);
+            int halfAlong = IsXAxis(piece.Direction)
+                ? (piece.Bounds.MaxX - piece.Bounds.MinX) / 2
+                : (piece.Bounds.MaxZ - piece.Bounds.MinZ) / 2;
+            int halfLateral = IsXAxis(piece.Direction)
+                ? (piece.Bounds.MaxZ - piece.Bounds.MinZ) / 2
+                : (piece.Bounds.MaxX - piece.Bounds.MinX) / 2;
+            int openingHalfSpan =
+                Math.Min(upperOpening.Width, upperOpening.Height) / 2;
+            int outerRadius = Math.Min(halfAlong, halfLateral) - 2;
+            const int WalkwayWidth = 3;
+            int walkwayWidth = WalkwayWidth;
+            int innerRadius = outerRadius - walkwayWidth + 1;
+            if (openingHalfSpan < 2
+                || outerRadius < 4
+                || innerRadius <= openingHalfSpan)
+            {
+                return false;
+            }
+
+            int lowerRingY = piece.Bounds.MinY + 1;
+            int upperRingY = Math.Max(
+                lowerRingY,
+                piece.Bounds.MaxY - 7);
+            int chebyshevRadius = Math.Max(
+                Math.Abs(along),
+                Math.Abs(lateral));
+            double maximumSignedDistance = double.NegativeInfinity;
+            bool onStairBand = chebyshevRadius >= innerRadius
+                && chebyshevRadius <= outerRadius;
+            if (onStairBand)
+            {
+                double ringSurfaceY = GetSpiralRingSurfaceY(
+                    along,
+                    lateral,
+                    lowerRingY,
+                    upperRingY);
+                maximumSignedDistance = Math.Max(
+                    maximumSignedDistance,
+                    GetRampSlabSignedDistance(ringSurfaceY, worldY));
+            }
+
+            // Two parallel three-voxel lanes cross the vertical aperture. The
+            // negative lane connects the room floor to the bottom of the helix;
+            // the positive lane continues the top of the helix through the roof
+            // and onto the connected room's floor. Keeping the lanes separate
+            // lets both ramps occupy the same plan area without sealing the hole.
+            int bridgeStart = -outerRadius;
+            int bridgeEnd = openingHalfSpan;
+            if (along >= bridgeStart && along <= bridgeEnd)
+            {
+                double bridgeProgress = (along - bridgeStart)
+                    / (double)(bridgeEnd - bridgeStart);
+                if (lateral >= -openingHalfSpan && lateral <= -1)
+                {
+                    double seamSurfaceY = GetSpiralRingSurfaceY(
+                        bridgeStart,
+                        lateral,
+                        lowerRingY,
+                        upperRingY);
+                    double lowerBridgeSurfaceY = seamSurfaceY
+                        + (piece.Bounds.MinY - seamSurfaceY)
+                            * bridgeProgress;
+                    maximumSignedDistance = Math.Max(
+                        maximumSignedDistance,
+                        GetRampSlabSignedDistance(
+                            lowerBridgeSurfaceY,
+                            worldY));
+                }
+                else if (lateral >= 1
+                    && lateral <= openingHalfSpan)
+                {
+                    double seamSurfaceY = GetSpiralRingSurfaceY(
+                        bridgeStart,
+                        lateral,
+                        lowerRingY,
+                        upperRingY);
+                    double upperBridgeSurfaceY = seamSurfaceY
+                        + (piece.Bounds.MaxY + 1 - seamSurfaceY)
+                            * bridgeProgress;
+                    maximumSignedDistance = Math.Max(
+                        maximumSignedDistance,
+                        GetRampSlabSignedDistance(
+                            upperBridgeSurfaceY,
+                            worldY));
+                }
+            }
+
+            if (double.IsNegativeInfinity(maximumSignedDistance))
+            {
+                return false;
+            }
+
+            double normalizedDensity = Math.Max(
+                -1.0,
+                Math.Min(1.0, maximumSignedDistance));
+            float isoDensity = (solidDensity + airDensity) * 0.5f;
+            float densityAmplitude =
+                Math.Abs(solidDensity - airDensity) * 0.5f;
+            targetDensity = isoDensity
+                + (float)normalizedDensity * densityAmplitude;
+            solidSample = maximumSignedDistance >= 0.0;
+            return true;
+        }
+
+        private static double GetSpiralRingSurfaceY(
+            int along,
+            int lateral,
+            int lowerY,
+            int upperY)
+        {
+            double angle = Math.Atan2(lateral, along);
+            double progress = (angle + Math.PI) / (Math.PI * 2.0);
+            return lowerY + (upperY - lowerY) * progress;
+        }
+
+        private static double GetRampSlabSignedDistance(
+            double surfaceY,
+            int worldY)
+        {
+            const double RampThicknessInVoxels = 1.25;
+            double belowTop = surfaceY - worldY;
+            double aboveBottom =
+                worldY - (surfaceY - RampThicknessInVoxels);
+            return Math.Min(belowTop, aboveBottom);
+        }
+
+        private static bool TryGetOpeningInDirection(
+            Piece piece,
+            int direction,
+            out Opening result)
+        {
+            for (int i = 0; i < piece.Openings.Count; i++)
+            {
+                if (piece.Openings[i].Direction == direction)
+                {
+                    result = piece.Openings[i];
+                    return true;
+                }
+            }
+            result = default;
+            return false;
+        }
+
+        private static bool HasOpeningInDirection(Piece piece, int direction)
+        {
+            return TryGetOpeningInDirection(piece, direction, out _);
         }
 
         private static bool EvaluateMasonryPassage(
@@ -2739,6 +3270,35 @@ namespace Supernova.MinecraftCaves
             for (int i = 0; i < piece.Openings.Count; i++)
             {
                 Opening opening = piece.Openings[i];
+                if (IsVerticalDirection(opening.Direction))
+                {
+                    Vector3Int vertical = DirectionVector(opening.Direction);
+                    Vector3Int verticalPlane = opening.Boundary
+                        - vertical * inwardOffset;
+                    if (worldY != verticalPlane.y)
+                    {
+                        continue;
+                    }
+                    Vector3Int pieceForward = DirectionVector(piece.Direction);
+                    Vector3Int pieceRight = DirectionVector(
+                        (piece.Direction + 1) & 3);
+                    int verticalDeltaX = worldX - verticalPlane.x;
+                    int verticalDeltaZ = worldZ - verticalPlane.z;
+                    int verticalAlong = verticalDeltaX * pieceForward.x
+                        + verticalDeltaZ * pieceForward.z;
+                    int verticalLateral = verticalDeltaX * pieceRight.x
+                        + verticalDeltaZ * pieceRight.z;
+                    if (IsWithinCenteredSpan(
+                            verticalLateral,
+                            opening.Width)
+                        && IsWithinCenteredSpan(
+                            verticalAlong,
+                            opening.Height))
+                    {
+                        return true;
+                    }
+                    continue;
+                }
                 if (worldY < opening.Boundary.y
                     || worldY >= opening.Boundary.y + opening.Height)
                 {
@@ -2757,6 +3317,12 @@ namespace Supernova.MinecraftCaves
                 }
             }
             return false;
+        }
+
+        private static bool IsWithinCenteredSpan(int offset, int size)
+        {
+            int minimum = -(size / 2);
+            return offset >= minimum && offset < minimum + size;
         }
 
         private static int GetFloorY(Piece piece, int along)
@@ -2851,6 +3417,14 @@ namespace Supernova.MinecraftCaves
 
         private static Vector3Int DirectionVector(int direction)
         {
+            if (direction == UpDirection)
+            {
+                return Vector3Int.up;
+            }
+            if (direction == DownDirection)
+            {
+                return Vector3Int.down;
+            }
             switch (direction & 3)
             {
                 case 1: return Vector3Int.right;
@@ -2860,9 +3434,62 @@ namespace Supernova.MinecraftCaves
             }
         }
 
+        private static int NormalizeConnectionDirection(int direction)
+        {
+            return IsVerticalDirection(direction) ? direction : direction & 3;
+        }
+
+        private static bool IsVerticalDirection(int direction)
+        {
+            return direction == UpDirection || direction == DownDirection;
+        }
+
+        private static int OppositeDirection(int direction)
+        {
+            if (direction == UpDirection)
+            {
+                return DownDirection;
+            }
+            if (direction == DownDirection)
+            {
+                return UpDirection;
+            }
+            return (direction + 2) & 3;
+        }
+
+        private static int GetWorldDirection(
+            int pieceDirection,
+            JigsawConnectorDefinition.Face face)
+        {
+            int direction = (int)face;
+            return IsVerticalDirection(direction)
+                ? direction
+                : (pieceDirection + direction) & 3;
+        }
+
+        private static bool CanOrientInput(
+            int outputDirection,
+            JigsawConnectorDefinition.Face inputFace)
+        {
+            int inputDirection = (int)inputFace;
+            if (IsVerticalDirection(outputDirection)
+                || IsVerticalDirection(inputDirection))
+            {
+                return OppositeDirection(outputDirection) == inputDirection;
+            }
+            return true;
+        }
+
         private static bool IsXAxis(int direction)
         {
             return (direction & 1) != 0;
+        }
+
+        private static bool IsBoxShape(JigsawPieceDefinition.Shape shape)
+        {
+            return shape == JigsawPieceDefinition.Shape.Room
+                || shape == JigsawPieceDefinition.Shape.Crossing
+                || shape == JigsawPieceDefinition.Shape.VerticalShaft;
         }
 
         private readonly struct LayoutCacheKey : IEquatable<LayoutCacheKey>

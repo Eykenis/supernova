@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: FirstLevel
   m_EditorClassIdentifier: 
   levelNumber: 1
-  displayName: FIRST DESCENT
-  worldSeed: 6667
+  displayName: 
+  worldSeed: 11451
   worldGeneration: {fileID: 11400000, guid: aae73aa900a741345aad2a073c4a6054, type: 2}
   monsterGeneration: {fileID: 11400000, guid: 09d92db632bafda4096a3f8350baafa2, type: 2}
   treasureGeneration: {fileID: 11400000, guid: f62cb88922472424e8e319664f4cd1df, type: 2}
-  evacuationCountdownSeconds: 180
-  requiredFunds: 200
+  evacuationCountdownSeconds: 300
+  requiredFunds: 500
   caveSceneName: DenseJigsawRegion
   homeSceneName: Home

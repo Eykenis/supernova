@@ -8,7 +8,7 @@ PhysicMaterial:
   m_PrefabAsset: {fileID: 0}
   m_Name: CaveTerrain
   dynamicFriction: 0.8
-  staticFriction: 0.8
+  staticFriction: 0.9
   bounciness: 0
-  frictionCombine: 3
+  frictionCombine: 1
   bounceCombine: 1

@@ -22,7 +22,7 @@ namespace Supernova.Missions
         [SerializeField] private MonsterSpawnTable monsterGeneration;
         [SerializeField] private TreasureSpawnTable treasureGeneration;
 
-        [Header("Evacuation")]
+        [Header("Mission")]
         [FormerlySerializedAs("timeLimitSeconds")]
         [SerializeField, Min(10f)]
         private float evacuationCountdownSeconds = 180f;
@@ -40,8 +40,11 @@ namespace Supernova.Missions
             worldGeneration;
         public MonsterSpawnTable MonsterGeneration => monsterGeneration;
         public TreasureSpawnTable TreasureGeneration => treasureGeneration;
-        public float EvacuationCountdownSeconds =>
+        public float MissionTimeLimitSeconds =>
             Mathf.Max(10f, evacuationCountdownSeconds);
+        // Kept as a compatibility alias for existing editor tooling and assets.
+        public float EvacuationCountdownSeconds =>
+            MissionTimeLimitSeconds;
         public int RequiredFunds => Mathf.Max(1, requiredFunds);
         public int RequiredValue => RequiredFunds;
         public string CaveSceneName => caveSceneName;

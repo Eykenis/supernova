@@ -178,6 +178,56 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void MinedOreDrop_TerrainRebuildWaitBlocksDamageAndRestoresMotion()
+        {
+            GameObject target = Create("Recovered Ore");
+            Rigidbody body = target.AddComponent<Rigidbody>();
+            target.AddComponent<BoxCollider>();
+            MinedOreDrop drop = target.AddComponent<MinedOreDrop>();
+            var mesh = new Mesh();
+            var velocity = new Vector3(1f, 2f, 3f);
+            var angularVelocity = new Vector3(0.25f, 0.5f, 0.75f);
+            body.velocity = velocity;
+            body.angularVelocity = angularVelocity;
+            drop.Configure(
+                new VoxelTypeId(3),
+                1,
+                mesh,
+                1f,
+                null,
+                100,
+                0.5f);
+
+            MethodInfo suspend = typeof(MinedOreDrop).GetMethod(
+                "SuspendForTerrainColliderRebuild",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo release = typeof(MinedOreDrop).GetMethod(
+                "ReleaseAfterTerrainColliderRebuild",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(suspend, Is.Not.Null);
+            Assert.That(release, Is.Not.Null);
+
+            suspend.Invoke(drop, null);
+
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.True);
+            Assert.That(body.isKinematic, Is.True);
+            Assert.That(body.detectCollisions, Is.False);
+            Assert.That(drop.Valuable.IsCollisionValueLossProtected, Is.True);
+            Assert.That(drop.Valuable.ApplyCollisionImpulse(100f), Is.Zero);
+            Assert.That(drop.Value, Is.EqualTo(100));
+
+            release.Invoke(drop, null);
+
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.False);
+            Assert.That(body.isKinematic, Is.False);
+            Assert.That(body.detectCollisions, Is.True);
+            Assert.That(body.velocity, Is.EqualTo(velocity));
+            Assert.That(body.angularVelocity, Is.EqualTo(angularVelocity));
+            Assert.That(drop.Valuable.IsCollisionValueLossProtected, Is.False);
+            Assert.That(drop.Valuable.ApplyCollisionImpulse(3f), Is.GreaterThan(0));
+        }
+
+        [Test]
         public void CartCargoZone_PreventsValueLossOnlyWhileResourceOverlaps()
         {
             GameObject zoneObject = Create("Cargo Zone");
@@ -211,10 +261,31 @@ namespace Supernova.Tests
             ValuableObject valuable = CreateValuable("Ore", 100, 0.5f);
             Collider resourceCollider = valuable.GetComponent<Collider>();
 
-            InvokeTrigger(extraction, "OnTriggerEnter", resourceCollider);
+            // Damage taken before delivery must still be reflected, so the zone
+            // cannot cache the authored value at entry time.
             valuable.ApplyCollisionImpulse(3f);
+            Assert.That(valuable.CurrentValue, Is.EqualTo(94));
+
+            InvokeTrigger(extraction, "OnTriggerEnter", resourceCollider);
 
             Assert.That(extraction.CurrentStoredValue, Is.EqualTo(94));
+        }
+
+        [Test]
+        public void ExtractionZone_ProtectsBankedValueFromFurtherImpacts()
+        {
+            GameObject extractionObject = Create("Extraction");
+            OreExtractionZone extraction =
+                extractionObject.AddComponent<OreExtractionZone>();
+            extraction.Configure(null);
+            ValuableObject valuable = CreateValuable("Ore", 100, 0.5f);
+            Collider resourceCollider = valuable.GetComponent<Collider>();
+
+            InvokeTrigger(extraction, "OnTriggerEnter", resourceCollider);
+            Assert.That(valuable.ApplyCollisionImpulse(3f), Is.Zero);
+
+            Assert.That(valuable.CurrentValue, Is.EqualTo(100));
+            Assert.That(extraction.CurrentStoredValue, Is.EqualTo(100));
         }
 
         [Test]

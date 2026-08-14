@@ -47,10 +47,6 @@ MonoBehaviour:
     shallowMultiplier: 0.2
     deepMultiplier: 1
     curveExponent: 1.5
-  monsterDepthProbability:
-    shallowMultiplier: 0.35
-    deepMultiplier: 1
-    curveExponent: 1.2
   voxelSize: 0.42
   isoLevel: 0
   vertexPlacement: 1
@@ -58,7 +54,7 @@ MonoBehaviour:
   terrainPhysicsMaterial: {fileID: 13400000, guid: 1ebb110c1601c1344b39f1140bac3c92,
     type: 2}
   voxelTypeCatalog: {fileID: 11400000, guid: 2edfe535d7218ed4795d6c3a36fedea1, type: 2}
-  punctualLightFalloffPower: 0.55
+  punctualLightFalloffPower: 0.3
   punctualLightAttenuationLimit: 1.5
   punctualLightMultiplier: 1
   baseSolidVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}

@@ -235,7 +235,7 @@ InfiniteCaves 用 `worldSeed ^ 0x51F15EED` 初始化确定性随机数：
 
 ### 6.3 结构阶段
 
-初始 required set 的所有柱完成后，流水线才从 Terrain 进入 Structures。当前规则使用 `SpawnShelter.asset`：尺寸 `11 × 6 × 11`，anchor `(5,1,5)`，玩家偏移 `(0,1.25,0)`。
+初始 required set 的所有柱完成后，流水线才从 Terrain 进入 Structures。当前规则使用 `SpawnShelter.asset`：尺寸 `19 × 20 × 40`，anchor `(0,0,0)`，玩家偏移 `(14,10.5,5)`。
 
 结构阶段的顺序是：
 

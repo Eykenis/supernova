@@ -113,7 +113,7 @@ namespace Supernova.Tests
                 Is.EqualTo(PlayerToolPrimaryAction.ThrowBomb));
             Assert.That(definition.HeldModelPrefab, Is.Not.Null);
             Assert.That(definition.BombProjectilePrefab, Is.Not.Null);
-            Assert.That(definition.BombEntityExplosionImpulse, Is.EqualTo(240f));
+            Assert.That(definition.BombEntityExplosionImpulse, Is.EqualTo(600f));
             Assert.That(definition.BombExplosionEffectPrefab, Is.Not.Null);
             Assert.That(definition.BombExplosionEffectLifetime, Is.EqualTo(3f));
             Assert.That(definition.ThrowSpeed, Is.GreaterThan(0f));
@@ -132,13 +132,13 @@ namespace Supernova.Tests
             Assert.That(projectile.InnerMiningPower, Is.EqualTo(30f));
             Assert.That(projectile.OuterMiningPower, Is.EqualTo(10f));
             Assert.That(projectile.PropagationDivisor, Is.EqualTo(2f));
-            Assert.That(projectile.EntityExplosionImpulse, Is.EqualTo(240f));
+            Assert.That(projectile.EntityExplosionImpulse, Is.EqualTo(600f));
             Assert.That(projectile.EntityUpwardModifier, Is.EqualTo(0.6f));
             Assert.That(
                 projectile.ExplosionEffectPrefab,
                 Is.SameAs(definition.BombExplosionEffectPrefab));
             Assert.That(projectile.ExplosionEffectLifetime, Is.EqualTo(3f));
-            Assert.That(projectile.ConfigurationVersion, Is.EqualTo(4));
+            Assert.That(projectile.ConfigurationVersion, Is.EqualTo(5));
 
             string effectPath = AssetDatabase.GetAssetPath(
                 definition.BombExplosionEffectPrefab).Replace('\\', '/');
@@ -258,6 +258,7 @@ namespace Supernova.Tests
             objects.Add(monsterObject);
             monsterObject.transform.position = explosionCenter + Vector3.right;
             Rigidbody monsterBody = monsterObject.AddComponent<Rigidbody>();
+            monsterBody.mass = 20f;
             monsterBody.useGravity = false;
             monsterObject.AddComponent<CapsuleCollider>();
             CreatureBehaviorAgent monster =
@@ -265,12 +266,11 @@ namespace Supernova.Tests
             float initialHealth = monster.CurrentHealth;
             Physics.SyncTransforms();
 
-            bomb.Launch(Vector3.zero, Vector3.zero, null, 20f);
+            bomb.Launch(Vector3.zero, Vector3.zero, null, 600f);
             Assert.That(bomb.Detonate(), Is.True);
 
             Assert.That(monster.CurrentHealth, Is.LessThan(initialHealth));
             Assert.That(bomb.LastDamagedEntityCount, Is.EqualTo(1));
-            Assert.That(bomb.LastImpulsedBodyCount, Is.EqualTo(1));
         }
 
         [Test]

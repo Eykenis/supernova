@@ -289,7 +289,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MagnetAttraction_CatchesMonsterAndStopsItsNavigation()
+        public void MagnetAttraction_CatchesMonsterAndUsesCaughtState()
         {
             GameObject player = Create("Player");
             Camera camera = Create("View Camera").AddComponent<Camera>();
@@ -304,20 +304,6 @@ namespace Supernova.Tests
             Rigidbody body = CreateBody("Monster", new Vector3(0f, 0f, 2f));
             CreatureBehaviorAgent monster =
                 body.gameObject.AddComponent<CreatureBehaviorAgent>();
-            CreaturePhysicsMotor motor =
-                body.gameObject.GetComponent<CreaturePhysicsMotor>();
-            motor.Submit(new CreatureMovementCommand(
-                1,
-                Vector3.forward,
-                Vector3.up,
-                0));
-            FieldInfo pathField = typeof(CreatureBehaviorAgent).GetField(
-                "path",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(pathField, Is.Not.Null);
-            var path = (List<Vector3Int>)pathField.GetValue(monster);
-            path.Add(Vector3Int.zero);
-            path.Add(Vector3Int.forward);
             Physics.SyncTransforms();
 
             Assert.That(attractor.BeginAttraction(), Is.True);
@@ -326,8 +312,6 @@ namespace Supernova.Tests
             Assert.That(
                 monster.CurrentState,
                 Is.EqualTo(CreatureBehaviorState.Caught));
-            Assert.That(monster.CurrentPath, Is.Empty);
-            Assert.That(motor.HasCommand, Is.False);
 
             attractor.TickAttraction();
 
@@ -466,37 +450,6 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MagnetHeightDrag_MovesPhysicalHoldPointWithoutMovingBodyDirectly()
-        {
-            GameObject player = Create("Player");
-            Camera camera = Create("View Camera").AddComponent<Camera>();
-            camera.transform.SetParent(player.transform);
-            PerspectiveCameraController perspective =
-                player.AddComponent<PerspectiveCameraController>();
-            perspective.Bind(player.transform, null, camera, new Renderer[0]);
-            perspective.SetMode(PlayerViewMode.FirstPerson, true);
-            FirstPersonCartAttractor attractor =
-                player.AddComponent<FirstPersonCartAttractor>();
-            Rigidbody body = CreateBody(
-                "Magnet Target",
-                new Vector3(0f, 0f, 2f));
-            Physics.SyncTransforms();
-
-            Assert.That(attractor.BeginAttraction(), Is.True);
-            Vector3 bodyPosition = body.position;
-            Vector3 before = InvokePrivate<Vector3>(
-                attractor,
-                "CalculateDesiredHoldPosition");
-            attractor.AdjustMagnetHeight(2f);
-            Vector3 after = InvokePrivate<Vector3>(
-                attractor,
-                "CalculateDesiredHoldPosition");
-
-            Assert.That(after.y - before.y, Is.EqualTo(0.3f).Within(0.001f));
-            Assert.That(body.position, Is.EqualTo(bodyPosition));
-        }
-
-        [Test]
         public void MagnetLiftForce_DecreasesWithActualLiftedHeight()
         {
             GameObject player = Create("Player");
@@ -608,6 +561,311 @@ namespace Supernova.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
             return (T)method.Invoke(target, arguments);
+        }
+
+        [Test]
+        public void MagnetAttraction_PullsThePlayerTowardsAThrownPickaxe()
+        {
+            GameObject player = Create("Player");
+            player.AddComponent<CharacterController>();
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            camera.transform.localPosition = Vector3.zero;
+            camera.transform.localRotation = Quaternion.identity;
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            // Far outside normal magnet range, straight ahead.
+            ThrownPickaxe pickaxe = CreateThrownPickaxe(
+                new Vector3(0f, 0f, 25f));
+            PlayerToolDefinition definition =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                Physics.SyncTransforms();
+
+                Assert.That(attractor.BeginAttraction(definition), Is.True);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+                Assert.That(attractor.TowedPickaxe, Is.SameAs(pickaxe));
+                // The pickaxe must not be reeled into the view like normal cargo.
+                Assert.That(attractor.IsHolding, Is.False);
+
+                attractor.EndAttraction();
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        [Test]
+        public void MagnetAttraction_DoesNotReelInAPickaxeStillInFlight()
+        {
+            GameObject player = Create("Player");
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            // Well inside normal magnet acquisition range.
+            ThrownPickaxe pickaxe = CreateThrownPickaxe(new Vector3(0f, 0f, 2f));
+            Physics.SyncTransforms();
+
+            // Without pickaxe tuning the magnet has nothing to latch onto at all.
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HeldBody, Is.Null);
+            Assert.That(attractor.IsPullingTowardsPickaxe, Is.False);
+            Assert.That(pickaxe, Is.Not.Null);
+        }
+
+        [Test]
+        public void AttractionBeam_TargetsThePickaxeWhilePullingAndTheBodyWhileHolding()
+        {
+            GameObject player = Create("Player");
+            player.AddComponent<CharacterController>();
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            camera.transform.localPosition = Vector3.zero;
+            camera.transform.localRotation = Quaternion.identity;
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            // Idle: no beam.
+            Assert.That(attractor.HasAttractionBeamTarget, Is.False);
+
+            Rigidbody cargo = CreateBody("Magnet Target", new Vector3(0f, 0f, 2f));
+            Physics.SyncTransforms();
+            Assert.That(attractor.BeginAttraction(), Is.True);
+            Assert.That(attractor.HasAttractionBeamTarget, Is.True);
+            Assert.That(
+                attractor.AttractionBeamTarget,
+                Is.EqualTo(cargo.worldCenterOfMass));
+            attractor.EndAttraction();
+
+            // Pulling towards a thrown pickaxe must still draw the beam.
+            Object.DestroyImmediate(cargo.gameObject);
+            ThrownPickaxe pickaxe = CreateThrownPickaxe(new Vector3(0f, 0f, 20f));
+            PlayerToolDefinition definition =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                Physics.SyncTransforms();
+                Assert.That(attractor.BeginAttraction(definition), Is.True);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+                Assert.That(attractor.HasAttractionBeamTarget, Is.True);
+                Assert.That(
+                    attractor.AttractionBeamTarget,
+                    Is.EqualTo(pickaxe.Position));
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        [Test]
+        public void MagnetAttraction_OnlyLatchesAPickaxeNearTheCrosshair()
+        {
+            GameObject player = Create("Player");
+            player.AddComponent<CharacterController>();
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            camera.transform.localPosition = Vector3.zero;
+            camera.transform.localRotation = Quaternion.identity;
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            PlayerToolDefinition definition =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(definition, "pickaxeMagnetRange", 40f);
+                SetPrivateField(definition, "pickaxeMagnetAimAngle", 12f);
+
+                // 45 degrees off the crosshair: clearly on screen, but not aimed at.
+                // The old forward-hemisphere test accepted this.
+                float distance = 20f;
+                ThrownPickaxe offAxis = CreateThrownPickaxe(
+                    new Vector3(
+                        Mathf.Sin(45f * Mathf.Deg2Rad) * distance,
+                        0f,
+                        Mathf.Cos(45f * Mathf.Deg2Rad) * distance));
+                Physics.SyncTransforms();
+                // The action always starts; what matters is that it found no target.
+                attractor.BeginAttraction(definition);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.False);
+                attractor.EndAttraction();
+                Object.DestroyImmediate(offAxis.gameObject);
+
+                // Just inside the aim cone.
+                ThrownPickaxe onAxis = CreateThrownPickaxe(
+                    new Vector3(
+                        Mathf.Sin(8f * Mathf.Deg2Rad) * distance,
+                        0f,
+                        Mathf.Cos(8f * Mathf.Deg2Rad) * distance));
+                Physics.SyncTransforms();
+                attractor.BeginAttraction(definition);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+                Assert.That(attractor.TowedPickaxe, Is.SameAs(onAxis));
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        [Test]
+        public void MagnetAttraction_RequiresAnUnblockedSightlineToThePickaxe()
+        {
+            GameObject player = Create("Player");
+            player.AddComponent<CharacterController>();
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            camera.transform.localPosition = Vector3.zero;
+            camera.transform.localRotation = Quaternion.identity;
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            PlayerToolDefinition definition =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(definition, "pickaxeMagnetRange", 40f);
+                SetPrivateField(definition, "pickaxeMagnetAimAngle", 12f);
+                CreateThrownPickaxe(new Vector3(0f, 0f, 15f));
+                Physics.SyncTransforms();
+
+                attractor.BeginAttraction(definition);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+                attractor.EndAttraction();
+
+                // Drop a wall between the player and the pickaxe.
+                GameObject wall = Create("Wall");
+                wall.transform.position = new Vector3(0f, 0f, 7f);
+                wall.AddComponent<BoxCollider>().size = new Vector3(10f, 10f, 1f);
+                Physics.SyncTransforms();
+
+                attractor.BeginAttraction(definition);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.False);
+                attractor.EndAttraction();
+
+                // A wall past the pickaxe must not block it.
+                wall.transform.position = new Vector3(0f, 0f, 20f);
+                Physics.SyncTransforms();
+                attractor.BeginAttraction(definition);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        [Test]
+        public void PickaxePull_HoldsOnceLatchedUntilRightClickIsReleased()
+        {
+            GameObject player = Create("Player");
+            player.AddComponent<CharacterController>();
+            Camera camera = Create("View Camera").AddComponent<Camera>();
+            camera.transform.SetParent(player.transform);
+            camera.transform.localPosition = Vector3.zero;
+            camera.transform.localRotation = Quaternion.identity;
+            PerspectiveCameraController perspective =
+                player.AddComponent<PerspectiveCameraController>();
+            perspective.Bind(player.transform, null, camera, new Renderer[0]);
+            perspective.SetMode(PlayerViewMode.FirstPerson, true);
+            FirstPersonCartAttractor attractor =
+                player.AddComponent<FirstPersonCartAttractor>();
+
+            PlayerToolDefinition definition =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(definition, "pickaxeMagnetRange", 40f);
+                SetPrivateField(definition, "pickaxeMagnetAimAngle", 20f);
+                CreateThrownPickaxe(new Vector3(0f, 0f, 15f));
+                Physics.SyncTransforms();
+
+                attractor.BeginAttraction(definition);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+
+                // Turning away must NOT drop an established pull.
+                player.transform.Rotate(0f, 150f, 0f);
+                Physics.SyncTransforms();
+                TickPickaxePull(attractor, 10);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+
+                // Neither does terrain coming between them.
+                GameObject wall = Create("Wall");
+                wall.transform.position = new Vector3(0f, 0f, 7f);
+                wall.AddComponent<BoxCollider>().size = new Vector3(10f, 10f, 1f);
+                Physics.SyncTransforms();
+                TickPickaxePull(attractor, 10);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.True);
+
+                // Releasing right click is what ends it.
+                attractor.EndAttraction();
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.False);
+
+                // A fresh grab still requires aim, so it fails while looking away.
+                attractor.BeginAttraction(definition);
+                Assert.That(attractor.IsPullingTowardsPickaxe, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        private static void TickPickaxePull(
+            FirstPersonCartAttractor attractor,
+            int frames)
+        {
+            MethodInfo tick = typeof(FirstPersonCartAttractor).GetMethod(
+                "TickPickaxePull",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(tick, Is.Not.Null);
+            for (int i = 0; i < frames; i++)
+                tick.Invoke(attractor, new object[] { 1f / 60f });
+        }
+
+        private ThrownPickaxe CreateThrownPickaxe(Vector3 position)
+        {
+            GameObject root = Create("Thrown Pickaxe");
+            root.transform.position = position;
+            BoxCollider collider = root.AddComponent<BoxCollider>();
+            collider.size = Vector3.one * 0.2f;
+            Rigidbody body = root.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            ThrownPickaxe pickaxe = root.AddComponent<ThrownPickaxe>();
+            SetPrivateField(pickaxe, "body", body);
+            // Launch state is what makes it recoverable by the magnet.
+            SetPrivateField(
+                pickaxe,
+                "state",
+                ThrownPickaxe.ThrownPickaxeState.Flying);
+            return pickaxe;
         }
 
         private Rigidbody CreateBody(string objectName, Vector3 position)

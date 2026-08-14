@@ -21,11 +21,12 @@ namespace Supernova.Editor.Gameplay
         private const int SmgPrice = 500;
         private const int FlashlightPrice = 100;
         private const int SolidGunPrice = 650;
+        private const int PortalGunPrice = SolidGunPrice;
         private const int AttractionModulePrice = 450;
         private const int CartPrice = 250;
         private const string ProductAnchorPrefix = "Shop Product ";
         private const string SessionKey =
-            "Supernova.HomeShopAssetBuilder.Ensured.V4";
+            "Supernova.HomeShopAssetBuilder.Ensured.V5";
         private static bool waitingForEditMode;
 
         [InitializeOnLoadMethod]
@@ -145,6 +146,15 @@ namespace Supernova.Editor.Gameplay
                     "SolidGun",
                     SolidGunPrice,
                     PlayerInventoryItem.SolidGun,
+                    solidGunModel,
+                    wireframe),
+                EnsureItemProduct(
+                    ProjectAssetPaths.Config.PortalGunProduct,
+                    "PortalGunProduct",
+                    "portal-gun",
+                    "PortalGun",
+                    PortalGunPrice,
+                    PlayerInventoryItem.PortalGun,
                     solidGunModel,
                     wireframe),
                 EnsureUpgradeProduct(

@@ -14,16 +14,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   infiniteCavesLevelSource: {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f,
     type: 2}
-  worldSectionCount: 3
+  generateInfiniteWorld: 1
+  worldSectionCount: 2
   regionColumnsPerSide: 6
   useExternalLandingCell: 1
   externalLandingCellDistanceInColumns: 2
-  preventStructureIntersections: 0
-  structureDensity: 2
-  structureRegionSizeInColumns: 4
-  floorHeight: 48
-  maxPiecesPerLayout: 128
-  maxDepth: 32
+  preventStructureIntersections: 1
+  structureDensity: 2.5
+  structureRegionSizeInColumns: 6
+  floorHeight: 32
+  maxPiecesPerLayout: 256
+  maxDepth: 48
   layoutRadius: 48
   layoutAttempts: 16
   connectorPlacementAttempts: 32

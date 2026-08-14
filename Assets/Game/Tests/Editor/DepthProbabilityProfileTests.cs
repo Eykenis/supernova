@@ -2,7 +2,6 @@ using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using Supernova.MinecraftCaves;
-using Supernova.MinecraftCaves.Creatures;
 using Supernova.Missions;
 using UnityEditor;
 using UnityEngine;
@@ -37,7 +36,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void FirstLevelWorld_UsesDepthScalingForTreasureAndMonsters()
+        public void FirstLevelWorld_UsesDepthScalingForTreasure()
         {
             LevelConfiguration level =
                 AssetDatabase.LoadAssetAtPath<LevelConfiguration>(
@@ -45,15 +44,12 @@ namespace Supernova.Tests
             var worldObject = new GameObject("Depth Probability World");
             TreasureDefinition treasure =
                 ScriptableObject.CreateInstance<TreasureDefinition>();
-            MonsterSpawnDefinition monster =
-                ScriptableObject.CreateInstance<MonsterSpawnDefinition>();
             try
             {
                 MinecraftCaveInfiniteWorld world =
                     worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
                 Assert.That(world.ApplyLevelConfiguration(level), Is.True);
                 treasure.Configure(null, 10, 1f, 0.6f, 1);
-                monster.Configure(null, 0.6f, 1);
 
                 Assert.That(
                     EvaluateSpawnProbability(
@@ -67,23 +63,10 @@ namespace Supernova.Tests
                             "EvaluateTreasureSpawnProbability",
                             treasure,
                             224)));
-                Assert.That(
-                    EvaluateSpawnProbability(
-                        world,
-                        "EvaluateMonsterSpawnProbability",
-                        monster,
-                        32),
-                    Is.GreaterThan(
-                        EvaluateSpawnProbability(
-                            world,
-                            "EvaluateMonsterSpawnProbability",
-                            monster,
-                            224)));
             }
             finally
             {
                 Object.DestroyImmediate(treasure);
-                Object.DestroyImmediate(monster);
                 Object.DestroyImmediate(worldObject);
             }
         }

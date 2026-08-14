@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 7
   primaryAction: 5
+  magnetHoldAnimation: {fileID: 0}
   animationTriggerMode: 0
   primaryActionAnimation: {fileID: 0}
   heldModelPrefab: {fileID: 0}
@@ -31,22 +32,27 @@ MonoBehaviour:
   bombEntityExplosionImpulse: 240
   bombExplosionEffectPrefab: {fileID: 0}
   bombExplosionEffectLifetime: 3
+  thrownPickaxePrefab: {fileID: 0}
+  pickaxeThrowSpeed: 22
+  pickaxeSpinRevolutions: 2.4
+  pickaxePickupDistance: 1.6
+  pickaxeMagnetPullAcceleration: 34
+  pickaxeMagnetMaximumPullSpeed: 16
+  pickaxeMagnetRange: 60
+  pickaxeMagnetAimAngle: 12
+  ropeReelInSpeed: 0
+  ropeManualReelSpeed: 4
+  ropeMinimumLength: 2.5
+  ropeYankStrength: 0.35
+  ropeMaximumYankSpeed: 7
+  ropeSwingAcceleration: 26
+  ropeMaximumSpeed: 34
+  ropeReleaseMomentum: 1
   firearmProjectilePrefab: {fileID: 0}
   projectileSpeed: 180
   initialAmmunition: 120
   muzzleFlashPrefab: {fileID: 0}
   muzzleFlashLifetime: 0.75
-  grabHookProjectileModelPrefab: {fileID: 0}
-  grabHookLaunchSpeed: 36
-  grabHookMaximumLength: 30
-  grabHookCollisionRadius: 0.12
-  grabHookRetractSpeed: 45
-  grabHookAimPredictionDuration: 3
-  grabHookAimPredictionStep: 0.05
-  grabHookArrivalDistance: 1.25
-  grabHookPullAcceleration: 32
-  grabHookMaximumPullSpeed: 18
-  grabHookRopeWidth: 0.035
   miningPower: 1
   miningEvenHitMultiplier: 4
   miningPropagationDivisor: 2

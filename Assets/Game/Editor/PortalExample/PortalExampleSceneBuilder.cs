@@ -388,11 +388,22 @@ namespace Supernova.PortalExample.Editor
 
             PortalExampleGate gate = portalObject.AddComponent<PortalExampleGate>();
             triggerRelay.Configure(gate);
+            Shader clippedLitShader = AssetDatabase.LoadAssetAtPath<Shader>(
+                ProjectAssetPaths.Shaders.PortalExampleClippedLit);
+            if (clippedLitShader == null)
+            {
+                throw new MissingReferenceException(
+                    "Missing clipped portal traveller shader at registered "
+                    + "path: "
+                    + ProjectAssetPaths.Shaders.PortalExampleClippedLit);
+            }
             SerializedObject serializedGate = new SerializedObject(gate);
             serializedGate.FindProperty("surfaceRenderer").objectReferenceValue =
                 surfaceRenderer;
             serializedGate.FindProperty("portalCamera").objectReferenceValue =
                 portalCamera;
+            serializedGate.FindProperty("seamlessClipShader")
+                .objectReferenceValue = clippedLitShader;
             serializedGate.ApplyModifiedPropertiesWithoutUndo();
             return gate;
         }
@@ -771,6 +782,15 @@ namespace Supernova.PortalExample.Editor
                 throw new MissingReferenceException(
                     "Missing portal shader at registered path: "
                     + ProjectAssetPaths.Shaders.PortalExampleSurface);
+            }
+            Shader clippedLitShader = AssetDatabase.LoadAssetAtPath<Shader>(
+                ProjectAssetPaths.Shaders.PortalExampleClippedLit);
+            if (clippedLitShader == null)
+            {
+                throw new MissingReferenceException(
+                    "Missing clipped portal traveller shader at registered "
+                    + "path: "
+                    + ProjectAssetPaths.Shaders.PortalExampleClippedLit);
             }
 
             bluePortal = CreatePortalMaterial(

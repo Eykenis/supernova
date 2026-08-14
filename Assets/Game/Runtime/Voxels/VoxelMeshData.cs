@@ -129,13 +129,25 @@ namespace Supernova.Voxels
 
         public Mesh CreateMesh(string meshName = "Marching Cubes Mesh")
         {
-            var mesh = new Mesh
+            var mesh = new Mesh();
+            ApplyToMesh(mesh, meshName);
+            return mesh;
+        }
+
+        public void ApplyToMesh(
+            Mesh mesh,
+            string meshName = "Marching Cubes Mesh")
+        {
+            if (mesh == null)
             {
-                name = meshName,
-                indexFormat = Vertices.Count > ushort.MaxValue
-                    ? IndexFormat.UInt32
-                    : IndexFormat.UInt16,
-            };
+                throw new ArgumentNullException(nameof(mesh));
+            }
+
+            mesh.Clear();
+            mesh.name = meshName;
+            mesh.indexFormat = Vertices.Count > ushort.MaxValue
+                ? IndexFormat.UInt32
+                : IndexFormat.UInt16;
 
             using (SetVerticesMarker.Auto())
             {
@@ -161,6 +173,7 @@ namespace Supernova.Voxels
             {
                 if (trianglesByType.Count == 0)
                 {
+                    mesh.subMeshCount = 1;
                     mesh.SetTriangles(Triangles, 0, false);
                 }
                 else
@@ -183,7 +196,6 @@ namespace Supernova.Voxels
             {
                 mesh.RecalculateBounds();
             }
-            return mesh;
         }
 
         private int GetOrCreateProjectedVertex(

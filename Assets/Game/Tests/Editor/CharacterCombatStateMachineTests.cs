@@ -450,7 +450,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MagnetActionState_StartsAndStopsAttractorThroughStateLifecycle()
+        public void MagnetAttraction_StartsAndStopsIndependentlyOfToolActionState()
         {
             GameObject playerObject = Create("Player");
             playerObject.AddComponent<CharacterController>();
@@ -465,35 +465,63 @@ namespace Supernova.Tests
 
             FirstPersonCartAttractor attractor =
                 playerObject.AddComponent<FirstPersonCartAttractor>();
-            PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
-            PlayerToolDefinition magnet = ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            SetPrivateField(magnet, "item", PlayerInventoryItem.Magnet);
-            SetPrivateField(magnet, "primaryAction", PlayerToolPrimaryAction.AttractCart);
-            SetPrivateField(inventory, "toolDefinitions", new[] { magnet });
-            Assert.That(
-                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
-                Is.True);
-            inventory.SelectSlot(1);
-            VoxelPlayerController player = playerObject.AddComponent<VoxelPlayerController>();
 
-            MethodInfo awake = typeof(VoxelPlayerController).GetMethod(
-                "Awake", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(awake, Is.Not.Null);
-            awake.Invoke(player, null);
-
-            FieldInfo field = typeof(VoxelPlayerController).GetField(
-                "stateMachine", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(field, Is.Not.Null);
-            var machine = (CharacterStateMachine<PlayerCharacterState>)field.GetValue(player);
-            Assert.That(machine, Is.Not.Null);
-
-            machine.Change(PlayerCharacterState.ToolAction);
-            Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.ToolAction));
+            Assert.That(attractor.BeginAttraction(), Is.True);
             Assert.That(attractor.IsActionActive, Is.True);
 
-            machine.Change(PlayerCharacterState.Idle);
+            attractor.EndAttraction();
             Assert.That(attractor.IsActionActive, Is.False);
-            Object.DestroyImmediate(magnet);
+        }
+
+        [Test]
+        public void Magnet_StaysArmedForEveryToolBecauseItOwnsRightClick()
+        {
+            GameObject playerObject = Create("Player");
+            FirstPersonCartAttractor attractor =
+                playerObject.AddComponent<FirstPersonCartAttractor>();
+            PlayerToolController inventory =
+                playerObject.AddComponent<PlayerToolController>();
+            PlayerToolDefinition flashlight =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            PlayerToolDefinition pickaxe =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(
+                    flashlight,
+                    "item",
+                    PlayerInventoryItem.Flashlight);
+                SetPrivateField(pickaxe, "item", PlayerInventoryItem.Pickaxe);
+                SetPrivateField(
+                    inventory,
+                    "toolDefinitions",
+                    new[] { flashlight, pickaxe });
+
+                Assert.That(
+                    inventory.ConfigureSlot(
+                        0,
+                        PlayerInventoryItem.Flashlight),
+                    Is.True);
+                inventory.SelectSlot(0);
+                Assert.That(attractor.DeviceEnabled, Is.True);
+
+                // The throw moved to its own key, so holding the pickaxe no longer
+                // takes right click away from the magnet.
+                Assert.That(
+                    inventory.ConfigureSlot(1, PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                inventory.SelectSlot(1);
+                Assert.That(attractor.DeviceEnabled, Is.True);
+
+                // An empty slot keeps the magnet too.
+                inventory.SelectSlot(2);
+                Assert.That(attractor.DeviceEnabled, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(flashlight);
+                Object.DestroyImmediate(pickaxe);
+            }
         }
 
         [Test]
@@ -502,9 +530,9 @@ namespace Supernova.Tests
             GameObject playerObject = Create("Player");
             PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
             PlayerToolDefinition pickaxe = ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            PlayerToolDefinition magnet = ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            PlayerToolDefinition bomb = ScriptableObject.CreateInstance<PlayerToolDefinition>();
             AnimationClip pickaxeClip = new AnimationClip();
-            AnimationClip magnetClip = new AnimationClip();
+            AnimationClip bombClip = new AnimationClip();
 
             SetPrivateField(pickaxe, "item", PlayerInventoryItem.Pickaxe);
             SetPrivateField(pickaxe, "primaryAction", PlayerToolPrimaryAction.MineVoxel);
@@ -513,19 +541,19 @@ namespace Supernova.Tests
                 "animationTriggerMode",
                 PlayerToolAnimationTriggerMode.Periodic);
             SetPrivateField(pickaxe, "primaryActionAnimation", pickaxeClip);
-            SetPrivateField(magnet, "item", PlayerInventoryItem.Magnet);
-            SetPrivateField(magnet, "primaryAction", PlayerToolPrimaryAction.AttractCart);
+            SetPrivateField(bomb, "item", PlayerInventoryItem.Bomb);
+            SetPrivateField(bomb, "primaryAction", PlayerToolPrimaryAction.ThrowBomb);
             SetPrivateField(
-                magnet,
+                bomb,
                 "animationTriggerMode",
                 PlayerToolAnimationTriggerMode.Single);
-            SetPrivateField(magnet, "primaryActionAnimation", magnetClip);
-            SetPrivateField(inventory, "toolDefinitions", new[] { pickaxe, magnet });
+            SetPrivateField(bomb, "primaryActionAnimation", bombClip);
+            SetPrivateField(inventory, "toolDefinitions", new[] { pickaxe, bomb });
             Assert.That(
                 inventory.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
                 Is.True);
             Assert.That(
-                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
+                inventory.ConfigureSlot(1, PlayerInventoryItem.Bomb),
                 Is.True);
 
             inventory.SelectSlot(0);
@@ -535,38 +563,64 @@ namespace Supernova.Tests
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
             Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(pickaxeClip));
             inventory.SelectSlot(1);
-            Assert.That(inventory.SelectedDefinition, Is.SameAs(magnet));
+            Assert.That(inventory.SelectedDefinition, Is.SameAs(bomb));
             Assert.That(
                 inventory.SelectedDefinition.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Single));
-            Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(magnetClip));
+            Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(bombClip));
 
             Object.DestroyImmediate(pickaxeClip);
-            Object.DestroyImmediate(magnetClip);
+            Object.DestroyImmediate(bombClip);
             Object.DestroyImmediate(pickaxe);
-            Object.DestroyImmediate(magnet);
+            Object.DestroyImmediate(bomb);
         }
 
         [Test]
-        public void ToolAssets_ConfigurePickaxeCadenceAndMagnetGameplayAction()
+        public void ToolAssets_ConfigurePickaxeCadenceAndThrowProjectile()
         {
             PlayerToolDefinition pickaxe = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
                 ProjectAssetPaths.Config.PickaxeTool);
-            PlayerToolDefinition magnet = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                ProjectAssetPaths.Config.MagnetTool);
 
             Assert.That(pickaxe, Is.Not.Null);
-            Assert.That(magnet, Is.Not.Null);
             Assert.That(
                 pickaxe.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
             Assert.That(pickaxe.ActionTriggerDelay, Is.EqualTo(0.42f));
             Assert.That(pickaxe.ActionCyclePeriod, Is.EqualTo(0.75f));
             Assert.That(pickaxe.ActionIsPeriodic, Is.True);
+            Assert.That(pickaxe.CanThrowPickaxe, Is.True);
+        }
+
+        [Test]
+        public void ToolDefinition_NoLongerDeclaresAPerToolSecondaryAction()
+        {
+            // Right click is unconditionally the magnet and the throw has its own
+            // key, so no tool overrides the secondary action any more.
             Assert.That(
-                magnet.PrimaryAction,
-                Is.EqualTo(PlayerToolPrimaryAction.AttractCart));
-            Assert.That(magnet.ActionIsPeriodic, Is.False);
+                typeof(PlayerToolDefinition).GetProperty("SecondaryAction"),
+                Is.Null);
+            Assert.That(
+                typeof(PlayerToolDefinition).GetField(
+                    "secondaryAction",
+                    BindingFlags.Instance | BindingFlags.NonPublic),
+                Is.Null);
+        }
+
+        [Test]
+        public void InventoryItems_NoLongerDeclareAStandaloneMagnetTool()
+        {
+            Assert.That(
+                System.Enum.IsDefined(typeof(PlayerInventoryItem), "Magnet"),
+                Is.False);
+            Assert.That(
+                System.Enum.IsDefined(
+                    typeof(PlayerToolPrimaryAction),
+                    "AttractCart"),
+                Is.False);
+            Assert.That(
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Folders.Tools + "/MagnetTool.asset"),
+                Is.Null);
         }
 
         [Test]
@@ -599,14 +653,11 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void ToolAssets_ConfigurePickaxeModelAndLeaveMagnetModelEmpty()
+        public void ToolAssets_ConfigurePickaxeModel()
         {
             PlayerToolDefinition pickaxe =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
                     ProjectAssetPaths.Config.PickaxeTool);
-            PlayerToolDefinition magnet =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.MagnetTool);
 
             Assert.That(pickaxe, Is.Not.Null);
             Assert.That(pickaxe.HeldModelPrefab, Is.Not.Null);
@@ -614,8 +665,6 @@ namespace Supernova.Tests
             Assert.That(
                 pickaxe.HeldModelMountStrategy,
                 Is.EqualTo(HeldToolMountStrategy.SingleHand));
-            Assert.That(magnet, Is.Not.Null);
-            Assert.That(magnet.HeldModelPrefab, Is.Null);
         }
 
         [Test]
@@ -629,7 +678,7 @@ namespace Supernova.Tests
             GameObject pickaxeModel = Create("Pickaxe Model Prefab");
             PlayerToolDefinition pickaxe =
                 ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            PlayerToolDefinition magnet =
+            PlayerToolDefinition modelless =
                 ScriptableObject.CreateInstance<PlayerToolDefinition>();
             try
             {
@@ -639,13 +688,13 @@ namespace Supernova.Tests
                     PlayerInventoryItem.Pickaxe);
                 SetPrivateField(pickaxe, "heldModelPrefab", pickaxeModel);
                 SetPrivateField(
-                    magnet,
+                    modelless,
                     "item",
-                    PlayerInventoryItem.Magnet);
+                    PlayerInventoryItem.Cart);
                 SetPrivateField(
                     inventory,
                     "toolDefinitions",
-                    new[] { pickaxe, magnet });
+                    new[] { pickaxe, modelless });
                 SetPrivateField(
                     inventory,
                     "toolModelMount",
@@ -658,7 +707,7 @@ namespace Supernova.Tests
                 Assert.That(
                     inventory.ConfigureSlot(
                         1,
-                        PlayerInventoryItem.Magnet),
+                        PlayerInventoryItem.Cart),
                     Is.True);
 
                 inventory.SelectSlot(0);
@@ -674,7 +723,7 @@ namespace Supernova.Tests
             finally
             {
                 Object.DestroyImmediate(pickaxe);
-                Object.DestroyImmediate(magnet);
+                Object.DestroyImmediate(modelless);
             }
         }
 
@@ -729,24 +778,66 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void InventorySelection_EnablesMagnetOnlyWhenConfiguredSlotIsSelected()
+        public void SuspendItem_RemovesTheToolThenRestoresItsOriginalSlot()
         {
             GameObject playerObject = Create("Player");
-            FirstPersonCartAttractor attractor =
-                playerObject.AddComponent<FirstPersonCartAttractor>();
-            PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
+            PlayerToolController inventory =
+                playerObject.AddComponent<PlayerToolController>();
+            PlayerToolDefinition pickaxe =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(pickaxe, "item", PlayerInventoryItem.Pickaxe);
+                SetPrivateField(
+                    inventory,
+                    "toolDefinitions",
+                    new[] { pickaxe });
+                Assert.That(
+                    inventory.ConfigureSlot(2, PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                inventory.SelectSlot(2);
 
-            Assert.That(
-                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
-                Is.True);
-            inventory.SelectSlot(1);
-            Assert.That(attractor.DeviceEnabled, Is.True);
+                Assert.That(
+                    inventory.SuspendItem(PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                Assert.That(
+                    inventory.IsItemSuspended(PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                Assert.That(
+                    inventory.GetItemAtSlot(2),
+                    Is.EqualTo(PlayerInventoryItem.Empty));
+                Assert.That(
+                    inventory.SelectedItem,
+                    Is.EqualTo(PlayerInventoryItem.Empty));
+                // A suspended item cannot be dragged back in from the menu.
+                Assert.That(
+                    inventory.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
+                    Is.False);
+                // Suspending twice is refused, so a second throw cannot duplicate it.
+                Assert.That(
+                    inventory.SuspendItem(PlayerInventoryItem.Pickaxe),
+                    Is.False);
 
-            inventory.SelectSlot(2);
-            Assert.That(attractor.DeviceEnabled, Is.False);
-            Assert.That(
-                inventory.SelectedItem,
-                Is.EqualTo(PlayerInventoryItem.Empty));
+                Assert.That(
+                    inventory.RestoreSuspendedItem(PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                Assert.That(
+                    inventory.IsItemSuspended(PlayerInventoryItem.Pickaxe),
+                    Is.False);
+                Assert.That(
+                    inventory.GetItemAtSlot(2),
+                    Is.EqualTo(PlayerInventoryItem.Pickaxe));
+                Assert.That(
+                    inventory.SelectedItem,
+                    Is.EqualTo(PlayerInventoryItem.Pickaxe));
+                Assert.That(
+                    inventory.RestoreSuspendedItem(PlayerInventoryItem.Pickaxe),
+                    Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(pickaxe);
+            }
         }
 
         [Test]
@@ -869,7 +960,8 @@ namespace Supernova.Tests
             GameObject playerObject = Create("Player");
             PlayerProfile profile = playerObject.AddComponent<PlayerProfile>();
 
-            Assert.That(profile.CrouchKey, Is.EqualTo(KeyCode.LeftControl));
+            // The crouch key now lives in the Gameplay/Crouch binding, so the
+            // profile only owns the movement and collider tuning.
             Assert.That(profile.CrouchMoveSpeed, Is.EqualTo(2f));
             Assert.That(profile.CrouchMoveSpeed, Is.LessThan(profile.MoveSpeed));
             Assert.That(profile.CrouchColliderHeight, Is.EqualTo(1f));

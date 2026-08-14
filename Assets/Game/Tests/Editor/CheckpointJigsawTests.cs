@@ -207,6 +207,25 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void FixedOriginFeature_UsesResolvedDenseWorldFloor()
+        {
+            DenseJigsawFeature mixedFeature =
+                LoadDenseMixedWithCheckpointHall();
+            JigsawStructureFeatureSettings fixedFeature =
+                LoadFixedDenseCheckpointSettings();
+
+            Assert.That(
+                fixedFeature.MinFloorHeight,
+                Is.EqualTo(mixedFeature.Settings.MinFloorHeight));
+            Assert.That(
+                fixedFeature.MaxFloorHeight,
+                Is.EqualTo(mixedFeature.Settings.MaxFloorHeight));
+            Assert.That(
+                fixedFeature.WorldHeight,
+                Is.EqualTo(LoadConfiguration().WorldHeight));
+        }
+
+        [Test]
         public void FixedOriginFeature_StartsWithOpenCheckpointHall()
         {
             JigsawStructureFeatureSettings settings =

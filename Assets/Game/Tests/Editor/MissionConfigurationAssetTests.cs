@@ -40,7 +40,7 @@ namespace Supernova.Tests
             Assert.That(level.MonsterGeneration, Is.Not.Null);
             Assert.That(level.TreasureGeneration, Is.Not.Null);
             Assert.That(level.HasCompleteGenerationConfiguration, Is.True);
-            Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
+            Assert.That(level.MissionTimeLimitSeconds, Is.EqualTo(180f));
             Assert.That(level.WorldSeed, Is.EqualTo(6667));
             Assert.That(level.RequiredFunds, Is.EqualTo(200));
             Assert.That(level.HomeSceneName, Is.EqualTo("Home"));
@@ -48,13 +48,13 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void FirstLevel_UsesThreeMinuteEvacuationCountdown()
+        public void FirstLevel_UsesThreeMinuteMissionCountdown()
         {
             LevelConfiguration level =
                 AssetDatabase.LoadAssetAtPath<LevelConfiguration>(LevelPaths[0]);
 
             Assert.That(level, Is.Not.Null);
-            Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
+            Assert.That(level.MissionTimeLimitSeconds, Is.EqualTo(180f));
         }
 
         [Test]
@@ -165,7 +165,6 @@ namespace Supernova.Tests
             Assert.That(configuration.MeshesBuiltPerFrame, Is.EqualTo(1));
             AssertDepthScaling(configuration.OreDepthProbability);
             AssertDepthScaling(configuration.TreasureDepthProbability);
-            AssertDepthScaling(configuration.MonsterDepthProbability);
         }
 
         [Test]

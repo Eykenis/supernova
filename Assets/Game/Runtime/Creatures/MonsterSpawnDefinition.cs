@@ -8,8 +8,6 @@ namespace Supernova.MinecraftCaves.Creatures
     public sealed class MonsterSpawnDefinition : ScriptableObject
     {
         [SerializeField] private GameObject prefab;
-        [Tooltip("Chance for each placement attempt in a generated chunk.")]
-        [SerializeField, Range(0f, 1f)] private float spawnChance = 0.65f;
         [Tooltip("Surface placement attempts per chunk and for each group member.")]
         [SerializeField, Min(1)] private int attemptsPerChunk = 2;
         [SerializeField, Min(1)] private int minimumGroupSize = 3;
@@ -19,7 +17,6 @@ namespace Supernova.MinecraftCaves.Creatures
         [SerializeField] private float spawnHeightOffset;
 
         public GameObject Prefab => prefab;
-        public float SpawnChance => Mathf.Clamp01(spawnChance);
         public int AttemptsPerChunk => Mathf.Max(1, attemptsPerChunk);
         public int MinimumGroupSize => Mathf.Max(1, minimumGroupSize);
         public int MaximumGroupSize => Mathf.Max(MinimumGroupSize, maximumGroupSize);
@@ -29,7 +26,6 @@ namespace Supernova.MinecraftCaves.Creatures
 
         public void Configure(
             GameObject monsterPrefab,
-            float chance,
             int attempts,
             float headroom = 1.5f,
             float heightOffset = 0f,
@@ -38,7 +34,6 @@ namespace Supernova.MinecraftCaves.Creatures
             float groupRadius = 8f)
         {
             prefab = monsterPrefab;
-            spawnChance = Mathf.Clamp01(chance);
             attemptsPerChunk = Mathf.Max(1, attempts);
             minimumGroupSize = Mathf.Max(1, minimumGroup);
             maximumGroupSize = Mathf.Max(minimumGroupSize, maximumGroup);

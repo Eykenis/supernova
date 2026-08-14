@@ -2,6 +2,8 @@ using Supernova.MinecraftCaves;
 using Supernova.Missions;
 using Supernova.PortalExample;
 using Supernova.PortalExample.Editor;
+
+using Supernova.Voxels.Integrity;
 using Supernova.Voxels;
 using Supernova.WorldGeneration;
 using UnityEditor;
@@ -75,6 +77,7 @@ public static class DenseJigsawRegionSceneBuilder
                 ProjectAssetPaths.Config.SpawnCheckpointHallJigsaw));
         world.ConfigureSpawnPointSceneStructure(landingCell);
         ConfigurePortalBridge(world, landingCell, player.transform);
+        ConfigureVoxelIntegrity(world, player);
         EditorUtility.SetDirty(world);
 
         CreateLighting();
@@ -145,6 +148,7 @@ public static class DenseJigsawRegionSceneBuilder
                 ProjectAssetPaths.Config.SpawnCheckpointHallJigsaw));
         world.ConfigureSpawnPointSceneStructure(landingCell);
         ConfigurePortalBridge(world, landingCell, player.transform);
+        ConfigureVoxelIntegrity(world, player.gameObject);
         EditorUtility.SetDirty(world);
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
@@ -275,6 +279,11 @@ public static class DenseJigsawRegionSceneBuilder
             checkpointGate.gameObject.SetActive(false);
         }
 
+        if (bridge.transform.parent != landingCell.transform)
+        {
+            bridge.transform.SetParent(landingCell.transform, true);
+        }
+
         bridge.Configure(
             world,
             landingCell,
@@ -310,5 +319,52 @@ public static class DenseJigsawRegionSceneBuilder
             }
             current = next;
         }
+    }
+
+
+    private static void ConfigureVoxelIntegrity(
+                MinecraftCaveInfiniteWorld world,
+                GameObject player)
+    {
+        if (world == null || player == null)
+        {
+            return;
+        }
+
+        VoxelIntegrityWorldBridge bridge =
+            world.GetComponent<VoxelIntegrityWorldBridge>();
+        if (bridge == null)
+        {
+            bridge =
+                world.gameObject.AddComponent<VoxelIntegrityWorldBridge>();
+        }
+        bridge.Configure(world);
+
+        var serializedBridge = new SerializedObject(bridge);
+        serializedBridge.FindProperty("showDebugOverlay").boolValue = false;
+        serializedBridge.ApplyModifiedPropertiesWithoutUndo();
+
+        VoxelPlayerInteractor[] interactors =
+            player.GetComponentsInChildren<VoxelPlayerInteractor>(true);
+        if (interactors.Length == 0)
+        {
+            Debug.LogError(
+                "DenseJigsawRegion Player requires a "
+                + nameof(VoxelPlayerInteractor)
+                + " for voxel-integrity routing.",
+                player);
+            return;
+        }
+
+        for (int i = 0; i < interactors.Length; i++)
+        {
+            var serializedInteractor =
+                new SerializedObject(interactors[i]);
+            serializedInteractor.FindProperty("terrain")
+                .objectReferenceValue = bridge;
+            serializedInteractor.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(interactors[i]);
+        }
+        EditorUtility.SetDirty(bridge);
     }
 }

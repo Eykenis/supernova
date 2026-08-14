@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using TMPro;
 using UnityEngine;
 
@@ -47,20 +48,17 @@ namespace Supernova.UI
 
         public void SetObjective(string value)
         {
-            if (objectiveLabel != null)
-                objectiveLabel.text = value ?? string.Empty;
+            InputPromptTextRuntime.SetText(objectiveLabel, value);
         }
 
         public void SetPrompt(string value)
         {
-            if (promptLabel != null)
-                promptLabel.text = value ?? string.Empty;
+            InputPromptTextRuntime.SetText(promptLabel, value);
         }
 
         public void ShowResult(string value)
         {
-            if (resultLabel != null)
-                resultLabel.text = value ?? string.Empty;
+            InputPromptTextRuntime.SetText(resultLabel, value);
             if (resultPanel != null)
                 resultPanel.SetActive(true);
         }

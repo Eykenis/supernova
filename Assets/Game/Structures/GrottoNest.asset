@@ -16860,15 +16860,4 @@ MonoBehaviour:
     openingWidth: 5
     openingHeight: 5
     activationChance: 1
-  spawnMarkers:
-  - stableId: nest_swarm
-    kind: 1
-    treasure: {fileID: 0}
-    monster: {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
-    localOffset: {x: 0, y: 2, z: 0}
-    yaw: 0
-    spawnChance: 1
-    count: 5
-    scatterRadiusInVoxels: 6
-    snapToFloor: 1
-    floorSearchDistance: 6
+  spawnMarkers: []

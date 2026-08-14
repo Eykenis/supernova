@@ -31,6 +31,53 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void CursorLock_SuppressesLookInputForStartupWindow()
+        {
+            PerspectiveCameraController controller = CreateController();
+            CursorLockMode previousLockState = Cursor.lockState;
+            bool previousVisibility = Cursor.visible;
+            MethodInfo setCursorLocked =
+                typeof(PerspectiveCameraController).GetMethod(
+                    "SetCursorLocked",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo shouldSuppress =
+                typeof(PerspectiveCameraController).GetMethod(
+                    "ShouldSuppressLookInput",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(setCursorLocked, Is.Not.Null);
+            Assert.That(shouldSuppress, Is.Not.Null);
+
+            try
+            {
+                setCursorLocked.Invoke(controller, new object[] { true });
+
+                Assert.That(
+                    GetPrivateField<int>(
+                        controller,
+                        "suppressLookInputThroughFrame"),
+                    Is.GreaterThanOrEqualTo(Time.frameCount));
+                Assert.That(
+                    (bool)shouldSuppress.Invoke(controller, null),
+                    Is.True);
+
+                SetPrivateField(
+                    controller,
+                    "suppressLookInputThroughFrame",
+                    Time.frameCount - 1);
+                Assert.That(
+                    (bool)shouldSuppress.Invoke(controller, null),
+                    Is.False);
+            }
+            finally
+            {
+                Cursor.lockState = previousLockState;
+                Cursor.visible = previousVisibility;
+            }
+        }
+
+
+        [Test]
         public void ThirdPersonYaw_DoesNotFollowPlayerRotation()
         {
             PerspectiveCameraController controller = CreateController();

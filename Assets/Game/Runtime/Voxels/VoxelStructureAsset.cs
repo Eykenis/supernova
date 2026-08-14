@@ -23,7 +23,7 @@ namespace Supernova.Voxels
         [Tooltip("Connection markers used when this template is a jigsaw piece.")]
         [SerializeField] private List<VoxelStructureSocket> sockets =
             new List<VoxelStructureSocket>();
-        [Tooltip("Authored treasure and monster spawn points inside this template.")]
+        [Tooltip("Authored treasure and special spawn points inside this template.")]
         [SerializeField] private List<StructureSpawnMarkerDefinition> spawnMarkers =
             new List<StructureSpawnMarkerDefinition>();
 

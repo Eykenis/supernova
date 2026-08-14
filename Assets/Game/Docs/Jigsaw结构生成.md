@@ -25,7 +25,7 @@
 | Voxel template piece（含旋转、保留调色板） | ✅ | §5.3 |
 | 模板内 socket marker | ✅ | §5.3 |
 | Processor：支柱/地基/清顶/风化 | ✅ | §5.4 |
-| 宝藏 / 怪物 spawn marker | ✅ | §5.6 |
+| 宝藏 / 特殊位置 spawn marker | ✅ | §5.6 |
 | **完整 Template Jigsaw（模板池、empty element）** | ❌ | §9.1 |
 | **Terrain matching / 高度图投影** | ❌ | §9.2 |
 | **Recursive Grammar（末地城式事务分支）** | ❌ | §9.3 |
@@ -209,12 +209,19 @@ socket，`connectorPattern` 被忽略（后者仅为旧资产的兼容路径）�
 且 输入.targetName 匹配 输出.socketName
 ```
 
+朝向还必须可对齐：四个水平面之间可通过 yaw 旋转互配；通用 `Up` 只匹配
+`Down`，`Down` 只匹配 `Up`。垂直连接不会把整个 piece 翻转或侧转，
+子 piece 始终保持直立并继承父 piece 的 yaw，使局部方向定义的装饰和通道
+保持一致。
+
 对齐过程：
 
 1. 枚举候选模块所有兼容的 input socket，用蓄水池抽样等概率取一个
    （`random.NextInt(++matchingCount) == 0`），保证与枚举顺序无关；
-2. 由 `direction = (connector.Direction + 2 - input.Face) & 3` 定出子 piece
-   朝向，使子 socket 的朝向与父 socket 相反；
+2. 水平 socket 由
+   `direction = (Opposite(connector.Direction) - input.Face) & 3`
+   定出子 piece 朝向；垂直 socket 已由 `Up↔Down` 保证法线相反，子 piece
+   直接继承父 piece 的 yaw；
 3. 按该朝向生成几何（Box / Passage / Template），得到临时 piece；
 4. 计算子 input socket 在临时 piece 上的世界位置 `boundary`；
 5. 整体平移 `connector.Position - boundary`，使两个 socket 严格贴合。
@@ -223,13 +230,34 @@ socket，`connectorPattern` 被忽略（后者仅为旧资产的兼容路径）�
 
 - **Template**：socket 自带模板局部坐标，直接绕 piece 朝向旋转该坐标。
   这是最精确的一种——标记知道自己贴在哪个体素上。
-- **Box（Room / Crossing）**：由 `face` 定出所在墙面，沿墙面法线取半跨，
-  再叠加 `lateralOffset` 横移、`verticalOffset` 抬高。
+- **Box（Room / Crossing / VerticalShaft）**：水平 `face` 定出所在墙面，沿墙面法线取半跨，
+  再叠加 `lateralOffset` 横移、`verticalOffset` 抬高；`Up` / `Down`
+  分别落在顶板 / 底板，`alongOffset = -1` 时使用中心。
 - **Passage（Corridor / Stairs）**：`Forward`/`Back` 取通道两端；
-  `Right`/`Left` 取侧墙，沿通道位置由 `alongOffset` 决定（-1 表示中点）。
+  `Right`/`Left` 取侧墙；`Up` / `Down` 取指定沿程处的顶 / 底面。
+  沿通道位置由 `alongOffset` 决定（-1 表示中点）。
 
-父输出门洞与子输入门洞**都**会记入各自 piece 的 `Openings` 列表，因此
-Masonry 外壳会在两侧同时雕通，走廊侧分支不会出现"几何相邻但被墙隔开"。
+socket 激活只表示进入 frontier。只有子 piece 真正放置成功后，父输出门洞与
+子输入门洞才会记入各自 piece 的 `Openings` 列表，因此 Masonry 外壳会在
+两侧同时雕通；因碰撞、深度或数量限制失败的分支保持封闭。
+带已连接 `Down` opening 的 piece 不再执行向下的 `FoundationFill` 或
+`SupportToGround`，避免通用垂直孔洞被后执行的 processor 回填。水平 socket 的
+`Opening Width / Height` 表示门洞宽高；垂直 socket 则表示水平孔洞的左右
+宽度与前后长度。
+
+当前 `NetherFortress` 不使用 `Up` / `Down` 楼板孔，也不使用楼梯。junction 的
+Forward 墙面在横向 `+9` / `-9` 处分别提供概率 `0.12` / `0.08` 的 3×5 门洞，
+连接 7×16×7 的空心电梯井式 corridor。井道输入与输出都在侧墙，高度分别为
+`1` 与 `11`，因此另一端 9×7×9 landing 房间比来源房间高或低 10 个体素；
+来源房间、井道底板与顶板、landing 楼板都保持完整。玩家只需从门口进入
+竖直 corridor，具体升降方式不由 jigsaw 结构提供。
+
+电梯链使用保留的 `fort_lift_*` socket 名称；DenseJigsaw 虽然会把普通水平
+socket 改为通配连接，但 `fort_lift_*` 必须精确匹配，并保留方向、角色和
+`ActivationChance`。井道只有一个概率为 1 的 landing 出口：生成器在放置井道
+之前会预留一个 piece 数量和一个深度层级，并提前检查 landing 的边界、半径与
+碰撞；该出口还会优先进入 frontier。只要 landing 无法落位，整个井道分支就会
+被拒绝，junction 墙面也不会开门，从而保证已出现的入口一定连接到另一房间。
 
 ### 3.4 碰撞
 
@@ -353,11 +381,11 @@ Marching Cubes 曾按体素**类型**分别抽取等值面，并在实体/实体
 抽取：同组类型连成一体，不产生接缝；跨组仍然内缩分界。submesh 依然按
 类型划分，所以每种调色板保留自己的材质。详见 `VoxelGroup.cs`。
 
-### 5.6 宝藏与怪物 marker
+### 5.6 宝藏与特殊位置 marker
 
-世界的自然散布（`TrySpawnNaturalTreasures` / `TrySpawnNaturalMonsters`）
-对结构一无所知，因此"传送门房间必定有 Boss""图书室台座上有战利品"这类
-设计意图无法表达。`StructureSpawnMarkerDefinition` 补上这一层。
+世界的自然散布对结构一无所知，因此"图书室台座上有战利品"这类设计意图
+由 `StructureSpawnMarkerDefinition` 表达。怪物不再使用结构 marker 固定生成，
+统一由世界级定时调度器在玩家当前区块 3 格之外随机生成。
 
 **数据流**
 
@@ -377,15 +405,19 @@ piece.spawnMarkers[]  (或 template.spawnMarkers[]，piece 未配置时继承)
   世界正北；
 - 掷点键取 **marker 世界锚点**而非索引，因此任何柱、任意次访问都对同一
   marker 得出相同结论；
-- `Count > 1` 时其余实例在 `scatterRadiusInVoxels` 内散开。散到邻柱的实例
+- `Count > 1` 时其余宝藏实例在 `scatterRadiusInVoxels` 内散开。散到邻柱的实例
   会被当前柱丢弃，交由那一柱自己解析，避免同一实例被生成两次；
 - `snapToFloor` 向下最多找 `floorSearchDistance` 格，落在第一个"下方实体、
   自身为空"的位置。找不到则该实例不生成——宁可缺一个，也不要把宝箱塞进
   石头里；
-- marker 怪物走**独立名额** `MonsterSpawnTable.MaximumMarkerMonsters`，
-  不占用自然生成的 `MaximumActiveMonsters`。设计好的遭遇战不会因为世界
-  里怪物已满而被静默跳过，同时仍然有界；
 - marker 参与 `ContentHash`，编辑后缓存自动失效。
+
+自然怪物生成每 5 秒判定一次，默认以 0.3 概率从池中均匀随机一种怪物，
+最多抽查 4 个已完成的远处区块，并且每次最多排队一只怪物。生成使用
+`MonsterSpawnTable.playerExclusionRadiusInChunks`；候选位置和延迟队列真正
+实例化时都会重新检查玩家当前位置，保证不会在 3 区块径向范围内新生成
+怪物。使用外部 landing cell 的 DenseJigsaw 在玩家首次穿门进入内部前不会
+启动该计时器。
 
 实例化时机与自然生成一致：`FinalizeColumnPhysicsIfReady` 在该柱**全部**
 mesh section 建好、碰撞体就绪之后调用，因此 `snapToFloor` 看到的是完工
@@ -458,6 +490,7 @@ piece ID 重复、connector ID 重复、start piece 不唯一、`firstPieceId`
 - 同种子布局完全一致（确定性）；
 - minimum / maximum count 在多种子采样下的达成与不越界；
 - 显式 socket、pool 跳转、图校验；
+- 通用 `Up` / `Down` socket 的堆叠对齐与相反面匹配，以及 NetherFortress 电梯井的双门连通、完整楼板和 landing 原子落位；
 - library 书架、support frame、侧分支门洞、masonry 室内的实际体素；
 - 模板 piece 旋转后写入自带调色板与空气；
 - 模板 socket 被无 connector 的模块继承，且落点等于旋转后的标记位置；
@@ -465,7 +498,7 @@ piece ID 重复、connector ID 重复、start piece 不唯一、`firstPieceId`
 - 四种处理器各自的行为边界（支柱遇地形停、地基不超厚、清顶不超高、
   风化确定且只碰本结构体素）；
 - 处理器不影响碰撞决策；
-- 宝藏 / 怪物 marker 解析确定、随 piece 旋转、只由拥有它的柱上报、
+- 宝藏 marker 解析确定、随 piece 旋转、只由拥有它的柱上报、
   零概率不触发、编辑后 ContentHash 变化；
 - 模板 marker 被无自身 marker 的模块继承；
 - RandomSpread 的服务枚举与逐区域查询一致；
@@ -575,13 +608,13 @@ piece 一旦通过碰撞检查就立即提交，无法回滚。
 
 ### 9.5 Loot / spawner / rail 等 marker processor
 
-**现状**：`StructureSpawnMarkerDefinition` 已支持宝藏与怪物（§5.6），
-但仅此两类。
+**现状**：`StructureSpawnMarkerDefinition` 已支持宝藏、检查点与玩家出生点
+（§5.6），怪物统一走世界级随机生成。
 
 **缺什么**
 
 - **箱子 + 战利品表**：marker 指定一个 loot table，生成带随机内容的容器；
-- **刷怪笼**：持续生成而非一次性；
+- **刷怪笼**：若未来需要，应作为独立机制持续生成，而不是恢复固定怪物 marker；
 - **矿车轨道**：沿走廊铺设，需要感知 piece 朝向与长度；
 - **门 / 光源 / 装饰实体**：批量小物件，可能需要与 `CaveSurfaceBrush`
   的实例化渲染合流以避免大量 GameObject。
@@ -596,8 +629,8 @@ piece 一旦通过碰撞检查就立即提交，无法回滚。
   强塞模块。这应由资产校验与多种子批量测试提前发现（见 §7、§8）。
 - 处理器只有四种，且都是逐列垂直操作。没有水平方向的形态处理（如"沿墙
   加装饰带"）。
-- marker 不支持"整组同时生成或都不生成"的事务语义；每个实例独立判定。
-  Boss 房若需要"要么 3 只一起出、要么不出"，需等 9.3 的事务机制。
+- marker 不支持"整组同时生成或都不生成"的事务语义；需要成组放置的非怪物
+  内容应增加单独的事务机制。
 
 ## 10. 现有结构内容
 
@@ -606,24 +639,24 @@ piece 一旦通过碰撞检查就立即提交，无法回滚。
 | 结构 | 调色板（primary/accent） | 形态范式 | 特点 |
 |---|---|---|---|
 | `abandoned_mineshaft` | Stone / Dirt | 废弃矿洞 | Excavated 隧道网络，木支撑，骷髅巢穴 |
-| `stronghold` | Marble / Bricks | 末地要塞 | **ConcentricRings** 选址；必达传送门房间由巨型骷髅守卫 |
-| `nether_fortress` | RustyMetal / WornBrick | 下界要塞 | **双池** bridge→corridor；深支柱造出桥的观感 |
+| `stronghold` | Marble / Bricks | 末地要塞 | **ConcentricRings** 选址；必达传送门房间 |
+| `nether_fortress` | RustyMetal / WornBrick | 下界要塞 | **双池** bridge→corridor；junction 以低概率墙面门洞接入空心电梯井式 corridor，再连接 vertical landing；楼板完整、无楼梯 |
 | `ancient_city` | TigerRock / RustyMetal | 远古城市 | 手绘十字神殿为起点，低矮长厅 |
 | `cave_village` | WornBrick / TigerRock | 村庄 | **道路优先**：房屋挂在道路侧插口上 |
-| `ancient_prison` | WornBrick / RustyMetal | 监牢 | 小尺寸高怪物密度，战斗口袋 |
+| `ancient_prison` | WornBrick / RustyMetal | 监牢 | 小尺寸封闭空间 |
 | `cactus_grotto` | Dirt / Stone | 天然巢穴 | 全 Excavated，无砌造，仙人掌群 |
 
 `nether_fortress` 与 `ancient_city` 共享 structure set `deep_complexes`
 （权重 3:2），同一候选格只出其一。
 
-四个手绘模板作为 jigsaw piece 载入，各自携带 socket 与 marker：
+四个手绘模板作为 jigsaw piece 载入，携带各自的 socket，部分模板还有宝藏 marker：
 
 | 模板 | 尺寸 | 用于 | 自带 |
 |---|---|---|---|
 | `AncientCityShrine` | 19×13×19 | ancient_city 起点 | 4 socket |
 | `VillageHouse` | 11×10×13 | cave_village 房屋 | 1 socket + 宝藏 marker |
 | `VillageWell` | 13×8×13 | cave_village 起点 | 4 socket |
-| `GrottoNest` | 17×12×17 | cactus_grotto 起点 | 2 socket + 怪物 marker |
+| `GrottoNest` | 17×12×17 | cactus_grotto 起点 | 2 socket |
 
 ### 10.1 体素类型
 
@@ -654,15 +687,15 @@ piece 一旦通过碰撞检查就立即提交，无法回滚。
 | `Runtime/Structures/JigsawConnectorDefinition.cs` | socket 资产 |
 | `Runtime/Structures/JigsawConnectorSettings.cs` | socket 快照 + 名称匹配 |
 | `Runtime/Structures/JigsawProcessorDefinition.cs` | 处理器资产 + 快照 |
-| `Runtime/Structures/StructureSpawnMarkerDefinition.cs` | 宝藏 / 怪物 marker 资产、快照与解析结果 |
+| `Runtime/Structures/StructureSpawnMarkerDefinition.cs` | 宝藏 / 检查点 / 玩家位置 marker 资产、快照与解析结果 |
 | `Runtime/Structures/JigsawPlacementService.cs` | 选址策略 + structure set 竞争 |
 | `Runtime/Structures/JigsawStructureGenerator.cs` | 布局、缓存、裁剪、落地、marker 解析 |
 | `Runtime/Structures/JigsawStructureValidator.cs` | 图与配置校验 |
 | `Runtime/Voxels/VoxelStructureSocket.cs` | 模板内 socket 标记 |
 | `Runtime/Voxels/VoxelStructureAsset.cs` | 体素模板，含 socket 与 marker |
 | `Runtime/Voxels/VoxelGroup.cs` | 体素分组与网格连续性 |
-| `Runtime/Creatures/MonsterSpawnTable.cs` | 怪物表，含 marker 独立名额 |
-| `Runtime/MinecraftCaveInfiniteWorld.cs` | 世界流送、marker 实例化 |
+| `Runtime/Creatures/MonsterSpawnTable.cs` | 怪物池、定时概率、候选数量、总上限与玩家排除半径 |
+| `Runtime/MinecraftCaveInfiniteWorld.cs` | 世界流送、marker 实例化与自然怪物生成 |
 | `Editor/WorldGeneration/JigsawStructureFeatureDefinitionEditor.cs` | Inspector 与校验展示 |
 
 结构资产是**唯一**定义来源。项目里不存在用代码重建这些资产的 builder

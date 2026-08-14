@@ -26,6 +26,53 @@ namespace Supernova.Tests
             if (eventSystemObject != null) Object.DestroyImmediate(eventSystemObject);
         }
 
+        /// <summary>
+        /// Bedrock stores int.MaxValue durability, which used to round-trip through
+        /// a float into a negative number on screen.
+        /// </summary>
+        [TestCase(1f, "DURABILITY 1")]
+        [TestCase(80f, "DURABILITY 80")]
+        [TestCase(1999f, "DURABILITY 1999")]
+        [TestCase(2000f, "INDESTRUCTIBLE")]
+        [TestCase(2147483647f, "INDESTRUCTIBLE")]
+        public void CrosshairVoxelStats_HideDurabilityWhenIndestructible(
+            float durability,
+            string expected)
+        {
+            hudObject = new GameObject("Crosshair Info");
+            CrosshairInfoDisplay display =
+                hudObject.AddComponent<CrosshairInfoDisplay>();
+            var statsObject = new GameObject("Stats", typeof(RectTransform));
+            statsObject.transform.SetParent(hudObject.transform, false);
+            TMP_Text stats = statsObject.AddComponent<TextMeshProUGUI>();
+            display.StatsLabel = stats;
+
+            System.Type infoType = typeof(CrosshairInfoDisplay).Assembly
+                .GetType("Supernova.UI.CrosshairLookAtInfo");
+            System.Type targetType = typeof(CrosshairInfoDisplay).Assembly
+                .GetType("Supernova.UI.CrosshairTargetType");
+            Assert.That(infoType, Is.Not.Null);
+            Assert.That(targetType, Is.Not.Null);
+
+            object info = System.Activator.CreateInstance(
+                infoType,
+                new object[]
+                {
+                    System.Enum.Parse(targetType, "Voxel"),
+                    "Bedrock",
+                    durability,
+                    0f,
+                    0,
+                });
+            MethodInfo showInfo = typeof(CrosshairInfoDisplay).GetMethod(
+                "ShowInfo",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(showInfo, Is.Not.Null);
+            showInfo.Invoke(display, new[] { info });
+
+            Assert.That(stats.text, Is.EqualTo(expected));
+        }
+
         [Test]
         public void RebuildDefaultView_CreatesUguiCrosshairAndHealthWidget()
         {
@@ -139,6 +186,50 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void FpsDebugWindow_StartsHiddenAndCanBeToggled()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+
+            controller.RebuildDefaultView();
+
+            Transform debugWindow = hudObject.transform.Find(
+                UiHierarchyPaths.Debug.Window);
+            TMP_Text fpsValue = hudObject.transform.Find(
+                UiHierarchyPaths.Debug.FpsValue)?.GetComponent<TMP_Text>();
+            Assert.That(controller.DebugCanvas, Is.Not.Null);
+            Assert.That(debugWindow, Is.Not.Null);
+            Assert.That(fpsValue, Is.SameAs(controller.FpsDebugValueLabel));
+            Assert.That(fpsValue.text, Is.EqualTo("FPS  --"));
+            Assert.That(controller.IsFpsDebugVisible, Is.False);
+
+            controller.ToggleFpsDebugWindow();
+
+            Assert.That(controller.IsFpsDebugVisible, Is.True);
+            controller.ToggleFpsDebugWindow();
+            Assert.That(controller.IsFpsDebugVisible, Is.False);
+        }
+
+        [Test]
+        public void FpsDebugWindow_ReportsAverageUnscaledFrameRate()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+            controller.SetFpsDebugVisible(true);
+            MethodInfo updateFps = typeof(GameHudController).GetMethod(
+                "UpdateFpsDebugWindow",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            for (int i = 0; i < 13; i++)
+                updateFps.Invoke(controller, new object[] { 0.02f });
+
+            Assert.That(controller.FpsDebugValueLabel.text, Is.EqualTo("FPS  50"));
+        }
+
+        [Test]
         public void Compass_FormatsCardinalsAndTracksWrappedHeading()
         {
             hudObject = new GameObject("Game HUD");
@@ -184,8 +275,8 @@ namespace Supernova.Tests
                 "The pause overlay should fully cover gameplay with opaque dark gray.");
             Assert.That(
                 options.Length,
-                Is.EqualTo(7),
-                "Four primary actions plus fullscreen, volume, and settings back are expected.");
+                Is.EqualTo(10),
+                "Primary actions, settings controls, and binding-menu actions are expected.");
             Assert.That(
                 systemField.GetComponent<PauseMenuWedgeGraphic>(),
                 Is.Not.Null);
@@ -215,6 +306,15 @@ namespace Supernova.Tests
             Assert.That(
                 hudObject.transform.Find(UiHierarchyPaths.Pause.FullSettings)
                     .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullControls)
+                    .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(
+                    UiHierarchyPaths.Pause.FullInputBindingsPanel)
+                    .GetComponent<InputBindingSettingsView>(),
                 Is.Not.Null);
             Assert.That(
                 hudObject.transform.Find(UiHierarchyPaths.Pause.FullQuitToMenu)

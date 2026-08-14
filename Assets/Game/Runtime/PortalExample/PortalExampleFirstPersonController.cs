@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.PortalExample
@@ -47,7 +48,7 @@ namespace Supernova.PortalExample
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (GameInput.Pressed(GameInputActionId.Cancel))
             {
                 bool shouldLock = Cursor.lockState != CursorLockMode.Locked;
                 Cursor.lockState = shouldLock
@@ -56,7 +57,7 @@ namespace Supernova.PortalExample
                 Cursor.visible = !shouldLock;
             }
 
-            if (Input.GetKeyDown(KeyCode.R))
+            if (GameInput.Pressed(GameInputActionId.PortalReset))
             {
                 resettable.ResetNow();
                 return;
@@ -83,8 +84,9 @@ namespace Supernova.PortalExample
                 return;
             }
 
-            float yaw = Input.GetAxis("Mouse X") * lookSensitivity;
-            float pitchDelta = Input.GetAxis("Mouse Y") * lookSensitivity;
+            Vector2 look = GameInput.ReadVector2(GameInputActionId.Look);
+            float yaw = look.x * lookSensitivity;
+            float pitchDelta = look.y * lookSensitivity;
             transform.Rotate(Vector3.up, yaw, Space.World);
 
             pitch = Mathf.Clamp(pitch - pitchDelta, -86f, 86f);
@@ -96,10 +98,8 @@ namespace Supernova.PortalExample
 
         private void Move()
         {
-            Vector3 input = new Vector3(
-                Input.GetAxisRaw("Horizontal"),
-                0f,
-                Input.GetAxisRaw("Vertical"));
+            Vector2 move = GameInput.ReadVector2(GameInputActionId.Move);
+            Vector3 input = new Vector3(move.x, 0f, move.y);
             input = Vector3.ClampMagnitude(input, 1f);
 
             Vector3 desiredPlanarVelocity =
@@ -122,7 +122,8 @@ namespace Supernova.PortalExample
                 velocity.y = -2f;
             }
 
-            if (controller.isGrounded && Input.GetKeyDown(KeyCode.Space))
+            if (controller.isGrounded
+                && GameInput.Pressed(GameInputActionId.Jump))
             {
                 velocity.y = Mathf.Sqrt(2f * gravity * jumpHeight);
             }

@@ -39,8 +39,6 @@ namespace Supernova.Shop
             if (item == PlayerInventoryItem.Empty)
                 return false;
             if (item == PlayerInventoryItem.Pickaxe
-                || item == PlayerInventoryItem.Magnet
-                || item == PlayerInventoryItem.GrabHook
                 || item == PlayerInventoryItem.Bomb)
             {
                 return true;
@@ -53,6 +51,33 @@ namespace Supernova.Shop
             PlayerInventoryItem item)
         {
             return GetOwnedItemKey(item);
+        }
+
+        public static bool SetItemOwned(
+            PlayerInventoryItem item,
+            bool owned,
+            bool save = true)
+        {
+            if (item == PlayerInventoryItem.Empty)
+                return false;
+            if (!owned
+                && (item == PlayerInventoryItem.Pickaxe
+                    || item == PlayerInventoryItem.Bomb))
+            {
+                return false;
+            }
+            if (IsItemOwned(item) == owned)
+                return false;
+
+            string key = GetOwnedItemKey(item);
+            if (owned)
+                PlayerPrefs.SetInt(key, 1);
+            else
+                PlayerPrefs.DeleteKey(key);
+            if (save)
+                PlayerPrefs.Save();
+            ItemOwnershipChanged?.Invoke(item, owned);
+            return true;
         }
 
         public static bool IsProductOwned(ShopProductProfile product)

@@ -80,6 +80,85 @@ public sealed class DenseJigsawRegionWorldTests
     }
 
     [Test]
+    public void ExternalLandingCell_InitializationKeepsAuthoredScenePose()
+    {
+        DenseJigsawWorldConfiguration configuration = LoadConfiguration();
+        var worldObject = new GameObject("Dense authored Cell world");
+        var viewerObject = new GameObject("Dense authored Cell viewer");
+        var cellObject = new GameObject("Authored Cell");
+        var spawnObject = new GameObject("Player Spawn");
+        try
+        {
+            cellObject.transform.SetPositionAndRotation(
+                new Vector3(17f, 5f, -11f),
+                Quaternion.Euler(0f, 37f, 0f));
+            cellObject.transform.localScale = Vector3.one * 0.7f;
+            spawnObject.transform.SetParent(cellObject.transform, false);
+            spawnObject.transform.SetLocalPositionAndRotation(
+                new Vector3(1.25f, 0.5f, -2f),
+                Quaternion.Euler(0f, -90f, 0f));
+
+            SpawnPointSceneStructure landingCell =
+                cellObject.AddComponent<SpawnPointSceneStructure>();
+            landingCell.Configure(spawnObject.transform);
+            Vector3 authoredCellPosition = cellObject.transform.position;
+            Quaternion authoredCellRotation = cellObject.transform.rotation;
+            Vector3 authoredSpawnPosition = spawnObject.transform.position;
+            Quaternion authoredSpawnRotation = spawnObject.transform.rotation;
+
+            MinecraftCaveInfiniteWorld world =
+                worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            Assert.That(
+                world.ConfigureDenseRegion(
+                    configuration,
+                    viewerObject.transform),
+                Is.True);
+            Assert.That(
+                world.ConfigureSpawnPointSceneStructure(landingCell),
+                Is.True);
+            Assert.That(
+                world.ApplyLevelConfiguration(
+                    configuration.InfiniteCavesLevelSource),
+                Is.True);
+
+            world.InitializeWorld();
+
+            Assert.That(
+                Vector3.Distance(
+                    cellObject.transform.position,
+                    authoredCellPosition),
+                Is.LessThan(0.0001f));
+            Assert.That(
+                Quaternion.Angle(
+                    cellObject.transform.rotation,
+                    authoredCellRotation),
+                Is.LessThan(0.001f));
+            Assert.That(
+                Vector3.Distance(
+                    world.SpawnWorldPosition,
+                    authoredSpawnPosition),
+                Is.LessThan(0.0001f));
+            Assert.That(
+                Quaternion.Angle(
+                    viewerObject.transform.rotation,
+                    authoredSpawnRotation),
+                Is.LessThan(0.001f));
+            Assert.That(
+                Vector3.Distance(
+                    viewerObject.transform.position,
+                    authoredSpawnPosition),
+                Is.LessThan(0.0001f));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(worldObject);
+            UnityEngine.Object.DestroyImmediate(spawnObject);
+            UnityEngine.Object.DestroyImmediate(cellObject);
+            UnityEngine.Object.DestroyImmediate(viewerObject);
+        }
+    }
+
+    [Test]
     public void Configuration_InheritsTheCompleteInfiniteCavesLevel()
     {
         DenseJigsawWorldConfiguration configuration = LoadConfiguration();
@@ -103,7 +182,7 @@ public sealed class DenseJigsawRegionWorldTests
     }
 
     [Test]
-    public void MixedJigsaw_UsesEveryInheritedFamilyAtGuaranteedPlacementChance()
+    public void MixedJigsaw_PreservesVerticalChainsAndFreelyMixesHorizontalSockets()
     {
         DenseJigsawWorldConfiguration configuration = LoadConfiguration();
 
@@ -114,8 +193,15 @@ public sealed class DenseJigsawRegionWorldTests
                 out string error),
             Is.True,
             error);
-        Assert.That(feature.Settings.PlacementChance, Is.EqualTo(1f));
-        Assert.That(feature.Settings.AllowLayoutOutsidePlacementRegion, Is.False);
+        Assert.That(
+            feature.Settings.PlacementChance,
+            Is.EqualTo(configuration.StructurePlacementChance));
+        Assert.That(
+            feature.Settings.AllowLayoutOutsidePlacementRegion,
+            Is.EqualTo(
+                configuration.StructureRegionSizeInColumns
+                    * VoxelColumnChunkData.Width
+                    <= configuration.LayoutRadius * 2));
         Assert.That(
             feature.Settings.RegionSizeInChunks,
             Is.EqualTo(configuration.StructureRegionSizeInColumns));
@@ -135,18 +221,69 @@ public sealed class DenseJigsawRegionWorldTests
             {
                 JigsawConnectorSettings connector =
                     piece.Connectors[connectorIndex];
-                Assert.That(connector.SocketName, Is.EqualTo("*"));
-                Assert.That(connector.TargetName, Is.EqualTo("*"));
                 Assert.That(connector.TargetPoolId, Is.EqualTo("dense_mixed"));
-                Assert.That(connector.ActivationChance, Is.EqualTo(1f));
+                bool reservedTransit =
+                    connector.Face == JigsawConnectorDefinition.Face.Up
+                    || connector.Face == JigsawConnectorDefinition.Face.Down
+                    || connector.SocketName.Contains("fort_lift_")
+                    || connector.TargetName.Contains("fort_lift_");
+                if (reservedTransit)
+                {
+                    Assert.That(connector.SocketName, Is.Not.EqualTo("*"));
+                    Assert.That(connector.TargetName, Is.Not.EqualTo("*"));
+                }
+                else
+                {
+                    Assert.That(connector.SocketName, Is.EqualTo("*"));
+                    Assert.That(connector.TargetName, Is.EqualTo("*"));
+                    Assert.That(
+                        connector.Role,
+                        Is.EqualTo(
+                            JigsawConnectorDefinition.Role.Bidirectional));
+                    Assert.That(connector.ActivationChance, Is.EqualTo(1f));
+                }
             }
         }
+
+        JigsawPieceSettings fortressJunction = feature.Settings.Pieces.First(
+            piece => piece.StableId
+                == "nether_fortress__fortress_junction");
+        JigsawConnectorSettings[] liftOutputs = fortressJunction.Connectors
+            .Where(connector => connector.CanEmitOutput
+                && connector.StableId.Contains("elevator_door"))
+            .ToArray();
+        Assert.That(liftOutputs, Has.Length.EqualTo(2));
+        Assert.That(
+            liftOutputs.Select(connector => connector.ActivationChance),
+            Is.EquivalentTo(new[] { 0.12f, 0.08f }));
+        Assert.That(
+            liftOutputs.All(connector =>
+                connector.Face == JigsawConnectorDefinition.Face.Forward),
+            Is.True,
+            "DenseJigsaw must preserve the elevator side doors without "
+                + "turning them into Up/Down floor holes.");
+
+        JigsawPieceSettings upShaft = feature.Settings.Pieces.First(piece =>
+            piece.StableId
+                == "nether_fortress__fortress_vertical_up_shaft");
+        Assert.That(
+            upShaft.Connectors.Count(connector =>
+                connector.Role == JigsawConnectorDefinition.Role.Input),
+            Is.EqualTo(1));
+        Assert.That(
+            upShaft.Connectors.Count(connector =>
+                connector.Role == JigsawConnectorDefinition.Role.Output),
+            Is.EqualTo(1));
     }
 
     [Test]
     public void Configuration_IntersectionSwitchPreservesBothModes()
     {
         DenseJigsawWorldConfiguration source = LoadConfiguration();
+        Assert.That(
+            source.PreventStructureIntersections,
+            Is.True,
+            "The production DenseJigsaw profile must reject overlapping layouts.");
         DenseJigsawWorldConfiguration configuration =
             ScriptableObject.CreateInstance<DenseJigsawWorldConfiguration>();
         try
@@ -454,6 +591,117 @@ public sealed class DenseJigsawRegionWorldTests
     }
 
     [Test]
+    public void Configuration_DefaultsToFiniteWorld()
+    {
+        DenseJigsawWorldConfiguration configuration = LoadConfiguration();
+
+        Assert.That(configuration.GenerateInfiniteWorld, Is.False);
+    }
+
+    [Test]
+    public void InfiniteWorld_StreamsTheDenseProfileAroundAnyViewerColumn()
+    {
+        DenseJigsawWorldConfiguration configuration =
+            UnityEngine.Object.Instantiate(LoadConfiguration());
+        var target = new GameObject("Infinite Dense streaming test");
+        try
+        {
+            configuration.ConfigureInfiniteWorld(true);
+            MinecraftCaveInfiniteWorld world =
+                target.AddComponent<MinecraftCaveInfiniteWorld>();
+            Assert.That(world.ConfigureDenseRegion(configuration), Is.True);
+            SetPrivateField(world, "world", new InfiniteVoxelWorld());
+            SetPrivateField(world, "structurePassApplied", true);
+
+            var firstCenter = new Vector3Int(99, 0, -47);
+            SetPrivateField(world, "viewerChunk", firstCenter);
+            MethodInfo refresh = typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                "RefreshRequiredChunks",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(refresh, Is.Not.Null);
+            refresh.Invoke(world, new object[] { false });
+
+            Assert.That(world.IsFiniteDenseRegion, Is.False);
+            Assert.That(world.IsInfiniteDenseWorld, Is.True);
+            Assert.That(
+                world.RequiredChunkCount,
+                Is.EqualTo(MinecraftCaveInfiniteWorld.StreamingOffsets.Count));
+            Assert.That(
+                world.EffectiveWorldHeight,
+                Is.EqualTo(configuration.WorldHeight));
+            HashSet<Vector3Int> requiredChunks =
+                (HashSet<Vector3Int>)GetPrivateField(world, "requiredChunks");
+            Assert.That(
+                MinecraftCaveInfiniteWorld.StreamingOffsets
+                    .Select(offset => firstCenter + offset),
+                Is.EquivalentTo(requiredChunks));
+
+            var secondCenter = new Vector3Int(-128, 0, 203);
+            SetPrivateField(world, "viewerChunk", secondCenter);
+            refresh.Invoke(world, new object[] { false });
+            requiredChunks =
+                (HashSet<Vector3Int>)GetPrivateField(world, "requiredChunks");
+
+            Assert.That(
+                MinecraftCaveInfiniteWorld.StreamingOffsets
+                    .Select(offset => secondCenter + offset),
+                Is.EquivalentTo(requiredChunks));
+            Assert.That(requiredChunks.Contains(firstCenter), Is.False);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(target);
+            UnityEngine.Object.DestroyImmediate(configuration);
+        }
+    }
+
+    [Test]
+    public void InfiniteSwitch_DoesNotChangeDenseJigsawDensityOrContent()
+    {
+        DenseJigsawWorldConfiguration configuration =
+            UnityEngine.Object.Instantiate(LoadConfiguration());
+        try
+        {
+            configuration.ConfigureInfiniteWorld(false);
+            Assert.That(
+                DenseJigsawFeatureMixer.TryBuild(
+                    configuration,
+                    out DenseJigsawFeature finiteFeature,
+                    out string finiteError),
+                Is.True,
+                finiteError);
+            float configuredDensity = configuration.StructureDensity;
+
+            configuration.ConfigureInfiniteWorld(true);
+            Assert.That(
+                DenseJigsawFeatureMixer.TryBuild(
+                    configuration,
+                    out DenseJigsawFeature infiniteFeature,
+                    out string infiniteError),
+                Is.True,
+                infiniteError);
+
+            Assert.That(
+                configuration.StructureDensity,
+                Is.EqualTo(configuredDensity));
+            Assert.That(
+                infiniteFeature.Settings.RegionSizeInChunks,
+                Is.EqualTo(finiteFeature.Settings.RegionSizeInChunks));
+            Assert.That(
+                infiniteFeature.Settings.PlacementChance,
+                Is.EqualTo(finiteFeature.Settings.PlacementChance));
+            Assert.That(
+                infiniteFeature.Settings.ContentHash,
+                Is.EqualTo(finiteFeature.Settings.ContentHash));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(configuration);
+        }
+    }
+
+    [Test]
     public void Configuration_VolumeAndDensityDriveTheSharedRuntime()
     {
         DenseJigsawWorldConfiguration source = LoadConfiguration();
@@ -517,7 +765,7 @@ public sealed class DenseJigsawRegionWorldTests
     }
 
     [Test]
-    public void DenseHeight_UsesThreeSectionsWithoutChangingNormalWorlds()
+    public void DenseHeight_UsesTwoSectionsWithoutChangingNormalWorlds()
     {
         DenseJigsawWorldConfiguration configuration = LoadConfiguration();
         var denseObject = new GameObject("Dense height test");
@@ -533,8 +781,8 @@ public sealed class DenseJigsawRegionWorldTests
             Assert.That(
                 dense.EffectiveWorldHeight,
                 Is.EqualTo(configuration.WorldHeight));
-            Assert.That(dense.EffectiveWorldHeight, Is.EqualTo(96));
-            Assert.That(dense.EffectiveMeshSectionsPerColumn, Is.EqualTo(3));
+            Assert.That(dense.EffectiveWorldHeight, Is.EqualTo(64));
+            Assert.That(dense.EffectiveMeshSectionsPerColumn, Is.EqualTo(2));
             Assert.That(
                 normal.EffectiveWorldHeight,
                 Is.EqualTo(VoxelColumnChunkData.Height));
@@ -550,7 +798,7 @@ public sealed class DenseJigsawRegionWorldTests
     }
 
     [Test]
-    public void MixedJigsaw_AllFamiliesFitInsideNinetySixVoxels()
+    public void MixedJigsaw_AllFamiliesFitInsideSixtyFourVoxels()
     {
         DenseJigsawWorldConfiguration configuration = LoadConfiguration();
         Assert.That(
@@ -637,9 +885,11 @@ public sealed class DenseJigsawRegionWorldTests
                 : Array.Empty<PortalExampleTriggerRelay>();
             Assert.That(landingCell, Is.Not.Null);
             Assert.That(world.UsesExternalDenseLandingCell, Is.True);
+            Assert.That(world.NaturalMonsterSpawningEnabled, Is.False);
             Assert.That(bridge, Is.Not.Null);
             Assert.That(bridge.World, Is.SameAs(world));
             Assert.That(bridge.LandingCell, Is.SameAs(landingCell));
+            Assert.That(bridge.transform.parent, Is.SameAs(landingCell.transform));
             Assert.That(bridge.LandingCellGate, Is.Not.Null);
             Assert.That(bridge.CheckpointGate, Is.Not.Null);
             Assert.That(bridge.LandingCellGate.LinkedGate,
@@ -654,15 +904,80 @@ public sealed class DenseJigsawRegionWorldTests
                     bridge.LandingCellGate,
                     bridge.CheckpointGate
                 }));
+            PortalExampleTraveller playerTraveller =
+                player.GetComponent<PortalExampleTraveller>();
+            Assert.That(playerTraveller, Is.Not.Null);
             Assert.That(
-                player.GetComponent<PortalExampleTraveller>(),
-                Is.Not.Null);
+                playerTraveller.TeleportCooldown,
+                Is.EqualTo(0.75f));
         }
         finally
         {
             EditorSceneManager.NewScene(
                 NewSceneSetup.EmptyScene,
                 NewSceneMode.Single);
+        }
+    }
+
+    [Test]
+    public void FirstLandingPortalTraversal_EnablesNaturalMonsterSpawning()
+    {
+        var worldObject = new GameObject("Dense monster gate world");
+        var landingObject = new GameObject("Dense landing cell");
+        var playerObject = new GameObject("Dense portal player");
+        var bridgeObject = new GameObject("Dense portal bridge");
+        var landingGateObject = new GameObject("Landing gate");
+        var checkpointGateObject = new GameObject("Checkpoint gate");
+        try
+        {
+            MinecraftCaveInfiniteWorld world =
+                worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            SpawnPointSceneStructure landingCell =
+                landingObject.AddComponent<SpawnPointSceneStructure>();
+            PortalExampleGate landingGate =
+                landingGateObject.AddComponent<PortalExampleGate>();
+            PortalExampleGate checkpointGate =
+                checkpointGateObject.AddComponent<PortalExampleGate>();
+            DenseJigsawPortalBridge bridge =
+                bridgeObject.AddComponent<DenseJigsawPortalBridge>();
+
+            Assert.That(
+                world.ConfigureDenseRegion(
+                    LoadConfiguration(),
+                    playerObject.transform),
+                Is.True);
+            Assert.That(
+                world.ConfigureSpawnPointSceneStructure(landingCell),
+                Is.True);
+            bridge.Configure(
+                world,
+                landingCell,
+                playerObject.transform,
+                landingGate,
+                checkpointGate);
+            PortalExampleTraveller traveller =
+                playerObject.GetComponent<PortalExampleTraveller>();
+
+            Assert.That(world.UsesExternalDenseLandingCell, Is.True);
+            Assert.That(world.NaturalMonsterSpawningEnabled, Is.False);
+            Assert.That(traveller, Is.Not.Null);
+            Assert.That(
+                traveller.Teleport(landingGate, checkpointGate),
+                Is.True);
+            Assert.That(world.NaturalMonsterSpawningEnabled, Is.True);
+            Assert.That(
+                world.BeginNaturalMonsterSpawningAfterPortalEntry(),
+                Is.False,
+                "The first portal entry must unlock spawning only once.");
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(checkpointGateObject);
+            UnityEngine.Object.DestroyImmediate(landingGateObject);
+            UnityEngine.Object.DestroyImmediate(bridgeObject);
+            UnityEngine.Object.DestroyImmediate(playerObject);
+            UnityEngine.Object.DestroyImmediate(landingObject);
+            UnityEngine.Object.DestroyImmediate(worldObject);
         }
     }
 

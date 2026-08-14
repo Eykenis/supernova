@@ -3,9 +3,19 @@ using System.Collections.Generic;
 using Supernova.Missions;
 using Supernova.UI;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Supernova.Infrastructure
 {
+    [Serializable]
+    public sealed class InputAssetReferences
+    {
+        [SerializeField] private InputActionAsset actions;
+
+        public InputActionAsset Actions => actions;
+        public bool IsComplete => actions != null;
+    }
+
     [Serializable]
     public sealed class MissionAssetReferences
     {
@@ -47,6 +57,7 @@ namespace Supernova.Infrastructure
         [SerializeField] private PausePortraitSettings pausePortraitSettings;
         [SerializeField] private EquipmentIconCatalog equipmentIcons;
         [SerializeField] private EquipmentPortraitSettings equipmentPortraitSettings;
+        [SerializeField] private Material missionCellConsoleMaterial;
 
         [Header("Pause Portrait")]
         [SerializeField] private Material pauseBodyMaterial;
@@ -71,6 +82,7 @@ namespace Supernova.Infrastructure
         public EquipmentIconCatalog EquipmentIcons => equipmentIcons;
         public EquipmentPortraitSettings EquipmentPortraitSettings =>
             equipmentPortraitSettings;
+        public Material MissionCellConsoleMaterial => missionCellConsoleMaterial;
         public Material PauseBodyMaterial => pauseBodyMaterial;
         public Material PauseBackgroundMaterial => pauseBackgroundMaterial;
         public Sprite PrimaryFrame => primaryFrame;
@@ -91,6 +103,7 @@ namespace Supernova.Infrastructure
             && pausePortraitSettings != null
             && equipmentIcons != null
             && equipmentPortraitSettings != null
+            && missionCellConsoleMaterial != null
             && pauseBodyMaterial != null
             && pauseBackgroundMaterial != null
             && primaryFrame != null
@@ -135,6 +148,8 @@ namespace Supernova.Infrastructure
             new MissionAssetReferences();
         [SerializeField] private UiAssetReferences ui =
             new UiAssetReferences();
+        [SerializeField] private InputAssetReferences input =
+            new InputAssetReferences();
         [SerializeField] private SceneLookupReferences sceneLookups =
             new SceneLookupReferences();
 
@@ -143,12 +158,15 @@ namespace Supernova.Infrastructure
         public static GameAssetCatalog Current => current;
         public MissionAssetReferences Missions => missions;
         public UiAssetReferences UI => ui;
+        public InputAssetReferences Input => input;
         public SceneLookupReferences SceneLookups => sceneLookups;
         public bool IsComplete =>
             missions != null
             && missions.IsComplete
             && ui != null
             && ui.IsComplete
+            && input != null
+            && input.IsComplete
             && sceneLookups != null
             && sceneLookups.IsComplete;
 

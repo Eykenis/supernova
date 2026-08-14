@@ -1,4 +1,5 @@
 using System;
+using Supernova.Inputs;
 using System.Collections.Generic;
 using Supernova.Shop;
 using UnityEngine;
@@ -9,15 +10,14 @@ namespace Supernova.Gameplay
     {
         Empty = 0,
         Pickaxe = 1,
-        Magnet = 2,
         Flashlight = 3,
         Gun = 4,
         Rifle = Gun,
         SolidGun = 5,
         SMG = 6,
         Cart = 7,
-        GrabHook = 8,
         Bomb = 9,
+        PortalGun = 10,
     }
 
     public enum PlayerUpgrade
@@ -33,7 +33,6 @@ namespace Supernova.Gameplay
             new List<PlayerInventoryItem>
             {
                 PlayerInventoryItem.Pickaxe,
-                PlayerInventoryItem.Magnet,
             };
         [SerializeField] private List<PlayerUpgrade> upgrades =
             new List<PlayerUpgrade>();
@@ -95,6 +94,37 @@ namespace Supernova.Gameplay
             return true;
         }
 
+        public void ResetTo(
+            IReadOnlyList<PlayerInventoryItem> items,
+            IReadOnlyList<PlayerUpgrade> startingUpgrades = null)
+        {
+            inventoryItems = new List<PlayerInventoryItem>();
+            if (items != null)
+            {
+                for (int i = 0; i < items.Count; i++)
+                {
+                    PlayerInventoryItem item = items[i];
+                    if (item != PlayerInventoryItem.Empty
+                        && !inventoryItems.Contains(item))
+                    {
+                        inventoryItems.Add(item);
+                    }
+                }
+            }
+
+            upgrades = new List<PlayerUpgrade>();
+            if (startingUpgrades == null) return;
+            for (int i = 0; i < startingUpgrades.Count; i++)
+            {
+                PlayerUpgrade upgrade = startingUpgrades[i];
+                if (upgrade != PlayerUpgrade.None
+                    && !upgrades.Contains(upgrade))
+                {
+                    upgrades.Add(upgrade);
+                }
+            }
+        }
+
         private void EnsureCollections()
         {
             if (inventoryItems == null)
@@ -109,15 +139,14 @@ namespace Supernova.Gameplay
     {
         None = 0,
         Pickaxe = 1,
-        CartAttractor = 2,
         Flashlight = 3,
         Gun = 4,
         Rifle = Gun,
         SolidGun = 5,
         SMG = 6,
         Cart = 7,
-        GrabHook = 8,
         Bomb = 9,
+        PortalGun = 10,
     }
 
     /// <summary>
@@ -297,7 +326,6 @@ namespace Supernova.Gameplay
         [Tooltip("One definition per usable inventory item. The definition owns its left-click action and animation.")]
         [SerializeField] private PlayerToolDefinition[] toolDefinitions;
         [SerializeField] private FirstPersonCartAttractor cartAttractor;
-        [SerializeField] private GrabHookController grabHook;
         [Tooltip("Right-hand mount used by tools with the Single Hand mounting strategy.")]
         [SerializeField] private Transform toolModelMount;
         [SerializeField, Range(0, PlayerInventory.SlotCount - 1)]
@@ -305,10 +333,14 @@ namespace Supernova.Gameplay
 
         private PlayerInventory inventory;
         private PlayerAmmunitionInventory ammunitionInventory;
+        private readonly Dictionary<PlayerInventoryItem, int> suspendedItemSlots =
+            new Dictionary<PlayerInventoryItem, int>();
         private GameObject equippedToolModel;
         private GameObject equippedToolModelPrefab;
+        private bool equippedToolModelHidden;
         private WeaponMuzzle equippedWeaponMuzzle;
         private Transform rifleModelMount;
+        private PlayerInventorySessionSettings sessionSettings;
 
         public event Action<int, PlayerInventoryItem> SelectionChanged;
         public event Action LoadoutChanged;
@@ -331,11 +363,17 @@ namespace Supernova.Gameplay
         public PlayerToolDefinition SelectedDefinition => GetDefinition(SelectedItem);
         public PlayerToolMode CurrentTool => (PlayerToolMode)SelectedItem;
         public bool IsPickaxeSelected => SelectedItem == PlayerInventoryItem.Pickaxe;
-        public bool IsCartAttractorSelected => SelectedItem == PlayerInventoryItem.Magnet;
         public bool IsFlashlightSelected => SelectedItem == PlayerInventoryItem.Flashlight;
         public bool IsCartSelected => SelectedItem == PlayerInventoryItem.Cart;
-        public bool IsGrabHookSelected =>
-            SelectedItem == PlayerInventoryItem.GrabHook;
+        public bool UsesPersistentPlayerData
+        {
+            get
+            {
+                ResolveReferences();
+                return sessionSettings == null
+                    || !sessionSettings.IsolatedFromPersistentData;
+            }
+        }
         public bool IsRifleSelected =>
             SelectedDefinition != null && SelectedDefinition.IsFirearm;
         public GameObject EquippedToolModel => equippedToolModel;
@@ -353,10 +391,14 @@ namespace Supernova.Gameplay
 
         private void OnEnable()
         {
-            PlayerEconomy.ItemOwnershipChanged += HandleItemOwnershipChanged;
-            PlayerEconomy.UpgradeOwnershipChanged +=
-                HandleUpgradeOwnershipChanged;
             ResolveReferences();
+            if (UsesPersistentPlayerData)
+            {
+                PlayerEconomy.ItemOwnershipChanged +=
+                    HandleItemOwnershipChanged;
+                PlayerEconomy.UpgradeOwnershipChanged +=
+                    HandleUpgradeOwnershipChanged;
+            }
             EnsureInventory();
             RefreshPurchasableItemOwnership();
             ApplySelectedItem();
@@ -372,7 +414,7 @@ namespace Supernova.Gameplay
                 cartAttractor.SetDeviceEnabled(false);
                 cartAttractor.SetCartTowEnabled(false);
             }
-            if (grabHook != null) grabHook.SetDeviceEnabled(false);
+            equippedToolModelHidden = false;
             ClearEquippedToolModel();
         }
 
@@ -387,6 +429,12 @@ namespace Supernova.Gameplay
         public PlayerInventoryItem GetItemAtSlot(int slotIndex)
         {
             return Inventory.GetItemAtSlot(slotIndex);
+        }
+
+        public bool OwnsItem(PlayerInventoryItem item)
+        {
+            EnsureInventory();
+            return ownedItems.Owns(item);
         }
 
         public PlayerToolDefinition GetDefinition(PlayerInventoryItem item)
@@ -412,12 +460,9 @@ namespace Supernova.Gameplay
             }
             if (definition.PrimaryAction == PlayerToolPrimaryAction.TowCart)
                 return false;
-            if (definition.PrimaryAction == PlayerToolPrimaryAction.FireGrabHook)
-                return grabHook != null
-                    && grabHook.CanUsePrimaryAction(definition);
-            return definition.PrimaryAction != PlayerToolPrimaryAction.AttractCart
-                || (cartAttractor != null && cartAttractor.CanOperate);
+            return true;
         }
+
 
         public int GetAmmunition(PlayerInventoryItem item)
         {
@@ -456,7 +501,7 @@ namespace Supernova.Gameplay
         {
             EnsureInventory();
             if (item != PlayerInventoryItem.Empty
-                && !ownedItems.Owns(item))
+                && (!ownedItems.Owns(item) || IsItemSuspended(item)))
             {
                 return false;
             }
@@ -479,10 +524,136 @@ namespace Supernova.Gameplay
             return true;
         }
 
+        public bool TryAddOwnedItem(PlayerInventoryItem item)
+        {
+            EnsureInventory();
+            if (item == PlayerInventoryItem.Empty || ownedItems.Owns(item))
+                return false;
+
+            if (UsesPersistentPlayerData)
+            {
+                if (!PlayerEconomy.SetItemOwned(item, true))
+                    return false;
+
+                // The economy event normally updates this controller
+                // synchronously. Keep this fallback for disabled/test callers.
+                if (ownedItems.SetOwned(item, true))
+                    OwnedItemsChanged?.Invoke();
+            }
+            else
+            {
+                ownedItems.SetOwned(item, true);
+                OwnedItemsChanged?.Invoke();
+            }
+
+            PlayerInventoryItem previousSelectedItem =
+                inventory.SelectedItem;
+            bool loadoutChanged = false;
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                if (inventory.GetItemAtSlot(i) != PlayerInventoryItem.Empty)
+                    continue;
+
+                loadoutChanged = inventory.SetItemAtSlot(i, item);
+                break;
+            }
+
+            if (!loadoutChanged)
+                return true;
+
+            CaptureConfiguredSlots();
+            SaveConfiguredSlots();
+            ApplySelectedItem();
+            LoadoutChanged?.Invoke();
+            if (previousSelectedItem != inventory.SelectedItem)
+            {
+                SelectionChanged?.Invoke(
+                    inventory.SelectedSlotIndex,
+                    inventory.SelectedItem);
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Takes an owned item out of play without selling it. The slot it came
+        /// from is remembered so <see cref="RestoreSuspendedItem"/> can put it
+        /// back, and the gap is never written to the saved loadout.
+        /// </summary>
+        public bool SuspendItem(PlayerInventoryItem item)
+        {
+            EnsureInventory();
+            if (item == PlayerInventoryItem.Empty
+                || suspendedItemSlots.ContainsKey(item))
+            {
+                return false;
+            }
+
+            int slotIndex = inventory.IndexOf(item);
+            PlayerInventoryItem previousSelectedItem = inventory.SelectedItem;
+            if (slotIndex >= 0)
+                inventory.SetItemAtSlot(slotIndex, PlayerInventoryItem.Empty);
+            suspendedItemSlots.Add(item, slotIndex);
+
+            ApplySelectedItem();
+            OwnedItemsChanged?.Invoke();
+            LoadoutChanged?.Invoke();
+            if (previousSelectedItem != inventory.SelectedItem)
+            {
+                SelectionChanged?.Invoke(
+                    inventory.SelectedSlotIndex,
+                    inventory.SelectedItem);
+            }
+            return true;
+        }
+
+        public bool RestoreSuspendedItem(PlayerInventoryItem item)
+        {
+            EnsureInventory();
+            if (!suspendedItemSlots.TryGetValue(item, out int slotIndex))
+                return false;
+
+            suspendedItemSlots.Remove(item);
+            PlayerInventoryItem previousSelectedItem = inventory.SelectedItem;
+            if (slotIndex >= 0
+                && inventory.GetItemAtSlot(slotIndex)
+                    == PlayerInventoryItem.Empty)
+            {
+                inventory.SetItemAtSlot(slotIndex, item);
+            }
+
+            ApplySelectedItem();
+            OwnedItemsChanged?.Invoke();
+            LoadoutChanged?.Invoke();
+            if (previousSelectedItem != inventory.SelectedItem)
+            {
+                SelectionChanged?.Invoke(
+                    inventory.SelectedSlotIndex,
+                    inventory.SelectedItem);
+            }
+            return true;
+        }
+
+        public bool IsItemSuspended(PlayerInventoryItem item)
+        {
+            return item != PlayerInventoryItem.Empty
+                && suspendedItemSlots.ContainsKey(item);
+        }
+
         private void EnsureInventory()
         {
             if (inventory != null) return;
-            SynchronizeOwnedItems();
+            ResolveReferences();
+            if (UsesPersistentPlayerData)
+            {
+                SynchronizeOwnedItems();
+            }
+            else
+            {
+                ownedItems.ResetTo(
+                    sessionSettings.InitialOwnedItems,
+                    sessionSettings.InitialUpgrades);
+                ApplySessionQuickSlots();
+            }
             int slot = Application.isPlaying ? initialSelectedSlot : selectedSlotIndex;
             LoadConfiguredSlots();
             inventory = new PlayerInventory(
@@ -592,6 +763,8 @@ namespace Supernova.Gameplay
         private void SynchronizeOwnedItems()
         {
             if (ownedItems == null) ownedItems = new PlayerOwnedItems();
+            if (!UsesPersistentPlayerData)
+                return;
             Array values = Enum.GetValues(typeof(PlayerInventoryItem));
             for (int i = 0; i < values.Length; i++)
             {
@@ -611,7 +784,7 @@ namespace Supernova.Gameplay
         private void LoadConfiguredSlots()
         {
             EnsureConfiguredSlotsArray();
-            if (!Application.isPlaying)
+            if (!Application.isPlaying || !UsesPersistentPlayerData)
                 return;
 
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
@@ -628,22 +801,36 @@ namespace Supernova.Gameplay
         {
             EnsureConfiguredSlotsArray();
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
-                configuredSlots[i] = inventory.GetItemAtSlot(i);
+                configuredSlots[i] = ResolveConfiguredSlotItem(i);
         }
 
         private void SaveConfiguredSlots()
         {
-            if (!Application.isPlaying)
+            if (!Application.isPlaying || !UsesPersistentPlayerData)
                 return;
 
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
                 PlayerEconomy.SetQuickSlotItem(
                     i,
-                    inventory.GetItemAtSlot(i),
+                    ResolveConfiguredSlotItem(i),
                     false);
             }
             PlayerPrefs.Save();
+        }
+
+        /// <summary>
+        /// The saved loadout keeps a suspended item in its slot, so recovering a
+        /// thrown tool restores the layout the player configured.
+        /// </summary>
+        private PlayerInventoryItem ResolveConfiguredSlotItem(int slotIndex)
+        {
+            foreach (KeyValuePair<PlayerInventoryItem, int> suspended
+                in suspendedItemSlots)
+            {
+                if (suspended.Value == slotIndex) return suspended.Key;
+            }
+            return inventory.GetItemAtSlot(slotIndex);
         }
 
         private void EnsureConfiguredSlotsArray()
@@ -668,6 +855,25 @@ namespace Supernova.Gameplay
             configuredSlots = resized;
         }
 
+        private void ApplySessionQuickSlots()
+        {
+            EnsureConfiguredSlotsArray();
+            for (int i = 0; i < configuredSlots.Length; i++)
+                configuredSlots[i] = PlayerInventoryItem.Empty;
+
+            IReadOnlyList<PlayerInventoryItem> initialSlots =
+                sessionSettings.InitialQuickSlots;
+            int count = Mathf.Min(initialSlots.Count, configuredSlots.Length);
+            for (int i = 0; i < count; i++)
+            {
+                PlayerInventoryItem item = initialSlots[i];
+                configuredSlots[i] = item == PlayerInventoryItem.Empty
+                    || ownedItems.Owns(item)
+                        ? item
+                        : PlayerInventoryItem.Empty;
+            }
+        }
+
         private void ApplyAttractionModuleUpgrade()
         {
             ResolveReferences();
@@ -686,21 +892,12 @@ namespace Supernova.Gameplay
             PlayerToolDefinition definition = SelectedDefinition;
             if (cartAttractor != null)
             {
-                bool usesMagnet = definition != null
-                    ? definition.PrimaryAction == PlayerToolPrimaryAction.AttractCart
-                    : IsCartAttractorSelected;
-                cartAttractor.SetDeviceEnabled(usesMagnet);
+                // The magnet is on right click for every tool, so it is always armed.
+                cartAttractor.SetDeviceEnabled(true);
                 bool usesCartTow = definition != null
                     ? definition.PrimaryAction == PlayerToolPrimaryAction.TowCart
                     : IsCartSelected;
                 cartAttractor.SetCartTowEnabled(usesCartTow);
-            }
-            if (grabHook != null)
-            {
-                grabHook.SetDeviceEnabled(
-                    definition != null
-                    && definition.PrimaryAction
-                        == PlayerToolPrimaryAction.FireGrabHook);
             }
             ApplyEquippedToolModel(definition);
         }
@@ -746,6 +943,32 @@ namespace Supernova.Gameplay
             equippedToolModelPrefab = modelPrefab;
             equippedWeaponMuzzle =
                 equippedToolModel.GetComponentInChildren<WeaponMuzzle>(true);
+            ApplyEquippedToolModelVisibility();
+        }
+
+        /// <summary>
+        /// Temporarily hides the held tool, for actions that use empty hands. The
+        /// model stays instantiated so its mount, muzzle, and pose are preserved.
+        /// </summary>
+        public void SetEquippedToolModelHidden(bool hidden)
+        {
+            if (equippedToolModelHidden == hidden) return;
+            equippedToolModelHidden = hidden;
+            ApplyEquippedToolModelVisibility();
+        }
+
+        public bool IsEquippedToolModelHidden => equippedToolModelHidden;
+
+        private void ApplyEquippedToolModelVisibility()
+        {
+            if (equippedToolModel == null) return;
+            Renderer[] renderers =
+                equippedToolModel.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] != null)
+                    renderers[i].enabled = !equippedToolModelHidden;
+            }
         }
 
         private Transform ResolveModelMount(PlayerToolDefinition definition)
@@ -804,19 +1027,19 @@ namespace Supernova.Gameplay
 
         private void ResolveReferences()
         {
+            if (sessionSettings == null)
+                sessionSettings = GetComponent<PlayerInventorySessionSettings>();
             if (cartAttractor == null)
                 cartAttractor = GetComponent<FirstPersonCartAttractor>();
-            if (grabHook == null)
-                grabHook = GetComponent<GrabHookController>();
         }
 
         private static int ReadRequestedSlot()
         {
-            if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1)) return 0;
-            if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2)) return 1;
-            if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3)) return 2;
-            if (Input.GetKeyDown(KeyCode.Alpha4) || Input.GetKeyDown(KeyCode.Keypad4)) return 3;
-            if (Input.GetKeyDown(KeyCode.Alpha5) || Input.GetKeyDown(KeyCode.Keypad5)) return 4;
+            if (GameInput.Pressed(GameInputActionId.Hotbar1)) return 0;
+            if (GameInput.Pressed(GameInputActionId.Hotbar2)) return 1;
+            if (GameInput.Pressed(GameInputActionId.Hotbar3)) return 2;
+            if (GameInput.Pressed(GameInputActionId.Hotbar4)) return 3;
+            if (GameInput.Pressed(GameInputActionId.Hotbar5)) return 4;
             return -1;
         }
     }

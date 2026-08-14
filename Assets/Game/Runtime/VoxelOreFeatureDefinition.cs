@@ -41,6 +41,10 @@ namespace Supernova.MinecraftCaves
         [SerializeField, Min(0.001f)] private float massDensity = 10f;
         [Tooltip("Fraction of damaging collision impulse converted into lost value.")]
         [SerializeField, Range(0f, 1f)] private float fragility = 0.25f;
+        [Tooltip("Effect template used by recovered valuable bodies. Runtime "
+            + "instances keep this material's shader and effect settings, but "
+            + "always use the ore voxel material's Base Map.")]
+        [SerializeField] private Material recoveredMaterial;
 
         public VoxelTypeDefinition ResultVoxelType => resultVoxelType;
         public IReadOnlyList<VoxelTypeDefinition> ReplaceableVoxelTypes =>
@@ -59,6 +63,7 @@ namespace Supernova.MinecraftCaves
         public int OreUnitValue => Mathf.Max(1, oreUnitValue);
         public float MassDensity => Mathf.Max(0.001f, massDensity);
         public float Fragility => Mathf.Clamp01(fragility);
+        public Material RecoveredMaterial => recoveredMaterial;
 
         public void Configure(
             VoxelTypeDefinition result,
@@ -74,7 +79,8 @@ namespace Supernova.MinecraftCaves
             float airExposureDiscardChance,
             float rigidbodyMassDensity = 10f,
             float minedFragility = 0.25f,
-            int minedOreUnitValue = 10)
+            int minedOreUnitValue = 10,
+            Material minedOreMaterial = null)
         {
             resultVoxelType = result;
             replaceableVoxelTypes = replaceable != null
@@ -93,6 +99,7 @@ namespace Supernova.MinecraftCaves
             oreUnitValue = Mathf.Max(1, minedOreUnitValue);
             massDensity = Mathf.Max(0.001f, rigidbodyMassDensity);
             fragility = Mathf.Clamp01(minedFragility);
+            recoveredMaterial = minedOreMaterial;
         }
 
         public bool TryCreateSettings(

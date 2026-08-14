@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Supernova.Inputs;
 using Supernova.UI;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -125,7 +126,10 @@ namespace Supernova.Shop
             }
             else
             {
-                label.text = $"${profile.Price}\nPRESS E TO BUY";
+                InputPromptTextRuntime.SetText(
+                    label,
+                    "$" + profile.Price
+                        + "\nPRESS {{input:Gameplay/Interact}} TO BUY");
                 label.color = PlayerEconomy.CanAfford(profile)
                     ? WorldValueTextStyle.ValueColor
                     : WorldValueTextStyle.LossColor;

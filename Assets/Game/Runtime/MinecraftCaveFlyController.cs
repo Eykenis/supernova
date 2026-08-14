@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.MinecraftCaves
@@ -22,13 +23,13 @@ namespace Supernova.MinecraftCaves
 
         private void Update()
         {
-            if (Input.GetMouseButtonDown(1))
+            if (GameInput.Pressed(GameInputActionId.SpectatorLookHold))
             {
                 looking = true;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
             }
-            if (Input.GetMouseButtonUp(1))
+            if (GameInput.Released(GameInputActionId.SpectatorLookHold))
             {
                 looking = false;
                 Cursor.lockState = CursorLockMode.None;
@@ -37,19 +38,21 @@ namespace Supernova.MinecraftCaves
 
             if (looking)
             {
-                yaw += Input.GetAxisRaw("Mouse X") * lookSensitivity;
-                pitch -= Input.GetAxisRaw("Mouse Y") * lookSensitivity;
+                Vector2 look = GameInput.ReadVector2(GameInputActionId.Look);
+                yaw += look.x * lookSensitivity;
+                pitch -= look.y * lookSensitivity;
                 pitch = Mathf.Clamp(pitch, -88f, 88f);
                 transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
             }
 
-            Vector3 movement = transform.right * Input.GetAxisRaw("Horizontal")
-                + transform.forward * Input.GetAxisRaw("Vertical");
-            if (Input.GetKey(KeyCode.E))
+            Vector2 move = GameInput.ReadVector2(GameInputActionId.Move);
+            Vector3 movement = transform.right * move.x
+                + transform.forward * move.y;
+            if (GameInput.Held(GameInputActionId.SpectatorUp))
             {
                 movement += Vector3.up;
             }
-            if (Input.GetKey(KeyCode.Q))
+            if (GameInput.Held(GameInputActionId.SpectatorDown))
             {
                 movement += Vector3.down;
             }
@@ -58,7 +61,7 @@ namespace Supernova.MinecraftCaves
                 movement.Normalize();
             }
 
-            float speed = Input.GetKey(KeyCode.LeftShift)
+            float speed = GameInput.Held(GameInputActionId.SpectatorFast)
                 ? moveSpeed * fastMultiplier
                 : moveSpeed;
             transform.position += movement * (speed * Time.unscaledDeltaTime);

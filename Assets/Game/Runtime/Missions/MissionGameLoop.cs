@@ -1,6 +1,8 @@
 using System.Collections;
+using Supernova.Inputs;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
+using Supernova.PortalExample;
 using Supernova.Shop;
 using Supernova.UI;
 using Supernova.Voxels;
@@ -115,7 +117,7 @@ namespace Supernova.Missions
         private void Update()
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            if (Input.GetKeyDown(KeyCode.F1))
+            if (GameInput.Pressed(GameInputActionId.DebugMission))
             {
                 PlayerEconomy.AddCredits(DebugCreditGrant);
                 SetPrompt(
@@ -132,13 +134,16 @@ namespace Supernova.Missions
 
             if (run != null && !run.IsFinished && caveSetup && !transitioning)
             {
-                run.Tick(Time.deltaTime);
+                int storedValue = extractionZone != null
+                    ? extractionZone.CurrentStoredValue
+                    : 0;
+                run.Tick(Time.deltaTime, storedValue);
                 RefreshObjective();
                 if (run.IsFinished) ShowResult();
             }
 
             if (missionUi != null && missionUi.IsResultVisible
-                && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Space)))
+                && GameInput.Pressed(GameInputActionId.Submit))
             {
                 ReturnHome();
             }
@@ -162,7 +167,7 @@ namespace Supernova.Missions
             definition = level;
             campaign?.SelectLevel(level);
             run = new MissionRun(
-                definition.EvacuationCountdownSeconds,
+                definition.MissionTimeLimitSeconds,
                 definition.RequiredFunds);
             InvalidateObjectiveCache();
             StartCoroutine(LoadWithFade(CaveSceneName));
@@ -177,17 +182,16 @@ namespace Supernova.Missions
         }
 
         /// <summary>
-        /// The value shown to the player as collected. Before evacuation this
-        /// includes the extraction Cell's live overlap tally; once evacuation
-        /// starts that tally has been banked into DeliveredValue, so only the
-        /// fixed total is shown.
+        /// The value shown to the player as collected. While the mission is
+        /// active this includes the extraction Cell's live overlap tally. At
+        /// timeout that tally is banked into DeliveredValue for final scoring.
         /// </summary>
         private int DisplayedCollectedValue
         {
             get
             {
                 if (run == null) return 0;
-                if (run.IsEvacuationCountdownActive) return run.DeliveredValue;
+                if (run.IsFinished) return run.DeliveredValue;
                 int extraction = extractionZone != null
                     ? extractionZone.CurrentStoredValue
                     : 0;
@@ -198,34 +202,10 @@ namespace Supernova.Missions
         public bool RequestEvacuation()
         {
             if (run == null || run.IsFinished || transitioning) return false;
-
-            int storedValue = extractionZone != null
-                ? extractionZone.CurrentStoredValue
-                : 0;
-            if (!run.TryStartEvacuationCountdown(storedValue))
-            {
-                int total = DisplayedCollectedValue;
-                if (run.IsEvacuationCountdownActive)
-                {
-                    SetPrompt("EVACUATION COUNTDOWN ALREADY ACTIVE");
-                }
-                else
-                {
-                    int missingValue = Mathf.Max(0, run.RequiredValue - total);
-                    SetPrompt(
-                        "RETURN LOCKED · NEED $" + missingValue
-                        + " MORE    STORED $" + total
-                        + " / $" + run.RequiredValue);
-                }
-                return false;
-            }
-
-            InvalidateObjectiveCache();
             SetPrompt(
-                "EVACUATION INITIATED · RETURN IN "
+                "AUTOMATIC EVACUATION IN "
                 + FormatCountdown(run.TimeRemaining));
-            RefreshObjective();
-            return true;
+            return false;
         }
 
         public void ShowCellActionPrompt(bool home)
@@ -234,22 +214,17 @@ namespace Supernova.Missions
             {
                 SetPrompt(campaign != null && campaign.IsComplete
                     ? "ALL MISSIONS COMPLETE"
-                    : "PRESS E AT CELL CONSOLE TO START " + MissionName);
+                    : "PRESS {{input:Gameplay/Interact}} AT CELL CONSOLE TO START " + MissionName);
                 return;
             }
 
             if (run == null || run.IsFinished) return;
-            if (run.IsEvacuationCountdownActive)
-            {
-                SetPrompt("EVACUATION COUNTDOWN ACTIVE");
-                return;
-            }
-
             int storedValue = DisplayedCollectedValue;
-            SetPrompt(storedValue >= run.RequiredValue
-                ? "PRESS E AT CELL CONSOLE TO BEGIN EVACUATION"
-                : "RETURN LOCKED · STORED $" + storedValue
-                    + " / $" + run.RequiredValue);
+            SetPrompt(
+                "AUTOMATIC EVACUATION IN "
+                + FormatCountdown(run.TimeRemaining)
+                + "    STORED $" + storedValue
+                + " / $" + run.RequiredValue);
         }
 
         public void HideCellActionPrompt(bool home)
@@ -259,10 +234,6 @@ namespace Supernova.Missions
                 SetPrompt(campaign != null && campaign.IsComplete
                     ? "CAMPAIGN COMPLETE    BALANCE: $" + Credits
                     : "SHOP ONLINE    BALANCE: $" + Credits);
-            }
-            else if (run != null && run.IsEvacuationCountdownActive)
-            {
-                SetPrompt("EVACUATION COUNTDOWN ACTIVE");
             }
             else
             {
@@ -314,7 +285,7 @@ namespace Supernova.Missions
                 return;
 
             run = new MissionRun(
-                definition.EvacuationCountdownSeconds,
+                definition.MissionTimeLimitSeconds,
                 definition.RequiredFunds);
             InvalidateObjectiveCache();
         }
@@ -422,6 +393,18 @@ namespace Supernova.Missions
             Transform cell,
             BoxCollider trigger)
         {
+            SpawnPointSceneStructure spawnStructure =
+                cell.GetComponent<SpawnPointSceneStructure>();
+            if (spawnStructure != null)
+            {
+                Bounds extractionBounds =
+                    spawnStructure.MissionExtractionLocalBounds;
+                trigger.transform.localPosition = Vector3.zero;
+                trigger.center = extractionBounds.center;
+                trigger.size = extractionBounds.size;
+                return;
+            }
+
             Renderer[] renderers = cell.GetComponentsInChildren<Renderer>(true);
             if (renderers.Length == 0)
             {
@@ -434,7 +417,14 @@ namespace Supernova.Missions
                 rendererIndex < renderers.Length;
                 rendererIndex++)
             {
-                Bounds worldBounds = renderers[rendererIndex].bounds;
+                Renderer renderer = renderers[rendererIndex];
+                if (renderer.GetComponentInParent<PortalExampleGate>(true)
+                    != null)
+                {
+                    continue;
+                }
+
+                Bounds worldBounds = renderer.bounds;
                 Vector3 minimum = worldBounds.min;
                 Vector3 maximum = worldBounds.max;
                 for (int x = 0; x <= 1; x++)
@@ -532,7 +522,7 @@ namespace Supernova.Missions
                         + "\n\nINSUFFICIENT RESOURCES COLLECTED"
                         + "\nCOLLECTED $" + run.DeliveredValue
                         + " / $" + run.RequiredValue
-                        + "\n\nPRESS ENTER TO RETURN";
+                        + "\n\nPRESS {{input:UI/Submit}} TO RETURN";
                     break;
             }
             missionUi.ShowResult(message);
@@ -618,7 +608,7 @@ namespace Supernova.Missions
             EnsureUi();
             if (missionUi == null) return;
             int seconds = Mathf.CeilToInt(run.TimeRemaining);
-            if (!run.IsEvacuationCountdownActive)
+            if (!run.IsCountdownActive)
             {
                 gameUi?.HideMissionTimer();
             }

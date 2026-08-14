@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   enabled: 1
   stableId: abandoned_mineshaft
-  primaryVoxelType: {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
-  accentVoxelType: {fileID: 11400000, guid: 11c5091dafd134a4f8a05a513b833f94, type: 2}
+  primaryVoxelType: {fileID: 11400000, guid: fc54184cf92454347a4a80cfc807cb3a, type: 2}
+  accentVoxelType: {fileID: 11400000, guid: 2c8e05f588ced714181b788fd544c5cb, type: 2}
   placementStrategy: 0
-  seedSalt: 104729
+  seedSalt: 11166
   regionSizeInChunks: 5
   placementChance: 0.34
-  minFloorHeight: 40
+  minFloorHeight: 20
   maxFloorHeight: 190
   ringStructureCount: 128
   ringCount: 8
@@ -130,7 +130,7 @@ MonoBehaviour:
     - stableId: shaft_bones
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
       spawnChance: 0.6
@@ -442,7 +442,7 @@ MonoBehaviour:
     - stableId: cache_cauldron
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
       spawnChance: 0.8
@@ -453,7 +453,7 @@ MonoBehaviour:
     - stableId: cache_bones
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 2, y: 1, z: 2}
       yaw: 0
       spawnChance: 0.5
@@ -510,21 +510,10 @@ MonoBehaviour:
       openingHeight: 5
     processors: []
     spawnMarkers:
-    - stableId: lair_skeletons
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.85
-      count: 4
-      scatterRadiusInVoxels: 4
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: lair_bones
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: -3, y: 1, z: 3}
       yaw: 0
       spawnChance: 0.7

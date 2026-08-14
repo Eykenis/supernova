@@ -1,3 +1,4 @@
+using System;
 using Supernova.Voxels;
 using UnityEngine;
 
@@ -20,6 +21,15 @@ namespace Supernova.MinecraftCaves
             new Vector3(-2.2f, 0.55f, -1.5f);
         [SerializeField] private Vector3 cartSpawnLocalEulerAngles =
             Vector3.zero;
+        [Header("Mission Extraction")]
+        [Tooltip(
+            "Cell-local volume that accepts treasure for mission scoring. "
+            + "Keep this inside the enclosed cabin so exterior platforms and "
+            + "runtime portal endpoints cannot contribute value.")]
+        [SerializeField] private Vector3 missionExtractionLocalCenter =
+            new Vector3(-0.62f, 2f, 0f);
+        [SerializeField] private Vector3 missionExtractionLocalSize =
+            new Vector3(6f, 4f, 6f);
         [SerializeField, Min(0f)] private float terrainClearancePadding = 0.75f;
         [SerializeField, Min(1f)] private float exitPassageLength = 12f;
         [SerializeField, Min(1f)] private float exitPassageWidth = 6f;
@@ -47,8 +57,20 @@ namespace Supernova.MinecraftCaves
         private Vector3 exitTargetWorldPosition;
 
         public Transform PlayerSpawnPoint => ResolvePlayerSpawnPoint();
+        public Bounds MissionExtractionLocalBounds
+        {
+            get
+            {
+                Vector3 safeSize = new Vector3(
+                    Mathf.Max(0.1f, Mathf.Abs(missionExtractionLocalSize.x)),
+                    Mathf.Max(0.1f, Mathf.Abs(missionExtractionLocalSize.y)),
+                    Mathf.Max(0.1f, Mathf.Abs(missionExtractionLocalSize.z)));
+                return new Bounds(missionExtractionLocalCenter, safeSize);
+            }
+        }
         public bool HasExitTarget => hasExitTarget;
         public Vector3 ExitTargetWorldPosition => exitTargetWorldPosition;
+        public event Action Placed;
 
         public void GetMissionCartSpawnPose(
             out Vector3 worldPosition,
@@ -74,6 +96,7 @@ namespace Supernova.MinecraftCaves
                 playerWorldRotation * Quaternion.Inverse(rootToSpawnRotation);
             Vector3 rootToSpawnPosition = spawnPoint.position - transform.position;
             transform.position = playerWorldPosition - rootToSpawnPosition;
+            Placed?.Invoke();
         }
 
         public void SetExitTarget(Vector3 targetWorldPosition)

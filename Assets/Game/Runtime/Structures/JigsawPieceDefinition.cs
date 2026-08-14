@@ -18,6 +18,7 @@ namespace Supernova.MinecraftCaves
             Corridor,
             Crossing,
             Stairs,
+            VerticalShaft,
         }
 
         public enum BuildStyle
@@ -43,6 +44,7 @@ namespace Supernova.MinecraftCaves
             Pillars,
             PrisonCells,
             PortalFrame,
+            SpiralStairs,
         }
 
         [Header("Identity and Pool")]
@@ -106,7 +108,7 @@ namespace Supernova.MinecraftCaves
             new List<JigsawProcessorDefinition>();
 
         [Header("Spawn Markers (optional)")]
-        [Tooltip("Authored treasure and monster spawn points carried by this module.")]
+        [Tooltip("Authored treasure and special spawn points carried by this module.")]
         [SerializeField] private List<StructureSpawnMarkerDefinition> spawnMarkers =
             new List<StructureSpawnMarkerDefinition>();
 

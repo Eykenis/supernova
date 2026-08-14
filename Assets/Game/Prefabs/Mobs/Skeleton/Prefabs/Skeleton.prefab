@@ -1366,7 +1366,7 @@ GameObject:
   - component: {fileID: 3847802125550302583}
   - component: {fileID: 3156451394470884637}
   - component: {fileID: 8067185941161078881}
-  - component: {fileID: 7158885243067771033}
+  - component: {fileID: 8067185941161078882}
   - component: {fileID: 3483933721791326288}
   - component: {fileID: 5534928368153554661}
   - component: {fileID: 8250040346667111179}
@@ -1471,23 +1471,29 @@ CapsuleCollider:
   m_Height: 1.8
   m_Direction: 1
   m_Center: {x: 0, y: 0.9, z: 0}
---- !u!114 &7158885243067771033
-MonoBehaviour:
+--- !u!136 &8067185941161078882
+CapsuleCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7551938292944909751}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
   m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7db42a02dd664484997a9d597482a611, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  sourceCollider: {fileID: 0}
-  shape: {fileID: 11400000, guid: 0db5f11709998164b8f9f3c2f790a174, type: 2}
-  bakeVoxelSize: 0.42
-  showOccupiedVoxels: 1
-  previewColor: {r: 0.1, g: 0.85, b: 1, a: 0.22}
+  serializedVersion: 2
+  m_Radius: 0.15
+  m_Height: 0.7
+  m_Direction: 1
+  m_Center: {x: 0, y: 0.5, z: 0}
 --- !u!114 &3483933721791326288
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1501,11 +1507,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   body: {fileID: 3156451394470884637}
-  maximumHorizontalSpeed: 3.2
-  movementForce: 99
-  voxelSize: 0.42
-  jumpVelocityMultiplier: 1.1
+  crowdCollider: {fileID: 8067185941161078882}
+  animationReferenceSpeed: 3.2
   turnSpeedInDegrees: 540
+  jumpSpeedMultiplier: 1.15
+  coyoteTime: 0.1
+  maximumGroundAngle: 55
 --- !u!114 &5534928368153554661
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1520,25 +1527,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   caveWorld: {fileID: 0}
   playerFoot: {fileID: 0}
-  shapeAuthoring: {fileID: 7158885243067771033}
   motor: {fileID: 3483933721791326288}
   simulationDistance: 160
   pursuitDistance: 64
   pursuitRetentionDistance: 96
   attackDistance: 2
-  wanderRadius: 32
-  wanderLegRadius: 8
-  navigation:
-    safeFallHeight: 3
-    maximumJumpHeight: 1
-    maximumTraversalJumpHeight: 4
-    maximumTraversalHorizontalDistance: 3
-    maximumSingleMoveCost: 200
-    maximumExpandedNodes: 512
-  wanderRetryInterval: 8
-  wanderVerticalSearch: 8
-  solidDensityThreshold: 0
-  arrivalToleranceInVoxels: 0.999
   maximumHealth: 150
   vitals:
     maximumHealth: 100
@@ -1552,11 +1545,26 @@ MonoBehaviour:
   collisionFragility: 0.4
   minimumDamageImpulse: 5
   damagePercentagePerSquaredImpulse: 0.03
+  navigation:
+    maximumJumpHeight: 3
+    maximumSafeFall: 9
+    stepUpHeight: 1
+    visitLimit: 256
+    moveSpeed: 6
+    acceleration: 18
+    minimumReplanInterval: 0.25
+    maximumReplanInterval: 0.6
+    targetDriftThreshold: 4
+    wanderRadius: 10
+    wanderVerticalRange: 7
+    wanderAttempts: 10
+    wanderRetryInterval: 1.5
+    stuckCheckInterval: 0.05
+    stuckJumpAttempts: 2
+    stuckSpeedFraction: 0.15
   drawDebug: 1
   currentState: 0
-  lastExpandedNodeCount: 0
-  observedSupport: {x: 0, y: 0, z: 0}
-  pathIndex: 0
+  lastVisitedNodeCount: 0
 --- !u!114 &8250040346667111179
 MonoBehaviour:
   m_ObjectHideFlags: 0

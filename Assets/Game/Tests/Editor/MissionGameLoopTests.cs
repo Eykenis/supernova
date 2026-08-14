@@ -1,9 +1,12 @@
 using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
+using Supernova.MinecraftCaves;
 using Supernova.Missions;
+using Supernova.PortalExample;
 using Supernova.UI;
 using UnityEngine;
+using UnityEngine.TestTools.Utils;
 
 namespace Supernova.Tests
 {
@@ -204,6 +207,97 @@ namespace Supernova.Tests
                 Is.GreaterThanOrEqualTo(roomRenderer.bounds.max.y));
             Assert.That(trigger.bounds.max.z,
                 Is.GreaterThanOrEqualTo(roomRenderer.bounds.max.z));
+        }
+
+        [Test]
+        public void CellValueTrigger_IgnoresRemotePortalRenderers()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo createCellTrigger = typeof(MissionGameLoop).GetMethod(
+                "CreateCellTrigger",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(createCellTrigger, Is.Not.Null);
+
+            var cellObject = new GameObject("Cave Cell");
+            cellObject.transform.SetParent(loopObject.transform);
+            cellObject.transform.position = new Vector3(300f, 0f, 0f);
+            cellObject.transform.localScale = Vector3.one * 0.7f;
+
+            GameObject authoredRoom = GameObject.CreatePrimitive(
+                PrimitiveType.Cube);
+            authoredRoom.name = "Authored Cell Bounds";
+            authoredRoom.transform.SetParent(cellObject.transform, false);
+            authoredRoom.transform.localScale = new Vector3(8f, 4f, 7f);
+            Renderer roomRenderer = authoredRoom.GetComponent<Renderer>();
+
+            var portalObject = new GameObject("Remote Checkpoint Portal");
+            portalObject.SetActive(false);
+            portalObject.transform.SetParent(cellObject.transform, false);
+            portalObject.AddComponent<PortalExampleGate>();
+            portalObject.transform.position = Vector3.zero;
+
+            GameObject portalSurface = GameObject.CreatePrimitive(
+                PrimitiveType.Cube);
+            portalSurface.name = "Remote Portal Surface";
+            portalSurface.transform.SetParent(portalObject.transform, false);
+            Renderer portalRenderer = portalSurface.GetComponent<Renderer>();
+
+            Physics.SyncTransforms();
+            createCellTrigger.Invoke(
+                loop,
+                new object[] { cellObject.transform, false });
+
+            OreExtractionZone extraction =
+                cellObject.GetComponentInChildren<OreExtractionZone>();
+            Assert.That(extraction, Is.Not.Null);
+            BoxCollider trigger = extraction.GetComponent<BoxCollider>();
+            Assert.That(trigger, Is.Not.Null);
+            Assert.That(trigger.bounds.Contains(roomRenderer.bounds.center),
+                Is.True);
+            Assert.That(trigger.bounds.Contains(portalRenderer.bounds.center),
+                Is.False,
+                "A checkpoint portal placed in the cave must not stretch the "
+                + "landing Cell's extraction trigger back to the checkpoint.");
+            Assert.That(trigger.bounds.size.x, Is.LessThan(20f));
+        }
+
+        [Test]
+        public void ConfiguredCellValueTrigger_UsesCabinExtractionBounds()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo createCellTrigger = typeof(MissionGameLoop).GetMethod(
+                "CreateCellTrigger",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(createCellTrigger, Is.Not.Null);
+
+            var cellObject = new GameObject("Configured Cave Cell");
+            cellObject.transform.SetParent(loopObject.transform);
+            cellObject.transform.position = new Vector3(300f, 0f, 0f);
+            cellObject.transform.localScale = Vector3.one * 0.7f;
+            SpawnPointSceneStructure structure =
+                cellObject.AddComponent<SpawnPointSceneStructure>();
+
+            createCellTrigger.Invoke(
+                loop,
+                new object[] { cellObject.transform, false });
+
+            OreExtractionZone extraction =
+                cellObject.GetComponentInChildren<OreExtractionZone>();
+            Assert.That(extraction, Is.Not.Null);
+            BoxCollider trigger = extraction.GetComponent<BoxCollider>();
+            Bounds expected = structure.MissionExtractionLocalBounds;
+            Assert.That(trigger.center,
+                Is.EqualTo(expected.center)
+                    .Using(Vector3ComparerWithEqualsOperator.Instance));
+            Assert.That(trigger.size,
+                Is.EqualTo(expected.size)
+                    .Using(Vector3ComparerWithEqualsOperator.Instance));
+            Assert.That(
+                trigger.bounds.Contains(new Vector3(300f, 0.5f, -7f)),
+                Is.False,
+                "The exterior portal approach must remain outside mission storage.");
         }
     }
 }

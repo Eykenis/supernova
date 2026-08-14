@@ -420,25 +420,14 @@ public static class EquipmentIconBaker
         PlayerInventoryItem item,
         PlayerToolDefinition definition)
     {
-        if (definition != null)
-        {
-            if (definition.HeldModelPrefab != null)
-                return definition.HeldModelPrefab;
-            if (definition.GrabHookProjectileModelPrefab != null)
-                return definition.GrabHookProjectileModelPrefab;
-        }
+        if (definition != null && definition.HeldModelPrefab != null)
+            return definition.HeldModelPrefab;
 
         switch (item)
         {
-            case PlayerInventoryItem.Magnet:
-                return AssetDatabase.LoadAssetAtPath<GameObject>(
-                    ProjectAssetPaths.Prefabs.AttractionModuleDisplay);
             case PlayerInventoryItem.Cart:
                 return AssetDatabase.LoadAssetAtPath<GameObject>(
                     ProjectAssetPaths.ThirdParty.EmptyCart);
-            case PlayerInventoryItem.GrabHook:
-                return AssetDatabase.LoadAssetAtPath<GameObject>(
-                    ProjectAssetPaths.Prefabs.GrabHook);
             default:
                 return null;
         }

@@ -26,52 +26,81 @@ namespace Supernova.Tests
 
 
         [Test]
-        public void MagnetBeam_FadesSmoothlyFromTransparentAtTheSource()
+        public void MagnetBeam_RemainsVisibleAtThePalmSource()
         {
             GameObject host = Create("Magnet Beam");
             MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
 
             InvokePrivate(beam, "EnsureLine");
-            InvokePrivate(beam, "UpdateFlowColor");
+            InvokePrivate(beam, "UpdateBeamColor");
 
             LineRenderer line = host.GetComponent<LineRenderer>();
-            Assert.That(line, Is.Not.Null);
             Gradient colors = line.colorGradient;
             float sourceAlpha = colors.Evaluate(0f).a;
             float nearSourceAlpha = colors.Evaluate(0.05f).a;
-            float fadedInAlpha = colors.Evaluate(0.25f).a;
 
-            Assert.That(sourceAlpha, Is.Zero.Within(0.0001f));
-            Assert.That(nearSourceAlpha, Is.GreaterThan(sourceAlpha));
-            Assert.That(fadedInAlpha, Is.GreaterThan(nearSourceAlpha));
+            Assert.That(sourceAlpha, Is.GreaterThan(0f));
+            Assert.That(nearSourceAlpha, Is.GreaterThanOrEqualTo(sourceAlpha));
         }
 
         [Test]
-        public void MagnetBeam_StartsHalfwayBetweenBothHands()
+        public void MagnetBeam_StartsAtTheRightPalmCenter()
         {
             GameObject host = Create("Magnet Beam");
             MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
-            Transform leftHand = Create("Left Hand").transform;
             Transform rightHand = Create("Right Hand").transform;
-            leftHand.position = new Vector3(-1.5f, 2f, 4f);
+            Transform rightMiddleProximal = Create("Right Middle Proximal").transform;
             rightHand.position = new Vector3(0.5f, 4f, 8f);
-            SetPrivateField(beam, "leftHand", leftHand);
+            rightMiddleProximal.position = new Vector3(2.5f, 4f, 8f);
             SetPrivateField(beam, "rightHand", rightHand);
+            SetPrivateField(beam, "rightMiddleProximal", rightMiddleProximal);
 
             Vector3 start = InvokePrivate<Vector3>(beam, "ResolveBeamStart");
 
-            Assert.That(start, Is.EqualTo(new Vector3(-0.5f, 3f, 6f)));
+            Assert.That(start, Is.EqualTo(new Vector3(1.5f, 4f, 8f)));
         }
 
         [Test]
-        public void MagnetBeam_ArcBendsUpward()
+        public void MagnetBeam_ExplicitPalmAnchorOverridesAutomaticBones()
         {
             GameObject host = Create("Magnet Beam");
             MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
+            Transform rightPalmAnchor = Create("Right Palm Anchor").transform;
+            Transform rightHand = Create("Right Hand").transform;
+            Transform rightMiddleProximal = Create("Right Middle Proximal").transform;
+            rightPalmAnchor.position = new Vector3(3f, 5f, 7f);
+            rightHand.position = Vector3.zero;
+            rightMiddleProximal.position = Vector3.one;
+            SetPrivateField(beam, "rightPalmAnchor", rightPalmAnchor);
+            SetPrivateField(beam, "rightHand", rightHand);
+            SetPrivateField(beam, "rightMiddleProximal", rightMiddleProximal);
 
-            float midpointHeight = InvokePrivate<float>(beam, "CalculateArcHeight", 0.5f);
+            Vector3 start = InvokePrivate<Vector3>(beam, "ResolveBeamStart");
 
-            Assert.That(midpointHeight, Is.GreaterThan(0f));
+            Assert.That(start, Is.EqualTo(rightPalmAnchor.position));
+        }
+
+
+        [Test]
+        public void MagnetBeam_UsesOneStableQuadraticArc()
+        {
+            GameObject host = Create("Magnet Beam");
+            MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
+            SetPrivateField(beam, "arcHeight", 0.6f);
+
+            Vector3 start = new Vector3(0f, 1f, 0f);
+            Vector3 end = new Vector3(0f, 1f, 4f);
+            Vector3 quarter = InvokePrivate<Vector3>(
+                beam, "CalculateCurvePoint", start, end, 0.25f);
+            Vector3 midpoint = InvokePrivate<Vector3>(
+                beam, "CalculateCurvePoint", start, end, 0.5f);
+            Vector3 threeQuarters = InvokePrivate<Vector3>(
+                beam, "CalculateCurvePoint", start, end, 0.75f);
+
+            Assert.That(midpoint, Is.EqualTo(new Vector3(0f, 1.6f, 2f)));
+            Assert.That(quarter.y, Is.EqualTo(threeQuarters.y).Within(0.0001f));
+            Assert.That(quarter.x, Is.Zero.Within(0.0001f));
+            Assert.That(midpoint.y, Is.GreaterThan(quarter.y));
         }
 
         [Test]

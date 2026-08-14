@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.MinecraftCaves
@@ -28,14 +29,18 @@ namespace Supernova.MinecraftCaves
 
         private void LateUpdate()
         {
-            if (Input.GetMouseButton(0))
+            if (GameInput.Held(GameInputActionId.SpectatorOrbitHold))
             {
-                yaw += Input.GetAxis("Mouse X") * orbitSpeed;
-                pitch -= Input.GetAxis("Mouse Y") * orbitSpeed;
+                Vector2 look = GameInput.ReadVector2(GameInputActionId.Look);
+                yaw += look.x * orbitSpeed;
+                pitch -= look.y * orbitSpeed;
                 pitch = Mathf.Clamp(pitch, -10f, 70f);
             }
 
-            float scroll = Input.mouseScrollDelta.y;
+            // The scroll control reports raw platform deltas (120 per notch on
+            // Windows), so only the direction drives the tuned zoom step.
+            float scroll = Mathf.Sign(
+                GameInput.ReadVector2(GameInputActionId.ScrollWheel).y);
             if (Mathf.Abs(scroll) > 0.001f)
             {
                 distance = Mathf.Clamp(

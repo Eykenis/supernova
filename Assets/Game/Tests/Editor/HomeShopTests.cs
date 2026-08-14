@@ -30,7 +30,7 @@ namespace Supernova.Tests
                 new[]
                 {
                     PlayerInventoryItem.Pickaxe,
-                    PlayerInventoryItem.Magnet,
+                    PlayerInventoryItem.Bomb,
                     PlayerInventoryItem.Flashlight,
                     PlayerInventoryItem.Empty,
                 });
@@ -79,7 +79,7 @@ namespace Supernova.Tests
         {
             ShopProductProfile[] products = LoadProducts();
 
-            Assert.That(products, Has.Length.EqualTo(6));
+            Assert.That(products, Has.Length.EqualTo(7));
             Assert.That(
                 products.Select(product => product.ProductId),
                 Is.EquivalentTo(new[]
@@ -88,6 +88,7 @@ namespace Supernova.Tests
                     "smg",
                     "flashlight",
                     "solid-gun",
+                    "portal-gun",
                     "attraction-module",
                     "cart",
                 }));
@@ -374,7 +375,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void HomeScene_HasSixProductAnchorsWithoutCustomShopModel()
+        public void HomeScene_HasSevenProductAnchorsWithoutCustomShopModel()
         {
             Scene homeScene =
                 SceneManager.GetSceneByPath(ProjectAssetPaths.Scenes.Home);
@@ -396,7 +397,7 @@ namespace Supernova.Tests
                 Assert.That(shop, Is.Not.Null);
                 HomeShopController[] controllers =
                     shop.GetComponentsInChildren<HomeShopController>(true);
-                Assert.That(controllers, Has.Length.EqualTo(6));
+                Assert.That(controllers, Has.Length.EqualTo(7));
                 Assert.That(
                     controllers.Select(controller =>
                         controller.ProductProfile.ProductId),
@@ -431,6 +432,7 @@ namespace Supernova.Tests
                 ProjectAssetPaths.Config.SmgProduct,
                 ProjectAssetPaths.Config.FlashlightProduct,
                 ProjectAssetPaths.Config.SolidGunProduct,
+                ProjectAssetPaths.Config.PortalGunProduct,
                 ProjectAssetPaths.Config.AttractionModuleProduct,
                 ProjectAssetPaths.Config.CartProduct,
             };

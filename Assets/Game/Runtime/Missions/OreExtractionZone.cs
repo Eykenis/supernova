@@ -105,6 +105,9 @@ namespace Supernova.Missions
             }
             if (resource.Overlaps.Add(overlap))
             {
+                // Banked value must not shrink while the treasure settles against
+                // the Cell floor or is jostled by later deliveries.
+                resource.Valuable?.SetCollisionValueLossProtected(this, true);
                 owner?.NotifyStoredValueChanged(CurrentStoredValue);
             }
         }
@@ -113,8 +116,30 @@ namespace Supernova.Missions
         {
             if (!storedResources.TryGetValue(id, out StoredResource resource)) return;
             resource.Overlaps.Remove(overlap);
-            if (resource.Overlaps.Count == 0) storedResources.Remove(id);
+            if (resource.Overlaps.Count == 0)
+            {
+                resource.Valuable?.SetCollisionValueLossProtected(this, false);
+                storedResources.Remove(id);
+            }
             owner?.NotifyStoredValueChanged(CurrentStoredValue);
+        }
+
+        private void OnDisable()
+        {
+            ReleaseCollisionProtection();
+        }
+
+        private void OnDestroy()
+        {
+            ReleaseCollisionProtection();
+        }
+
+        private void ReleaseCollisionProtection()
+        {
+            foreach (StoredResource resource in storedResources.Values)
+            {
+                resource.Valuable?.SetCollisionValueLossProtected(this, false);
+            }
         }
 
         private void RemoveDestroyedResources()

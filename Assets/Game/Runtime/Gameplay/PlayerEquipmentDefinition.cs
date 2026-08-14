@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -37,9 +38,9 @@ namespace Supernova.Gameplay
         public Vector3 LocalEulerAngles => localEulerAngles;
         public Vector3 LocalScale => localScale;
         public PlayerEquipmentInteraction Interaction => interaction;
-        public KeyCode ActivationKey => interaction != null
-            ? interaction.ActivationKey
-            : KeyCode.None;
+        public GameInputActionId ActivationAction => interaction != null
+            ? interaction.ActivationAction
+            : GameInputActionId.ToggleEquipment;
         public string InteractionHint => interaction != null
             ? interaction.InteractionHint
             : string.Empty;
@@ -56,7 +57,7 @@ namespace Supernova.Gameplay
     /// </summary>
     public abstract class PlayerEquipmentInteraction : ScriptableObject
     {
-        public abstract KeyCode ActivationKey { get; }
+        public abstract GameInputActionId ActivationAction { get; }
         public abstract string InteractionHint { get; }
 
         public abstract PlayerEquipmentRuntime CreateRuntime(

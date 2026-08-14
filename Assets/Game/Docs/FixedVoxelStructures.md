@@ -6,7 +6,7 @@ The runtime entry point for fixed voxel structures is MinecraftCaveInfiniteWorld
 
 - Config/MinecraftVoxelTypes.asset stores voxel type IDs, durability, and
   rendering materials outside scene components.
-- Structures/SpawnShelter.asset stores a dense, fixed scalar-and-type field.
+- Config/Structures/SpawnShelter.asset stores a dense, fixed scalar-and-type field.
   Every sample is applied, including air samples that carve procedural terrain.
 - Scenes/VoxelStructureEditor.scene is the authoring scene. Its root
   VoxelStructureAuthoring object owns one cube child per solid sample.
@@ -22,6 +22,14 @@ In the authoring Inspector:
 Shift-clicking a voxel face adds the selected voxel to the adjacent coordinate.
 Control-clicking a voxel deletes it.
 
+For integer bulk movement, open `Tools > Supernova > Voxels > Voxel Structure
+Offset` (or use `Open Box-Selection Offset Tool` on the authoring Inspector),
+box-select voxel cubes in the Scene view, enter a `Voxel Offset`, and apply it
+to the selection. The edit is atomic: an out-of-bounds destination or collision
+with an unselected voxel rejects the complete move. `Offset All` avoids creating
+a large Unity selection, while `Offset Whole Structure Via Anchor` performs an
+O(1) relative placement correction by changing `Anchor` only.
+
 ## Play Mode editing
 
 Open Scenes/VoxelStructureEditor.scene and enter Play Mode. The scene uses the
@@ -31,12 +39,19 @@ same GameHudController crosshair as InfiniteCaves and a dedicated debug camera.
 - WASD moves horizontally, Q/E moves vertically, and Shift accelerates.
 - Left mouse removes the targeted structure voxel.
 - Right mouse places the selected voxel on the targeted face.
+- F5 toggles Fill Mode. In Fill Mode, left mouse selects the first targeted
+  voxel and right mouse selects the second; Control+G fills their inclusive
+  bounding box with the current Paint Voxel Type and Density, while Control+D
+  clears every voxel in the selected box.
 - Escape releases or recaptures the cursor.
 
 The edit ray reaches 48 world units, independently of player mining reach.
 Changes are saved back to the assigned VoxelStructureAsset after a short delay;
 Control+S forces an immediate save. Each Play session reloads the asset before
 editing so saved changes remain authoritative when Play Mode objects roll back.
+The offset window remains active in Play Mode, so the Game view can place or
+remove voxels while the Scene view box-selects and moves them. Successful Play
+Mode offsets are saved to the assigned asset immediately.
 
 ## Generation order
 

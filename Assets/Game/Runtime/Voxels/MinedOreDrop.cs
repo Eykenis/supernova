@@ -25,11 +25,18 @@ namespace Supernova.Voxels
         private ValuableObject cachedValuable;
         private Mesh ownedMesh;
         private Material ownedMaterial;
+        private bool isWaitingForTerrainColliderRebuild;
+        private bool restoreIsKinematic;
+        private bool restoreDetectCollisions;
+        private Vector3 suspendedVelocity;
+        private Vector3 suspendedAngularVelocity;
 
         public VoxelTypeId VoxelType => voxelType;
         public int VoxelCount => voxelCount;
         public float MassDensity => massDensity;
         public Mesh Mesh => ownedMesh;
+        public bool IsWaitingForTerrainColliderRebuild =>
+            isWaitingForTerrainColliderRebuild;
         public BreakFragmentEffect LastBreakEffect { get; private set; }
         public ValuableObject Valuable
         {
@@ -68,6 +75,45 @@ namespace Supernova.Voxels
             Valuable.Configure(
                 voxelCount * Mathf.Max(1, valuePerVoxel),
                 fragility);
+        }
+
+        internal void SuspendForTerrainColliderRebuild()
+        {
+            if (isWaitingForTerrainColliderRebuild)
+            {
+                return;
+            }
+
+            Rigidbody body = Body;
+            restoreIsKinematic = body.isKinematic;
+            restoreDetectCollisions = body.detectCollisions;
+            suspendedVelocity = body.velocity;
+            suspendedAngularVelocity = body.angularVelocity;
+            isWaitingForTerrainColliderRebuild = true;
+
+            Valuable.SetCollisionValueLossProtected(this, true);
+            body.detectCollisions = false;
+            body.isKinematic = true;
+        }
+
+        internal void ReleaseAfterTerrainColliderRebuild()
+        {
+            if (!isWaitingForTerrainColliderRebuild)
+            {
+                return;
+            }
+
+            Rigidbody body = Body;
+            isWaitingForTerrainColliderRebuild = false;
+            body.isKinematic = restoreIsKinematic;
+            body.detectCollisions = restoreDetectCollisions;
+            if (!restoreIsKinematic)
+            {
+                body.velocity = suspendedVelocity;
+                body.angularVelocity = suspendedAngularVelocity;
+                body.WakeUp();
+            }
+            Valuable.SetCollisionValueLossProtected(this, false);
         }
 
         public bool TrySpawnBreakEffect(

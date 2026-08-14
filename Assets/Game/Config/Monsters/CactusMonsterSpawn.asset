@@ -13,7 +13,6 @@ MonoBehaviour:
   m_Name: CactusMonsterSpawn
   m_EditorClassIdentifier: 
   prefab: {fileID: 883849422808084752, guid: d26c890f8a43939418264302d9bb3d44, type: 3}
-  spawnChance: 0.8
   attemptsPerChunk: 8
   minimumGroupSize: 5
   maximumGroupSize: 9

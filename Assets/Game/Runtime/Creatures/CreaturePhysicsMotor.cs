@@ -1,100 +1,62 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace Supernova.MinecraftCaves.Creatures
 {
-    public readonly struct CreatureMovementCommand
-    {
-        public CreatureMovementCommand(
-            int id,
-            Vector3 horizontalDirection,
-            Vector3 worldUp,
-            int riseInVoxels)
-            : this(
-                id,
-                horizontalDirection,
-                worldUp,
-                riseInVoxels,
-                false,
-                default)
-        {
-        }
-
-        private CreatureMovementCommand(
-            int id,
-            Vector3 horizontalDirection,
-            Vector3 worldUp,
-            int riseInVoxels,
-            bool isTraversalLink,
-            Vector3 targetWorldPosition)
-        {
-            Id = id;
-            HorizontalDirection = Vector3.ProjectOnPlane(
-                horizontalDirection,
-                worldUp).normalized;
-            WorldUp = worldUp.normalized;
-            RiseInVoxels = Mathf.Max(0, riseInVoxels);
-            IsTraversalLink = isTraversalLink;
-            TargetWorldPosition = targetWorldPosition;
-        }
-
-        public static CreatureMovementCommand TraverseTo(
-            int id,
-            Vector3 horizontalDirection,
-            Vector3 worldUp,
-            Vector3 targetWorldPosition)
-        {
-            return new CreatureMovementCommand(
-                id,
-                horizontalDirection,
-                worldUp,
-                0,
-                true,
-                targetWorldPosition);
-        }
-
-        public int Id { get; }
-        public Vector3 HorizontalDirection { get; }
-        public Vector3 WorldUp { get; }
-        public int RiseInVoxels { get; }
-        public bool IsTraversalLink { get; }
-        public Vector3 TargetWorldPosition { get; }
-        public bool ShouldJump => RiseInVoxels > 0;
-    }
-
     [ExecuteAlways]
     [DisallowMultipleComponent]
     public sealed class CreaturePhysicsMotor : MonoBehaviour
     {
-        // Voxel path search intentionally ignores transient creature occupancy.
-        // Keep movers non-blocking to prevent a shared path from becoming a
-        // permanent physics queue in narrow passages.
         private static readonly List<CreaturePhysicsMotor> ActiveMotors =
             new List<CreaturePhysicsMotor>();
 
         [SerializeField] private Rigidbody body;
-        [FormerlySerializedAs("movementSpeed")]
-        [Tooltip("Maximum speed along the commanded movement direction.")]
-        [SerializeField, Min(0.01f)] private float maximumHorizontalSpeed = 1.26f;
-        [FormerlySerializedAs("maximumHorizontalAcceleration")]
-        [Tooltip("Continuous force applied along the commanded movement direction.")]
-        [SerializeField, Min(0.01f)] private float movementForce = 15.12f;
-        [SerializeField, Min(0.01f)] private float voxelSize = 0.42f;
-        [SerializeField, Min(1f)] private float jumpVelocityMultiplier = 1.1f;
+        [Tooltip(
+            "Smaller non-trigger collider selected as the only solid collider "
+            + "pair between active creatures.")]
+        [SerializeField] private Collider crowdCollider;
+        [SerializeField, Min(0.01f)] private float animationReferenceSpeed = 1.26f;
         [SerializeField, Min(1f)] private float turnSpeedInDegrees = 540f;
+        [Tooltip(
+            "Scales jump take-off speed. Values above one absorb the difference "
+            + "between the voxel graph's whole-cube layers and the interpolated "
+            + "Marching Cubes surface the body actually rests on.")]
+        [SerializeField, Min(1f)] private float jumpSpeedMultiplier = 1.15f;
+        [Tooltip("Grace period where the creature still counts as grounded after "
+            + "losing contact, absorbing single-frame separations on slopes.")]
+        [SerializeField, Min(0f)] private float coyoteTime = 0.1f;
+        [Tooltip("Maximum surface angle from up that still counts as ground.")]
+        [SerializeField, Range(1f, 89f)] private float maximumGroundAngle = 55f;
 
-        private CreatureMovementCommand command;
-        private bool hasCommand;
         private bool hasFacing;
         private Vector3 facingDirection;
         private Vector3 facingUp = Vector3.up;
-        private int lastJumpCommandId = int.MinValue;
         private bool isRegisteredForCrowdCollisions;
+        private bool hasMoveCommand;
+        private Vector3 moveDirection;
+        private float moveTargetSpeed;
+        private float moveAcceleration;
+        private float pendingJumpSpeed;
+        private bool hasPendingJump;
+        private int pendingJumpCommandId;
+        // Sentinel below any real identifier so the first request is never mistaken
+        // for one that already fired.
+        private int lastFiredJumpCommandId = int.MinValue;
+        private float lastGroundedTime = float.NegativeInfinity;
+        private int groundContactCount;
+        private PhysicMaterial frictionlessMaterial;
 
-        public bool HasCommand => hasCommand;
-        public float MaximumHorizontalSpeed =>
-            Mathf.Max(0.01f, maximumHorizontalSpeed);
+        public Collider CrowdCollider => crowdCollider;
+
+        /// <summary>
+        /// True while the creature rests on a surface. Derived from solved
+        /// collision contacts rather than a cast, because creatures disable
+        /// collisions against each other's body colliders and a cast would happily
+        /// report a neighbour's ignored collider as ground.
+        /// </summary>
+        public bool IsGrounded =>
+            groundContactCount > 0
+            || Time.time - lastGroundedTime <= coyoteTime;
         public float HorizontalSpeed
         {
             get
@@ -103,17 +65,34 @@ namespace Supernova.MinecraftCaves.Creatures
                 {
                     return 0f;
                 }
-                Vector3 up = hasCommand
-                    && command.WorldUp.sqrMagnitude > 0.5f
-                        ? command.WorldUp
-                        : hasFacing && facingUp.sqrMagnitude > 0.5f
-                            ? facingUp
-                            : Vector3.up;
+
+                Vector3 up = hasFacing && facingUp.sqrMagnitude > 0.5f
+                    ? facingUp
+                    : Vector3.up;
                 return Vector3.ProjectOnPlane(body.velocity, up).magnitude;
             }
         }
         public float NormalizedHorizontalSpeed =>
-            HorizontalSpeed / MaximumHorizontalSpeed;
+            HorizontalSpeed / Mathf.Max(0.01f, animationReferenceSpeed);
+
+        /// <summary>
+        /// Speed the motor was last told to travel at, in metres per second, or
+        /// zero when no movement is commanded. Comparing measured speed against
+        /// this rather than against <see cref="NormalizedHorizontalSpeed"/> keeps
+        /// navigation on one metric: the animation reference speed is a
+        /// presentation value and need not match the commanded speed at all.
+        /// </summary>
+        public float CommandedSpeed => hasMoveCommand ? moveTargetSpeed : 0f;
+
+        /// <summary>
+        /// Measured horizontal speed as a fraction of the commanded speed. Returns
+        /// zero while no movement is commanded, so a parked creature never reads as
+        /// blocked.
+        /// </summary>
+        public float CommandedSpeedFraction =>
+            hasMoveCommand && moveTargetSpeed > 0.0001f
+                ? HorizontalSpeed / moveTargetSpeed
+                : 0f;
 
         private void Reset()
         {
@@ -123,6 +102,44 @@ namespace Supernova.MinecraftCaves.Creatures
         private void Awake()
         {
             body = body != null ? body : GetComponent<Rigidbody>();
+            // [ExecuteAlways] runs Awake in the editor too; only touch materials in
+            // play mode so the authored prefab colliders are never rewritten.
+            if (Application.isPlaying)
+            {
+                ApplyFrictionlessColliders();
+            }
+        }
+
+        /// <summary>
+        /// Replaces the friction material on the creature's own colliders with a
+        /// zero-friction one. The cave terrain uses a high-friction material that
+        /// combines with Maximum, so lateral velocity written to the Rigidbody is
+        /// otherwise cancelled by the contact solver every physics step and the
+        /// creature never moves horizontally even though it is commanded to. Only
+        /// the horizontal drive is affected; grounding and jumps are unchanged.
+        /// </summary>
+        private void ApplyFrictionlessColliders()
+        {
+            if (frictionlessMaterial == null)
+            {
+                frictionlessMaterial = new PhysicMaterial("CreatureFrictionless")
+                {
+                    dynamicFriction = 0f,
+                    staticFriction = 0f,
+                    frictionCombine = PhysicMaterialCombine.Minimum,
+                    hideFlags = HideFlags.HideAndDontSave,
+                };
+            }
+
+            Collider[] colliders = GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                Collider collider = colliders[i];
+                if (collider != null && !collider.isTrigger)
+                {
+                    collider.sharedMaterial = frictionlessMaterial;
+                }
+            }
         }
 
         private void OnEnable()
@@ -140,40 +157,110 @@ namespace Supernova.MinecraftCaves.Creatures
             UnregisterCrowdCollisionPairs();
         }
 
-        public void Configure(Rigidbody rigidbody, float worldVoxelSize)
+        public void Configure(Rigidbody rigidbody)
         {
-            body = rigidbody;
-            voxelSize = Mathf.Max(0.01f, worldVoxelSize);
-            maximumHorizontalSpeed = voxelSize * 3f;
-            movementForce = voxelSize * 36f;
+            Configure(rigidbody, crowdCollider);
         }
 
-        public void Submit(in CreatureMovementCommand value)
+        public void Configure(
+            Rigidbody rigidbody,
+            Collider creatureCrowdCollider)
         {
-            command = value;
-            hasCommand = true;
-            hasFacing = false;
+            bool refreshCrowdPairs = isRegisteredForCrowdCollisions
+                && crowdCollider != creatureCrowdCollider;
+            if (refreshCrowdPairs)
+            {
+                RefreshRegisteredCrowdCollisionPairs(false);
+            }
+
+            body = rigidbody;
+            crowdCollider = creatureCrowdCollider;
+
+            if (refreshCrowdPairs)
+            {
+                RefreshRegisteredCrowdCollisionPairs(true);
+            }
         }
 
         public void Stop()
         {
-            hasCommand = false;
             hasFacing = false;
+            hasMoveCommand = false;
+            moveTargetSpeed = 0f;
+            // Drop a queued jump so leaving a movement state cannot fire one later.
+            hasPendingJump = false;
+            pendingJumpSpeed = 0f;
         }
 
         public void Face(Vector3 direction, Vector3 worldUp)
         {
-            Vector3 up = worldUp.sqrMagnitude > 0.5f ? worldUp.normalized : Vector3.up;
-            facingDirection = Vector3.ProjectOnPlane(direction, up).normalized;
-            facingUp = up;
+            facingDirection = Vector3.ProjectOnPlane(direction, worldUp)
+                .normalized;
+            facingUp = worldUp.sqrMagnitude > 0.5f
+                ? worldUp.normalized
+                : Vector3.up;
             hasFacing = facingDirection.sqrMagnitude > 0.0001f;
+        }
+
+        /// <summary>
+        /// Requests horizontal travel along a world direction and faces the same
+        /// way. Vertical motion stays with gravity and collision response.
+        /// </summary>
+        public void MoveTowards(
+            Vector3 worldDirection,
+            Vector3 worldUp,
+            float targetSpeed,
+            float acceleration)
+        {
+            Face(worldDirection, worldUp);
+            moveDirection = Vector3.ProjectOnPlane(worldDirection, facingUp)
+                .normalized;
+            hasMoveCommand = moveDirection.sqrMagnitude > 0.0001f;
+            moveTargetSpeed = Mathf.Max(0f, targetSpeed);
+            moveAcceleration = Mathf.Max(1f, acceleration);
+        }
+
+        /// <summary>
+        /// Queues a single jump that reaches roughly the requested height. The
+        /// command identifier makes the impulse fire once: repeating the same
+        /// identifier every frame will not stack take-off speed while airborne.
+        /// </summary>
+        public void RequestJump(float heightInMeters, int commandId)
+        {
+            if (commandId == lastFiredJumpCommandId || heightInMeters <= 0f)
+            {
+                return;
+            }
+
+            pendingJumpSpeed = ResolveJumpSpeed(
+                heightInMeters,
+                facingUp,
+                jumpSpeedMultiplier);
+            pendingJumpCommandId = commandId;
+            hasPendingJump = true;
+        }
+
+        /// <summary>Take-off speed that reaches a height under scene gravity.</summary>
+        public static float ResolveJumpSpeed(
+            float heightInMeters,
+            Vector3 worldUp,
+            float multiplier)
+        {
+            Vector3 up = worldUp.sqrMagnitude > 0.5f ? worldUp.normalized : Vector3.up;
+            float gravity = Mathf.Abs(Vector3.Dot(Physics.gravity, up));
+            if (gravity <= Mathf.Epsilon)
+            {
+                gravity = Mathf.Abs(Physics.gravity.y);
+            }
+
+            return Mathf.Sqrt(2f * gravity * Mathf.Max(0f, heightInMeters))
+                * Mathf.Max(1f, multiplier);
         }
 
         public void ApplyImpulse(Vector3 impulse)
         {
-            if (body == null) body = GetComponent<Rigidbody>();
-            if (body == null || body.isKinematic || impulse.sqrMagnitude <= 0f) return;
-            body.AddForce(impulse, ForceMode.Impulse);
+            if (body == null || body.isKinematic) return;
+            body.AddForce(impulse, ForceMode.VelocityChange);
         }
 
         private void RegisterCrowdCollisionPairs()
@@ -192,7 +279,7 @@ namespace Supernova.MinecraftCaves.Creatures
                     continue;
                 }
 
-                SetCollisionIgnored(other, true);
+                SetCrowdCollisionPair(other, true);
             }
 
             ActiveMotors.Add(this);
@@ -215,15 +302,33 @@ namespace Supernova.MinecraftCaves.Creatures
                     continue;
                 }
 
-                SetCollisionIgnored(other, false);
+                SetCrowdCollisionPair(other, false);
             }
 
             isRegisteredForCrowdCollisions = false;
         }
 
-        private void SetCollisionIgnored(
+        private void RefreshRegisteredCrowdCollisionPairs(bool active)
+        {
+            for (int i = ActiveMotors.Count - 1; i >= 0; i--)
+            {
+                CreaturePhysicsMotor other = ActiveMotors[i];
+                if (other == null)
+                {
+                    ActiveMotors.RemoveAt(i);
+                    continue;
+                }
+
+                if (other != this)
+                {
+                    SetCrowdCollisionPair(other, active);
+                }
+            }
+        }
+
+        private void SetCrowdCollisionPair(
             CreaturePhysicsMotor other,
-            bool ignored)
+            bool active)
         {
             Collider[] ownColliders = GetComponentsInChildren<Collider>(true);
             Collider[] otherColliders =
@@ -243,10 +348,21 @@ namespace Supernova.MinecraftCaves.Creatures
                     Collider otherCollider = otherColliders[otherIndex];
                     if (otherCollider != null && !otherCollider.isTrigger)
                     {
+                        bool hasCrowdCollision = crowdCollider != null
+                            && crowdCollider.enabled
+                            && !crowdCollider.isTrigger
+                            && other.crowdCollider != null
+                            && other.crowdCollider.enabled
+                            && !other.crowdCollider.isTrigger;
+                        bool keepCrowdCollision = hasCrowdCollision
+                            && ownCollider == crowdCollider
+                            && otherCollider == other.crowdCollider;
                         Physics.IgnoreCollision(
                             ownCollider,
                             otherCollider,
-                            ignored);
+                            active
+                                && hasCrowdCollision
+                                && !keepCrowdCollision);
                     }
                 }
             }
@@ -254,121 +370,112 @@ namespace Supernova.MinecraftCaves.Creatures
 
         private void FixedUpdate()
         {
+            // [ExecuteAlways] keeps crowd collision pairs correct while editing,
+            // but locomotion must never drive a Rigidbody outside play mode.
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
             if (body == null || body.isKinematic)
             {
                 return;
             }
 
-            Vector3 up = hasCommand && command.WorldUp.sqrMagnitude > 0.5f
-                ? command.WorldUp
-                : hasFacing ? facingUp : Vector3.up;
-            bool isTraversal = hasCommand && command.IsTraversalLink;
-            if (!isTraversal)
+            if (groundContactCount > 0)
             {
-                Vector3 movementDirection = hasCommand
-                    ? command.HorizontalDirection
-                    : Vector3.zero;
-                ApplyHorizontalForce(movementDirection, up);
+                lastGroundedTime = Time.time;
             }
 
-            Vector3 turnDirection = hasCommand
-                ? command.HorizontalDirection
-                : hasFacing ? facingDirection : Vector3.zero;
-            RotateTowards(turnDirection, up);
-            if (!hasCommand)
-            {
-                return;
-            }
+            ApplyHorizontalVelocity();
+            ApplyPendingJump();
 
-            if (command.Id == lastJumpCommandId)
+            if (hasFacing)
             {
-                return;
-            }
-
-            if (command.IsTraversalLink)
-            {
-                ApplyTraversalImpulse(command.TargetWorldPosition, up);
-                lastJumpCommandId = command.Id;
-            }
-            else if (command.ShouldJump)
-            {
-                ApplyJumpImpulse(command.RiseInVoxels, up);
-                lastJumpCommandId = command.Id;
+                RotateTowards(facingDirection, facingUp);
             }
         }
 
-        private void ApplyHorizontalForce(Vector3 direction, Vector3 up)
+        /// <summary>
+        /// Steers the horizontal velocity component toward the commanded speed and
+        /// leaves the vertical component untouched, so gravity, falling and
+        /// collision response continue to own vertical motion.
+        /// </summary>
+        private void ApplyHorizontalVelocity()
         {
-            if (direction.sqrMagnitude < 0.0001f)
-            {
-                return;
-            }
-
-            Vector3 currentHorizontalVelocity = Vector3.ProjectOnPlane(body.velocity, up);
-            float speedInMovementDirection =
-                Vector3.Dot(currentHorizontalVelocity, direction);
-            float remainingSpeed =
-                maximumHorizontalSpeed - speedInMovementDirection;
-            if (remainingSpeed <= 0f)
-            {
-                return;
-            }
-
-            float fixedDeltaTime = Mathf.Max(Time.fixedDeltaTime, 0.0001f);
-            float forceWithoutOvershoot =
-                remainingSpeed * body.mass / fixedDeltaTime;
-            float appliedForce = Mathf.Min(movementForce, forceWithoutOvershoot);
-            body.AddForce(direction * appliedForce, ForceMode.Force);
+            Vector3 up = facingUp.sqrMagnitude > 0.5f ? facingUp : Vector3.up;
+            Vector3 velocity = body.velocity;
+            float verticalSpeed = Vector3.Dot(velocity, up);
+            Vector3 horizontal = velocity - up * verticalSpeed;
+            Vector3 desired = hasMoveCommand
+                ? moveDirection * moveTargetSpeed
+                : Vector3.zero;
+            Vector3 steered = Vector3.MoveTowards(
+                horizontal,
+                desired,
+                Mathf.Max(1f, moveAcceleration) * Time.fixedDeltaTime);
+            body.velocity = steered + up * verticalSpeed;
         }
 
-        private void ApplyJumpImpulse(int riseInVoxels, Vector3 up)
+        private void ApplyPendingJump()
         {
-            float height = Mathf.Max(1, riseInVoxels) * voxelSize;
-            float gravity = Mathf.Abs(Vector3.Dot(Physics.gravity, -up));
-            if (gravity < 0.01f)
+            if (!hasPendingJump
+                || pendingJumpSpeed <= 0f
+                || pendingJumpCommandId == lastFiredJumpCommandId
+                || !IsGrounded)
             {
-                gravity = 9.81f;
+                return;
             }
 
-            float targetSpeed = Mathf.Sqrt(2f * gravity * height) * jumpVelocityMultiplier;
-            float currentSpeed = Vector3.Dot(body.velocity, up);
+            Vector3 up = facingUp.sqrMagnitude > 0.5f ? facingUp : Vector3.up;
+            float verticalSpeed = Vector3.Dot(body.velocity, up);
             body.AddForce(
-                up * Mathf.Max(0f, targetSpeed - currentSpeed),
+                up * (pendingJumpSpeed - verticalSpeed),
                 ForceMode.VelocityChange);
+            lastFiredJumpCommandId = pendingJumpCommandId;
+            hasPendingJump = false;
+            pendingJumpSpeed = 0f;
+            // Clear grounded state immediately so the coyote grace period cannot
+            // let a second impulse through before the body has actually left.
+            groundContactCount = 0;
+            lastGroundedTime = float.NegativeInfinity;
         }
 
-        private void ApplyTraversalImpulse(Vector3 targetWorldPosition, Vector3 up)
+        private void OnCollisionEnter(Collision collision)
         {
-            Vector3 displacement = targetWorldPosition - body.position;
-            float verticalDisplacement = Vector3.Dot(displacement, up);
-            Vector3 horizontalDisplacement =
-                Vector3.ProjectOnPlane(displacement, up);
-            float gravity = Mathf.Abs(Vector3.Dot(Physics.gravity, -up));
-            if (gravity < 0.01f)
+            RefreshGroundContacts(collision);
+        }
+
+        private void OnCollisionStay(Collision collision)
+        {
+            RefreshGroundContacts(collision);
+        }
+
+        private void OnCollisionExit(Collision collision)
+        {
+            groundContactCount = 0;
+        }
+
+        private void RefreshGroundContacts(Collision collision)
+        {
+            Vector3 up = facingUp.sqrMagnitude > 0.5f ? facingUp : Vector3.up;
+            float minimumAlignment = Mathf.Cos(
+                maximumGroundAngle * Mathf.Deg2Rad);
+            int contacts = 0;
+            for (int i = 0; i < collision.contactCount; i++)
             {
-                gravity = 9.81f;
+                if (Vector3.Dot(collision.GetContact(i).normal, up)
+                    >= minimumAlignment)
+                {
+                    contacts++;
+                }
             }
 
-            float requestedApex = Mathf.Max(0f, verticalDisplacement)
-                + voxelSize * 0.75f;
-            float verticalSpeed =
-                Mathf.Sqrt(2f * gravity * requestedApex)
-                * jumpVelocityMultiplier;
-            float actualApex =
-                verticalSpeed * verticalSpeed / (2f * gravity);
-            float ascentTime = verticalSpeed / gravity;
-            float descentDistance =
-                Mathf.Max(0.01f, actualApex - verticalDisplacement);
-            float descentTime =
-                Mathf.Sqrt(2f * descentDistance / gravity);
-            float flightTime = Mathf.Max(
-                Time.fixedDeltaTime,
-                ascentTime + descentTime);
-            Vector3 targetVelocity =
-                horizontalDisplacement / flightTime + up * verticalSpeed;
-            body.AddForce(
-                targetVelocity - body.velocity,
-                ForceMode.VelocityChange);
+            if (contacts > 0)
+            {
+                groundContactCount = contacts;
+                lastGroundedTime = Time.time;
+            }
         }
 
         private void RotateTowards(Vector3 direction, Vector3 up)

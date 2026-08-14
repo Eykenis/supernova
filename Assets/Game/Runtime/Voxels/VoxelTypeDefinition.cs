@@ -16,6 +16,8 @@ namespace Supernova.Voxels
         [Tooltip("Types in the same group mesh into one continuous surface.")]
         [SerializeField] private VoxelGroup group = VoxelGroup.Stone;
         [SerializeField, Min(1)] private int durability = 1;
+        [Tooltip("Stops voxel-integrity traversal and anchors connected terrain.")]
+        [SerializeField] private bool structuralSupport;
         [SerializeField] private Material material;
 
         public VoxelTypeId TypeId => new VoxelTypeId(Math.Max((ushort)1, type));
@@ -24,6 +26,7 @@ namespace Supernova.Voxels
             : displayName.Trim();
         public VoxelGroup Group => group;
         public int Durability => Mathf.Max(1, durability);
+        public bool IsStructuralSupport => structuralSupport;
         public Material Material => material;
 
         public void Configure(
@@ -41,6 +44,11 @@ namespace Supernova.Voxels
         public void ConfigureGroup(VoxelGroup value)
         {
             group = value;
+        }
+
+        public void ConfigureStructuralSupport(bool value)
+        {
+            structuralSupport = value;
         }
 
         private void OnValidate()

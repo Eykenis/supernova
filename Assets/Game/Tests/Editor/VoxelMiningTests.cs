@@ -295,6 +295,161 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void MiningDestruction_QueuesPriorityMeshWithoutBuildingSynchronously()
+        {
+            VoxelTypeCatalog catalog =
+                ScriptableObject.CreateInstance<VoxelTypeCatalog>();
+            try
+            {
+                var stone = new VoxelTypeId(2);
+                catalog.SetDefinitions(
+                    new[] { CreateDefinition(stone.Value, 1, "Stone") });
+
+                GameObject terrainObject = Create("Queued Mining Terrain");
+                MinecraftCaveInfiniteWorld terrain =
+                    terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+                SetPrivateField(terrain, "voxelTypeCatalog", catalog);
+                terrain.InitializeWorld();
+                InfiniteVoxelChunk chunk =
+                    terrain.World.EnsureChunk(Vector3Int.zero);
+                chunk.Data.Fill(-1f, VoxelTypeId.Air);
+                var minedVoxel = new Vector3Int(8, 8, 8);
+                chunk.Data.SetSample(
+                    minedVoxel.x,
+                    minedVoxel.y,
+                    minedVoxel.z,
+                    1f,
+                    stone);
+
+                Assert.That(
+                    terrain.TryMineVoxel(minedVoxel, out VoxelMiningResult result),
+                    Is.True);
+                Assert.That(result.Destroyed, Is.True);
+
+                Queue<Vector3Int> priorityQueue =
+                    GetPrivateField<Queue<Vector3Int>>(
+                        terrain,
+                        "priorityMeshQueue");
+                HashSet<Vector3Int> priorityDirtyMeshes =
+                    GetPrivateField<HashSet<Vector3Int>>(
+                        terrain,
+                        "priorityDirtyMeshes");
+                Dictionary<Vector3Int, GameObject> chunkObjects =
+                    GetPrivateField<Dictionary<Vector3Int, GameObject>>(
+                        terrain,
+                        "chunkObjects");
+
+                Assert.That(priorityQueue.Count, Is.EqualTo(1));
+                Assert.That(priorityQueue.Peek(), Is.EqualTo(Vector3Int.zero));
+                Assert.That(priorityDirtyMeshes, Does.Contain(Vector3Int.zero));
+                Assert.That(
+                    chunkObjects,
+                    Is.Empty,
+                    "Mining must not build or apply a mesh in the interaction call.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(catalog);
+            }
+        }
+
+        [Test]
+        public void RebuildingNonEmptySection_ReusesChunkObjectMeshAndComponents()
+        {
+            GameObject terrainObject = Create("Reusable Chunk Terrain");
+            MinecraftCaveInfiniteWorld terrain =
+                terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            SetPrivateField(terrain, "generateColliders", true);
+            terrain.InitializeWorld();
+            InfiniteVoxelChunk chunk = terrain.World.EnsureChunk(Vector3Int.zero);
+            chunk.Data.Fill(-1f, VoxelTypeId.Air);
+            chunk.Data.SetSample(8, 8, 8, 1f, VoxelTypeId.Default);
+
+            InvokePrivate(terrain, "RebuildChunk", Vector3Int.zero);
+            Dictionary<Vector3Int, GameObject> chunkObjects =
+                GetPrivateField<Dictionary<Vector3Int, GameObject>>(
+                    terrain,
+                    "chunkObjects");
+            Dictionary<Vector3Int, Mesh> chunkMeshes =
+                GetPrivateField<Dictionary<Vector3Int, Mesh>>(
+                    terrain,
+                    "chunkMeshes");
+            GameObject firstObject = chunkObjects[Vector3Int.zero];
+            Mesh firstMesh = chunkMeshes[Vector3Int.zero];
+            MeshFilter firstFilter = firstObject.GetComponent<MeshFilter>();
+            MeshRenderer firstRenderer = firstObject.GetComponent<MeshRenderer>();
+            MeshCollider firstCollider = firstObject.GetComponent<MeshCollider>();
+
+            chunk.Data.SetSample(9, 8, 8, 1f, VoxelTypeId.Default);
+            InvokePrivate(terrain, "RebuildChunk", Vector3Int.zero);
+
+            Assert.That(chunkObjects[Vector3Int.zero], Is.SameAs(firstObject));
+            Assert.That(chunkMeshes[Vector3Int.zero], Is.SameAs(firstMesh));
+            Assert.That(
+                firstObject.GetComponent<MeshFilter>(),
+                Is.SameAs(firstFilter));
+            Assert.That(
+                firstObject.GetComponent<MeshRenderer>(),
+                Is.SameAs(firstRenderer));
+            Assert.That(
+                firstObject.GetComponent<MeshCollider>(),
+                Is.SameAs(firstCollider));
+            Assert.That(firstFilter.sharedMesh, Is.SameAs(firstMesh));
+            Assert.That(firstCollider.sharedMesh, Is.SameAs(firstMesh));
+        }
+
+        [Test]
+        public void OreRelease_WaitsForEveryAffectedTerrainMesh()
+        {
+            GameObject terrainObject = Create("Ore Release Terrain");
+            MinecraftCaveInfiniteWorld terrain =
+                terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            GameObject dropObject = Create("Recovered Ore");
+            Rigidbody body = dropObject.AddComponent<Rigidbody>();
+            dropObject.AddComponent<BoxCollider>();
+            MinedOreDrop drop = dropObject.AddComponent<MinedOreDrop>();
+            drop.Configure(
+                new VoxelTypeId(3),
+                1,
+                new Mesh(),
+                1f,
+                null,
+                100,
+                0.5f);
+            var affectedMeshes = new HashSet<Vector3Int>
+            {
+                Vector3Int.zero,
+                Vector3Int.right,
+            };
+
+            InvokePrivate(
+                terrain,
+                "RegisterOreTerrainRelease",
+                drop,
+                affectedMeshes);
+
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.True);
+            Assert.That(body.isKinematic, Is.True);
+            InvokePrivate(
+                terrain,
+                "NotifyOreTerrainMeshRebuilt",
+                Vector3Int.zero);
+            Assert.That(
+                drop.IsWaitingForTerrainColliderRebuild,
+                Is.True,
+                "One committed section must not release an ore spanning two.");
+
+            InvokePrivate(
+                terrain,
+                "NotifyOreTerrainMeshRebuilt",
+                Vector3Int.right);
+
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.False);
+            Assert.That(body.isKinematic, Is.False);
+            Assert.That(body.detectCollisions, Is.True);
+        }
+
+        [Test]
         public void CrosshairMining_DoesNotSearchPastTheHitSurfaceCell()
         {
             GameObject terrainObject = Create("Terrain");
@@ -637,6 +792,94 @@ namespace Supernova.Tests
                 Object.DestroyImmediate(normal);
                 Object.DestroyImmediate(metallic);
                 Object.DestroyImmediate(height);
+            }
+        }
+
+        [Test]
+        public void RecoveredOreTemplate_KeepsEffectsButUsesSourceBaseMap()
+        {
+            Shader shader = Shader.Find(
+                "Supernova/Lighting/Soft Falloff Lit");
+            Assert.That(shader, Is.Not.Null);
+
+            var template = new Material(shader);
+            var source = new Material(shader);
+            var templateTexture = new Texture2D(2, 2);
+            var sourceTexture = new Texture2D(2, 2);
+            Material recovered = null;
+            try
+            {
+                template.SetTexture("_BaseMap", templateTexture);
+                template.SetTexture("_MainTex", templateTexture);
+                var effectColor = new Color(0.2f, 0.8f, 1f, 1f);
+                template.SetColor("_BaseColor", effectColor);
+                template.SetColor("_Color", effectColor);
+                template.SetFloat("_Metallic", 0.18f);
+                template.SetFloat("_Smoothness", 0.77f);
+
+                source.SetTexture("_BaseMap", sourceTexture);
+                source.SetTexture("_MainTex", sourceTexture);
+                var scale = new Vector2(1.5f, 0.75f);
+                var offset = new Vector2(0.2f, 0.35f);
+                source.SetTextureScale("_BaseMap", scale);
+                source.SetTextureOffset("_BaseMap", offset);
+                source.SetTextureScale("_MainTex", scale);
+                source.SetTextureOffset("_MainTex", offset);
+
+                MethodInfo cloneMaterial =
+                    typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                        "CloneRecoveredOreMaterial",
+                        BindingFlags.Static | BindingFlags.NonPublic);
+                Assert.That(cloneMaterial, Is.Not.Null);
+                recovered = (Material)cloneMaterial.Invoke(
+                    null,
+                    new object[] { template, source, "Test Ore" });
+
+                Assert.That(recovered, Is.Not.Null);
+                Assert.That(recovered, Is.Not.SameAs(template));
+                Assert.That(recovered.shader, Is.SameAs(template.shader));
+                Assert.That(
+                    recovered.GetTexture("_BaseMap"),
+                    Is.SameAs(sourceTexture));
+                Assert.That(
+                    recovered.GetTexture("_MainTex"),
+                    Is.SameAs(sourceTexture));
+                Assert.That(
+                    recovered.GetTexture("_BaseMap"),
+                    Is.Not.SameAs(templateTexture));
+                Assert.That(
+                    recovered.GetTextureScale("_BaseMap"),
+                    Is.EqualTo(scale));
+                Assert.That(
+                    recovered.GetTextureOffset("_BaseMap"),
+                    Is.EqualTo(offset));
+                Color recoveredColor = recovered.GetColor("_BaseColor");
+                Assert.That(
+                    recoveredColor.r,
+                    Is.EqualTo(effectColor.r).Within(0.0001f));
+                Assert.That(
+                    recoveredColor.g,
+                    Is.EqualTo(effectColor.g).Within(0.0001f));
+                Assert.That(
+                    recoveredColor.b,
+                    Is.EqualTo(effectColor.b).Within(0.0001f));
+                Assert.That(
+                    recoveredColor.a,
+                    Is.EqualTo(effectColor.a).Within(0.0001f));
+                Assert.That(
+                    recovered.GetFloat("_Metallic"),
+                    Is.EqualTo(0.18f));
+                Assert.That(
+                    recovered.GetFloat("_Smoothness"),
+                    Is.EqualTo(0.77f));
+            }
+            finally
+            {
+                if (recovered != null) Object.DestroyImmediate(recovered);
+                Object.DestroyImmediate(template);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(templateTexture);
+                Object.DestroyImmediate(sourceTexture);
             }
         }
 

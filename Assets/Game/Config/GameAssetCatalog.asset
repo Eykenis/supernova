@@ -28,6 +28,8 @@ MonoBehaviour:
     equipmentIcons: {fileID: 11400000, guid: 846791f132a48b841a6765f9d81f7aa5, type: 2}
     equipmentPortraitSettings: {fileID: 11400000, guid: e9302378318acc448810a8624097b3ee,
       type: 2}
+    missionCellConsoleMaterial: {fileID: 2100000, guid: fa0e8b7cb037d554ba6c14026d9517b7,
+      type: 2}
     pauseBodyMaterial: {fileID: 2100000, guid: 64fdf5e060ce1a64da8714edd5c7a4ff, type: 2}
     pauseBackgroundMaterial: {fileID: 2100000, guid: f2310bdcc96b16242aa6bc3ce31ba94e,
       type: 2}
@@ -43,6 +45,9 @@ MonoBehaviour:
     pauseCardFrame: {fileID: 21300000, guid: bce7a8d64e0dc0a4a9431f0b12f2b530, type: 3}
     loadingDial: {fileID: 21300000, guid: 7185e66f1d3909a4485d4aaa2908de78, type: 3}
     telemetryBackdrop: {fileID: 2800000, guid: c63f17988bae64f4381588439d4a6692, type: 3}
+  input:
+    actions: {fileID: -944628639613478452, guid: fce41e9a845c19345beaf0b2dcb9ccec,
+      type: 3}
   sceneLookups:
     mainMenuSceneName: MainMenu
     missionCellObjectName: Cell

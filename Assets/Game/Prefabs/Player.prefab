@@ -70,7 +70,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.03
-  far clip plane: 1000
+  far clip plane: 100
   field of view: 80
   orthographic: 0
   orthographic size: 5
@@ -120,7 +120,6 @@ MonoBehaviour:
   mouseSensitivity: 2
   lockCursorOnEnable: 1
   clickToRecaptureCursor: 1
-  switchViewKey: 286
   initialViewMode: 0
   firstPersonRootSpaceOffset: {x: 0, y: 0.025000095, z: 0.05}
   collapseHeadBoneInFirstPerson: 1
@@ -165,7 +164,7 @@ MonoBehaviour:
     m_Bits: 1
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
-  m_RenderPostProcessing: 0
+  m_RenderPostProcessing: 1
   m_Antialiasing: 0
   m_FXAAQualityMode: 0
   m_FXAAContrastThreshold: 0.125
@@ -360,8 +359,8 @@ Light:
   m_Type: 2
   m_Shape: 0
   m_Color: {r: 0.9048297, g: 0.9433962, b: 0.9350531, a: 1}
-  m_Intensity: 1
-  m_Range: 12
+  m_Intensity: 0.9
+  m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
   m_CookieSize: 10
@@ -452,7 +451,7 @@ GameObject:
   - component: {fileID: 8363300534232029083}
   - component: {fileID: 945886780990949207}
   - component: {fileID: 891119859139284044}
-  - component: {fileID: 2746928921300727229}
+  - component: {fileID: 834771800049283173}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: Player
@@ -534,7 +533,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 4
   crouchMoveSpeed: 2
-  crouchKey: 306
   crouchBlendDuration: 0.15
   crouchColliderHeight: 1
   jumpHeight: 1.1
@@ -555,14 +553,9 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   alternateIdleDelay: 15
-  smileKey: 113
-  hitKey: 107
-  dieKey: 108
-  recoverKey: 114
   kocchiDistance: 2
   interactionReach: 3
   mineRayBackstep: 0.35
-  debugToggleKey: 284
   debugFlySpeed: 12
   debugFlySpeedMultiplier: 3
 --- !u!114 &2817757230026618491
@@ -615,8 +608,6 @@ MonoBehaviour:
   orientationDamping: 14
   maximumOrientationTorque: 180
   rotationDegreesPerMouseUnit: 5
-  heightDistancePerMouseUnit: 0.15
-  maximumHeightOffset: 3
   baseMaximumLiftForce: 300
   liftForceFalloffPerMeter: 0.6
   breakDistance: 8
@@ -639,16 +630,14 @@ MonoBehaviour:
   configuredSlots: 0000000000000000000000000000000000000000
   toolDefinitions:
   - {fileID: 11400000, guid: 8a9fb7101563a89428fd7b0a3eb7c987, type: 2}
-  - {fileID: 11400000, guid: 20566b5f028f3024f97f93b5c8dc94cc, type: 2}
   - {fileID: 11400000, guid: 65c5172b3db665047b12e3bbd8ffc923, type: 2}
   - {fileID: 11400000, guid: 2dd8bcfd810f416f9d26d8735de267c4, type: 2}
   - {fileID: 11400000, guid: 4a10114642b174747a3d1bd8eb26b894, type: 2}
   - {fileID: 11400000, guid: c99ab339e6d077241a993ce96bc6d966, type: 2}
   - {fileID: 11400000, guid: b45c9c9ae47c42ab831d847d563ae187, type: 2}
-  - {fileID: 11400000, guid: e52711d138996854cb651e6b38b18ac5, type: 2}
   - {fileID: 11400000, guid: de13f51e58e58df4985d8aa8b2fe88f8, type: 2}
+  - {fileID: 11400000, guid: 565880b5ecb6ded44aa82ddf00d7808b, type: 2}
   cartAttractor: {fileID: 2931897021740309335}
-  grabHook: {fileID: 2746928921300727229}
   toolModelMount: {fileID: 9000000000000000002}
   selectedSlotIndex: 0
 --- !u!114 &8363300534232029083
@@ -666,17 +655,16 @@ MonoBehaviour:
   attractor: {fileID: 0}
   viewCamera: {fileID: 0}
   characterAnimator: {fileID: 0}
-  segments: 24
-  sag: 0.6
-  waveAmplitude: 0.12
-  waveFrequency: 2.5
-  startWidth: 0.05
-  endWidth: 0.14
-  flowSpeed: 2.5
-  flowBandLength: 0.35
-  startFadeLength: 0.2
-  baseColor: {r: 0.25, g: 0.85, b: 1, a: 0.35}
-  flowColor: {r: 0.85, g: 0.98, b: 1, a: 0.9}
+  rightPalmAnchor: {fileID: 1375600346653391262}
+  segments: 16
+  arcHeight: 0.4
+  startWidth: 0.035
+  endWidth: 0.065
+  pulseSpeed: 1.5
+  pulseStrength: 0.12
+  startFadeLength: 0.12
+  energyColor: {r: 0.08, g: 0.95, b: 0.48, a: 0.65}
+  targetColor: {r: 0.55, g: 1, b: 0.7, a: 0.95}
 --- !u!114 &945886780990949207
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -717,7 +705,7 @@ MonoBehaviour:
   startingBackEquipment: {fileID: 11400000, guid: 2e9bf1683ac877e469cd1ddc3fe9fc53,
     type: 2}
   backMountOverride: {fileID: 0}
---- !u!114 &2746928921300727229
+--- !u!114 &834771800049283173
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -726,12 +714,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 6191435648502811240}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4a3fb1ced7eb4db7bde4f76ad8184e68, type: 3}
+  m_Script: {fileID: 11500000, guid: 6e79cfc8907d0724bb571d7d0d88e093, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  deviceEnabled: 0
   view: {fileID: 0}
-  playerController: {fileID: 0}
   toolController: {fileID: 0}
   collisionLayers:
     serializedVersion: 2
@@ -1997,6 +1983,12 @@ PrefabInstance:
 --- !u!4 &581201979939934936 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 2901530299432415133, guid: 479c721ca8abd5043ab4ebcb569552d0,
+    type: 3}
+  m_PrefabInstance: {fileID: 2329652315702787397}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &1375600346653391262 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3693949270266512603, guid: 479c721ca8abd5043ab4ebcb569552d0,
     type: 3}
   m_PrefabInstance: {fileID: 2329652315702787397}
   m_PrefabAsset: {fileID: 0}

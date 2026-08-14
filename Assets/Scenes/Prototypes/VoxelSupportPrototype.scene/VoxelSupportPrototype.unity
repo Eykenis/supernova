@@ -300,8 +300,6 @@ MonoBehaviour:
   fragileMaterial: {fileID: 2100000, guid: a118d765833e246488c2bb896db236a4, type: 2}
   collapsedMaterial: {fileID: 2100000, guid: 7bc2fe40bf3dbef4e9b236339b600f59, type: 2}
   airMaterial: {fileID: 2100000, guid: 9ccf7911ed62fcc4bab3f4d323a8de35, type: 2}
-  destroyKey: 323
-  resetKey: 114
 --- !u!20 &1986007009
 Camera:
   m_ObjectHideFlags: 0

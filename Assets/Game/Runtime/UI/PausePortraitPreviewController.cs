@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.UI
@@ -11,7 +12,6 @@ namespace Supernova.UI
     {
         [SerializeField] private bool autoReplay = true;
         [SerializeField, Min(1f)] private float replayInterval = 2.5f;
-        [SerializeField] private KeyCode replayKey = KeyCode.Space;
 
         private GameHudController hud;
         private PauseMenuPresentation presentation;
@@ -24,7 +24,7 @@ namespace Supernova.UI
 
         private void Update()
         {
-            if (Input.GetKeyDown(replayKey))
+            if (GameInput.Pressed(GameInputActionId.Submit))
                 Replay();
 
             if (autoReplay && presentation != null

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Supernova.Inputs;
 using Supernova.Voxels;
 using UnityEngine;
 
@@ -32,10 +33,6 @@ namespace Supernova.Voxels.Support.Prototype
         [SerializeField] private Material fragileMaterial;
         [SerializeField] private Material collapsedMaterial;
         [SerializeField] private Material airMaterial;
-
-        [Header("Controls")]
-        [SerializeField] private KeyCode destroyKey = KeyCode.Mouse0;
-        [SerializeField] private KeyCode resetKey = KeyCode.R;
 
         // ── Runtime state ────────────────────────────────────────────
         private VoxelVolume volume;
@@ -73,13 +70,13 @@ namespace Supernova.Voxels.Support.Prototype
 
         private void Update()
         {
-            if (Input.GetKeyDown(resetKey))
+            if (GameInput.Pressed(GameInputActionId.PrototypeReset))
             {
                 ResetScene();
                 return;
             }
 
-            if (Input.GetKeyDown(destroyKey))
+            if (GameInput.Pressed(GameInputActionId.Click))
             {
                 TryDestroyVoxelUnderCursor();
             }
@@ -230,7 +227,8 @@ namespace Supernova.Voxels.Support.Prototype
 
         private void TryDestroyVoxelUnderCursor()
         {
-            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            Ray ray = cam.ScreenPointToRay(
+                GameInput.ReadVector2(GameInputActionId.Point));
             if (!Physics.Raycast(ray, out RaycastHit hit, maxDistance: 200f))
                 return;
 

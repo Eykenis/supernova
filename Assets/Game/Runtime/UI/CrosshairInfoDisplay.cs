@@ -49,6 +49,12 @@ namespace Supernova.UI
         private const float AlphaLerpRate = 12f;
         private const float TerrainResolveInterval = 2f;
 
+        /// <summary>
+        /// At or above this durability a voxel is treated as unbreakable and the
+        /// crosshair reports that instead of a number.
+        /// </summary>
+        public const float IndestructibleDurability = 2000f;
+
         private static readonly Vector3Int[] CellCornerOffsets =
         {
             new Vector3Int(0, 0, 0),
@@ -165,11 +171,6 @@ namespace Supernova.UI
                 raycastMask,
                 QueryTriggerInteraction.Ignore);
 
-            if (hits.Length == 0)
-            {
-                return default;
-            }
-
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
             // Check for treasure pickups first (closest wins).
@@ -228,79 +229,37 @@ namespace Supernova.UI
                     Mathf.RoundToInt(durability));
             }
 
-            // Then check for terrain voxels.
+            // Then resolve either fixed terrain or a detached voxel world. The
+            // shared resolver filters dynamic compound boxes through the exact
+            // visible Marching Cubes surface.
             IVoxelTerrain terrain = Terrain;
-            if (terrain == null)
+            if (!VoxelTargetResolver.TryRaycast(
+                new Ray(origin, direction),
+                interactionReach,
+                raycastMask,
+                terrain,
+                out VoxelTargetHit voxelHit))
             {
                 return default;
             }
 
-            Transform terrainTransform = terrain.TerrainTransform;
-            for (int i = 0; i < hits.Length; i++)
-            {
-                Transform t = hits[i].transform;
-                if (t != terrainTransform && !t.IsChildOf(terrainTransform))
-                {
-                    continue;
-                }
-
-                // Resolve the voxel coordinate using the 8-corner cell sample
-                // approach (same as VoxelPlayerInteractor.TryResolveCellSample)
-                // so all surface angles are covered, not just head-on hits.
-                float voxelSize = terrain.VoxelSize;
-                Vector3 samplePos = terrainTransform.InverseTransformPoint(
-                    hits[i].point) / voxelSize;
-                Vector3Int cellOrigin = new Vector3Int(
-                    Mathf.FloorToInt(samplePos.x),
-                    Mathf.FloorToInt(samplePos.y),
-                    Mathf.FloorToInt(samplePos.z));
-
-                InfiniteVoxelWorld world = terrain.World;
-                if (world == null)
-                {
-                    continue;
-                }
-
-                VoxelTypeId foundType = VoxelTypeId.Air;
-                bool foundSolid = false;
-                for (int corner = 0; corner < CellCornerOffsets.Length; corner++)
-                {
-                    Vector3Int candidate = cellOrigin + CellCornerOffsets[corner];
-                    if (!world.TryGetSample(
-                            candidate.x,
-                            candidate.y,
-                            candidate.z,
-                            out VoxelSample sample)
-                        || !sample.IsSolid(terrain.IsoLevel))
-                    {
-                        continue;
-                    }
-
-                    foundType = sample.Type;
-                    foundSolid = true;
-                    break;
-                }
-
-                if (!foundSolid)
-                {
-                    continue;
-                }
-
-                VoxelTypeDefinition voxelDef = terrain.VoxelTypeCatalog != null
+            VoxelTypeId foundType = voxelHit.Sample.Type;
+            VoxelTypeDefinition voxelDef = terrain != null
+                && terrain.VoxelTypeCatalog != null
                     ? terrain.VoxelTypeCatalog.Find(foundType)
                     : null;
-                if (voxelDef == null)
-                {
-                    continue;
-                }
-
+            if (voxelDef == null)
+            {
                 return new CrosshairLookAtInfo(
                     CrosshairTargetType.Voxel,
-                    voxelDef.DisplayName,
-                    voxelDef.Durability);
+                    foundType.ToString(),
+                    VoxelTypeUtility.ResolveDurability(foundType, null));
             }
 
-            return default;
+            return new CrosshairLookAtInfo(
+                CrosshairTargetType.Voxel,
+                voxelDef.DisplayName,
+                voxelDef.Durability);
         }
 
         private void ShowInfo(CrosshairLookAtInfo info)
@@ -328,9 +287,14 @@ namespace Supernova.UI
                 }
                 else
                 {
-                    StatsLabel.text = string.Format(
-                        "DURABILITY {0}",
-                        Mathf.RoundToInt(info.FragilityOrDurability));
+                    // Bedrock and friends carry a sentinel durability that is
+                    // never worth mining, so the number would only be noise.
+                    StatsLabel.text =
+                        info.FragilityOrDurability >= IndestructibleDurability
+                            ? "INDESTRUCTIBLE"
+                            : string.Format(
+                                "DURABILITY {0}",
+                                Mathf.RoundToInt(info.FragilityOrDurability));
                 }
             }
 

@@ -18,9 +18,9 @@ MonoBehaviour:
   accentVoxelType: {fileID: 11400000, guid: db911a53d53faf5409c2941730ce94b3, type: 2}
   placementStrategy: 0
   seedSalt: 314159
-  regionSizeInChunks: 14
-  placementChance: 0.6
-  minFloorHeight: 24
+  regionSizeInChunks: 5
+  placementChance: 0.2
+  minFloorHeight: 20
   maxFloorHeight: 190
   ringStructureCount: 128
   ringCount: 8
@@ -30,7 +30,7 @@ MonoBehaviour:
   structureSetWeight: 2
   maxPieces: 46
   maxDepth: 9
-  maxHorizontalDistance: 192
+  maxHorizontalDistance: 79
   firstPieceId: city_avenue
   layoutAttempts: 8
   connectorPlacementAttempts: 8
@@ -81,23 +81,12 @@ MonoBehaviour:
     - stableId: shrine_offering
       kind: 0
       treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 2, z: 0}
       yaw: 0
       spawnChance: 1
       count: 1
       scatterRadiusInVoxels: 2
-      snapToFloor: 1
-      floorSearchDistance: 6
-    - stableId: shrine_wardens
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
-      localOffset: {x: 0, y: 2, z: 6}
-      yaw: 0
-      spawnChance: 0.8
-      count: 2
-      scatterRadiusInVoxels: 4
       snapToFloor: 1
       floorSearchDistance: 6
   - stableId: city_avenue
@@ -302,18 +291,7 @@ MonoBehaviour:
       inset: 0
       chance: 1
       perimeterOnly: 1
-    spawnMarkers:
-    - stableId: plaza_stalkers
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.55
-      count: 3
-      scatterRadiusInVoxels: 5
-      snapToFloor: 1
-      floorSearchDistance: 6
+    spawnMarkers: []
   - stableId: city_descent
     displayName: Deep Stair
     poolId: city
@@ -436,7 +414,7 @@ MonoBehaviour:
     - stableId: reliquary_tomes
       kind: 0
       treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
       spawnChance: 0.9
@@ -447,7 +425,7 @@ MonoBehaviour:
     - stableId: reliquary_bones
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: -4, y: 1, z: 0}
       yaw: 0
       spawnChance: 0.6

@@ -184,14 +184,14 @@ namespace Supernova.Editor.Gameplay
                 SetFloat(serialized, "innerMiningPower", 30f);
                 SetFloat(serialized, "outerMiningPower", 10f);
                 SetFloat(serialized, "propagationDivisor", 2f);
-                SetFloat(serialized, "entityExplosionImpulse", 240f);
+                SetFloat(serialized, "entityExplosionImpulse", 600f);
                 SetFloat(serialized, "entityUpwardModifier", 0.6f);
                 SetReference(
                     serialized,
                     "explosionEffectPrefab",
                     explosionEffect);
                 SetFloat(serialized, "explosionEffectLifetime", 3f);
-                SetInteger(serialized, "configurationVersion", 4);
+                SetInteger(serialized, "configurationVersion", 5);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
 
                 GameObject saved = PrefabUtility.SaveAsPrefabAsset(
@@ -285,7 +285,7 @@ namespace Supernova.Editor.Gameplay
             SetBoolean(serialized, "actionIsPeriodic", false);
             SetReference(serialized, "projectilePrefab", null);
             SetReference(serialized, "bombProjectilePrefab", projectile);
-            SetFloat(serialized, "bombEntityExplosionImpulse", 240f);
+            SetFloat(serialized, "bombEntityExplosionImpulse", 600f);
             SetReference(
                 serialized,
                 "bombExplosionEffectPrefab",
