@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: TigerRock
   m_EditorClassIdentifier: 
   type: 9
-  displayName: Tiger Rock
+  displayName: 花岗岩
   group: 0
   durability: 4
   material: {fileID: 2100000, guid: 6d1f848b8f69b1842a6c074cb7869f87, type: 2}

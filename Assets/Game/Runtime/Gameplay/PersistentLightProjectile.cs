@@ -1,3 +1,4 @@
+using Supernova.Effects;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -8,6 +9,7 @@ namespace Supernova.Gameplay
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody), typeof(Collider))]
+    [RequireComponent(typeof(RigidbodyImpactFeedback))]
     public sealed class PersistentLightProjectile : MonoBehaviour
     {
         [SerializeField] private Rigidbody body;
@@ -18,7 +20,7 @@ namespace Supernova.Gameplay
 
         private void Awake()
         {
-            ResolveBody();
+            RigidbodyImpactFeedback.Ensure(ResolveBody());
             ResolveLight();
         }
 

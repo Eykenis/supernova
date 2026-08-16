@@ -37,7 +37,7 @@ namespace Supernova.EditorTools.PlayerSetup
             if (controller == null) return;
 
             bool changed = ConfigureCrouchStates(controller);
-            changed |= ConfigureRifleLocomotionLayer(controller);
+            changed |= ConfigureFirearmLocomotionLayer(controller);
             changed |= ConfigureToolUpperBodyLayer(controller);
             if (!changed) return;
 
@@ -199,7 +199,7 @@ namespace Supernova.EditorTools.PlayerSetup
                 ? idleState
                 : baseMachine.defaultState;
             ConfigureCrouchStates(controller);
-            ConfigureRifleLocomotionLayer(controller);
+            ConfigureFirearmLocomotionLayer(controller);
 
             AnimatorState hit = baseMachine.AddState("Hit", new Vector3(720f, 200f));
             hit.motion = null;
@@ -241,9 +241,9 @@ namespace Supernova.EditorTools.PlayerSetup
         private const string LowerBodyLayerName = "LowerBody Layer";
         private const string CrouchArmsLocomotionLayerName =
             "Crouch Arms Locomotion Layer";
-        private const string RifleLocomotionLayerName =
-            "Rifle Locomotion Layer";
-        private const string RifleArmsLayerName = "Rifle Arms Layer";
+        private const string FirearmLocomotionLayerName =
+            "Firearm Locomotion Layer";
+        private const string FirearmArmsLayerName = "Firearm Arms Layer";
         private const string ToolUpperBodyLayerName = "Tool UpperBody Layer";
         private const string CrouchToolArmsLayerName = "Crouch Tool Arms Layer";
         private const string CrouchArmsIdleStateName = "Standing Arms Idle";
@@ -258,30 +258,34 @@ namespace Supernova.EditorTools.PlayerSetup
             ProjectAssetPaths.Animations.ToolPrimaryActionPlaceholder;
         private const string CrouchIdleClipPath = ProjectAssetPaths.Animations.CrouchIdle;
         private const string CrouchMoveClipPath = ProjectAssetPaths.Animations.CrouchMove;
-        private const string RifleIdleStateName = "Rifle Idle";
-        private const string RifleMoveStateName = "Rifle Move";
-        private const string RifleArmsStateName = "Rifle Arms";
+        private const string FirearmIdleStateName = "Firearm Idle";
+        private const string FirearmMoveStateName = "Firearm Move";
+        private const string FirearmArmsStateName = "Firearm Arms";
 
-        private static bool ConfigureRifleLocomotionLayer(
+        private static bool ConfigureFirearmLocomotionLayer(
             UnityAnimatorController controller)
         {
-            AnimationClip idleClip = LoadEmbeddedClip(
-                ProjectAssetPaths.ThirdParty.RifleIdle);
-            AnimationClip moveClip = LoadEmbeddedClip(
-                ProjectAssetPaths.ThirdParty.RifleMove);
+            AnimationClip idleClip = LoadClip(
+                ProjectAssetPaths.Animations.FirearmIdle,
+                false);
+            AnimationClip moveClip = LoadClip(
+                ProjectAssetPaths.Animations.FirearmMove,
+                false);
             if (idleClip == null || moveClip == null)
             {
                 Debug.LogWarning(
-                    "Rifle locomotion clips are not imported yet; the rifle layer will "
-                    + "be built after the rifle importer finishes.");
+                    "Firearm locomotion clips are missing; the firearm layer "
+                    + "cannot be built.");
                 return false;
             }
 
             bool changed = false;
-            int layerIndex = FindLayerIndex(controller, RifleLocomotionLayerName);
+            int layerIndex = FindLayerIndex(
+                controller,
+                FirearmLocomotionLayerName);
             if (layerIndex < 0)
             {
-                controller.AddLayer(RifleLocomotionLayerName);
+                controller.AddLayer(FirearmLocomotionLayerName);
                 layerIndex = controller.layers.Length - 1;
                 changed = true;
             }
@@ -289,8 +293,8 @@ namespace Supernova.EditorTools.PlayerSetup
             AnimatorControllerLayer[] layers = controller.layers;
             AnimatorControllerLayer layer = layers[layerIndex];
             AnimatorStateMachine machine = layer.stateMachine;
-            AnimatorState idle = FindState(machine, RifleIdleStateName);
-            AnimatorState move = FindState(machine, RifleMoveStateName);
+            AnimatorState idle = FindState(machine, FirearmIdleStateName);
+            AnimatorState move = FindState(machine, FirearmMoveStateName);
             bool locomotionLayerIsCurrent = idle != null
                 && move != null
                 && machine.states.Length == 2
@@ -307,10 +311,14 @@ namespace Supernova.EditorTools.PlayerSetup
             if (!locomotionLayerIsCurrent)
             {
                 ClearStateMachine(machine);
-                idle = machine.AddState(RifleIdleStateName, new Vector3(260f, 120f));
+                idle = machine.AddState(
+                    FirearmIdleStateName,
+                    new Vector3(260f, 120f));
                 idle.motion = idleClip;
                 idle.iKOnFeet = true;
-                move = machine.AddState(RifleMoveStateName, new Vector3(520f, 120f));
+                move = machine.AddState(
+                    FirearmMoveStateName,
+                    new Vector3(520f, 120f));
                 move.motion = moveClip;
                 move.iKOnFeet = true;
                 machine.defaultState = idle;
@@ -331,27 +339,27 @@ namespace Supernova.EditorTools.PlayerSetup
                 "CrouchToolArms",
                 false,
                 false);
-            changed |= EnsureRifleArmsLayer(controller, idleClip, armsMask);
+            changed |= EnsureFirearmArmsLayer(controller, idleClip, armsMask);
             changed |= EnsureCustomLayerOrder(controller);
             return changed;
         }
 
-        private static bool EnsureRifleArmsLayer(
+        private static bool EnsureFirearmArmsLayer(
             UnityAnimatorController controller,
             AnimationClip idleClip,
             AvatarMask armsMask)
         {
-            int layerIndex = FindLayerIndex(controller, RifleArmsLayerName);
+            int layerIndex = FindLayerIndex(controller, FirearmArmsLayerName);
             if (layerIndex < 0)
             {
-                controller.AddLayer(RifleArmsLayerName);
+                controller.AddLayer(FirearmArmsLayerName);
                 layerIndex = controller.layers.Length - 1;
             }
 
             AnimatorControllerLayer[] layers = controller.layers;
             AnimatorControllerLayer layer = layers[layerIndex];
             AnimatorStateMachine machine = layer.stateMachine;
-            AnimatorState arms = FindState(machine, RifleArmsStateName);
+            AnimatorState arms = FindState(machine, FirearmArmsStateName);
             if (arms != null
                 && arms.motion == idleClip
                 && machine.states.Length == 1
@@ -365,7 +373,9 @@ namespace Supernova.EditorTools.PlayerSetup
             }
 
             ClearStateMachine(machine);
-            arms = machine.AddState(RifleArmsStateName, new Vector3(260f, 120f));
+            arms = machine.AddState(
+                FirearmArmsStateName,
+                new Vector3(260f, 120f));
             arms.motion = idleClip;
             arms.iKOnFeet = false;
             machine.defaultState = arms;
@@ -590,9 +600,9 @@ namespace Supernova.EditorTools.PlayerSetup
         {
             string[] desiredOrder =
             {
-                RifleLocomotionLayerName,
+                FirearmLocomotionLayerName,
                 CrouchArmsLocomotionLayerName,
-                RifleArmsLayerName,
+                FirearmArmsLayerName,
                 ToolUpperBodyLayerName,
                 CrouchToolArmsLayerName,
             };
@@ -878,13 +888,6 @@ namespace Supernova.EditorTools.PlayerSetup
             if (clip == null && required)
                 throw new InvalidOperationException("Missing required animation clip: " + path);
             return clip;
-        }
-
-        private static AnimationClip LoadEmbeddedClip(string path)
-        {
-            return AssetDatabase.LoadAllAssetsAtPath(path)
-                .OfType<AnimationClip>()
-                .FirstOrDefault(clip => !clip.name.StartsWith("__preview__", StringComparison.Ordinal));
         }
 
         private static void AddConditionTransition(

@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using Supernova.Audio;
 using Supernova.Gameplay;
 using UnityEditor;
 using UnityEngine;
@@ -184,14 +185,14 @@ namespace Supernova.Editor.Gameplay
                 SetFloat(serialized, "innerMiningPower", 30f);
                 SetFloat(serialized, "outerMiningPower", 10f);
                 SetFloat(serialized, "propagationDivisor", 2f);
-                SetFloat(serialized, "entityExplosionImpulse", 240f);
+                SetFloat(serialized, "entityExplosionImpulse", 600f);
                 SetFloat(serialized, "entityUpwardModifier", 0.6f);
                 SetReference(
                     serialized,
                     "explosionEffectPrefab",
                     explosionEffect);
                 SetFloat(serialized, "explosionEffectLifetime", 3f);
-                SetInteger(serialized, "configurationVersion", 4);
+                SetInteger(serialized, "configurationVersion", 5);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
 
                 GameObject saved = PrefabUtility.SaveAsPrefabAsset(
@@ -263,6 +264,15 @@ namespace Supernova.Editor.Gameplay
             AnimationClip animation =
                 AssetDatabase.LoadAssetAtPath<AnimationClip>(
                     ProjectAssetPaths.Animations.ToolPrimaryActionPlaceholder);
+            SoundEffectCue fuseSound =
+                AssetDatabase.LoadAssetAtPath<SoundEffectCue>(
+                    ProjectAssetPaths.Config.BombFuseSound);
+            if (fuseSound == null)
+            {
+                throw new InvalidOperationException(
+                    "Cannot configure Bomb because its fuse sound is missing: "
+                    + ProjectAssetPaths.Config.BombFuseSound);
+            }
             SerializedObject serialized = new SerializedObject(definition);
             SetInteger(serialized, "item", (int)PlayerInventoryItem.Bomb);
             SetInteger(
@@ -274,6 +284,8 @@ namespace Supernova.Editor.Gameplay
                 "animationTriggerMode",
                 (int)PlayerToolAnimationTriggerMode.Single);
             SetReference(serialized, "primaryActionAnimation", animation);
+            SetReference(serialized, "primaryActionSound", fuseSound);
+            SetReference(serialized, "throwSound", null);
             SetReference(serialized, "heldModelPrefab", heldModel);
             SetInteger(
                 serialized,
@@ -285,7 +297,7 @@ namespace Supernova.Editor.Gameplay
             SetBoolean(serialized, "actionIsPeriodic", false);
             SetReference(serialized, "projectilePrefab", null);
             SetReference(serialized, "bombProjectilePrefab", projectile);
-            SetFloat(serialized, "bombEntityExplosionImpulse", 240f);
+            SetFloat(serialized, "bombEntityExplosionImpulse", 600f);
             SetReference(
                 serialized,
                 "bombExplosionEffectPrefab",

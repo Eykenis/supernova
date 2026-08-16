@@ -27,3 +27,4 @@ MonoBehaviour:
   oreUnitValue: 125
   massDensity: 16
   fragility: 0.06
+  recoveredMaterial: {fileID: 2100000, guid: 47a2b427c2f34be9a8f4fb63f229cc83, type: 2}

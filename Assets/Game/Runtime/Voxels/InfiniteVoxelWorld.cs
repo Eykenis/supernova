@@ -48,6 +48,13 @@ namespace Supernova.Voxels
         public IReadOnlyDictionary<Vector2Int, InfiniteVoxelChunk> Chunks => chunks;
         public int ChunkCount => chunks.Count;
 
+        /// <summary>
+        /// Reports exact sample mutations. The isolated integrity experiment
+        /// subscribes only while a player destruction call is executing, so worlds
+        /// without a subscriber retain their existing behaviour.
+        /// </summary>
+        public event Action<Vector3Int, VoxelSample, VoxelSample> SampleChanged;
+
         public bool TryGetChunk(Vector2Int coordinate, out InfiniteVoxelChunk chunk)
         {
             return chunks.TryGetValue(coordinate, out chunk);
@@ -165,7 +172,15 @@ namespace Supernova.Voxels
             Vector2Int chunkCoordinate = WorldToColumn(worldX, worldZ);
             InfiniteVoxelChunk chunk = EnsureChunk(chunkCoordinate);
             Vector3Int local = WorldToLocal(worldX, worldY, worldZ, chunkCoordinate);
+            VoxelSample previous = chunk.Data.GetSample(
+                local.x,
+                local.y,
+                local.z);
             chunk.Data[local.x, local.y, local.z] = density;
+            ReportSampleChange(
+                new Vector3Int(worldX, worldY, worldZ),
+                previous,
+                chunk.Data.GetSample(local.x, local.y, local.z));
         }
 
         public void SetVoxel(
@@ -179,7 +194,29 @@ namespace Supernova.Voxels
             Vector2Int chunkCoordinate = WorldToColumn(worldX, worldZ);
             InfiniteVoxelChunk chunk = EnsureChunk(chunkCoordinate);
             Vector3Int local = WorldToLocal(worldX, worldY, worldZ, chunkCoordinate);
+            VoxelSample previous = chunk.Data.GetSample(
+                local.x,
+                local.y,
+                local.z);
             chunk.Data.SetSample(local.x, local.y, local.z, density, type);
+            ReportSampleChange(
+                new Vector3Int(worldX, worldY, worldZ),
+                previous,
+                chunk.Data.GetSample(local.x, local.y, local.z));
+        }
+
+        private void ReportSampleChange(
+            Vector3Int coordinate,
+            VoxelSample previous,
+            VoxelSample current)
+        {
+            if (previous.Density == current.Density
+                && previous.Type == current.Type)
+            {
+                return;
+            }
+
+            SampleChanged?.Invoke(coordinate, previous, current);
         }
 
         public static Vector2Int WorldToColumn(int worldX, int worldZ)

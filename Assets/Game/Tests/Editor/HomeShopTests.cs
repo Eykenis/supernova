@@ -30,7 +30,7 @@ namespace Supernova.Tests
                 new[]
                 {
                     PlayerInventoryItem.Pickaxe,
-                    PlayerInventoryItem.Magnet,
+                    PlayerInventoryItem.Bomb,
                     PlayerInventoryItem.Flashlight,
                     PlayerInventoryItem.Empty,
                 });
@@ -52,81 +52,6 @@ namespace Supernova.Tests
             Assert.That(
                 inventory.SelectedItem,
                 Is.EqualTo(PlayerInventoryItem.Flashlight));
-        }
-
-        [Test]
-        public void PlayerOwnedItems_SerializesInventoryAndUpgradesTogether()
-        {
-            var ownedItems = new PlayerOwnedItems();
-
-            Assert.That(
-                ownedItems.SetOwned(PlayerInventoryItem.Gun, true),
-                Is.True);
-            Assert.That(
-                ownedItems.SetOwned(PlayerUpgrade.AttractionModule, true),
-                Is.True);
-
-            string json = JsonUtility.ToJson(ownedItems);
-            var restored = JsonUtility.FromJson<PlayerOwnedItems>(json);
-            Assert.That(restored.Owns(PlayerInventoryItem.Gun), Is.True);
-            Assert.That(
-                restored.Owns(PlayerUpgrade.AttractionModule),
-                Is.True);
-        }
-
-        [Test]
-        public void ShopProducts_AreAllConfigured()
-        {
-            ShopProductProfile[] products = LoadProducts();
-
-            Assert.That(products, Has.Length.EqualTo(6));
-            Assert.That(
-                products.Select(product => product.ProductId),
-                Is.EquivalentTo(new[]
-                {
-                    "gun",
-                    "smg",
-                    "flashlight",
-                    "solid-gun",
-                    "attraction-module",
-                    "cart",
-                }));
-            Assert.That(
-                products.All(product => product.IsConfigured),
-                Is.True);
-            Assert.That(
-                products.All(product =>
-                    product.WireframeMaterial != null
-                    && AssetDatabase.GetAssetPath(
-                        product.WireframeMaterial)
-                    == ProjectAssetPaths.Materials.ShopGeometryWireframe),
-                Is.True);
-
-            ShopProductProfile upgrade = products.Single(product =>
-                product.GrantType == ShopProductGrantType.Upgrade);
-            Assert.That(
-                upgrade.GrantedUpgrade,
-                Is.EqualTo(PlayerUpgrade.AttractionModule));
-            Assert.That(upgrade.UpgradeValue, Is.EqualTo(400f));
-
-            ShopProductProfile cart = products.Single(product =>
-                product.ProductId == "cart");
-            Assert.That(cart.Price, Is.EqualTo(250));
-            Assert.That(
-                cart.GrantedItem,
-                Is.EqualTo(PlayerInventoryItem.Cart));
-            Assert.That(
-                AssetDatabase.GetAssetPath(cart.DisplayPrefab),
-                Is.EqualTo(ProjectAssetPaths.ThirdParty.EmptyCart));
-
-            PlayerToolDefinition cartTool =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.CartTool);
-            Assert.That(cartTool, Is.Not.Null);
-            Assert.That(cartTool.Item, Is.EqualTo(PlayerInventoryItem.Cart));
-            Assert.That(
-                cartTool.PrimaryAction,
-                Is.EqualTo(PlayerToolPrimaryAction.TowCart));
         }
 
         [Test]
@@ -179,107 +104,6 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void CartPurchase_AddsItemToBackpackWithoutAutoAssigningQuickSlot()
-        {
-            ShopProductProfile profile = LoadProducts().Single(product =>
-                product.ProductId == "cart");
-            string creditsKey = PlayerEconomy.CreditsPreferenceKey;
-            string ownershipKey =
-                PlayerEconomy.GetItemOwnershipPreferenceKey(
-                    PlayerInventoryItem.Cart);
-            bool hadCredits = PlayerPrefs.HasKey(creditsKey);
-            bool hadOwnership = PlayerPrefs.HasKey(ownershipKey);
-            int previousCredits = PlayerPrefs.GetInt(creditsKey, 0);
-            int previousOwnership = PlayerPrefs.GetInt(ownershipKey, 0);
-
-            try
-            {
-                PlayerPrefs.SetInt(creditsKey, profile.Price);
-                PlayerPrefs.DeleteKey(ownershipKey);
-                var inventory = new PlayerInventory(
-                    3,
-                    PlayerEconomy.IsItemOwned);
-
-                Assert.That(
-                    inventory.GetItemAtSlot(3),
-                    Is.EqualTo(PlayerInventoryItem.Empty));
-                Assert.That(
-                    PlayerEconomy.TryPurchase(profile),
-                    Is.EqualTo(ShopPurchaseResult.Purchased));
-                Assert.That(
-                    PlayerEconomy.IsItemOwned(PlayerInventoryItem.Cart),
-                    Is.True);
-                Assert.That(
-                    inventory.GetItemAtSlot(3),
-                    Is.EqualTo(PlayerInventoryItem.Empty),
-                    "Purchasing an item must not silently overwrite the loadout.");
-                Assert.That(
-                    inventory.SetItemAtSlot(
-                        3,
-                        PlayerInventoryItem.Cart),
-                    Is.True);
-                Assert.That(
-                    inventory.GetItemAtSlot(3),
-                    Is.EqualTo(PlayerInventoryItem.Cart));
-                Assert.That(PlayerEconomy.Credits, Is.Zero);
-            }
-            finally
-            {
-                RestorePreference(
-                    creditsKey,
-                    hadCredits,
-                    previousCredits);
-                RestorePreference(
-                    ownershipKey,
-                    hadOwnership,
-                    previousOwnership);
-                PlayerPrefs.Save();
-            }
-        }
-
-        [Test]
-        public void UpgradePurchase_PersistsAttractionModuleOwnership()
-        {
-            ShopProductProfile profile = LoadProducts().Single(product =>
-                product.GrantType == ShopProductGrantType.Upgrade);
-            string creditsKey = PlayerEconomy.CreditsPreferenceKey;
-            string ownershipKey =
-                PlayerEconomy.GetUpgradeOwnershipPreferenceKey(
-                    PlayerUpgrade.AttractionModule);
-            bool hadCredits = PlayerPrefs.HasKey(creditsKey);
-            bool hadOwnership = PlayerPrefs.HasKey(ownershipKey);
-            int previousCredits = PlayerPrefs.GetInt(creditsKey, 0);
-            int previousOwnership = PlayerPrefs.GetInt(ownershipKey, 0);
-
-            try
-            {
-                PlayerPrefs.SetInt(creditsKey, profile.Price);
-                PlayerPrefs.DeleteKey(ownershipKey);
-
-                Assert.That(
-                    PlayerEconomy.TryPurchase(profile),
-                    Is.EqualTo(ShopPurchaseResult.Purchased));
-                Assert.That(PlayerEconomy.Credits, Is.Zero);
-                Assert.That(
-                    PlayerEconomy.IsUpgradeOwned(
-                        PlayerUpgrade.AttractionModule),
-                    Is.True);
-            }
-            finally
-            {
-                RestorePreference(
-                    creditsKey,
-                    hadCredits,
-                    previousCredits);
-                RestorePreference(
-                    ownershipKey,
-                    hadOwnership,
-                    previousOwnership);
-                PlayerPrefs.Save();
-            }
-        }
-
-        [Test]
         public void ProductDisplay_MatchesTreasureTextStyleAndOwnershipRenderMode()
         {
             ShopProductProfile profile =
@@ -304,8 +128,14 @@ namespace Supernova.Tests
                 Is.GreaterThan(0));
             MeshRenderer[] renderers =
                 displayObject.GetComponentsInChildren<MeshRenderer>(true);
+            MeshRenderer plate = renderers.SingleOrDefault(renderer =>
+                renderer.gameObject.name == "Pickup Plate");
+            MeshRenderer[] modelRenderers = renderers
+                .Where(renderer => renderer != plate)
+                .ToArray();
+            Assert.That(plate, Is.Not.Null);
             Assert.That(
-                renderers.Length,
+                modelRenderers.Length,
                 Is.EqualTo(display.SolidRendererCount));
             Assert.That(
                 renderers.Any(renderer =>
@@ -315,14 +145,14 @@ namespace Supernova.Tests
 
             if (display.IsOwned)
             {
-                Assert.That(display.Label.text, Is.EqualTo("OWNED"));
+                Assert.That(display.Label.text, Is.EqualTo("已拥有"));
                 Assert.That(
                     display.Label.color,
                     Is.EqualTo(WorldValueTextStyle.OwnedColor));
                 Assert.That(display.IsShowingSolid, Is.True);
                 Assert.That(display.IsShowingWireframe, Is.False);
                 Assert.That(
-                    renderers.Any(renderer =>
+                    modelRenderers.Any(renderer =>
                         renderer.sharedMaterials.Any(material =>
                             material != profile.WireframeMaterial)),
                     Is.True);
@@ -331,7 +161,7 @@ namespace Supernova.Tests
             {
                 Assert.That(
                     display.Label.text,
-                    Is.EqualTo("$100\nPRESS E TO BUY"));
+                    Does.StartWith("$100").And.Contain("购买"));
                 Assert.That(
                     display.Label.color,
                     Is.EqualTo(PlayerEconomy.CanAfford(profile)
@@ -340,7 +170,7 @@ namespace Supernova.Tests
                 Assert.That(display.IsShowingSolid, Is.False);
                 Assert.That(display.IsShowingWireframe, Is.True);
                 Assert.That(
-                    renderers.All(renderer =>
+                    modelRenderers.All(renderer =>
                         renderer.sharedMaterials.All(material =>
                             material == profile.WireframeMaterial)),
                     Is.True);
@@ -348,33 +178,60 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void CartProductDisplay_DisablesPrefabPhysics()
+        public void UnpurchasedProduct_UsesOriginalWireframeAndBluePickupLight()
         {
-            ShopProductProfile profile = LoadProducts().Single(product =>
-                product.ProductId == "cart");
-            displayObject = new GameObject("Cart Product Display Test");
-            ShopProductDisplay display =
-                displayObject.AddComponent<ShopProductDisplay>();
+            ShopProductProfile profile = LoadFlashlightProduct();
+            string ownershipKey =
+                PlayerEconomy.GetItemOwnershipPreferenceKey(
+                    PlayerInventoryItem.Flashlight);
+            bool hadOwnership = PlayerPrefs.HasKey(ownershipKey);
+            int previousOwnership = PlayerPrefs.GetInt(ownershipKey, 0);
 
-            display.Configure(profile);
+            try
+            {
+                PlayerPrefs.DeleteKey(ownershipKey);
+                displayObject = new GameObject("Unpurchased Product Display Test");
+                ShopProductDisplay display =
+                    displayObject.AddComponent<ShopProductDisplay>();
+                display.Configure(profile);
 
-            Rigidbody[] bodies =
-                displayObject.GetComponentsInChildren<Rigidbody>(true);
-            Collider[] colliders =
-                displayObject.GetComponentsInChildren<Collider>(true);
-            Assert.That(bodies, Is.Not.Empty);
-            Assert.That(
-                bodies.All(body => body.isKinematic && !body.useGravity),
-                Is.True);
-            Assert.That(
-                colliders
-                    .Where(collider => collider != display.TargetCollider)
-                    .All(collider => !collider.enabled),
-                Is.True);
+                MeshRenderer[] modelRenderers = displayObject
+                    .GetComponentsInChildren<MeshRenderer>(true)
+                    .Where(renderer =>
+                        renderer.gameObject.name != "Pickup Plate")
+                    .ToArray();
+                Assert.That(modelRenderers, Is.Not.Empty);
+                Assert.That(
+                    modelRenderers.All(renderer =>
+                        renderer.sharedMaterials.All(material =>
+                            material == profile.WireframeMaterial)),
+                    Is.True);
+
+                Transform lightTransform =
+                    displayObject.transform.Find("Pickup Light");
+                Assert.That(lightTransform, Is.Not.Null);
+                Light pickupLight = lightTransform.GetComponent<Light>();
+                Assert.That(pickupLight, Is.Not.Null);
+                Assert.That(pickupLight.type, Is.EqualTo(LightType.Point));
+                Assert.That(
+                    pickupLight.color,
+                    Is.EqualTo(new Color(0.15f, 0.75f, 1f)));
+                Assert.That(pickupLight.range, Is.EqualTo(2.5f));
+                Assert.That(pickupLight.intensity, Is.EqualTo(0.8f));
+                Assert.That(pickupLight.shadows, Is.EqualTo(LightShadows.None));
+            }
+            finally
+            {
+                RestorePreference(
+                    ownershipKey,
+                    hadOwnership,
+                    previousOwnership);
+                PlayerPrefs.Save();
+            }
         }
 
         [Test]
-        public void HomeScene_HasSixProductAnchorsWithoutCustomShopModel()
+        public void HomeScene_HasThreeProductAnchorsWithoutCustomShopModel()
         {
             Scene homeScene =
                 SceneManager.GetSceneByPath(ProjectAssetPaths.Scenes.Home);
@@ -396,7 +253,7 @@ namespace Supernova.Tests
                 Assert.That(shop, Is.Not.Null);
                 HomeShopController[] controllers =
                     shop.GetComponentsInChildren<HomeShopController>(true);
-                Assert.That(controllers, Has.Length.EqualTo(6));
+                Assert.That(controllers, Has.Length.EqualTo(3));
                 Assert.That(
                     controllers.Select(controller =>
                         controller.ProductProfile.ProductId),
@@ -427,12 +284,9 @@ namespace Supernova.Tests
         {
             string[] paths =
             {
-                ProjectAssetPaths.Config.GunProduct,
-                ProjectAssetPaths.Config.SmgProduct,
                 ProjectAssetPaths.Config.FlashlightProduct,
                 ProjectAssetPaths.Config.SolidGunProduct,
-                ProjectAssetPaths.Config.AttractionModuleProduct,
-                ProjectAssetPaths.Config.CartProduct,
+                ProjectAssetPaths.Config.PortalGunProduct,
             };
             return paths.Select(path =>
             {

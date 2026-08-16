@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Copper
   m_EditorClassIdentifier: 
   type: 15
-  displayName: Copper
+  displayName: 铜矿
   group: 2
   durability: 5
   material: {fileID: 2100000, guid: b483799776d34b345b5a3ec14cb58c30, type: 2}

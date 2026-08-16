@@ -71,6 +71,7 @@ MonoBehaviour:
   pauseBackdrop: {r: 0.025, g: 0.028, b: 0.035, a: 1}
   loadingBackdrop: {r: 0.025, g: 0.028, b: 0.035, a: 1}
   loadingProgressThickness: 6
+  loadingTransitionSeconds: 3
   missionObjectivePosition: {x: 30, y: -30}
   missionObjectiveSize: {x: 600, y: 160}
   missionPromptPosition: {x: 0, y: 112}

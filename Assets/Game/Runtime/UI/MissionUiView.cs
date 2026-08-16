@@ -1,3 +1,5 @@
+using System.Collections;
+using Supernova.Inputs;
 using TMPro;
 using UnityEngine;
 
@@ -17,6 +19,8 @@ namespace Supernova.UI
         [SerializeField] private CanvasGroup sceneFade;
         [SerializeField] private float fadeOutSeconds = 0.65f;
         [SerializeField] private float fadeInSeconds = 0.55f;
+
+        private Coroutine resultAnimation;
 
         public bool IsResultVisible =>
             resultPanel != null && resultPanel.activeSelf;
@@ -47,28 +51,108 @@ namespace Supernova.UI
 
         public void SetObjective(string value)
         {
-            if (objectiveLabel != null)
-                objectiveLabel.text = value ?? string.Empty;
+            InputPromptTextRuntime.SetText(objectiveLabel, value);
         }
 
         public void SetPrompt(string value)
         {
-            if (promptLabel != null)
-                promptLabel.text = value ?? string.Empty;
+            InputPromptTextRuntime.SetText(promptLabel, value);
         }
 
         public void ShowResult(string value)
         {
-            if (resultLabel != null)
-                resultLabel.text = value ?? string.Empty;
+            StopResultAnimation();
+            InputPromptTextRuntime.SetText(resultLabel, value);
             if (resultPanel != null)
                 resultPanel.SetActive(true);
         }
 
+        public void ShowResultCountAnimation(
+            string prefix,
+            string suffix,
+            int targetValue,
+            float durationSeconds)
+        {
+            StopResultAnimation();
+            int clampedTarget = Mathf.Max(0, targetValue);
+            SetAnimatedResultText(prefix, suffix, 0);
+            if (resultPanel != null)
+                resultPanel.SetActive(true);
+
+            if (durationSeconds <= 0f || !isActiveAndEnabled)
+            {
+                SetAnimatedResultText(prefix, suffix, clampedTarget);
+                return;
+            }
+
+            resultAnimation = StartCoroutine(AnimateResultCount(
+                prefix,
+                suffix,
+                clampedTarget,
+                durationSeconds));
+        }
+
         public void HideResult()
         {
+            StopResultAnimation();
             if (resultPanel != null)
                 resultPanel.SetActive(false);
+        }
+
+        private IEnumerator AnimateResultCount(
+            string prefix,
+            string suffix,
+            int targetValue,
+            float durationSeconds)
+        {
+            float elapsed = 0f;
+            int displayedValue = 0;
+            while (elapsed < durationSeconds)
+            {
+                yield return null;
+                elapsed += Time.unscaledDeltaTime;
+                int nextValue = EvaluateResultCount(
+                    targetValue,
+                    elapsed / durationSeconds);
+                if (nextValue == displayedValue) continue;
+
+                displayedValue = nextValue;
+                SetAnimatedResultText(prefix, suffix, displayedValue);
+            }
+
+            SetAnimatedResultText(prefix, suffix, targetValue);
+            resultAnimation = null;
+        }
+
+        private void SetAnimatedResultText(
+            string prefix,
+            string suffix,
+            int value)
+        {
+            InputPromptTextRuntime.SetText(
+                resultLabel,
+                (prefix ?? string.Empty)
+                    + Mathf.Max(0, value)
+                    + (suffix ?? string.Empty));
+        }
+
+        private void StopResultAnimation()
+        {
+            if (resultAnimation == null) return;
+
+            StopCoroutine(resultAnimation);
+            resultAnimation = null;
+        }
+
+        private static int EvaluateResultCount(
+            int targetValue,
+            float normalizedTime)
+        {
+            float time = Mathf.Clamp01(normalizedTime);
+            float inverse = 1f - time;
+            float easedTime = 1f - inverse * inverse * inverse;
+            return Mathf.RoundToInt(
+                Mathf.Max(0, targetValue) * easedTime);
         }
     }
 }

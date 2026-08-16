@@ -39,6 +39,10 @@ public sealed class JigsawStructureFeatureDefinitionEditor : Editor
                 AddPassage(definition, JigsawPieceDefinition.Shape.Stairs);
             }
         }
+        if (GUILayout.Button("Add Vertical Shaft"))
+        {
+            AddVerticalShaft(definition);
+        }
 
         if (!definition.Enabled)
         {
@@ -121,6 +125,30 @@ public sealed class JigsawStructureFeatureDefinitionEditor : Editor
             12,
             5,
             5);
+        Add(definition, piece);
+    }
+
+    private static void AddVerticalShaft(
+        JigsawStructureFeatureDefinition definition)
+    {
+        var piece = new JigsawPieceDefinition();
+        piece.ConfigureBox(
+            "new_vertical_shaft",
+            "New Vertical Shaft",
+            JigsawPieceDefinition.Shape.VerticalShaft,
+            JigsawPieceDefinition.BuildStyle.Masonry,
+            JigsawPieceDefinition.ConnectorPattern.None,
+            JigsawPieceDefinition.Decoration.SpiralStairs,
+            false,
+            10,
+            1,
+            12,
+            21,
+            21,
+            21,
+            21,
+            12,
+            14);
         Add(definition, piece);
     }
 

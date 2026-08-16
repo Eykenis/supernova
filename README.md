@@ -66,7 +66,6 @@ Assets/Scenes/InfiniteCaves.scene
   │  ├─ FirstPersonCartAttractor
   │  └─ CharacterCombat
   ├─ CreatureBehaviorAgent
-  │  ├─ CreatureVoxelNavigation
   │  └─ CreaturePhysicsMotor
   └─ GameHudController
 ```
@@ -83,7 +82,7 @@ Assets/Scenes/InfiniteCaves.scene
 
 ### 生物
 
-生物系统使用体素可站立查询和累计代价 A* 导航。`CreatureBehaviorAgent` 当前包含 Idle、Wander、Pursue、Attack、Hurt 和 Dead 状态，并通过 `CreaturePhysicsMotor` 执行路径步骤。
+生物系统的 `CreatureBehaviorAgent` 保留 Idle、Wander、Pursue、Attack、Hurt、Dead 和 Caught 状态。Wander/Pursue 当前仅作为静止占位状态；`CreaturePhysicsMotor` 只保留刚体朝向、冲量和生物间碰撞管理，不再规划或执行路径。
 
 ### 固定体素结构
 
@@ -148,7 +147,7 @@ Blender、NLA 和外部动画迁移教学文档已从项目资源中删除；项
 5. **核心 MonoBehaviour 职责过大**
    - `MinecraftCaveInfiniteWorld` 同时负责生成调度、Chunk 生命周期、网格、编辑、出生点、Viewer 控制和调试显示。
    - `VoxelPlayerController` 同时负责输入、移动、战斗、采矿、磁力、生命值、动画和状态机。
-   - `CreatureBehaviorAgent` 同时负责决策、导航、战斗、生命值和调试。
+   - `CreatureBehaviorAgent` 同时负责状态决策、战斗、生命值和调试。
    - `GameHudController` 同时负责运行时创建、对象查找、视图构造、绑定和展示。
 
 6. **场景装配过于隐式**

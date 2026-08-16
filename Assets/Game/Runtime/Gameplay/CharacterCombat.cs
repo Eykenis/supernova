@@ -163,6 +163,30 @@ namespace Supernova.Gameplay
             float impulse,
             int layerMask = ~0)
         {
+            return DamageSphere(
+                source,
+                centre,
+                radius,
+                forward,
+                minimumForwardDot,
+                damage,
+                impulse,
+                out _,
+                layerMask);
+        }
+
+        public static int DamageSphere(
+            GameObject source,
+            Vector3 centre,
+            float radius,
+            Vector3 forward,
+            float minimumForwardDot,
+            float damage,
+            float impulse,
+            out int damagedMonsterCount,
+            int layerMask = ~0)
+        {
+            damagedMonsterCount = 0;
             if (source == null || radius <= 0f || damage <= 0f) return 0;
 
             int count = Physics.OverlapSphereNonAlloc(
@@ -196,7 +220,11 @@ namespace Supernova.Gameplay
                 if (!DamagedOwners.Add(target.Owner.GetInstanceID())) continue;
 
                 var info = new DamageInfo(damage, source, point, direction, impulse);
-                if (target.ReceiveDamage(info)) damagedCount++;
+                if (!target.ReceiveDamage(info)) continue;
+
+                damagedCount++;
+                if (target is IMonsterDamageable)
+                    damagedMonsterCount++;
             }
 
             return damagedCount;

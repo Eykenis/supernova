@@ -31,6 +31,53 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void CursorLock_SuppressesLookInputForStartupWindow()
+        {
+            PerspectiveCameraController controller = CreateController();
+            CursorLockMode previousLockState = Cursor.lockState;
+            bool previousVisibility = Cursor.visible;
+            MethodInfo setCursorLocked =
+                typeof(PerspectiveCameraController).GetMethod(
+                    "SetCursorLocked",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo shouldSuppress =
+                typeof(PerspectiveCameraController).GetMethod(
+                    "ShouldSuppressLookInput",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(setCursorLocked, Is.Not.Null);
+            Assert.That(shouldSuppress, Is.Not.Null);
+
+            try
+            {
+                setCursorLocked.Invoke(controller, new object[] { true });
+
+                Assert.That(
+                    GetPrivateField<int>(
+                        controller,
+                        "suppressLookInputThroughFrame"),
+                    Is.GreaterThanOrEqualTo(Time.frameCount));
+                Assert.That(
+                    (bool)shouldSuppress.Invoke(controller, null),
+                    Is.True);
+
+                SetPrivateField(
+                    controller,
+                    "suppressLookInputThroughFrame",
+                    Time.frameCount - 1);
+                Assert.That(
+                    (bool)shouldSuppress.Invoke(controller, null),
+                    Is.False);
+            }
+            finally
+            {
+                Cursor.lockState = previousLockState;
+                Cursor.visible = previousVisibility;
+            }
+        }
+
+
+        [Test]
         public void ThirdPersonYaw_DoesNotFollowPlayerRotation()
         {
             PerspectiveCameraController controller = CreateController();
@@ -80,6 +127,68 @@ namespace Supernova.Tests
             Assert.That(head.transform.localScale, Is.EqualTo(expectedHeadScale));
             Assert.That(hiddenRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.On));
             Assert.That(hiddenRenderer.receiveShadows, Is.True);
+        }
+
+        [Test]
+        public void BoundPlayerSkinnedMeshes_KeepUpdatingOutsideImportedBounds()
+        {
+            player = new GameObject("Player");
+            GameObject clothing = new GameObject("Dynamic Clothing");
+            clothing.transform.SetParent(player.transform);
+            SkinnedMeshRenderer clothingRenderer =
+                clothing.AddComponent<SkinnedMeshRenderer>();
+
+            GameObject head = new GameObject("Head");
+            head.transform.SetParent(player.transform);
+            GameObject cameraObject = new GameObject("Camera");
+            cameraObject.transform.SetParent(player.transform);
+            Camera camera = cameraObject.AddComponent<Camera>();
+            PerspectiveCameraController controller =
+                player.AddComponent<PerspectiveCameraController>();
+
+            // Awake can already configure renderers on the controller root.
+            // Reset the flag so this assertion specifically covers Bind.
+            clothingRenderer.updateWhenOffscreen = false;
+            controller.Bind(
+                player.transform,
+                head.transform,
+                camera,
+                new Renderer[0]);
+
+            Assert.That(clothingRenderer.updateWhenOffscreen, Is.True,
+                "A player garment must not be culled from its imported bounds "
+                + "while cloth or first-person posing moves its vertices.");
+        }
+
+        [Test]
+        public void MenuTransition_CanEnterFirstPersonVisibilityBeforeMenuEnds()
+        {
+            player = new GameObject("Player");
+            GameObject head = new GameObject("Head");
+            head.transform.SetParent(player.transform);
+            Vector3 expectedHeadScale = head.transform.localScale;
+
+            GameObject cameraObject = new GameObject("Camera");
+            cameraObject.transform.SetParent(player.transform);
+            Camera camera = cameraObject.AddComponent<Camera>();
+            PerspectiveCameraController controller =
+                player.AddComponent<PerspectiveCameraController>();
+            controller.Bind(
+                player.transform,
+                head.transform,
+                camera,
+                new Renderer[0]);
+            controller.SetMode(PlayerViewMode.FirstPerson, true);
+
+            controller.SetMenuPresentationActive(true);
+            Assert.That(controller.IsMenuPresentationActive, Is.True);
+            Assert.That(head.transform.localScale, Is.EqualTo(expectedHeadScale));
+
+            controller.SetMenuFirstPersonVisibilityActive(true);
+            Assert.That(controller.IsMenuPresentationActive, Is.True);
+            Assert.That(
+                head.transform.localScale,
+                Is.EqualTo(expectedHeadScale * 0.001f));
         }
 
         [Test]
@@ -172,8 +281,8 @@ namespace Supernova.Tests
             upperArm.transform.SetParent(upperChest.transform);
             GameObject leftHand = new GameObject("LeftHand");
             leftHand.transform.SetParent(upperArm.transform);
-            GameObject rifleMount = new GameObject("Rifle Model Mount");
-            rifleMount.transform.SetParent(leftHand.transform);
+            GameObject twoHandedMount = new GameObject("Two Handed Model Mount");
+            twoHandedMount.transform.SetParent(leftHand.transform);
 
             GameObject cameraObject = new GameObject("Camera");
             cameraObject.transform.SetParent(player.transform);
@@ -208,9 +317,9 @@ namespace Supernova.Tests
                 Is.EqualTo(pitch).Within(0.001f),
                 "First-person bone pitch must not lag behind the camera.");
             Assert.That(
-                Vector3.Angle(rifleMount.transform.forward, expectedForward),
+                Vector3.Angle(twoHandedMount.transform.forward, expectedForward),
                 Is.LessThan(0.01f),
-                "A left-hand rifle mount must inherit the arm's exact camera pitch.");
+                "A left-hand two-handed mount must inherit the arm's exact camera pitch.");
         }
 
         private static void InvokeLateUpdate(PerspectiveCameraController controller)

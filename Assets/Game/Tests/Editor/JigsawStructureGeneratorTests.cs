@@ -2,11 +2,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Math = System.Math;
 using NUnit.Framework;
 using Supernova.Gameplay;
 using Supernova.MinecraftCaves;
-using Supernova.MinecraftCaves.Creatures;
 using Supernova.Voxels;
+using Supernova.WorldGeneration;
 using UnityEditor;
 using UnityEngine;
 
@@ -96,7 +97,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void AuthoredStructures_CarryTreasureAndMonsterMarkers()
+        public void AuthoredStructures_CarryOnlyTreasureSpawnMarkers()
         {
             foreach (string path in new[]
             {
@@ -119,15 +120,10 @@ namespace Supernova.Tests
                     Is.True,
                     $"{path} has a marker with no prefab assigned.");
                 Assert.That(
-                    markers.Any(marker => marker.Kind
+                    markers.All(marker => marker.Kind
                         == StructureSpawnMarkerDefinition.Kind.Treasure),
                     Is.True,
-                    $"{path} has no treasure marker.");
-                Assert.That(
-                    markers.Any(marker => marker.Kind
-                        == StructureSpawnMarkerDefinition.Kind.Monster),
-                    Is.True,
-                    $"{path} has no monster marker.");
+                    $"{path} has a non-treasure spawn marker.");
             }
         }
 
@@ -417,6 +413,615 @@ namespace Supernova.Tests
                     Is.Empty,
                     settings.StableId);
             }
+        }
+
+        [Test]
+        public void NetherFortress_ElevatorCorridorsUseLowProbabilityDoorPools()
+        {
+            JigsawStructureFeatureSettings settings = LoadSettings(
+                ProjectAssetPaths.Config.NetherFortressJigsaw);
+            JigsawPieceSettings junction = settings.Pieces.First(piece =>
+                piece.StableId == "fortress_junction");
+            JigsawConnectorSettings[] liftOutputs = junction.Connectors
+                .Where(connector => connector.CanEmitOutput
+                    && (connector.TargetPoolId == "vertical_up"
+                        || connector.TargetPoolId == "vertical_down"))
+                .ToArray();
+            JigsawConnectorSettings[] ordinaryOutputs = junction.Connectors
+                .Where(connector => connector.CanEmitOutput
+                    && connector.TargetPoolId != "vertical_up"
+                    && connector.TargetPoolId != "vertical_down")
+                .ToArray();
+
+            Assert.That(
+                junction.Decoration,
+                Is.EqualTo(JigsawPieceDefinition.Decoration.None));
+            Assert.That(liftOutputs, Has.Length.EqualTo(2));
+            Assert.That(
+                liftOutputs.Max(connector => connector.ActivationChance),
+                Is.LessThan(ordinaryOutputs.Min(
+                    connector => connector.ActivationChance)));
+            Assert.That(
+                liftOutputs.Select(connector => connector.TargetPoolId),
+                Is.EquivalentTo(new[] { "vertical_up", "vertical_down" }));
+            Assert.That(
+                liftOutputs.All(connector =>
+                    connector.Face == JigsawConnectorDefinition.Face.Forward
+                    && connector.VerticalOffset == 1
+                    && connector.OpeningWidth == 3
+                    && connector.OpeningHeight == 5),
+                Is.True,
+                "The source room must use ordinary wall doors, not floor holes.");
+            Assert.That(
+                liftOutputs.Select(connector => connector.LateralOffset),
+                Is.EquivalentTo(new[] { -9, 9 }));
+
+            JigsawPieceSettings[] shafts = settings.Pieces
+                .Where(piece => piece.StableId
+                    == "fortress_vertical_up_shaft"
+                    || piece.StableId
+                        == "fortress_vertical_down_shaft")
+                .ToArray();
+            Assert.That(shafts, Has.Length.EqualTo(2));
+            Assert.That(
+                shafts.All(piece =>
+                    piece.Shape
+                        == JigsawPieceDefinition.Shape.VerticalShaft
+                    && piece.Decoration
+                        == JigsawPieceDefinition.Decoration.None),
+                Is.True);
+            Assert.That(
+                shafts.All(piece =>
+                    piece.MinimumWidth == 7
+                    && piece.MaximumWidth == 7
+                    && piece.MinimumDepth == 7
+                    && piece.MaximumDepth == 7
+                    && piece.MinimumHeight == 16
+                    && piece.MaximumHeight == 16),
+                Is.True,
+                "Elevator corridors use a compact, empty seven-by-seven shaft.");
+            Assert.That(
+                shafts.SelectMany(piece => piece.Connectors)
+                    .All(connector =>
+                        connector.Face != JigsawConnectorDefinition.Face.Up
+                        && connector.Face != JigsawConnectorDefinition.Face.Down
+                        && connector.OpeningWidth == 3
+                        && connector.OpeningHeight == 5),
+                Is.True,
+                "The shaft may only expose three-by-five wall doors.");
+            foreach (JigsawPieceSettings shaft in shafts)
+            {
+                JigsawConnectorSettings input = shaft.Connectors.Single(
+                    connector => connector.Role
+                        == JigsawConnectorDefinition.Role.Input);
+                JigsawConnectorSettings output = shaft.Connectors.Single(
+                    connector => connector.Role
+                        == JigsawConnectorDefinition.Role.Output);
+                Assert.That(input.Face, Is.EqualTo(
+                    JigsawConnectorDefinition.Face.Back));
+                Assert.That(output.Face, Is.EqualTo(
+                    JigsawConnectorDefinition.Face.Forward));
+                Assert.That(
+                    Math.Abs(output.VerticalOffset - input.VerticalOffset),
+                    Is.EqualTo(10),
+                    "The two wall doors must connect rooms ten voxels apart.");
+            }
+
+            JigsawPieceSettings landing = settings.Pieces.First(piece =>
+                piece.StableId == "fortress_vertical_landing");
+            Assert.That(landing.PoolId, Is.EqualTo("vertical_landing"));
+            Assert.That(
+                landing.Decoration,
+                Is.EqualTo(JigsawPieceDefinition.Decoration.None));
+            Assert.That(
+                landing.MinimumWidth == 9
+                && landing.MaximumWidth == 9
+                && landing.MinimumDepth == 9
+                && landing.MaximumDepth == 9
+                && landing.MinimumHeight == 7
+                && landing.MaximumHeight == 7,
+                Is.True,
+                "The far side only needs a compact landing room.");
+            Assert.That(
+                landing.Connectors.Where(connector => connector.CanAcceptInput)
+                    .All(connector =>
+                        connector.Face
+                            == JigsawConnectorDefinition.Face.Back
+                        && connector.VerticalOffset == 1),
+                Is.True);
+            Assert.That(
+                junction.Connectors.Concat(shafts.SelectMany(
+                        piece => piece.Connectors))
+                    .Concat(landing.Connectors)
+                    .All(connector =>
+                        connector.Face != JigsawConnectorDefinition.Face.Up
+                        && connector.Face
+                            != JigsawConnectorDefinition.Face.Down),
+                Is.True,
+                "NetherFortress elevator chains must never carve floors or ceilings.");
+        }
+
+        [Test]
+        public void NetherFortress_ElevatorCorridorsKeepFloorsAndConnectRooms()
+        {
+            JigsawStructureFeatureSettings settings = LoadSettings(
+                ProjectAssetPaths.Config.NetherFortressJigsaw);
+            int upCorridors = 0;
+            int downCorridors = 0;
+
+            for (int seed = 0; seed < 512; seed++)
+            {
+                if (!JigsawStructureGenerator.TryGetPlacement(
+                        settings,
+                        seed,
+                        0,
+                        0,
+                        out JigsawStructureGenerator.Placement placement))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                    JigsawStructureGenerator.BuildLayout(
+                        settings,
+                        seed,
+                        placement);
+                for (int pieceIndex = 0;
+                    pieceIndex < layout.Count;
+                    pieceIndex++)
+                {
+                    JigsawStructureGenerator.Piece shaft =
+                        layout[pieceIndex];
+                    bool rising = shaft.ModuleId
+                        == "fortress_vertical_up_shaft";
+                    bool descending = shaft.ModuleId
+                        == "fortress_vertical_down_shaft";
+                    if (!rising && !descending)
+                    {
+                        continue;
+                    }
+
+                    if (rising) upCorridors++;
+                    if (descending) downCorridors++;
+                    Assert.That(shaft.ParentIndex, Is.GreaterThanOrEqualTo(0));
+                    JigsawStructureGenerator.Piece sourceRoom =
+                        layout[shaft.ParentIndex];
+                    Assert.That(
+                        sourceRoom.ModuleId,
+                        Is.EqualTo("fortress_junction"));
+
+                    int[] landingIndices = Enumerable.Range(0, layout.Count)
+                        .Where(index => layout[index].ParentIndex == pieceIndex
+                            && layout[index].ModuleId
+                                == "fortress_vertical_landing")
+                        .ToArray();
+                    Assert.That(
+                        landingIndices,
+                        Has.Length.EqualTo(1),
+                        $"Seed {seed} corridor '{shaft.ModuleId}' must have "
+                            + "one far-side landing.");
+                    JigsawStructureGenerator.Piece landing =
+                        layout[landingIndices[0]];
+                    int expectedFloorDelta = rising ? 10 : -10;
+                    Assert.That(
+                        landing.Bounds.MinY - sourceRoom.Bounds.MinY,
+                        Is.EqualTo(expectedFloorDelta));
+
+                    Assert.That(shaft.Openings.Count, Is.EqualTo(2));
+                    foreach (JigsawStructureGenerator.Opening opening
+                        in shaft.Openings)
+                    {
+                        Assert.That(
+                            opening.Direction,
+                            Is.LessThan((int)JigsawConnectorDefinition.Face.Up));
+                        Assert.That(
+                            GenerateAndGetType(settings, seed, opening.Boundary)
+                                .IsAir,
+                            Is.True,
+                            $"Seed {seed} wall door at {opening.Boundary} "
+                                + "must be open.");
+                    }
+
+                    Vector3Int sourceFloor = sourceRoom.Origin;
+                    sourceFloor.y = sourceRoom.Bounds.MinY;
+                    Vector3Int shaftFloor = shaft.Origin;
+                    shaftFloor.y = shaft.Bounds.MinY;
+                    Vector3Int shaftCeiling = shaft.Origin;
+                    shaftCeiling.y = shaft.Bounds.MaxY;
+                    Vector3Int landingFloor = landing.Origin;
+                    landingFloor.y = landing.Bounds.MinY;
+                    Assert.That(
+                        GenerateAndGetType(settings, seed, sourceFloor).IsAir,
+                        Is.False,
+                        "The source-room floor must remain intact.");
+                    Assert.That(
+                        GenerateAndGetType(settings, seed, shaftFloor).IsAir,
+                        Is.False,
+                        "The elevator corridor needs a solid bottom floor.");
+                    Assert.That(
+                        GenerateAndGetType(settings, seed, shaftCeiling).IsAir,
+                        Is.False,
+                        "The elevator corridor needs a solid top ceiling.");
+                    Assert.That(
+                        GenerateAndGetType(settings, seed, landingFloor).IsAir,
+                        Is.False,
+                        "The far-side room floor must remain intact.");
+                }
+            }
+
+            Assert.That(upCorridors, Is.GreaterThan(0));
+            Assert.That(downCorridors, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void SpiralShaft_FitsPlayerAndConnectsBothFloors()
+        {
+            JigsawStructureFeatureSettings settings = BuildSpiralShaftFixture();
+            const int seed = 73193;
+            Assert.That(
+                JigsawStructureGenerator.TryGetPlacement(
+                    settings,
+                    seed,
+                    0,
+                    0,
+                    out JigsawStructureGenerator.Placement placement),
+                Is.True);
+            IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                JigsawStructureGenerator.BuildLayout(settings, seed, placement);
+
+            Assert.That(layout.Count, Is.EqualTo(3));
+            JigsawStructureGenerator.Piece lower = layout[0];
+            JigsawStructureGenerator.Piece shaft = layout.Single(piece =>
+                piece.ModuleId == "spiral_shaft");
+            JigsawStructureGenerator.Piece upper = layout.Single(piece =>
+                piece.ModuleId == "spiral_upper");
+            Assert.That(
+                shaft.Bounds.MinY,
+                Is.EqualTo(lower.Bounds.MaxY + 1));
+            Assert.That(
+                upper.Bounds.MinY,
+                Is.EqualTo(shaft.Bounds.MaxY + 1));
+
+            GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                ProjectAssetPaths.Prefabs.Player);
+            MinecraftWorldGenerationConfiguration worldConfiguration =
+                AssetDatabase.LoadAssetAtPath<
+                    MinecraftWorldGenerationConfiguration>(
+                    ProjectAssetPaths.Config.WorldGeneration);
+            Assert.That(playerPrefab, Is.Not.Null);
+            Assert.That(worldConfiguration, Is.Not.Null);
+            CharacterController controller =
+                playerPrefab.GetComponent<CharacterController>();
+            Assert.That(controller, Is.Not.Null);
+
+            float requiredWidth = controller.radius * 2f
+                + controller.skinWidth * 2f;
+            Assert.That(
+                3f * worldConfiguration.VoxelSize,
+                Is.GreaterThan(requiredWidth),
+                "The authored three-voxel ramp must be wider than the player's capsule.");
+            Assert.That(
+                0.5f * worldConfiguration.VoxelSize,
+                Is.LessThanOrEqualTo(controller.stepOffset),
+                "The final half-voxel transition onto the room floor must fit the player's step offset.");
+            Assert.That(
+                SpiralRampFitsCharacterController(
+                    settings,
+                    seed,
+                    shaft,
+                    upper,
+                    controller,
+                    worldConfiguration.VoxelSize,
+                    out string clearanceError),
+                Is.True,
+                "Shaft-to-room ramp: " + clearanceError);
+            Assert.That(
+                SpiralRampFitsCharacterController(
+                    settings,
+                    seed,
+                    lower,
+                    shaft,
+                    controller,
+                    worldConfiguration.VoxelSize,
+                    out string landingClearanceError),
+                Is.True,
+                "Landing-to-shaft ramp: " + landingClearanceError);
+        }
+
+        [Test]
+        public void DenseJigsawWorld_ElevatorCorridorsKeepFloorsAndDoorConnections()
+        {
+            DenseJigsawWorldConfiguration configuration =
+                AssetDatabase.LoadAssetAtPath<DenseJigsawWorldConfiguration>(
+                    ProjectAssetPaths.Config.DenseJigsawRegionWorldGeneration);
+            Assert.That(configuration, Is.Not.Null);
+            Assert.That(configuration.PreventStructureIntersections, Is.True);
+            Assert.That(
+                DenseJigsawFeatureMixer.TryBuild(
+                    configuration,
+                    out DenseJigsawFeature feature,
+                    out string error),
+                Is.True,
+                error);
+
+            int seed = configuration.InfiniteCavesLevelSource.WorldSeed;
+            int selectionRadius = configuration.LayoutRadius * 2;
+            int testedCorridors = 0;
+
+            for (int regionX = -4; regionX <= 4; regionX++)
+            {
+                for (int regionZ = -4; regionZ <= 4; regionZ++)
+                {
+                    if (!JigsawStructureGenerator.TryGetPlacement(
+                            feature.Settings,
+                            seed,
+                            regionX,
+                            regionZ,
+                            out JigsawStructureGenerator.Placement placement))
+                    {
+                        continue;
+                    }
+
+                    JigsawPlacementSelection selection =
+                        JigsawPlacementSelection.CreateNonIntersecting(
+                            new[] { feature.Settings },
+                            seed,
+                            placement.Centre.x - selectionRadius,
+                            placement.Centre.z - selectionRadius,
+                            placement.Centre.x + selectionRadius,
+                            placement.Centre.z + selectionRadius);
+                    if (!selection.Allows(feature.Settings, placement))
+                    {
+                        continue;
+                    }
+
+                    IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                        JigsawStructureGenerator.BuildLayout(
+                            feature.Settings,
+                            seed,
+                            placement);
+                    var generatedColumns =
+                        new Dictionary<Vector3Int, GeneratedColumnSamples>();
+                    for (int pieceIndex = 0;
+                        pieceIndex < layout.Count;
+                        pieceIndex++)
+                    {
+                        JigsawStructureGenerator.Piece shaft =
+                            layout[pieceIndex];
+                        JigsawPieceSettings module =
+                            feature.Settings.GetPiece(shaft.ModuleIndex);
+                        bool elevatorShaft = shaft.ModuleId
+                                == "nether_fortress__fortress_vertical_up_shaft"
+                            || shaft.ModuleId
+                                == "nether_fortress__fortress_vertical_down_shaft";
+                        if (!elevatorShaft)
+                        {
+                            continue;
+                        }
+
+                        testedCorridors++;
+                        Assert.That(
+                            module.Decoration,
+                            Is.EqualTo(JigsawPieceDefinition.Decoration.None));
+                        Assert.That(shaft.Openings.Count, Is.EqualTo(2));
+                        Assert.That(
+                            shaft.Openings.All(opening =>
+                                opening.Direction
+                                    < (int)JigsawConnectorDefinition.Face.Up),
+                            Is.True,
+                            "Elevator corridors may only use wall doors.");
+
+                        int[] landingIndices = Enumerable.Range(0, layout.Count)
+                            .Where(index =>
+                                layout[index].ParentIndex == pieceIndex
+                                && layout[index].ModuleId
+                                    == "nether_fortress__fortress_vertical_landing")
+                            .ToArray();
+                        Assert.That(
+                            landingIndices,
+                            Has.Length.EqualTo(1),
+                            $"Dense layout ({regionX}, {regionZ}) shaft "
+                                + $"'{shaft.ModuleId}' needs one landing.");
+                        JigsawStructureGenerator.Piece landing =
+                            layout[landingIndices[0]];
+                        JigsawStructureGenerator.Piece sourceRoom =
+                            layout[shaft.ParentIndex];
+                        Assert.That(
+                            Math.Abs(
+                                landing.Bounds.MinY
+                                    - sourceRoom.Bounds.MinY),
+                            Is.EqualTo(10));
+
+                        foreach (JigsawStructureGenerator.Opening opening
+                            in shaft.Openings)
+                        {
+                            GetGeneratedSample(
+                                feature.Settings,
+                                seed,
+                                opening.Boundary,
+                                generatedColumns,
+                                selection,
+                                out float doorDensity,
+                                out VoxelTypeId doorType);
+                            Assert.That(
+                                doorDensity < 0f || doorType.IsAir,
+                                Is.True,
+                                $"Dense elevator door {opening.Boundary} is sealed.");
+                        }
+
+                        Vector3Int[] solidSamples =
+                        {
+                            new Vector3Int(
+                                sourceRoom.Origin.x,
+                                sourceRoom.Bounds.MinY,
+                                sourceRoom.Origin.z),
+                            new Vector3Int(
+                                shaft.Origin.x,
+                                shaft.Bounds.MinY,
+                                shaft.Origin.z),
+                            new Vector3Int(
+                                shaft.Origin.x,
+                                shaft.Bounds.MaxY,
+                                shaft.Origin.z),
+                            new Vector3Int(
+                                landing.Origin.x,
+                                landing.Bounds.MinY,
+                                landing.Origin.z),
+                        };
+                        for (int sampleIndex = 0;
+                            sampleIndex < solidSamples.Length;
+                            sampleIndex++)
+                        {
+                            GetGeneratedSample(
+                                feature.Settings,
+                                seed,
+                                solidSamples[sampleIndex],
+                                generatedColumns,
+                                selection,
+                                out float density,
+                                out VoxelTypeId type);
+                            Assert.That(
+                                density >= 0f && !type.IsAir,
+                                Is.True,
+                                $"Dense elevator solid surface "
+                                    + $"{solidSamples[sampleIndex]} is missing.");
+                        }
+                    }
+                }
+            }
+
+            Assert.That(
+                testedCorridors,
+                Is.GreaterThan(0),
+                "The production DenseJigsaw seed produced no elevator corridors.");
+        }
+
+        [Test]
+        public void UnconnectedVerticalOutput_DoesNotOpenSourceRoom()
+        {
+            JigsawStructureFeatureSettings settings =
+                BuildSpiralShaftFixture(maximumPieces: 2);
+            const int seed = 73193;
+            Assert.That(
+                JigsawStructureGenerator.TryGetPlacement(
+                    settings,
+                    seed,
+                    0,
+                    0,
+                    out JigsawStructureGenerator.Placement placement),
+                Is.True);
+            IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                JigsawStructureGenerator.BuildLayout(settings, seed, placement);
+
+            Assert.That(layout.Count, Is.EqualTo(1));
+            JigsawStructureGenerator.Piece room = layout.Single();
+            Assert.That(room.ModuleId, Is.EqualTo("spiral_lower"));
+            Assert.That(
+                room.Openings.Any(opening =>
+                    opening.Direction
+                        == (int)JigsawConnectorDefinition.Face.Up),
+                Is.False,
+                "A shaft without budget for its far-side room must be rejected "
+                    + "before the source opening is committed.");
+
+            Vector3Int ceilingCentre = room.Origin;
+            ceilingCentre.y = room.Bounds.MaxY;
+            Assert.That(
+                GenerateAndGetType(settings, seed, ceilingCentre).IsAir,
+                Is.False,
+                "A rejected vertical branch must retain the source-room ceiling.");
+        }
+
+        [Test]
+        public void VerticalSocket_StacksPiecesAndCarvesBothSurfaces()
+        {
+            JigsawStructureFeatureSettings settings =
+                BuildVerticalSocketFixture();
+            const int seed = 73191;
+            Assert.That(
+                JigsawStructureGenerator.TryGetPlacement(
+                    settings,
+                    seed,
+                    0,
+                    0,
+                    out JigsawStructureGenerator.Placement placement),
+                Is.True);
+            IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                JigsawStructureGenerator.BuildLayout(settings, seed, placement);
+
+            Assert.That(layout.Count, Is.EqualTo(2));
+            JigsawStructureGenerator.Piece lower = layout[0];
+            JigsawStructureGenerator.Piece upper = layout[1];
+            Assert.That(upper.ParentIndex, Is.EqualTo(0));
+            Assert.That(
+                upper.Direction,
+                Is.EqualTo(lower.Direction),
+                "Vertical children must preserve the parent's yaw so authored "
+                    + "ramp lanes meet without crossing inside the aperture.");
+            Assert.That(
+                upper.Bounds.MinY,
+                Is.EqualTo(lower.Bounds.MaxY + 1));
+
+            JigsawStructureGenerator.Opening ceiling =
+                lower.Openings.Single(opening =>
+                    opening.Direction
+                        == (int)JigsawConnectorDefinition.Face.Up);
+            JigsawStructureGenerator.Opening floor =
+                upper.Openings.Single(opening =>
+                    opening.Direction
+                        == (int)JigsawConnectorDefinition.Face.Down);
+            Assert.That(ceiling.Boundary.y, Is.EqualTo(lower.Bounds.MaxY));
+            Assert.That(floor.Boundary.y, Is.EqualTo(upper.Bounds.MinY));
+            Assert.That(
+                GenerateAndGetType(settings, seed, ceiling.Boundary),
+                Is.EqualTo(VoxelTypeId.Air));
+            Assert.That(
+                GenerateAndGetType(settings, seed, floor.Boundary),
+                Is.EqualTo(VoxelTypeId.Air));
+
+            GetAxes(lower.Direction, out _, out Vector3Int right);
+            Assert.That(
+                GenerateAndGetType(
+                    settings,
+                    seed,
+                    ceiling.Boundary + right * 2),
+                Is.EqualTo(StructureBrick),
+                "Only the authored 3-wide ceiling aperture should be carved.");
+        }
+
+        [Test]
+        public void DownwardVerticalSocket_StacksChildBelowParent()
+        {
+            JigsawStructureFeatureSettings settings =
+                BuildVerticalSocketFixture(downward: true);
+            const int seed = 73192;
+            Assert.That(
+                JigsawStructureGenerator.TryGetPlacement(
+                    settings,
+                    seed,
+                    0,
+                    0,
+                    out JigsawStructureGenerator.Placement placement),
+                Is.True);
+            IReadOnlyList<JigsawStructureGenerator.Piece> layout =
+                JigsawStructureGenerator.BuildLayout(settings, seed, placement);
+
+            Assert.That(layout.Count, Is.EqualTo(2));
+            JigsawStructureGenerator.Piece parent = layout[0];
+            JigsawStructureGenerator.Piece child = layout[1];
+            Assert.That(
+                child.Bounds.MaxY,
+                Is.EqualTo(parent.Bounds.MinY - 1));
+            Assert.That(
+                parent.Openings.Any(opening =>
+                    opening.Direction
+                        == (int)JigsawConnectorDefinition.Face.Down),
+                Is.True);
+            Assert.That(
+                child.Openings.Any(opening =>
+                    opening.Direction
+                        == (int)JigsawConnectorDefinition.Face.Up),
+                Is.True);
         }
 
         [Test]
@@ -940,6 +1545,290 @@ namespace Supernova.Tests
         }
 
         private const int ProcessorSeed = 20260804;
+
+        private static JigsawStructureFeatureSettings BuildSpiralShaftFixture(
+            int maximumPieces = 3)
+        {
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                var lower = new JigsawPieceDefinition();
+                lower.ConfigureBox(
+                    "spiral_lower",
+                    "Spiral Lower",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.SpiralStairs,
+                    true,
+                    0,
+                    0,
+                    0,
+                    21,
+                    21,
+                    21,
+                    21,
+                    9,
+                    9);
+                var lowerOutput = new JigsawConnectorDefinition();
+                lowerOutput.Configure(
+                    "to_shaft",
+                    JigsawConnectorDefinition.Role.Output,
+                    JigsawConnectorDefinition.Face.Up,
+                    "shaft_up",
+                    "shaft_down",
+                    "shaft",
+                    -1,
+                    0,
+                    0,
+                    7,
+                    7);
+                lower.AddConnector(lowerOutput);
+
+                var shaft = new JigsawPieceDefinition();
+                shaft.ConfigureBox(
+                    "spiral_shaft",
+                    "Spiral Shaft",
+                    JigsawPieceDefinition.Shape.VerticalShaft,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.SpiralStairs,
+                    false,
+                    1,
+                    1,
+                    1,
+                    21,
+                    21,
+                    21,
+                    21,
+                    12,
+                    12,
+                    "shaft",
+                    "landing");
+                var shaftInput = new JigsawConnectorDefinition();
+                shaftInput.Configure(
+                    "from_lower",
+                    JigsawConnectorDefinition.Role.Input,
+                    JigsawConnectorDefinition.Face.Down,
+                    "shaft_down",
+                    "shaft_up",
+                    "shaft",
+                    -1,
+                    0,
+                    0,
+                    7,
+                    7);
+                shaft.AddConnector(shaftInput);
+                var shaftOutput = new JigsawConnectorDefinition();
+                shaftOutput.Configure(
+                    "to_upper",
+                    JigsawConnectorDefinition.Role.Output,
+                    JigsawConnectorDefinition.Face.Up,
+                    "landing_up",
+                    "landing_down",
+                    "landing",
+                    -1,
+                    0,
+                    0,
+                    7,
+                    7);
+                shaft.AddConnector(shaftOutput);
+
+                var upper = new JigsawPieceDefinition();
+                upper.ConfigureBox(
+                    "spiral_upper",
+                    "Spiral Upper",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    false,
+                    1,
+                    2,
+                    2,
+                    21,
+                    21,
+                    21,
+                    21,
+                    7,
+                    7,
+                    "landing",
+                    "landing");
+                var upperInput = new JigsawConnectorDefinition();
+                upperInput.Configure(
+                    "from_shaft",
+                    JigsawConnectorDefinition.Role.Input,
+                    JigsawConnectorDefinition.Face.Down,
+                    "landing_down",
+                    "landing_up",
+                    "landing",
+                    -1,
+                    0,
+                    0,
+                    7,
+                    7);
+                upper.AddConnector(upperInput);
+                var upperFoundation = new JigsawProcessorDefinition();
+                upperFoundation.Configure(
+                    "upper_foundation",
+                    JigsawProcessorDefinition.Kind.FoundationFill,
+                    2,
+                    1f,
+                    JigsawProcessorDefinition.Palette.Primary,
+                    1,
+                    false);
+                upper.AddProcessor(upperFoundation);
+
+                definition.Configure(
+                    true,
+                    "spiral_shaft_fixture",
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.StructureBrickVoxel),
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.FortressBrickVoxel),
+                    73193,
+                    4,
+                    1f,
+                    80,
+                    80,
+                    maximumPieces,
+                    2,
+                    16,
+                    string.Empty,
+                    new[] { lower, shaft, upper });
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+                return settings;
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
+        private static JigsawStructureFeatureSettings BuildVerticalSocketFixture(
+            bool downward = false)
+        {
+            var definition = ScriptableObject.CreateInstance<
+                JigsawStructureFeatureDefinition>();
+            try
+            {
+                var lower = new JigsawPieceDefinition();
+                lower.ConfigureBox(
+                    "vertical_lower",
+                    "Vertical Lower",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    true,
+                    0,
+                    0,
+                    0,
+                    9,
+                    9,
+                    9,
+                    9,
+                    7,
+                    7);
+                JigsawConnectorDefinition.Face outputFace = downward
+                    ? JigsawConnectorDefinition.Face.Down
+                    : JigsawConnectorDefinition.Face.Up;
+                JigsawConnectorDefinition.Face inputFace = downward
+                    ? JigsawConnectorDefinition.Face.Up
+                    : JigsawConnectorDefinition.Face.Down;
+                string outputName = downward
+                    ? "vertical_down"
+                    : "vertical_up";
+                string inputName = downward
+                    ? "vertical_up"
+                    : "vertical_down";
+                var output = new JigsawConnectorDefinition();
+                output.Configure(
+                    "vertical_output",
+                    JigsawConnectorDefinition.Role.Output,
+                    outputFace,
+                    outputName,
+                    inputName,
+                    "vertical",
+                    -1,
+                    0,
+                    0,
+                    3,
+                    3);
+                lower.AddConnector(output);
+
+                var upper = new JigsawPieceDefinition();
+                upper.ConfigureBox(
+                    "vertical_upper",
+                    "Vertical Upper",
+                    JigsawPieceDefinition.Shape.Room,
+                    JigsawPieceDefinition.BuildStyle.Masonry,
+                    JigsawPieceDefinition.ConnectorPattern.None,
+                    JigsawPieceDefinition.Decoration.None,
+                    false,
+                    1,
+                    1,
+                    1,
+                    7,
+                    7,
+                    7,
+                    7,
+                    5,
+                    5,
+                    "vertical",
+                    "vertical");
+                var input = new JigsawConnectorDefinition();
+                input.Configure(
+                    "vertical_input",
+                    JigsawConnectorDefinition.Role.Input,
+                    inputFace,
+                    inputName,
+                    outputName,
+                    "vertical",
+                    -1,
+                    0,
+                    0,
+                    3,
+                    3);
+                upper.AddConnector(input);
+
+                VoxelTypeDefinition brick =
+                    AssetDatabase.LoadAssetAtPath<VoxelTypeDefinition>(
+                        ProjectAssetPaths.Config.StructureBrickVoxel);
+                definition.Configure(
+                    true,
+                    "vertical_socket_fixture",
+                    brick,
+                    brick,
+                    73191,
+                    4,
+                    1f,
+                    96,
+                    96,
+                    2,
+                    1,
+                    16,
+                    string.Empty,
+                    new[] { lower, upper });
+                Assert.That(
+                    definition.TryCreateSettings(
+                        out JigsawStructureFeatureSettings settings,
+                        out string error),
+                    Is.True,
+                    error);
+                return settings;
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
 
         /// <summary>
         /// Builds a single-piece structure whose only job is to exercise one
@@ -1745,7 +2634,7 @@ namespace Supernova.Tests
         public void SpawnMarkers_HonourZeroChanceAndInstanceCount()
         {
             JigsawStructureFeatureSettings never = BuildMarkerFixture(
-                StructureSpawnMarkerDefinition.Kind.Monster,
+                StructureSpawnMarkerDefinition.Kind.Treasure,
                 new Vector3Int(0, 1, 0),
                 chance: 0f,
                 count: 3,
@@ -1764,7 +2653,7 @@ namespace Supernova.Tests
             Assert.That(neverRequests, Is.Empty);
 
             JigsawStructureFeatureSettings always = BuildMarkerFixture(
-                StructureSpawnMarkerDefinition.Kind.Monster,
+                StructureSpawnMarkerDefinition.Kind.Treasure,
                 new Vector3Int(0, 1, 0),
                 chance: 1f,
                 count: 3,
@@ -1787,7 +2676,7 @@ namespace Supernova.Tests
                 alwaysRequests,
                 Has.All.Matches<StructureSpawnRequest>(
                     item => item.Kind
-                        == StructureSpawnMarkerDefinition.Kind.Monster));
+                        == StructureSpawnMarkerDefinition.Kind.Treasure));
         }
 
         [Test]
@@ -1912,14 +2801,6 @@ namespace Supernova.Tests
                 AssetDatabase.GUIDToAssetPath(guids[0]));
         }
 
-        private static MonsterSpawnDefinition LoadAnyMonster()
-        {
-            string[] guids = AssetDatabase.FindAssets("t:MonsterSpawnDefinition");
-            Assert.That(guids, Is.Not.Empty, "project has no MonsterSpawnDefinition");
-            return AssetDatabase.LoadAssetAtPath<MonsterSpawnDefinition>(
-                AssetDatabase.GUIDToAssetPath(guids[0]));
-        }
-
         /// <summary>
         /// Builds a one-room structure carrying a single authored marker.
         /// </summary>
@@ -1975,14 +2856,7 @@ namespace Supernova.Tests
                         2f,
                         false,
                         0);
-                    if (kind == StructureSpawnMarkerDefinition.Kind.Treasure)
-                    {
-                        marker.ConfigureTreasure(LoadAnyTreasure());
-                    }
-                    else
-                    {
-                        marker.ConfigureMonster(LoadAnyMonster());
-                    }
+                    marker.ConfigureTreasure(LoadAnyTreasure());
                     start.AddSpawnMarker(marker);
                 }
 
@@ -2109,6 +2983,45 @@ namespace Supernova.Tests
             return settings;
         }
 
+        private static bool HasConnectedVerticalNeighbour(
+            IReadOnlyList<JigsawStructureGenerator.Piece> layout,
+            int pieceIndex,
+            int direction)
+        {
+            JigsawStructureGenerator.Piece piece = layout[pieceIndex];
+            for (int otherIndex = 0;
+                otherIndex < layout.Count;
+                otherIndex++)
+            {
+                if (otherIndex == pieceIndex)
+                {
+                    continue;
+                }
+
+                JigsawStructureGenerator.Piece other = layout[otherIndex];
+                bool graphEdge = other.ParentIndex == pieceIndex
+                    || piece.ParentIndex == otherIndex;
+                if (!graphEdge)
+                {
+                    continue;
+                }
+
+                if (direction
+                        == (int)JigsawConnectorDefinition.Face.Up
+                    && other.Bounds.MinY == piece.Bounds.MaxY + 1)
+                {
+                    return true;
+                }
+                if (direction
+                        == (int)JigsawConnectorDefinition.Face.Down
+                    && other.Bounds.MaxY + 1 == piece.Bounds.MinY)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private static void GetAxes(
             int direction,
             out Vector3Int forward,
@@ -2170,6 +3083,454 @@ namespace Supernova.Tests
                 1f,
                 -1f);
             return GetWorldType(types, column, world);
+        }
+
+        private readonly struct RampPathSample
+        {
+            public RampPathSample(int along, int lateral, double expectedY)
+            {
+                Along = along;
+                Lateral = lateral;
+                ExpectedY = expectedY;
+            }
+
+            public int Along { get; }
+            public int Lateral { get; }
+            public double ExpectedY { get; }
+        }
+
+        private sealed class GeneratedColumnSamples
+        {
+            public GeneratedColumnSamples(
+                float[] densities,
+                VoxelTypeId[] types)
+            {
+                Densities = densities;
+                Types = types;
+            }
+
+            public float[] Densities { get; }
+            public VoxelTypeId[] Types { get; }
+        }
+
+        private static bool SpiralRampFitsCharacterController(
+            JigsawStructureFeatureSettings settings,
+            int seed,
+            JigsawStructureGenerator.Piece shaft,
+            JigsawStructureGenerator.Piece upperRoom,
+            CharacterController controller,
+            float voxelSize,
+            out string error,
+            JigsawPlacementSelection placementSelection = null)
+        {
+            JigsawStructureGenerator.Opening upperOpening =
+                shaft.Openings.Single(opening =>
+                    opening.Direction
+                        == (int)JigsawConnectorDefinition.Face.Up);
+            int openingHalfSpan =
+                Mathf.Min(upperOpening.Width, upperOpening.Height) / 2;
+            int halfAlong =
+                (shaft.Bounds.MaxX - shaft.Bounds.MinX) / 2;
+            int halfLateral =
+                (shaft.Bounds.MaxZ - shaft.Bounds.MinZ) / 2;
+            int outerRadius = Mathf.Min(halfAlong, halfLateral) - 2;
+            if (openingHalfSpan < 3 || outerRadius < 8)
+            {
+                error = "The spiral shaft is smaller than the 7-wide aperture "
+                    + "and 21-wide shell required by the player.";
+                return false;
+            }
+
+            int lowerRingY = shaft.Bounds.MinY + 1;
+            int upperRingY = Mathf.Max(
+                lowerRingY,
+                shaft.Bounds.MaxY - 7);
+            int bridgeEnd = openingHalfSpan;
+            int lowerLane = -Mathf.Max(1, openingHalfSpan - 1);
+            int upperLane = Mathf.Max(1, openingHalfSpan - 1);
+            var path = new List<RampPathSample>();
+
+            double lowerSeamY = GetExpectedRingSurfaceY(
+                -outerRadius,
+                lowerLane,
+                lowerRingY,
+                upperRingY);
+            for (int along = bridgeEnd;
+                along >= -outerRadius;
+                along--)
+            {
+                double progress = (along + outerRadius)
+                    / (double)(bridgeEnd + outerRadius);
+                AddRampPathSample(
+                    path,
+                    along,
+                    lowerLane,
+                    lowerSeamY
+                        + (shaft.Bounds.MinY - lowerSeamY) * progress);
+            }
+
+            for (int lateral = lowerLane - 1;
+                lateral >= -outerRadius;
+                lateral--)
+            {
+                AddRingPathSample(
+                    path,
+                    -outerRadius,
+                    lateral,
+                    lowerRingY,
+                    upperRingY);
+            }
+            for (int along = -outerRadius + 1;
+                along <= outerRadius;
+                along++)
+            {
+                AddRingPathSample(
+                    path,
+                    along,
+                    -outerRadius,
+                    lowerRingY,
+                    upperRingY);
+            }
+            for (int lateral = -outerRadius + 1;
+                lateral <= outerRadius;
+                lateral++)
+            {
+                AddRingPathSample(
+                    path,
+                    outerRadius,
+                    lateral,
+                    lowerRingY,
+                    upperRingY);
+            }
+            for (int along = outerRadius - 1;
+                along >= -outerRadius;
+                along--)
+            {
+                AddRingPathSample(
+                    path,
+                    along,
+                    outerRadius,
+                    lowerRingY,
+                    upperRingY);
+            }
+            for (int lateral = outerRadius - 1;
+                lateral >= upperLane;
+                lateral--)
+            {
+                AddRingPathSample(
+                    path,
+                    -outerRadius,
+                    lateral,
+                    lowerRingY,
+                    upperRingY);
+            }
+
+            double upperSeamY = GetExpectedRingSurfaceY(
+                -outerRadius,
+                upperLane,
+                lowerRingY,
+                upperRingY);
+            for (int along = -outerRadius + 1;
+                along <= bridgeEnd;
+                along++)
+            {
+                double progress = (along + outerRadius)
+                    / (double)(bridgeEnd + outerRadius);
+                AddRampPathSample(
+                    path,
+                    along,
+                    upperLane,
+                    upperSeamY
+                        + (shaft.Bounds.MaxY + 1 - upperSeamY)
+                            * progress);
+            }
+
+            GetAxes(
+                shaft.Direction,
+                out Vector3Int forward,
+                out Vector3Int right);
+            var generatedColumns =
+                new Dictionary<Vector3Int, GeneratedColumnSamples>();
+            double previousSurface = double.NaN;
+            float clearanceInVoxels = controller.height / voxelSize;
+            double finalSurface = 0.0;
+            for (int sampleIndex = 0;
+                sampleIndex < path.Count;
+                sampleIndex++)
+            {
+                RampPathSample sample = path[sampleIndex];
+                Vector3Int world = shaft.Origin
+                    + forward * sample.Along
+                    + right * sample.Lateral;
+                if (!TryFindTopSurfaceNear(
+                        settings,
+                        seed,
+                        world.x,
+                        world.z,
+                        sample.ExpectedY,
+                        generatedColumns,
+                        placementSelection,
+                        out double surfaceY))
+                {
+                    error = $"No ramp surface near local "
+                        + $"({sample.Along}, {sample.Lateral}) "
+                        + $"at expected Y {sample.ExpectedY:F2}.";
+                    return false;
+                }
+
+                if (!double.IsNaN(previousSurface))
+                {
+                    double rise = Math.Abs(surfaceY - previousSurface);
+                    double slope = Math.Atan2(rise, 1.0)
+                        * Mathf.Rad2Deg;
+                    if (slope > controller.slopeLimit + 0.5f)
+                    {
+                        error = $"Ramp slope {slope:F1} degrees exceeds the "
+                            + $"player limit {controller.slopeLimit:F1} at "
+                            + $"local ({sample.Along}, {sample.Lateral}).";
+                        return false;
+                    }
+                }
+
+                int firstClearY = Mathf.FloorToInt((float)surfaceY) + 1;
+                int lastClearY = Mathf.CeilToInt(
+                    (float)(surfaceY + clearanceInVoxels));
+                for (int y = firstClearY; y <= lastClearY; y++)
+                {
+                    GetGeneratedSample(
+                        settings,
+                        seed,
+                        new Vector3Int(world.x, y, world.z),
+                        generatedColumns,
+                        placementSelection,
+                        out float density,
+                        out VoxelTypeId type);
+                    if (density >= 0f && !type.IsAir)
+                    {
+                        error = $"Player headroom is blocked at "
+                            + $"({world.x}, {y}, {world.z}); "
+                            + $"surface Y is {surfaceY:F2}.";
+                        return false;
+                    }
+                }
+
+                previousSurface = surfaceY;
+                finalSurface = surfaceY;
+            }
+
+            int openFloorSamples = 0;
+            for (int along = -openingHalfSpan;
+                along <= openingHalfSpan;
+                along++)
+            {
+                for (int lateral = -openingHalfSpan;
+                    lateral <= openingHalfSpan;
+                    lateral++)
+                {
+                    Vector3Int world = shaft.Origin
+                        + forward * along
+                        + right * lateral;
+                    world.y = upperRoom.Bounds.MinY;
+                    GetGeneratedSample(
+                        settings,
+                        seed,
+                        world,
+                        generatedColumns,
+                        placementSelection,
+                        out float density,
+                        out VoxelTypeId type);
+                    if (density < 0f || type.IsAir)
+                    {
+                        openFloorSamples++;
+                    }
+                }
+            }
+            int openingArea = upperOpening.Width * upperOpening.Height;
+            if (openFloorSamples < openingArea / 2)
+            {
+                error = $"The upper floor aperture is sealed: only "
+                    + $"{openFloorSamples}/{openingArea} samples remain open.";
+                return false;
+            }
+
+            Vector3Int adjacentFloor = shaft.Origin
+                + forward * (bridgeEnd + 1)
+                + right * upperLane;
+            if (!TryFindTopSurfaceNear(
+                    settings,
+                    seed,
+                    adjacentFloor.x,
+                    adjacentFloor.z,
+                    upperRoom.Bounds.MinY + 0.5,
+                    generatedColumns,
+                    placementSelection,
+                    out double roomFloorSurface))
+            {
+                error = "No walkable room floor was found beyond the upper ramp tongue.";
+                return false;
+            }
+            float finalStepHeight =
+                (float)Math.Abs(roomFloorSurface - finalSurface) * voxelSize;
+            if (finalStepHeight > controller.stepOffset + 0.01f)
+            {
+                error = $"The ramp-to-room transition is "
+                    + $"{finalStepHeight:F3}m, above the player step offset "
+                    + $"{controller.stepOffset:F3}m.";
+                return false;
+            }
+
+            error = string.Empty;
+            return true;
+        }
+
+        private static void AddRingPathSample(
+            List<RampPathSample> path,
+            int along,
+            int lateral,
+            int lowerY,
+            int upperY)
+        {
+            AddRampPathSample(
+                path,
+                along,
+                lateral,
+                GetExpectedRingSurfaceY(
+                    along,
+                    lateral,
+                    lowerY,
+                    upperY));
+        }
+
+        private static void AddRampPathSample(
+            List<RampPathSample> path,
+            int along,
+            int lateral,
+            double expectedY)
+        {
+            if (path.Count > 0
+                && path[path.Count - 1].Along == along
+                && path[path.Count - 1].Lateral == lateral)
+            {
+                return;
+            }
+            path.Add(new RampPathSample(along, lateral, expectedY));
+        }
+
+        private static double GetExpectedRingSurfaceY(
+            int along,
+            int lateral,
+            int lowerY,
+            int upperY)
+        {
+            double angle = Math.Atan2(lateral, along);
+            double progress = (angle + Math.PI) / (Math.PI * 2.0);
+            return lowerY + (upperY - lowerY) * progress;
+        }
+
+        private static bool TryFindTopSurfaceNear(
+            JigsawStructureFeatureSettings settings,
+            int seed,
+            int worldX,
+            int worldZ,
+            double expectedY,
+            Dictionary<Vector3Int, GeneratedColumnSamples> generatedColumns,
+            JigsawPlacementSelection placementSelection,
+            out double surfaceY)
+        {
+            surfaceY = 0.0;
+            double bestDistance = double.PositiveInfinity;
+            int minimumY = Mathf.Max(0, Mathf.FloorToInt((float)expectedY) - 2);
+            int maximumY = Mathf.Min(
+                VoxelColumnChunkData.Height - 2,
+                Mathf.CeilToInt((float)expectedY) + 2);
+            for (int y = minimumY; y <= maximumY; y++)
+            {
+                GetGeneratedSample(
+                    settings,
+                    seed,
+                    new Vector3Int(worldX, y, worldZ),
+                    generatedColumns,
+                    placementSelection,
+                    out float lowerDensity,
+                    out VoxelTypeId lowerType);
+                GetGeneratedSample(
+                    settings,
+                    seed,
+                    new Vector3Int(worldX, y + 1, worldZ),
+                    generatedColumns,
+                    placementSelection,
+                    out float upperDensity,
+                    out VoxelTypeId upperType);
+                bool lowerSolid = lowerDensity >= 0f && !lowerType.IsAir;
+                bool upperSolid = upperDensity >= 0f && !upperType.IsAir;
+                if (!lowerSolid || upperSolid)
+                {
+                    continue;
+                }
+
+                double denominator = lowerDensity - upperDensity;
+                double candidate = Math.Abs(denominator) < 0.000001
+                    ? y + 0.5
+                    : y + lowerDensity / denominator;
+                double distance = Math.Abs(candidate - expectedY);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    surfaceY = candidate;
+                }
+            }
+            return !double.IsPositiveInfinity(bestDistance)
+                && bestDistance <= 0.75;
+        }
+
+        private static void GetGeneratedSample(
+            JigsawStructureFeatureSettings settings,
+            int seed,
+            Vector3Int world,
+            Dictionary<Vector3Int, GeneratedColumnSamples> generatedColumns,
+            JigsawPlacementSelection placementSelection,
+            out float density,
+            out VoxelTypeId type)
+        {
+            Vector3Int column = InfiniteVoxelWorld.WorldToChunk(
+                world.x,
+                world.y,
+                world.z);
+            if (!generatedColumns.TryGetValue(
+                    column,
+                    out GeneratedColumnSamples samples))
+            {
+                float[] densities = Enumerable.Repeat(
+                    1f,
+                    VoxelColumnChunkData.VoxelCount).ToArray();
+                VoxelTypeId[] types = Enumerable.Repeat(
+                    Stone,
+                    VoxelColumnChunkData.VoxelCount).ToArray();
+                JigsawStructureGenerator.GenerateColumn(
+                    column,
+                    densities,
+                    types,
+                    seed,
+                    new[] { settings },
+                    1f,
+                    -1f,
+                    default,
+                    placementSelection);
+                samples = new GeneratedColumnSamples(densities, types);
+                generatedColumns.Add(column, samples);
+            }
+
+            Vector3Int local = InfiniteVoxelWorld.WorldToLocal(
+                world.x,
+                world.y,
+                world.z,
+                column);
+            int index = VoxelColumnChunkData.ToIndex(
+                local.x,
+                local.y,
+                local.z);
+            density = samples.Densities[index];
+            type = samples.Types[index];
         }
 
         /// <summary>

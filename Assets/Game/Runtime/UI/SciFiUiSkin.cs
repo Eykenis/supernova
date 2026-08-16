@@ -21,8 +21,6 @@ namespace Supernova.UI
         private const string DecorationName = UiHierarchyPaths.Decoration.Frame;
         private const string PatternName = UiHierarchyPaths.Decoration.Telemetry;
 
-        private static readonly Color Backdrop =
-            new Color32(3, 10, 15, 255);
         private static readonly Color Surface =
             new Color32(6, 20, 29, 244);
         private static readonly Color SurfaceRaised =
@@ -55,36 +53,70 @@ namespace Supernova.UI
             && GetLoadingDial() != null
             && GetTelemetryBackdrop() != null;
 
-        public static void ApplyMainMenu(Transform root)
+        /// <summary>
+        /// Creates the initial main-menu look when the editor prefab builder is
+        /// explicitly run. Runtime presentation must use the colors serialized on
+        /// MainMenuCanvas and must not call this method.
+        /// </summary>
+        public static void ApplyMainMenuAuthoringDefaults(Transform root)
         {
             if (root == null)
                 return;
+
+            UiDesignTokens tokens = GetDesignTokens();
+            Color menuPrimary = tokens != null
+                ? tokens.OverlayPrimary
+                : Color.white;
+            Color menuSecondary = tokens != null
+                ? tokens.OverlaySecondary
+                : new Color(1f, 1f, 1f, 0.58f);
+            Color menuDivider = tokens != null
+                ? tokens.OverlayDivider
+                : new Color(1f, 1f, 1f, 0.24f);
+            Color menuSurface = tokens != null
+                ? tokens.HudSurface
+                : new Color(0.035f, 0.045f, 0.055f, 0.84f);
 
             RectTransform backdrop = FindRect(root, UiHierarchyPaths.MainMenu.Backdrop);
             if (backdrop != null)
             {
                 Image background = backdrop.GetComponent<Image>();
                 if (background != null)
-                    background.color = Backdrop;
-                EnsureTelemetry(backdrop, new Color(0.25f, 0.9f, 1f, 0.009f));
-                SetImageColor(backdrop, "Ambient Left", new Color(0.1f, 0.6f, 0.66f, 0.028f));
-                SetImageColor(backdrop, "Ambient Right", new Color(0.8f, 0.28f, 0.08f, 0.022f));
+                {
+                    background.sprite = null;
+                }
+                DisableDecoration(backdrop, PatternName);
+                SetImageColor(
+                    backdrop,
+                    "Ambient Left",
+                    new Color(0f, 0f, 0f, 0.04f));
+                SetImageColor(
+                    backdrop,
+                    "Ambient Right",
+                    new Color(0f, 0f, 0f, 0.32f));
             }
 
             RectTransform hero = FindRect(root, UiHierarchyPaths.MainMenu.Hero);
             if (hero != null)
-                EnsureFrame(hero, GetThinFrame(), new Color(Accent.r, Accent.g, Accent.b, 0.16f),
-                    new Vector2(-12f, -8f), new Vector2(12f, 8f));
+                DisableDecoration(hero, DecorationName);
 
             RectTransform card = FindRect(root, UiHierarchyPaths.MainMenu.ExpeditionControl);
             if (card != null)
-                StylePanel(card, GetPrimaryFrame(), Surface,
-                    new Color(Accent.r, Accent.g, Accent.b, 0.28f));
+                StylePanel(card, menuSurface);
 
-            StyleButton(root, UiHierarchyPaths.MainMenu.BeginDescent, true);
+            StyleButton(root, UiHierarchyPaths.MainMenu.BeginDescent, false);
+            StyleButton(root, UiHierarchyPaths.MainMenu.Tutorial, false);
             StyleButton(root, UiHierarchyPaths.MainMenu.SystemSettings, false);
             StyleButton(root, UiHierarchyPaths.MainMenu.LeaveExpedition, false);
             StyleButton(root, UiHierarchyPaths.MainMenu.Return, false);
+            SetImageColor(
+                root,
+                UiHierarchyPaths.MainMenu.HeaderDivider,
+                menuDivider);
+            SetImageColor(
+                root,
+                UiHierarchyPaths.MainMenu.FooterDivider,
+                menuDivider);
 
             RectTransform toggleBackground = FindRect(
                 root,
@@ -93,13 +125,19 @@ namespace Supernova.UI
             {
                 Image image = toggleBackground.GetComponent<Image>();
                 if (image != null)
+                {
+                    image.sprite = null;
                     image.color = Color.clear;
-                Image frame = EnsureFrame(toggleBackground, GetSlotFrame(), AccentMuted,
-                    new Vector2(-2f, -2f), new Vector2(2f, 2f));
+                }
+                DisableDecoration(toggleBackground, DecorationName);
                 Toggle toggle = toggleBackground.GetComponentInParent<Toggle>();
-                if (toggle != null && frame != null)
-                    toggle.targetGraphic = frame;
+                if (toggle != null && image != null)
+                    toggle.targetGraphic = image;
             }
+            SetImageColor(
+                root,
+                UiHierarchyPaths.MainMenu.FullscreenCheckmark,
+                menuPrimary);
 
             RectTransform sliderBackground = FindRect(
                 root,
@@ -108,10 +146,39 @@ namespace Supernova.UI
             {
                 Image image = sliderBackground.GetComponent<Image>();
                 if (image != null)
+                {
+                    image.sprite = null;
                     image.color = Color.clear;
+                }
+                DisableDecoration(sliderBackground, DecorationName);
             }
+            SetImageColor(
+                root,
+                UiHierarchyPaths.MainMenu.MasterVolumeFill,
+                menuPrimary);
+            SetImageColor(
+                root,
+                UiHierarchyPaths.MainMenu.MasterVolumeHandle,
+                menuPrimary);
 
             ApplyTypography(root);
+            TMP_Text[] labels = root.GetComponentsInChildren<TMP_Text>(true);
+            for (int i = 0; i < labels.Length; i++)
+            {
+                TMP_Text label = labels[i];
+                if (label == null || label.color.a < 0.01f)
+                    continue;
+                Color source = label.color;
+                float luminance = source.r * 0.2126f
+                    + source.g * 0.7152f
+                    + source.b * 0.0722f;
+                float gray = Mathf.Clamp(luminance, menuSecondary.a, 1f);
+                label.color = new Color(
+                    gray,
+                    gray,
+                    gray,
+                    source.a);
+            }
         }
 
         public static void ApplyGameHud(Transform root)
@@ -308,7 +375,14 @@ namespace Supernova.UI
 
             Image image = rect.GetComponent<Image>();
             if (image != null)
-                image.color = Color.clear;
+            {
+                image.sprite = null;
+                image.enabled = false;
+            }
+
+            AngledPanelGraphic angledSurface = EnsureMenuAngledSurface(
+                rect,
+                primary);
 
             Button button = rect.GetComponent<Button>();
             if (button != null)
@@ -316,41 +390,111 @@ namespace Supernova.UI
                 ColorBlock colors = button.colors;
                 colors.normalColor = Color.white;
                 colors.highlightedColor = primary
-                    ? new Color(1.16f, 1.16f, 1.16f, 1f)
-                    : new Color(1.1f, 1.16f, 1.18f, 1f);
+                    ? new Color(0.82f, 0.82f, 0.82f, 1f)
+                    : new Color(0.28f, 0.3f, 0.34f, 1f);
                 colors.selectedColor = colors.highlightedColor;
-                colors.pressedColor = new Color(0.72f, 0.84f, 0.88f, 1f);
-                colors.disabledColor = new Color(0.38f, 0.46f, 0.48f, 0.6f);
+                colors.pressedColor = new Color(0.62f, 0.62f, 0.62f, 1f);
+                colors.disabledColor = new Color(0.34f, 0.34f, 0.34f, 0.6f);
                 colors.fadeDuration = 0.12f;
                 button.colors = colors;
+                if (angledSurface != null)
+                    button.targetGraphic = angledSurface;
             }
 
-            Color frameColor = primary
-                ? new Color(Accent.r, Accent.g, Accent.b, 0.58f)
-                : new Color(AccentMuted.r, AccentMuted.g, AccentMuted.b, 0.42f);
-            Image frame = EnsureFrame(rect, GetThinFrame(), frameColor,
-                new Vector2(-3f, -3f), new Vector2(3f, 3f));
-            if (button != null && frame != null)
-                button.targetGraphic = frame;
-            SetTextColor(rect, UiHierarchyPaths.Pause.Label, primary ? TextPrimary : TextSecondary);
+            DisableDecoration(rect, DecorationName);
+            UiDesignTokens tokens = GetDesignTokens();
+            SetTextColor(
+                rect,
+                UiHierarchyPaths.Pause.Label,
+                primary
+                    ? tokens != null
+                        ? tokens.OverlayInverse
+                        : new Color(0.018f, 0.02f, 0.025f, 1f)
+                    : tokens != null
+                        ? tokens.OverlayPrimary
+                        : Color.white);
+        }
+
+        private static AngledPanelGraphic EnsureMenuAngledSurface(
+            RectTransform parent,
+            bool primary)
+        {
+            if (parent == null)
+                return null;
+
+            Transform existing = parent.Find(
+                UiHierarchyPaths.MainMenu.AngledSurface);
+            RectTransform rect = existing as RectTransform;
+            AngledPanelGraphic graphic = existing != null
+                ? existing.GetComponent<AngledPanelGraphic>()
+                : null;
+            if (rect == null || graphic == null)
+            {
+                if (existing != null)
+                    existing.gameObject.SetActive(false);
+                GameObject surface = new GameObject(
+                    UiHierarchyPaths.MainMenu.AngledSurface,
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(AngledPanelGraphic));
+                rect = surface.GetComponent<RectTransform>();
+                rect.SetParent(parent, false);
+                graphic = surface.GetComponent<AngledPanelGraphic>();
+            }
+
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            rect.SetAsFirstSibling();
+
+            UiDesignTokens tokens = GetDesignTokens();
+            float slant = tokens != null
+                ? tokens.HudElementSlant * 1.8f
+                : 16f;
+            float depth = tokens != null
+                ? tokens.HudExtrusionDepth
+                : 5f;
+            Color front = primary
+                ? tokens != null
+                    ? tokens.OverlayPrimary
+                    : Color.white
+                : tokens != null
+                    ? tokens.HudSurface
+                    : new Color(0.035f, 0.045f, 0.055f, 0.84f);
+            Color back = tokens != null
+                ? tokens.HudShadow
+                : new Color(0f, 0f, 0f, 0.72f);
+            Color highlight = tokens != null
+                ? tokens.HudMuted
+                : new Color(1f, 1f, 1f, 0.2f);
+            bool reverse = tokens == null || tokens.HudHotbarReverseSlant;
+            graphic.Configure(
+                slant,
+                depth,
+                front,
+                back,
+                highlight,
+                reverse);
+            graphic.raycastTarget = true;
+            return graphic;
         }
 
         private static void StylePanel(
             RectTransform rect,
-            Sprite frame,
-            Color fillColor,
-            Color frameColor)
+            Color fillColor)
         {
             Image image = rect.GetComponent<Image>();
             if (image != null)
-                image.color = Color.clear;
+            {
+                image.sprite = null;
+                image.color = fillColor;
+            }
 
             Outline outline = rect.GetComponent<Outline>();
             if (outline != null)
                 outline.effectColor = Color.clear;
-
-            EnsureFrame(rect, frame, frameColor,
-                new Vector2(-6f, -6f), new Vector2(6f, 6f));
+            DisableDecoration(rect, DecorationName);
         }
 
         private static Image EnsureFrame(

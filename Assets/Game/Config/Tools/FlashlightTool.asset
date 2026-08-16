@@ -14,6 +14,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 3
   primaryAction: 3
+  primaryActionSound: {fileID: 0}
+  throwSound: {fileID: 11400000, guid: d4f4c8e6b02582d46a3829384a89b9df, type: 2}
+  miningHitSound: {fileID: 0}
+  monsterHitSound: {fileID: 0}
+  thrownTerrainHitSound: {fileID: 0}
+  magnetHoldAnimation: {fileID: 0}
+  magnetHoldLoopStartNormalized: 0.7
+  magnetHoldLoopEndNormalized: 1
+  magnetHoldLoopBlendNormalized: 0.45
+  magnetHoldLoopSpeedMultiplier: 0.3333333
   animationTriggerMode: 0
   primaryActionAnimation: {fileID: 7400000, guid: bf09cb92192700342b5f07ada8d665a5,
     type: 2}
@@ -21,8 +31,8 @@ MonoBehaviour:
     type: 3}
   heldModelMountStrategy: 0
   allowMovementWhileUsing: 1
-  actionTriggerDelay: 1
-  actionCyclePeriod: 0.35
+  actionTriggerDelay: 0.67
+  actionCyclePeriod: 0.2625
   actionIsPeriodic: 0
   projectilePrefab: {fileID: 7762888090113509500, guid: 31e6be5c396b6fc4580a7706cc1ea32b,
     type: 3}
@@ -30,6 +40,27 @@ MonoBehaviour:
   upwardThrowSpeed: 1.6
   throwSpinSpeed: 7
   throwForwardOffset: 0.8
+  bombProjectilePrefab: {fileID: 0}
+  bombEntityExplosionImpulse: 240
+  bombExplosionEffectPrefab: {fileID: 0}
+  bombExplosionEffectLifetime: 3
+  thrownPickaxePrefab: {fileID: 0}
+  pickaxeThrowSpeed: 22
+  pickaxeSpinRevolutions: 2.4
+  pickaxePickupDistance: 1.6
+  pickaxeMagnetPullAcceleration: 34
+  pickaxeMagnetMaximumPullSpeed: 16
+  pickaxeMagnetRange: 60
+  pickaxeMagnetAimAngle: 20
+  ropeReelInSpeed: 0
+  ropeManualReelSpeed: 4
+  ropeMinimumLength: 2.5
+  ropeYankStrength: 0.35
+  ropeMaximumYankSpeed: 7
+  ropeSwingAcceleration: 3
+  ropeSwingInputResponse: 5
+  ropeMaximumSpeed: 34
+  ropeReleaseMomentum: 1
   firearmProjectilePrefab: {fileID: 0}
   projectileSpeed: 180
   initialAmmunition: 120

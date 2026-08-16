@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Dirt
   m_EditorClassIdentifier: 
   type: 7
-  displayName: Packed Dirt
+  displayName: 泥土
   group: 1
   durability: 1
   material: {fileID: 2100000, guid: ae4df44b10204d247898d1bacec9b594, type: 2}

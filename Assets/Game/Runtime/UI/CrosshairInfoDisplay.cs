@@ -49,6 +49,66 @@ namespace Supernova.UI
         private const float AlphaLerpRate = 12f;
         private const float TerrainResolveInterval = 2f;
 
+        /// <summary>
+        /// Durability at or above this value reads as unbreakable; the crosshair
+        /// shows only the bare "无法摧毁" state instead of a "硬度：" tier prefix.
+        /// </summary>
+        public const float IndestructibleDurability = 1000f;
+
+        /// <summary>
+        /// Maps a voxel durability to its on-screen crosshair tier line. Values
+        /// below <see cref="IndestructibleDurability"/> render "硬度：{tier}",
+        /// while 1000 and above render the bare "无法摧毁" state.
+        /// </summary>
+        public static string FormatDurabilityLabel(float durability)
+        {
+            if (durability >= IndestructibleDurability)
+            {
+                return "无法摧毁";
+            }
+
+            string tier = durability >= 100f ? "极高"
+                : durability >= 60f ? "很高"
+                : durability >= 35f ? "高"
+                : durability >= 15f ? "中"
+                : durability >= 5f ? "低"
+                : "很低";
+
+            return "硬度：" + tier;
+        }
+
+        /// <summary>
+        /// Maps a fragile object's fragility (0-1, the fraction of damaging
+        /// collision impulse converted into lost value) to its on-screen tier.
+        /// Thresholds follow the percentage bands: 0-6% 极低, 7-15% 低,
+        /// 16-29% 中, 30-49% 高, 50%+ 极高.
+        /// </summary>
+        public static string ResolveFragilityTier(float fragility)
+        {
+            float percentage = Mathf.Clamp01(fragility) * 100f;
+            if (percentage >= 50f)
+            {
+                return "极高";
+            }
+
+            if (percentage >= 30f)
+            {
+                return "高";
+            }
+
+            if (percentage >= 16f)
+            {
+                return "中";
+            }
+
+            if (percentage >= 7f)
+            {
+                return "低";
+            }
+
+            return "极低";
+        }
+
         private static readonly Vector3Int[] CellCornerOffsets =
         {
             new Vector3Int(0, 0, 0),
@@ -165,11 +225,6 @@ namespace Supernova.UI
                 raycastMask,
                 QueryTriggerInteraction.Ignore);
 
-            if (hits.Length == 0)
-            {
-                return default;
-            }
-
             System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
 
             // Check for treasure pickups first (closest wins).
@@ -199,7 +254,7 @@ namespace Supernova.UI
                     continue;
                 }
 
-                string oreName = "Ore";
+                string oreName = "已开采的矿物";
                 float durability = 1f;
                 IVoxelTerrain terrainForOre = Terrain;
                 if (terrainForOre != null
@@ -210,7 +265,7 @@ namespace Supernova.UI
                             oreDrop.VoxelType);
                     if (oreVoxelDef != null)
                     {
-                        oreName = oreVoxelDef.DisplayName;
+                        oreName = "已开采的" + oreVoxelDef.DisplayName;
                         durability = oreVoxelDef.Durability;
                     }
                 }
@@ -228,79 +283,37 @@ namespace Supernova.UI
                     Mathf.RoundToInt(durability));
             }
 
-            // Then check for terrain voxels.
+            // Then resolve either fixed terrain or a detached voxel world. The
+            // shared resolver filters dynamic compound boxes through the exact
+            // visible Marching Cubes surface.
             IVoxelTerrain terrain = Terrain;
-            if (terrain == null)
+            if (!VoxelTargetResolver.TryRaycast(
+                new Ray(origin, direction),
+                interactionReach,
+                raycastMask,
+                terrain,
+                out VoxelTargetHit voxelHit))
             {
                 return default;
             }
 
-            Transform terrainTransform = terrain.TerrainTransform;
-            for (int i = 0; i < hits.Length; i++)
-            {
-                Transform t = hits[i].transform;
-                if (t != terrainTransform && !t.IsChildOf(terrainTransform))
-                {
-                    continue;
-                }
-
-                // Resolve the voxel coordinate using the 8-corner cell sample
-                // approach (same as VoxelPlayerInteractor.TryResolveCellSample)
-                // so all surface angles are covered, not just head-on hits.
-                float voxelSize = terrain.VoxelSize;
-                Vector3 samplePos = terrainTransform.InverseTransformPoint(
-                    hits[i].point) / voxelSize;
-                Vector3Int cellOrigin = new Vector3Int(
-                    Mathf.FloorToInt(samplePos.x),
-                    Mathf.FloorToInt(samplePos.y),
-                    Mathf.FloorToInt(samplePos.z));
-
-                InfiniteVoxelWorld world = terrain.World;
-                if (world == null)
-                {
-                    continue;
-                }
-
-                VoxelTypeId foundType = VoxelTypeId.Air;
-                bool foundSolid = false;
-                for (int corner = 0; corner < CellCornerOffsets.Length; corner++)
-                {
-                    Vector3Int candidate = cellOrigin + CellCornerOffsets[corner];
-                    if (!world.TryGetSample(
-                            candidate.x,
-                            candidate.y,
-                            candidate.z,
-                            out VoxelSample sample)
-                        || !sample.IsSolid(terrain.IsoLevel))
-                    {
-                        continue;
-                    }
-
-                    foundType = sample.Type;
-                    foundSolid = true;
-                    break;
-                }
-
-                if (!foundSolid)
-                {
-                    continue;
-                }
-
-                VoxelTypeDefinition voxelDef = terrain.VoxelTypeCatalog != null
+            VoxelTypeId foundType = voxelHit.Sample.Type;
+            VoxelTypeDefinition voxelDef = terrain != null
+                && terrain.VoxelTypeCatalog != null
                     ? terrain.VoxelTypeCatalog.Find(foundType)
                     : null;
-                if (voxelDef == null)
-                {
-                    continue;
-                }
-
+            if (voxelDef == null)
+            {
                 return new CrosshairLookAtInfo(
                     CrosshairTargetType.Voxel,
-                    voxelDef.DisplayName,
-                    voxelDef.Durability);
+                    foundType.ToString(),
+                    VoxelTypeUtility.ResolveDurability(foundType, null));
             }
 
-            return default;
+            return new CrosshairLookAtInfo(
+                CrosshairTargetType.Voxel,
+                voxelDef.DisplayName,
+                voxelDef.Durability);
         }
 
         private void ShowInfo(CrosshairLookAtInfo info)
@@ -315,22 +328,21 @@ namespace Supernova.UI
                 if (info.TargetType == CrosshairTargetType.Treasure)
                 {
                     StatsLabel.text = string.Format(
-                        "FRAGILITY {0:P0}   /   WEIGHT {1:F1} kg",
-                        info.FragilityOrDurability,
+                        "易碎程度：{0} / 重量：{1:F1} kg",
+                        ResolveFragilityTier(info.FragilityOrDurability),
                         info.TotalWeight);
                 }
                 else if (info.TargetType == CrosshairTargetType.OreDrop)
                 {
                     StatsLabel.text = string.Format(
-                        "FRAGILITY {0:P0}   /   WEIGHT {1:F1} kg",
-                        info.FragilityOrDurability,
+                        "易碎程度：{0} / 重量：{1:F1} kg",
+                        ResolveFragilityTier(info.FragilityOrDurability),
                         info.TotalWeight);
                 }
                 else
                 {
-                    StatsLabel.text = string.Format(
-                        "DURABILITY {0}",
-                        Mathf.RoundToInt(info.FragilityOrDurability));
+                    StatsLabel.text = FormatDurabilityLabel(
+                        info.FragilityOrDurability);
                 }
             }
 

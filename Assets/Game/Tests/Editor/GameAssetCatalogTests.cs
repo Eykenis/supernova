@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using NUnit.Framework;
+using Supernova.Audio;
 using Supernova.Gameplay;
 using Supernova.Infrastructure;
 using Supernova.UI;
@@ -18,10 +19,49 @@ public sealed class GameAssetCatalogTests
 
         Assert.That(catalog, Is.Not.Null);
         Assert.That(catalog.IsComplete, Is.True);
+        Assert.That(catalog.Effects, Is.Not.Null);
+        Assert.That(catalog.Effects.CollisionSmokeMaterial, Is.Not.Null);
+        Assert.That(
+            catalog.Effects.CollisionSmokeMaterial.shader.name,
+            Is.EqualTo("Supernova/Effects/Collision Dust"));
         Assert.That(
             PlayerSettings.GetPreloadedAssets().Contains(catalog),
             Is.True,
             "The runtime catalog must be loaded before scene bootstrap code runs.");
+    }
+
+    [Test]
+    public void MainMenuDestination_UsesTheDefaultLevelHomeScene()
+    {
+        GameAssetCatalog catalog =
+            AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                ProjectAssetPaths.Config.GameAssetCatalog);
+
+        Assert.That(catalog, Is.Not.Null);
+        Assert.That(catalog.Missions.DefaultLevel, Is.Not.Null);
+        Assert.That(
+            catalog.SceneLookups.MainMenuSceneName,
+            Is.EqualTo(catalog.Missions.DefaultLevel.HomeSceneName));
+        Assert.That(
+            catalog.SceneLookups.MainMenuSceneName,
+            Is.EqualTo(ProjectAssetPaths.LookupNames.HomeScene));
+    }
+
+    [Test]
+    public void TutorialDestination_UsesTheConfiguredSpawnShelterScene()
+    {
+        GameAssetCatalog catalog =
+            AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                ProjectAssetPaths.Config.GameAssetCatalog);
+
+        Assert.That(catalog, Is.Not.Null);
+        Assert.That(
+            catalog.SceneLookups.TutorialSceneName,
+            Is.EqualTo(ProjectAssetPaths.LookupNames.SpawnShelterStoneTestScene));
+        Assert.That(
+            AssetDatabase.LoadAssetAtPath<SceneAsset>(
+                ProjectAssetPaths.Scenes.SpawnShelterStoneTest),
+            Is.Not.Null);
     }
 
     [TestCaseSource(nameof(RequiredAssetPaths))]
@@ -68,9 +108,61 @@ public sealed class GameAssetCatalogTests
         Assert.That(settings.AnimationClips, Is.Not.Null);
     }
 
+    [Test]
+    public void MissionAudioCues_UseExpectedSoundEffectClips()
+    {
+        GameAssetCatalog catalog =
+            AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                ProjectAssetPaths.Config.GameAssetCatalog);
+
+        Assert.That(catalog, Is.Not.Null);
+        Assert.That(catalog.Audio, Is.Not.Null);
+        Assert.That(catalog.Audio.IsComplete, Is.True);
+        AssertCueClips(
+            catalog.Audio.CoinDeposit,
+            ProjectAssetPaths.Audio.Coin1,
+            ProjectAssetPaths.Audio.Coin2);
+        AssertCueClips(
+            catalog.Audio.CaveAmbience,
+            ProjectAssetPaths.Audio.Ambience);
+        AssertCueClips(
+            catalog.Audio.CashGrowing,
+            ProjectAssetPaths.Audio.CashGrowing);
+        AssertCueClips(
+            catalog.Audio.MissionStart,
+            ProjectAssetPaths.Audio.Start);
+        AssertCueClips(
+            catalog.Audio.MissionReady,
+            ProjectAssetPaths.Audio.Ready);
+    }
+
+    private static void AssertCueClips(
+        SoundEffectCue cue,
+        params string[] expectedClipPaths)
+    {
+        Assert.That(cue, Is.Not.Null);
+        SerializedObject serializedCue = new SerializedObject(cue);
+        SerializedProperty clips = serializedCue.FindProperty("clips");
+        Assert.That(clips.arraySize, Is.EqualTo(expectedClipPaths.Length));
+        for (int i = 0; i < expectedClipPaths.Length; i++)
+        {
+            AudioClip expected = AssetDatabase.LoadAssetAtPath<AudioClip>(
+                expectedClipPaths[i]);
+            Assert.That(expected, Is.Not.Null, expectedClipPaths[i]);
+            Assert.That(
+                clips.GetArrayElementAtIndex(i).objectReferenceValue,
+                Is.SameAs(expected));
+        }
+    }
+
     private static readonly string[] RequiredAssetPaths =
     {
         ProjectAssetPaths.Config.GameAssetCatalog,
+        ProjectAssetPaths.Config.CoinDepositSound,
+        ProjectAssetPaths.Config.CaveAmbienceSound,
+        ProjectAssetPaths.Config.CashGrowingSound,
+        ProjectAssetPaths.Config.MissionStartSound,
+        ProjectAssetPaths.Config.MissionReadySound,
         ProjectAssetPaths.Config.UiDesignTokens,
         ProjectAssetPaths.Config.EquipmentIconCatalog,
         ProjectAssetPaths.Config.EquipmentPortraitSettings,
@@ -80,15 +172,18 @@ public sealed class GameAssetCatalogTests
         ProjectAssetPaths.Config.WorldGeneration,
         ProjectAssetPaths.Config.MonsterSpawnTable,
         ProjectAssetPaths.Config.TreasureSpawnTable,
-        ProjectAssetPaths.Config.GunProduct,
-        ProjectAssetPaths.Config.SmgProduct,
         ProjectAssetPaths.Config.FlashlightProduct,
         ProjectAssetPaths.Config.SolidGunProduct,
-        ProjectAssetPaths.Config.AttractionModuleProduct,
-        ProjectAssetPaths.Config.SmgTool,
+        ProjectAssetPaths.Config.PortalGunProduct,
+        ProjectAssetPaths.Config.SolidGunTool,
+        ProjectAssetPaths.Config.PortalGunTool,
         ProjectAssetPaths.Materials.ShopGeometryWireframeShader,
         ProjectAssetPaths.Materials.ShopGeometryWireframe,
+        ProjectAssetPaths.Shaders.MagnetEnergyRibbon,
+        ProjectAssetPaths.Materials.MagnetEnergyRibbon,
+        ProjectAssetPaths.Materials.CollisionDust,
         ProjectAssetPaths.Materials.SolidPlatform,
+        ProjectAssetPaths.Materials.MissionCellConsole,
         ProjectAssetPaths.Materials.CaveTerrainPhysics,
         ProjectAssetPaths.Animations.PlayerController,
         ProjectAssetPaths.Animations.Mining,
@@ -97,7 +192,8 @@ public sealed class GameAssetCatalogTests
         ProjectAssetPaths.Animations.SciFiDoorOpen,
         ProjectAssetPaths.Prefabs.Player,
         ProjectAssetPaths.Prefabs.FlashlightProjectile,
-        ProjectAssetPaths.Prefabs.AttractionModuleDisplay,
+        ProjectAssetPaths.Prefabs.SolidGun,
+        ProjectAssetPaths.Prefabs.PortalGun,
         ProjectAssetPaths.Prefabs.MainMenu,
         ProjectAssetPaths.Ui.PauseSettings,
         ProjectAssetPaths.Ui.PrimaryFrame,

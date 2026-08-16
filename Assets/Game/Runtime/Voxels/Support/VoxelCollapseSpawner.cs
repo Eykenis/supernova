@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Supernova.Effects;
 using Supernova.MinecraftCaves;
 using Supernova.Voxels.Support.Prototype;
 using UnityEngine;
@@ -407,6 +408,7 @@ namespace Supernova.Voxels.Support
             body.mass = component.Count * 0.25f;
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             body.interpolation = RigidbodyInterpolation.Interpolate;
+            RigidbodyImpactFeedback.Ensure(body);
             Vector3 ejection = (UnityEngine.Random.insideUnitSphere + Vector3.up * 0.8f).normalized;
             body.velocity = ejection * (baseEjectionSpeed + UnityEngine.Random.Range(-0.3f, 0.3f));
             body.angularVelocity = UnityEngine.Random.insideUnitSphere * 2.5f;

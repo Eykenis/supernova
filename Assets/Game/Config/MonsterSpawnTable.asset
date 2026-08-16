@@ -15,7 +15,9 @@ MonoBehaviour:
   monsters:
   - {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
   - {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-  - {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
   maximumActiveMonsters: 40
+  playerExclusionRadiusInChunks: 1
   maximumMonsterSpawnsPerFrame: 1
-  secondsBetweenMonsterGroups: 0.75
+  spawnAttemptIntervalSeconds: 6
+  spawnAttemptChance: 0.3
+  candidateChunksPerSpawnAttempt: 4

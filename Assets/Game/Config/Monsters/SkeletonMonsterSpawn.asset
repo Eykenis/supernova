@@ -13,7 +13,6 @@ MonoBehaviour:
   m_Name: SkeletonMonsterSpawn
   m_EditorClassIdentifier: 
   prefab: {fileID: 7551938292944909751, guid: 481293727e641894f9139058cbb94b12, type: 3}
-  spawnChance: 0.6
   attemptsPerChunk: 4
   minimumGroupSize: 4
   maximumGroupSize: 7

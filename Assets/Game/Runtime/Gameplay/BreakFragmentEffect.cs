@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Supernova.Effects;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -209,6 +210,7 @@ namespace Supernova.Gameplay
                 body.collisionDetectionMode =
                     CollisionDetectionMode.ContinuousDynamic;
                 body.interpolation = RigidbodyInterpolation.Interpolate;
+                RigidbodyImpactFeedback.Ensure(body);
 
                 Vector3 centre = ResolveWorldCentre(fragment);
                 Vector3 outward = centre - context.ImpactPoint;

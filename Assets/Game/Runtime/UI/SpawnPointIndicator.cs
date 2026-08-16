@@ -136,7 +136,7 @@ namespace Supernova.UI
                 0f,
                 0f,
                 Vector2.SignedAngle(Vector2.up, placement.Direction));
-            distanceLabel.SetText("Arrival\n{0:0}m", distance);
+            distanceLabel.SetText("传送门\n{0:0}m", distance);
             SetVisible(true);
         }
 
@@ -339,7 +339,7 @@ namespace Supernova.UI
                 new Vector2(100f, 38f));
             TextMeshProUGUI label =
                 labelRect.gameObject.AddComponent<TextMeshProUGUI>();
-            label.text = "Arrival\n0m";
+            label.text = "传送门\n0m";
             label.fontSize = 14f;
             label.fontStyle = FontStyles.Bold;
             label.alignment = TextAlignmentOptions.Center;

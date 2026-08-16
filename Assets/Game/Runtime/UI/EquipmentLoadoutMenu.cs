@@ -49,8 +49,6 @@ namespace Supernova.UI
         private Canvas canvas;
         private GameObject panel;
         private RawImage portraitImage;
-        private TMP_Text portraitStatus;
-        private TMP_Text selectedSlotHint;
         private int configuringSlotIndex;
         private bool isOpen;
         private float timeScaleBeforeOpen = 1f;
@@ -281,38 +279,6 @@ namespace Supernova.UI
             portrait.gameObject.AddComponent<EquipmentMenuInteraction>()
                 .ConfigurePortrait(this);
 
-            TMP_Text eyebrow = CreateText(
-                "Eyebrow",
-                portraitRegion,
-                "TAB  //  EQUIPMENT CONFIGURATION",
-                TextAlignmentOptions.Left);
-            SetRect(
-                (RectTransform)eyebrow.transform,
-                new Vector2(0f, 1f),
-                new Vector2(0f, 1f),
-                new Vector2(0f, 1f),
-                new Vector2(42f, -32f),
-                new Vector2(600f, 28f));
-            eyebrow.fontSize = 14f;
-            eyebrow.characterSpacing = 3f;
-            eyebrow.color = Primary;
-
-            portraitStatus = CreateText(
-                "Portrait Status",
-                portraitRegion,
-                "CURRENT CHARACTER  //  DRAG TO ROTATE",
-                TextAlignmentOptions.Left);
-            SetRect(
-                (RectTransform)portraitStatus.transform,
-                new Vector2(0f, 0f),
-                new Vector2(0f, 0f),
-                new Vector2(0f, 0f),
-                new Vector2(42f, 28f),
-                new Vector2(600f, 28f));
-            portraitStatus.fontSize = 12f;
-            portraitStatus.characterSpacing = 2f;
-            portraitStatus.color = Primary;
-
             RectTransform divider = CreateRect("Portrait Divider", parent);
             divider.anchorMin = new Vector2(0.38f, 0f);
             divider.anchorMax = new Vector2(0.38f, 1f);
@@ -336,7 +302,7 @@ namespace Supernova.UI
             TMP_Text title = CreateText(
                 "Title",
                 configuration,
-                "LOADOUT",
+                "背包",
                 TextAlignmentOptions.Left);
             SetRect(
                 (RectTransform)title.transform,
@@ -352,7 +318,7 @@ namespace Supernova.UI
             TMP_Text closeHint = CreateText(
                 "Close Hint",
                 configuration,
-                "[ TAB ]  CLOSE",
+                "TAB 关闭",
                 TextAlignmentOptions.Right);
             SetRect(
                 (RectTransform)closeHint.transform,
@@ -382,22 +348,6 @@ namespace Supernova.UI
 
         private void BuildEquippedSlots(RectTransform parent)
         {
-            TMP_Text header = CreateText(
-                "Header",
-                parent,
-                "EQUIPPED  //  5 SLOTS",
-                TextAlignmentOptions.Left);
-            SetRect(
-                (RectTransform)header.transform,
-                new Vector2(0f, 1f),
-                new Vector2(1f, 1f),
-                new Vector2(0f, 1f),
-                Vector2.zero,
-                new Vector2(0f, 36f));
-            header.fontSize = 13f;
-            header.characterSpacing = 2f;
-            header.color = Primary;
-
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
                 int slotIndex = i;
@@ -446,7 +396,7 @@ namespace Supernova.UI
                 slotItemLabels[i] = CreateText(
                     "Item",
                     rect,
-                    "EMPTY",
+                    "空",
                     TextAlignmentOptions.Left);
                 SetRect(
                     (RectTransform)slotItemLabels[i].transform,
@@ -459,43 +409,11 @@ namespace Supernova.UI
                 slotItemLabels[i].characterSpacing = 1f;
             }
 
-            selectedSlotHint = CreateText(
-                "Selection Hint",
-                parent,
-                "SELECT A SLOT, THEN CHOOSE OWNED EQUIPMENT",
-                TextAlignmentOptions.Left);
-            SetRect(
-                (RectTransform)selectedSlotHint.transform,
-                new Vector2(0f, 0f),
-                new Vector2(1f, 0f),
-                new Vector2(0f, 0f),
-                Vector2.zero,
-                new Vector2(0f, 42f));
-            selectedSlotHint.fontSize = 10f;
-            selectedSlotHint.characterSpacing = 1.5f;
-            selectedSlotHint.color = Primary;
-
             ConfigureVerticalNavigation(slotButtons);
         }
 
         private void BuildOwnedGrid(RectTransform parent)
         {
-            TMP_Text header = CreateText(
-                "Header",
-                parent,
-                "OWNED EQUIPMENT  //  12 CACHE CELLS",
-                TextAlignmentOptions.Left);
-            SetRect(
-                (RectTransform)header.transform,
-                new Vector2(0f, 1f),
-                new Vector2(1f, 1f),
-                new Vector2(0f, 1f),
-                Vector2.zero,
-                new Vector2(0f, 36f));
-            header.fontSize = 13f;
-            header.characterSpacing = 2f;
-            header.color = Primary;
-
             const int columns = 4;
             const float horizontalGap = 14f;
             const float verticalGap = 16f;
@@ -551,7 +469,7 @@ namespace Supernova.UI
                 ownedItemLabels[i] = CreateText(
                     "Item",
                     rect,
-                    "EMPTY",
+                    "空",
                     TextAlignmentOptions.BottomLeft);
                 SetRect(
                     (RectTransform)ownedItemLabels[i].transform,
@@ -566,7 +484,7 @@ namespace Supernova.UI
                 ownedStateLabels[i] = CreateText(
                     "State",
                     rect,
-                    "UNASSIGNED",
+                    "未装备",
                     TextAlignmentOptions.BottomLeft);
                 SetRect(
                     (RectTransform)ownedStateLabels[i].transform,
@@ -743,7 +661,7 @@ namespace Supernova.UI
                 {
                     string itemLabel = HotbarPresenter.GetItemLabel(item);
                     slotItemLabels[i].text = string.IsNullOrEmpty(itemLabel)
-                        ? "EMPTY"
+                        ? "空"
                         : itemLabel;
                     slotItemLabels[i].color = textColor;
                 }
@@ -774,26 +692,19 @@ namespace Supernova.UI
                 {
                     ownedItemLabels[i].text = occupied
                         ? HotbarPresenter.GetItemLabel(item)
-                        : "EMPTY";
+                        : "空";
                     ownedItemLabels[i].color = textColor;
                 }
                 if (ownedStateLabels[i] != null)
                 {
                     ownedStateLabels[i].text = assignedSlot >= 0
-                        ? "EQUIPPED  //  SLOT " + (assignedSlot + 1)
+                        ? "已装备在 " + (assignedSlot + 1) + " 槽"
                         : occupied
-                            ? "OWNED  //  AVAILABLE"
-                            : "NO EQUIPMENT DATA";
+                            ? ""
+                            : "空";
                     ownedStateLabels[i].color = textColor;
                 }
                 ApplyItemIcon(ownedIcons[i], item, textColor);
-            }
-
-            if (selectedSlotHint != null)
-            {
-                selectedSlotHint.text = "SLOT "
-                    + (configuringSlotIndex + 1)
-                    + " SELECTED  //  DRAG OWNED EQUIPMENT HERE";
             }
         }
 
@@ -903,8 +814,6 @@ namespace Supernova.UI
                 : null;
             if (sourceAnimator == null)
             {
-                if (portraitStatus != null)
-                    portraitStatus.text = "CURRENT CHARACTER  //  PREVIEW UNAVAILABLE";
                 return;
             }
 
@@ -963,9 +872,6 @@ namespace Supernova.UI
             CreatePortraitCamera();
             if (portraitImage != null)
                 portraitImage.texture = portraitTexture;
-            if (portraitStatus != null)
-                portraitStatus.text =
-                    "CURRENT CHARACTER  //  DRAG TO ROTATE";
         }
 
         private void DisablePreviewBehaviours(GameObject root)
@@ -1289,8 +1195,6 @@ namespace Supernova.UI
             canvas = null;
             panel = null;
             portraitImage = null;
-            portraitStatus = null;
-            selectedSlotHint = null;
         }
 
         private static void ConfigureVerticalNavigation(Button[] buttons)

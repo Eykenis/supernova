@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 722e8a03f49eb234ebc45eb88f616e79, type: 3}
+  m_Name: BombExplosionSound
+  m_EditorClassIdentifier: 
+  clips:
+  - {fileID: 8300000, guid: 70154d40eacf734498540363ae8ad601, type: 3}
+  - {fileID: 8300000, guid: ce339b5a4352b1c4c9d6f05ebe910fc2, type: 3}
+  - {fileID: 8300000, guid: cf7b770f8d6fc83459486aa753f167fe, type: 3}
+  - {fileID: 8300000, guid: 02c7eb2147caaea4aa12576b8d1e8553, type: 3}
+  volume: 1
+  pitchRange: {x: 1, y: 1}
+  spatialBlend: 1
+  minimumDistance: 2
+  maximumDistance: 40
+  rolloffMode: 0
+  output: {fileID: 0}

@@ -105,6 +105,15 @@ namespace Supernova.Tests.Editor.PortalExample
             body.velocity = new Vector3(0f, 0f, 6f);
             PortalExampleTraveller traveller =
                 travellerObject.AddComponent<PortalExampleTraveller>();
+            int teleportEventCount = 0;
+            PortalExampleGate eventSource = null;
+            PortalExampleGate eventDestination = null;
+            traveller.Teleported += (observedSource, observedDestination) =>
+            {
+                teleportEventCount++;
+                eventSource = observedSource;
+                eventDestination = observedDestination;
+            };
             travellerObject.transform.position =
                 sourceObject.transform.position - sourceObject.transform.forward * 0.2f;
 
@@ -114,8 +123,14 @@ namespace Supernova.Tests.Editor.PortalExample
                 destinationObject.transform.forward);
 
             Assert.That(teleported, Is.True);
+            Assert.That(teleportEventCount, Is.EqualTo(1));
+            Assert.That(eventSource, Is.SameAs(source));
+            Assert.That(eventDestination, Is.SameAs(destination));
             Assert.That(destinationSide, Is.GreaterThan(0f));
             Assert.That(body.velocity.magnitude, Is.EqualTo(6f).Within(0.0001f));
+            Assert.That(traveller.Teleport(destination, source), Is.False);
+            Assert.That(traveller.CanTeleport, Is.False);
+            Assert.That(traveller.TeleportCooldown, Is.EqualTo(0.75f));
             Object.DestroyImmediate(sourceObject);
             Object.DestroyImmediate(destinationObject);
             Object.DestroyImmediate(travellerObject);
@@ -284,6 +299,7 @@ namespace Supernova.Tests.Editor.PortalExample
             SphereCollider bombCollider =
                 bombObject.AddComponent<SphereCollider>();
             bombObject.transform.position = Vector3.forward * 0.2f;
+            Physics.SyncTransforms();
 
             PortalExampleTriggerRelay relay =
                 triggerObject.GetComponent<PortalExampleTriggerRelay>();
@@ -296,6 +312,7 @@ namespace Supernova.Tests.Editor.PortalExample
                 Is.Not.Null);
 
             bombObject.transform.position = Vector3.back * 0.1f;
+            Physics.SyncTransforms();
             InvokePrivate(relay, "OnTriggerStay", bombCollider);
             float destinationSide = Vector3.Dot(
                 bombObject.transform.position - destinationObject.transform.position,
@@ -306,6 +323,284 @@ namespace Supernova.Tests.Editor.PortalExample
             Object.DestroyImmediate(sourceObject);
             Object.DestroyImmediate(destinationObject);
             Object.DestroyImmediate(bombObject);
+        }
+
+        [Test]
+        public void ThinRigidbody_RendersBothSidesBeforePhysicalPlaneCrossing()
+        {
+            GameObject sourceObject = new GameObject("Source");
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(sourceObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            Shader clipShader = AssetDatabase.LoadAssetAtPath<Shader>(
+                ProjectAssetPaths.Shaders.PortalExampleClippedLit);
+            Assert.That(clipShader, Is.Not.Null);
+            Assert.That(clipShader.isSupported, Is.True);
+            SetObjectReference(source, "seamlessClipShader", clipShader);
+            InvokePrivate(source, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Destination");
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            destinationObject.transform.position = new Vector3(8f, 0f, 0f);
+            Link(source, destination);
+
+            GameObject supportObject = new GameObject("Destination Support");
+            supportObject.transform.position = destinationObject.transform.position;
+            BoxCollider supportCollider =
+                supportObject.AddComponent<BoxCollider>();
+            supportCollider.size = new Vector3(3f, 3f, 0.2f);
+
+            GameObject bookObject =
+                GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bookObject.name = "Thin Book";
+            bookObject.transform.localScale =
+                new Vector3(0.52f, 0.1f, 0.2f);
+            Rigidbody body = bookObject.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            body.velocity = Vector3.back;
+            BoxCollider bookCollider = bookObject.GetComponent<BoxCollider>();
+            MeshRenderer bookRenderer = bookObject.GetComponent<MeshRenderer>();
+            bookObject.transform.position = Vector3.forward * 0.08f;
+            Physics.SyncTransforms();
+
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+            InvokePrivate(relay, "OnTriggerEnter", bookCollider);
+
+            PortalExampleTraveller traveller =
+                bookObject.GetComponent<PortalExampleTraveller>();
+            Assert.That(traveller, Is.Not.Null);
+            Assert.That(traveller.IsTraversingPortal, Is.True);
+            Assert.That(bookObject.transform.position.z, Is.GreaterThan(0f));
+            Assert.That(bookRenderer.sharedMaterial.shader, Is.SameAs(clipShader));
+            Assert.That(
+                Physics.GetIgnoreCollision(bookCollider, supportCollider),
+                Is.True);
+
+            bookObject.transform.position = Vector3.back * 0.02f;
+            Physics.SyncTransforms();
+            InvokePrivate(relay, "OnTriggerStay", bookCollider);
+            float destinationSide = Vector3.Dot(
+                bookCollider.bounds.center - destination.transform.position,
+                destination.transform.forward);
+            Assert.That(destinationSide, Is.GreaterThan(0f));
+            Assert.That(traveller.IsTraversingPortal, Is.True);
+
+            InvokePrivate(destination, "HandleTriggerExit", bookCollider);
+            Assert.That(traveller.IsTraversingPortal, Is.False);
+            Assert.That(
+                Physics.GetIgnoreCollision(bookCollider, supportCollider),
+                Is.False);
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(supportObject);
+            Object.DestroyImmediate(bookObject);
+        }
+
+        [Test]
+        public void KinematicPortalSupport_DoesNotBecomeVisualTraveller()
+        {
+            GameObject sourceObject = new GameObject("Source");
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(sourceObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            InvokePrivate(source, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Destination");
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            Link(source, destination);
+
+            GameObject diskObject =
+                GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            diskObject.name = "Checkpoint Disk";
+            Rigidbody diskBody = diskObject.AddComponent<Rigidbody>();
+            diskBody.isKinematic = true;
+            diskBody.useGravity = false;
+            Collider diskCollider = diskObject.GetComponent<Collider>();
+            Material originalMaterial =
+                diskObject.GetComponent<Renderer>().sharedMaterial;
+
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+            InvokePrivate(relay, "OnTriggerEnter", diskCollider);
+
+            Assert.That(
+                diskObject.GetComponent<PortalExampleTraveller>(),
+                Is.Null);
+            Assert.That(
+                diskObject.GetComponent<Renderer>().sharedMaterial,
+                Is.SameAs(originalMaterial));
+
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(diskObject);
+        }
+
+        [Test]
+        public void DeepTerrainSupport_IsIgnoredAcrossRigidbodyPortalTunnel()
+        {
+            GameObject sourceObject = new GameObject("Horizontal Source");
+            sourceObject.transform.localScale = Vector3.one * 0.6f;
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(sourceObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = new Vector3(2.05f, 2.05f, 1.2f);
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            InvokePrivate(source, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Destination");
+            destinationObject.transform.position = new Vector3(8f, 0f, 0f);
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            Link(source, destination);
+
+            GameObject terrainObject = new GameObject("Terrain Mesh");
+            terrainObject.transform.position = Vector3.back * 0.35f;
+            BoxCollider terrainCollider =
+                terrainObject.AddComponent<BoxCollider>();
+            terrainCollider.size = new Vector3(4f, 4f, 0.2f);
+
+            GameObject cauldronObject = new GameObject("Cauldron Sized Body");
+            Rigidbody body = cauldronObject.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            BoxCollider cauldronCollider =
+                cauldronObject.AddComponent<BoxCollider>();
+            cauldronCollider.size = new Vector3(1.064f, 0.907f, 0.831f);
+            cauldronObject.transform.position = Vector3.forward * 0.35f;
+            Physics.SyncTransforms();
+
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+            InvokePrivate(relay, "OnTriggerEnter", cauldronCollider);
+
+            Assert.That(
+                Physics.GetIgnoreCollision(
+                    cauldronCollider,
+                    terrainCollider),
+                Is.True);
+
+            cauldronObject.transform.position = Vector3.back * 0.05f;
+            Physics.SyncTransforms();
+            InvokePrivate(relay, "OnTriggerStay", cauldronCollider);
+            Assert.That(
+                Vector3.Dot(
+                    cauldronObject.transform.position
+                        - destinationObject.transform.position,
+                    destinationObject.transform.forward),
+                Is.GreaterThan(0f));
+
+            InvokePrivate(destination, "HandleTriggerExit", cauldronCollider);
+            Assert.That(
+                Physics.GetIgnoreCollision(
+                    cauldronCollider,
+                    terrainCollider),
+                Is.False);
+
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(terrainObject);
+            Object.DestroyImmediate(cauldronObject);
+        }
+
+        [Test]
+        public void CompoundRigidbody_RetainsCrossingUntilLastColliderExits()
+        {
+            GameObject sourceObject = new GameObject("Source");
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(sourceObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            InvokePrivate(source, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Destination");
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            destinationObject.transform.position = new Vector3(8f, 0f, 0f);
+            Link(source, destination);
+
+            GameObject oreObject = new GameObject("Compound Ore");
+            Rigidbody body = oreObject.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            GameObject leadingObject = new GameObject("Leading Collider");
+            leadingObject.transform.SetParent(oreObject.transform, false);
+            leadingObject.transform.localPosition = Vector3.back * 0.2f;
+            BoxCollider leadingCollider =
+                leadingObject.AddComponent<BoxCollider>();
+            leadingCollider.size = Vector3.one * 0.4f;
+            GameObject trailingObject = new GameObject("Trailing Collider");
+            trailingObject.transform.SetParent(oreObject.transform, false);
+            trailingObject.transform.localPosition = Vector3.forward * 0.2f;
+            BoxCollider trailingCollider =
+                trailingObject.AddComponent<BoxCollider>();
+            trailingCollider.size = Vector3.one * 0.4f;
+            oreObject.transform.position = Vector3.forward;
+            Physics.SyncTransforms();
+
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+            InvokePrivate(relay, "OnTriggerEnter", leadingCollider);
+            InvokePrivate(relay, "OnTriggerEnter", trailingCollider);
+            InvokePrivate(relay, "OnTriggerExit", leadingCollider);
+            oreObject.transform.position = Vector3.back * 0.1f;
+            Physics.SyncTransforms();
+            InvokePrivate(relay, "OnTriggerStay", trailingCollider);
+
+            float destinationSide = Vector3.Dot(
+                oreObject.transform.position - destination.transform.position,
+                destination.transform.forward);
+            Assert.That(destinationSide, Is.GreaterThan(0f));
+
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(oreObject);
+        }
+
+        [Test]
+        public void RigidbodyTeleport_ClearsWholeColliderPastExitPlane()
+        {
+            GameObject sourceObject = new GameObject("Source");
+            GameObject destinationObject = new GameObject("Destination");
+            GameObject oreObject = new GameObject("Large Ore");
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            destinationObject.transform.position = new Vector3(8f, 0f, 0f);
+            Rigidbody body = oreObject.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            BoxCollider oreCollider = oreObject.AddComponent<BoxCollider>();
+            oreCollider.size = new Vector3(1f, 1f, 2f);
+            PortalExampleTraveller traveller =
+                oreObject.AddComponent<PortalExampleTraveller>();
+
+            Assert.That(traveller.Teleport(source, destination), Is.True);
+
+            Vector3 normal = destination.transform.forward;
+            Bounds bounds = oreCollider.bounds;
+            float projectedExtent = Mathf.Abs(normal.x) * bounds.extents.x
+                + Mathf.Abs(normal.y) * bounds.extents.y
+                + Mathf.Abs(normal.z) * bounds.extents.z;
+            float minimumExitSide = Vector3.Dot(
+                    bounds.center - destination.transform.position,
+                    normal)
+                - projectedExtent;
+            Assert.That(minimumExitSide, Is.GreaterThanOrEqualTo(0.089f));
+
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(oreObject);
         }
 
         [Test]
@@ -329,7 +624,11 @@ namespace Supernova.Tests.Editor.PortalExample
             GameObject playerObject = new GameObject("Unregistered Player");
             CharacterController playerCollider =
                 playerObject.AddComponent<CharacterController>();
-            playerObject.transform.position = Vector3.forward * 0.2f;
+            playerCollider.height = 1.6f;
+            playerCollider.radius = 0.3f;
+            playerCollider.center = Vector3.up * 0.8f;
+            playerObject.transform.position = Vector3.forward * 0.6f;
+            Physics.SyncTransforms();
 
             PortalExampleTriggerRelay relay =
                 triggerObject.GetComponent<PortalExampleTriggerRelay>();
@@ -345,6 +644,141 @@ namespace Supernova.Tests.Editor.PortalExample
                 destinationObject.transform.forward);
 
             Assert.That(destinationSide, Is.GreaterThan(0f));
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(playerObject);
+        }
+
+        [Test]
+        public void WallPortal_TeleportsWhenControllerLeadingEdgeReachesPlane()
+        {
+            GameObject sourceObject = new GameObject("Wall Portal");
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(sourceObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = new Vector3(2.05f, 2.05f, 1.2f);
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            InvokePrivate(source, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Destination");
+            destinationObject.transform.position = new Vector3(8f, 0f, 0f);
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            Link(source, destination);
+
+            GameObject playerObject = new GameObject("Approaching Player");
+            CharacterController playerCollider =
+                playerObject.AddComponent<CharacterController>();
+            playerCollider.height = 1.6f;
+            playerCollider.radius = 0.3f;
+            playerCollider.center = Vector3.up * 0.8f;
+            playerObject.transform.position = Vector3.forward * 0.42f;
+            Physics.SyncTransforms();
+
+            playerCollider.Move(Vector3.back * 0.1f);
+            Assert.That(playerObject.transform.position.z, Is.GreaterThan(0f));
+
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+            InvokePrivate(relay, "OnTriggerEnter", playerCollider);
+
+            float destinationSide = Vector3.Dot(
+                playerObject.transform.position
+                    - destinationObject.transform.position,
+                destinationObject.transform.forward);
+            Assert.That(destinationSide, Is.GreaterThan(0f));
+
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(playerObject);
+        }
+
+        [Test]
+        public void UpwardHorizontalPortal_TeleportsGroundedCharacterController()
+        {
+            GameObject sourceObject = new GameObject("Floor Portal");
+            sourceObject.transform.SetPositionAndRotation(
+                Vector3.up * 0.06f,
+                Quaternion.LookRotation(Vector3.up, Vector3.forward));
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(sourceObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = new Vector3(2.05f, 2.05f, 1.2f);
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            InvokePrivate(source, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Destination");
+            destinationObject.transform.position = new Vector3(8f, 2f, 0f);
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            Link(source, destination);
+
+            GameObject playerObject = new GameObject("Grounded Player");
+            CharacterController playerCollider =
+                playerObject.AddComponent<CharacterController>();
+            playerCollider.height = 1.6f;
+            playerCollider.radius = 0.3f;
+            playerCollider.center = Vector3.up * 0.8f;
+            // The feet remain 9 cm in front of the visual plane, as can happen
+            // on voxel steps and from CharacterController skin separation.
+            playerObject.transform.position = Vector3.up * 0.15f;
+            Physics.SyncTransforms();
+
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+            InvokePrivate(relay, "OnTriggerEnter", playerCollider);
+
+            float destinationSide = Vector3.Dot(
+                playerObject.transform.position
+                    - destinationObject.transform.position,
+                destinationObject.transform.forward);
+            Assert.That(destinationSide, Is.GreaterThan(0f));
+
+            Object.DestroyImmediate(sourceObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(playerObject);
+        }
+
+        [Test]
+        public void UpwardHorizontalPortal_DoesNotPullControllerOutsideEntryBand()
+        {
+            GameObject sourceObject = new GameObject("Floor Portal");
+            sourceObject.transform.SetPositionAndRotation(
+                Vector3.up * 0.06f,
+                Quaternion.LookRotation(Vector3.up, Vector3.forward));
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(sourceObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = new Vector3(2.05f, 2.05f, 1.2f);
+            PortalExampleGate source =
+                sourceObject.AddComponent<PortalExampleGate>();
+            InvokePrivate(source, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Destination");
+            destinationObject.transform.position = new Vector3(8f, 2f, 0f);
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            Link(source, destination);
+
+            GameObject playerObject = new GameObject("Elevated Player");
+            CharacterController playerCollider =
+                playerObject.AddComponent<CharacterController>();
+            playerCollider.height = 1.6f;
+            playerCollider.radius = 0.3f;
+            playerCollider.center = Vector3.up * 0.8f;
+            playerObject.transform.position = Vector3.up * 0.25f;
+            Physics.SyncTransforms();
+
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+            InvokePrivate(relay, "OnTriggerEnter", playerCollider);
+
+            Assert.That(playerObject.transform.position.y, Is.EqualTo(0.25f));
             Object.DestroyImmediate(sourceObject);
             Object.DestroyImmediate(destinationObject);
             Object.DestroyImmediate(playerObject);
@@ -420,6 +854,12 @@ namespace Supernova.Tests.Editor.PortalExample
                     surface.localScale.x,
                     Is.EqualTo(surface.localScale.y).Within(0.0001f));
                 Assert.That(trigger, Is.Not.Null);
+                SerializedObject serializedGate =
+                    new SerializedObject(gates[index]);
+                Assert.That(
+                    serializedGate.FindProperty("seamlessClipShader")
+                        .objectReferenceValue,
+                    Is.Not.Null);
                 Assert.That(
                     trigger.size.x,
                     Is.EqualTo(trigger.size.y).Within(0.0001f));
@@ -435,6 +875,17 @@ namespace Supernova.Tests.Editor.PortalExample
             serializedSource.FindProperty("linkedGate").objectReferenceValue =
                 destination;
             serializedSource.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void SetObjectReference(
+            Object target,
+            string propertyName,
+            Object value)
+        {
+            SerializedObject serializedTarget = new SerializedObject(target);
+            serializedTarget.FindProperty(propertyName).objectReferenceValue =
+                value;
+            serializedTarget.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void InvokePrivate(

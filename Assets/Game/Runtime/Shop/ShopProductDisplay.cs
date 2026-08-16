@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Supernova.Inputs;
 using Supernova.UI;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -43,7 +44,12 @@ namespace Supernova.Shop
         private RectTransform labelCanvasRect;
         private Text label;
         private bool isTargeted;
+        private GameObject plateObject;
+        private GameObject lightObject;
+        private Transform displayRoot;
         private GameObject modelInstance;
+
+        [SerializeField] private float displaySpinDegreesPerSecond = 24f;
 
         public ShopProductProfile Profile => profile;
         public Collider TargetCollider { get; private set; }
@@ -79,6 +85,14 @@ namespace Supernova.Shop
 
         private void LateUpdate()
         {
+            if (displayRoot != null)
+            {
+                displayRoot.Rotate(
+                    Vector3.up,
+                    displaySpinDegreesPerSecond * Time.deltaTime,
+                    Space.World);
+            }
+
             if (labelCanvasRect == null || !isTargeted)
                 return;
 
@@ -120,12 +134,15 @@ namespace Supernova.Shop
 
             if (owned)
             {
-                label.text = "OWNED";
+                label.text = "已拥有";
                 label.color = WorldValueTextStyle.OwnedColor;
             }
             else
             {
-                label.text = $"${profile.Price}\nPRESS E TO BUY";
+                InputPromptTextRuntime.SetText(
+                    label,
+                    "$" + profile.Price
+                        + " 按 {{input:Gameplay/Interact}} 购买");
                 label.color = PlayerEconomy.CanAfford(profile)
                     ? WorldValueTextStyle.ValueColor
                     : WorldValueTextStyle.LossColor;
@@ -138,9 +155,17 @@ namespace Supernova.Shop
             if (profile == null || profile.DisplayPrefab == null)
                 return;
 
+            BuildPlate();
+            BuildPickupLight();
+
+            var displayObject = new GameObject("Product Display");
+            displayRoot = displayObject.transform;
+            displayRoot.SetParent(transform, false);
+            displayRoot.localPosition = new Vector3(0f, 0.65f, 0f);
+
             modelInstance = Instantiate(
                 profile.DisplayPrefab,
-                transform,
+                displayRoot,
                 false);
             modelInstance.name = profile.DisplayName + " Display";
             PrepareModelInstance();
@@ -155,6 +180,11 @@ namespace Supernova.Shop
             CacheRendererPresentations(renderers);
 
             Bounds localBounds = CalculateLocalBounds(renderers);
+            Renderer plateRenderer = plateObject != null
+                ? plateObject.GetComponent<Renderer>()
+                : null;
+            if (plateRenderer != null)
+                EncapsulateRendererBounds(ref localBounds, plateRenderer);
             BoxCollider target = gameObject.AddComponent<BoxCollider>();
             target.center = localBounds.center;
             target.size = localBounds.size;
@@ -181,6 +211,38 @@ namespace Supernova.Shop
                 colliders[i].enabled = false;
         }
 
+        private void BuildPlate()
+        {
+            plateObject = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            plateObject.name = "Pickup Plate";
+            plateObject.transform.SetParent(transform, false);
+            plateObject.transform.localPosition = new Vector3(0f, 0.08f, 0f);
+            plateObject.transform.localScale = new Vector3(0.7f, 0.08f, 0.7f);
+
+            Collider plateCollider = plateObject.GetComponent<Collider>();
+            if (plateCollider != null)
+            {
+                if (Application.isPlaying)
+                    Destroy(plateCollider);
+                else
+                    DestroyImmediate(plateCollider);
+            }
+        }
+
+        private void BuildPickupLight()
+        {
+            lightObject = new GameObject("Pickup Light");
+            lightObject.transform.SetParent(transform, false);
+            lightObject.transform.localPosition = new Vector3(0f, 0.8f, 0f);
+
+            Light pickupLight = lightObject.AddComponent<Light>();
+            pickupLight.type = LightType.Point;
+            pickupLight.color = new Color(0.15f, 0.75f, 1f);
+            pickupLight.range = 2.5f;
+            pickupLight.intensity = 0.8f;
+            pickupLight.shadows = LightShadows.None;
+        }
+
         private void ClearGeneratedView()
         {
             renderers.Clear();
@@ -199,6 +261,31 @@ namespace Supernova.Shop
                 else
                     DestroyImmediate(modelInstance);
                 modelInstance = null;
+            }
+            if (displayRoot != null)
+            {
+                if (Application.isPlaying)
+                    Destroy(displayRoot.gameObject);
+                else
+                    DestroyImmediate(displayRoot.gameObject);
+                displayRoot = null;
+                modelInstance = null;
+            }
+            if (plateObject != null)
+            {
+                if (Application.isPlaying)
+                    Destroy(plateObject);
+                else
+                    DestroyImmediate(plateObject);
+                plateObject = null;
+            }
+            if (lightObject != null)
+            {
+                if (Application.isPlaying)
+                    Destroy(lightObject);
+                else
+                    DestroyImmediate(lightObject);
+                lightObject = null;
             }
             if (labelCanvasRect != null)
             {
@@ -298,6 +385,24 @@ namespace Supernova.Shop
                 localBounds = new Bounds(Vector3.zero, Vector3.one);
             localBounds.Expand(0.08f);
             return localBounds;
+        }
+
+        private void EncapsulateRendererBounds(
+            ref Bounds localBounds,
+            Renderer renderer)
+        {
+            Bounds worldBounds = renderer.bounds;
+            Vector3 center = worldBounds.center;
+            Vector3 extents = worldBounds.extents;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 worldCorner = center + new Vector3(
+                    (corner & 1) == 0 ? -extents.x : extents.x,
+                    (corner & 2) == 0 ? -extents.y : extents.y,
+                    (corner & 4) == 0 ? -extents.z : extents.z);
+                localBounds.Encapsulate(
+                    transform.InverseTransformPoint(worldCorner));
+            }
         }
 
         private void BuildLabel(Bounds localBounds)

@@ -18,8 +18,6 @@ namespace Supernova.UI
         {
             if (scope == SciFiUiScope.GameHud)
                 SciFiUiSkin.ApplyGameHud(transform);
-            else
-                SciFiUiSkin.ApplyMainMenu(transform);
         }
     }
 }

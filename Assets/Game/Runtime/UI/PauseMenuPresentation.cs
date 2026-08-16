@@ -30,7 +30,6 @@ namespace Supernova.UI
         private RawImage portraitImage;
         private Image backdrop;
         private TMP_Text title;
-        private TMP_Text kicker;
         private bool visualsBuilt;
         private bool introPlaying;
         private float introElapsed;
@@ -254,7 +253,7 @@ namespace Supernova.UI
                     : null;
                 if (title != null)
                 {
-                    title.text = "PAUSED";
+                    title.text = "游戏暂停";
                     title.fontSize = 48f;
                     title.fontStyle = FontStyles.Bold;
                     title.characterSpacing = 4f;
@@ -273,28 +272,18 @@ namespace Supernova.UI
                         : null;
                     if (resumeLabel != null)
                     {
-                        resumeLabel.text = "RESUME";
+                        resumeLabel.text = "返回";
                         resumeLabel.fontStyle = FontStyles.Bold;
                         resumeLabel.color = OverlayPrimary;
                     }
                 }
             }
 
-            kicker = CreateText("Pause Kicker", transform, "FIELD PAUSE  //  00:00");
-            SetRect((RectTransform)kicker.transform, new Vector2(0f, 1f), new Vector2(0f, 1f),
-                new Vector2(0f, 1f), new Vector2(46f, -36f), new Vector2(430f, 50f));
-            kicker.alignment = TextAlignmentOptions.Left;
-            kicker.fontSize = 20f;
-            kicker.fontStyle = FontStyles.Bold;
-            kicker.characterSpacing = 5f;
-            kicker.color = OverlayPrimary;
-
             inkSlash.SetSiblingIndex(0);
             foregroundRedSlash.SetSiblingIndex(1);
             paperSlash.SetSiblingIndex(2);
             if (menuRect != null)
                 menuRect.SetAsLastSibling();
-            kicker.transform.SetAsLastSibling();
             SciFiUiSkin.ApplyPauseMenu(transform);
         }
 
@@ -841,15 +830,6 @@ namespace Supernova.UI
             }
             if (menuGroup != null)
                 menuGroup.alpha = Mathf.Clamp01((progress - 0.28f) / 0.28f);
-
-            if (kicker != null)
-            {
-                Color color = OverlayPrimary;
-                color.a *= Mathf.Clamp01((progress - 0.45f) / 0.3f);
-                kicker.color = color;
-                ((RectTransform)kicker.transform).anchoredPosition =
-                    new Vector2(46f, Mathf.Lerp(-90f, -36f, backgroundProgress));
-            }
 
             ApplyPortraitAnimation(progress);
         }

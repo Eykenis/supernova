@@ -19,8 +19,8 @@ MonoBehaviour:
   placementStrategy: 0
   seedSalt: 866013
   regionSizeInChunks: 5
-  placementChance: 0.45
-  minFloorHeight: 30
+  placementChance: 0.4
+  minFloorHeight: 20
   maxFloorHeight: 190
   ringStructureCount: 128
   ringCount: 8
@@ -154,18 +154,7 @@ MonoBehaviour:
       openingWidth: 5
       openingHeight: 5
     processors: []
-    spawnMarkers:
-    - stableId: tunnel_crawlers
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
-      localOffset: {x: 0, y: 1, z: 4}
-      yaw: 0
-      spawnChance: 0.4
-      count: 3
-      scatterRadiusInVoxels: 2
-      snapToFloor: 1
-      floorSearchDistance: 6
+    spawnMarkers: []
   - stableId: grotto_chamber
     displayName: Root Chamber
     poolId: grotto
@@ -257,21 +246,10 @@ MonoBehaviour:
       openingHeight: 5
     processors: []
     spawnMarkers:
-    - stableId: chamber_swarm
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.75
-      count: 5
-      scatterRadiusInVoxels: 4
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: chamber_husks
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 3, y: 1, z: 3}
       yaw: 0
       spawnChance: 0.5
@@ -398,21 +376,10 @@ MonoBehaviour:
       chance: 1
       perimeterOnly: 1
     spawnMarkers:
-    - stableId: hollow_brood
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 41fa0341788961d45ab563bb317213d5, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.9
-      count: 6
-      scatterRadiusInVoxels: 5
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: hollow_cache
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: -4}
       yaw: 0
       spawnChance: 0.7

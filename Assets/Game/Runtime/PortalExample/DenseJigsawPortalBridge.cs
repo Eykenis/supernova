@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Supernova.MinecraftCaves;
 using UnityEngine;
 
@@ -11,23 +12,43 @@ namespace Supernova.PortalExample
     [DisallowMultipleComponent]
     public sealed class DenseJigsawPortalBridge : MonoBehaviour
     {
+        public const string SpawnCheckpointPortalName =
+            "Spawn Checkpoint Portal / 出生检查点传送门";
+
         [SerializeField] private MinecraftCaveInfiniteWorld world;
         [SerializeField] private SpawnPointSceneStructure landingCell;
         [SerializeField] private Transform playerRoot;
         [SerializeField] private PortalExampleGate landingCellGate;
         [SerializeField] private PortalExampleGate checkpointGate;
-        [SerializeField, Min(0.5f)]
-        private float landingGateForwardDistance = 0.9f;
         [SerializeField, Range(0.5f, 1f)]
         private float portalScale = 0.6f;
         [SerializeField, Min(0f)] private float supportClearance = 0.005f;
+        [SerializeField, Min(0.001f)]
+        private float spawnedPortalSurfaceOffset = 0.06f;
+        [SerializeField, Min(1f)]
+        private float spawnedPortalScaleMultiplier = 1.1f;
 
         private GameObject primaryCheckpoint;
+        private PortalExampleTraveller playerTraveller;
+        private readonly List<PortalExampleGate> spawnedCheckpointGates =
+            new List<PortalExampleGate>();
 
         public MinecraftCaveInfiniteWorld World => world;
         public SpawnPointSceneStructure LandingCell => landingCell;
         public PortalExampleGate LandingCellGate => landingCellGate;
         public PortalExampleGate CheckpointGate => checkpointGate;
+        public float SpawnedPortalSurfaceOffset =>
+            Mathf.Max(0.001f, spawnedPortalSurfaceOffset);
+        public float SpawnedPortalScaleMultiplier =>
+            Mathf.Max(1f, spawnedPortalScaleMultiplier);
+        public IReadOnlyList<PortalExampleGate> SpawnedCheckpointGates
+        {
+            get
+            {
+                RemoveDestroyedSpawnedGates();
+                return spawnedCheckpointGates;
+            }
+        }
         public bool IsLinked => primaryCheckpoint != null
             && landingCellGate != null
             && checkpointGate != null
@@ -41,11 +62,17 @@ namespace Supernova.PortalExample
             PortalExampleGate configuredLandingCellGate,
             PortalExampleGate configuredCheckpointGate)
         {
+            if (landingCell != null)
+            {
+                landingCell.Placed -= HandleLandingCellPlaced;
+            }
             world = configuredWorld;
             landingCell = configuredLandingCell;
             playerRoot = configuredPlayerRoot;
             landingCellGate = configuredLandingCellGate;
             checkpointGate = configuredCheckpointGate;
+            SubscribeToLandingCellPlacement();
+            EnsurePlayerTraveller();
         }
 
         private void OnEnable()
@@ -55,6 +82,8 @@ namespace Supernova.PortalExample
                 world.PrimarySpawnCheckpointCreated +=
                     HandlePrimarySpawnCheckpointCreated;
             }
+            SubscribeToLandingCellPlacement();
+            EnsurePlayerTraveller();
         }
 
         private void Start()
@@ -74,6 +103,15 @@ namespace Supernova.PortalExample
                 world.PrimarySpawnCheckpointCreated -=
                     HandlePrimarySpawnCheckpointCreated;
             }
+            if (landingCell != null)
+            {
+                landingCell.Placed -= HandleLandingCellPlaced;
+            }
+            if (playerTraveller != null)
+            {
+                playerTraveller.Teleported -= HandlePlayerTeleported;
+                playerTraveller = null;
+            }
         }
 
         private void HandlePrimarySpawnCheckpointCreated(GameObject checkpoint)
@@ -82,44 +120,125 @@ namespace Supernova.PortalExample
             TryPlacePortals();
         }
 
+        private void HandleLandingCellPlaced()
+        {
+            // The bridge follows the landing Cell, but the checkpoint gate must
+            // stay attached to the generated checkpoint in world space.
+            TryPlacePortals();
+        }
+
+        private void HandlePlayerTeleported(
+            PortalExampleGate source,
+            PortalExampleGate destination)
+        {
+            if (world == null
+                || source != landingCellGate
+                || destination != checkpointGate)
+            {
+                return;
+            }
+
+            world.BeginNaturalMonsterSpawningAfterPortalEntry();
+        }
+
         public bool TryPlacePortals()
         {
             if (primaryCheckpoint == null
                 || landingCell == null
-                || landingCell.PlayerSpawnPoint == null
                 || landingCellGate == null
                 || checkpointGate == null)
             {
                 return false;
             }
 
-            PlaceLandingCellGate();
+            // The landing-cell gate is scene-authored and must retain the pose the
+            // level designer assigned. Only the generated checkpoint gate follows
+            // its runtime support object.
             PlaceCheckpointGate();
             landingCellGate.gameObject.SetActive(true);
             checkpointGate.gameObject.SetActive(true);
             return true;
         }
 
-        private void PlaceLandingCellGate()
+        /// <summary>
+        /// Creates another spawn-checkpoint entrance on a hit surface. Every entrance
+        /// is a clone of the authored checkpoint gate and leads to the one landing-cell
+        /// gate owned by this bridge.
+        /// </summary>
+        public bool TryCreateSpawnCheckpointPortal(
+            Vector3 supportPoint,
+            Vector3 surfaceNormal,
+            Vector3 preferredInPlaneUp,
+            out PortalExampleGate createdGate)
         {
-            Transform spawn = landingCell.PlayerSpawnPoint;
-            landingCellGate.transform.localScale =
-                Vector3.one * portalScale;
-            Vector3 up = spawn.up.normalized;
-            Vector3 forward = Vector3.ProjectOnPlane(spawn.forward, up);
-            if (forward.sqrMagnitude < 0.0001f)
-            {
-                forward = landingCell.transform.forward;
-            }
-            forward.Normalize();
-
-            Vector3 supportPoint = spawn.position
-                + forward * landingGateForwardDistance;
-            PlaceVerticalGateOnSupport(
-                landingCellGate,
+            return TryCreateSpawnCheckpointPortal(
+                null,
                 supportPoint,
-                -forward,
-                up);
+                surfaceNormal,
+                preferredInPlaneUp,
+                out createdGate);
+        }
+
+        public bool TryCreateSpawnCheckpointPortal(
+            Collider supportCollider,
+            Vector3 supportPoint,
+            Vector3 surfaceNormal,
+            Vector3 preferredInPlaneUp,
+            out PortalExampleGate createdGate)
+        {
+            createdGate = null;
+            RemoveDestroyedSpawnedGates();
+            if (landingCellGate == null || checkpointGate == null)
+            {
+                return false;
+            }
+
+            Vector3 normal = surfaceNormal.sqrMagnitude > 0.0001f
+                ? surfaceNormal.normalized
+                : Vector3.up;
+            Vector3 inPlaneUp = ResolveInPlaneUp(
+                normal,
+                preferredInPlaneUp);
+
+            GameObject portalObject = Instantiate(
+                checkpointGate.gameObject,
+                transform);
+            portalObject.SetActive(false);
+            portalObject.name = SpawnCheckpointPortalName;
+
+            PortalExampleGate gate =
+                portalObject.GetComponent<PortalExampleGate>();
+            if (gate == null)
+            {
+                DestroyPortalObject(portalObject);
+                return false;
+            }
+
+            gate.LinkTo(landingCellGate);
+            gate.transform.localScale = Vector3.one
+                * portalScale
+                * SpawnedPortalScaleMultiplier;
+            PlaceHorizontalGateOnSupport(
+                gate,
+                supportPoint,
+                normal,
+                inPlaneUp,
+                SpawnedPortalSurfaceOffset);
+            if (supportCollider != null)
+            {
+                PortalSurfaceDependency dependency =
+                    portalObject.GetComponent<PortalSurfaceDependency>();
+                if (dependency == null)
+                {
+                    dependency = portalObject
+                        .AddComponent<PortalSurfaceDependency>();
+                }
+                dependency.Configure(supportCollider, supportPoint, normal);
+            }
+            portalObject.SetActive(true);
+            spawnedCheckpointGates.Add(gate);
+            createdGate = gate;
+            return true;
         }
 
         private void PlaceCheckpointGate()
@@ -165,82 +284,108 @@ namespace Supernova.PortalExample
                 checkpointGate,
                 supportPoint,
                 up,
-                inPlaneUp.normalized);
-        }
-
-        private void PlaceVerticalGateOnSupport(
-            PortalExampleGate gate,
-            Vector3 supportPoint,
-            Vector3 forward,
-            Vector3 up)
-        {
-            gate.transform.SetPositionAndRotation(
-                supportPoint,
-                Quaternion.LookRotation(forward, up));
-
-            float minimumHeight = ResolveVisualMinimumHeight(gate, up);
-            gate.transform.position += up * (supportClearance - minimumHeight);
+                inPlaneUp.normalized,
+                supportClearance);
         }
 
         private void PlaceHorizontalGateOnSupport(
             PortalExampleGate gate,
             Vector3 supportPoint,
             Vector3 normal,
-            Vector3 inPlaneUp)
+            Vector3 inPlaneUp,
+            float surfaceOffset)
         {
             gate.transform.SetPositionAndRotation(
-                supportPoint + normal * supportClearance,
+                supportPoint + normal * Mathf.Max(0f, surfaceOffset),
                 Quaternion.LookRotation(normal, inPlaneUp));
         }
 
-        private static float ResolveVisualMinimumHeight(
-            PortalExampleGate gate,
-            Vector3 up)
+        private Vector3 ResolveInPlaneUp(
+            Vector3 normal,
+            Vector3 preferredInPlaneUp)
         {
-            MeshFilter[] filters = gate.GetComponentsInChildren<MeshFilter>(true);
-            float minimum = float.PositiveInfinity;
-            for (int i = 0; i < filters.Length; i++)
+            Vector3 inPlaneUp = Vector3.ProjectOnPlane(
+                preferredInPlaneUp,
+                normal);
+            if (inPlaneUp.sqrMagnitude < 0.0001f)
             {
-                MeshFilter filter = filters[i];
-                if (filter.sharedMesh == null)
-                {
-                    continue;
-                }
+                Vector3 worldForward = world != null
+                    ? world.transform.forward
+                    : transform.forward;
+                inPlaneUp = Vector3.ProjectOnPlane(worldForward, normal);
+            }
+            if (inPlaneUp.sqrMagnitude < 0.0001f)
+            {
+                inPlaneUp = Vector3.ProjectOnPlane(Vector3.up, normal);
+            }
+            if (inPlaneUp.sqrMagnitude < 0.0001f)
+            {
+                inPlaneUp = Vector3.ProjectOnPlane(Vector3.right, normal);
+            }
+            return inPlaneUp.normalized;
+        }
 
-                Bounds bounds = filter.sharedMesh.bounds;
-                Vector3 boundsMinimum = bounds.min;
-                Vector3 boundsMaximum = bounds.max;
-                for (int x = 0; x <= 1; x++)
+        private void RemoveDestroyedSpawnedGates()
+        {
+            for (int i = spawnedCheckpointGates.Count - 1; i >= 0; i--)
+            {
+                if (spawnedCheckpointGates[i] == null)
                 {
-                    for (int y = 0; y <= 1; y++)
-                    {
-                        for (int z = 0; z <= 1; z++)
-                        {
-                            Vector3 localCorner = new Vector3(
-                                x == 0 ? boundsMinimum.x : boundsMaximum.x,
-                                y == 0 ? boundsMinimum.y : boundsMaximum.y,
-                                z == 0 ? boundsMinimum.z : boundsMaximum.z);
-                            Vector3 worldCorner =
-                                filter.transform.TransformPoint(localCorner);
-                            minimum = Mathf.Min(
-                                minimum,
-                                Vector3.Dot(
-                                    worldCorner - gate.transform.position,
-                                    up));
-                        }
-                    }
+                    spawnedCheckpointGates.RemoveAt(i);
                 }
             }
+        }
 
-            return float.IsPositiveInfinity(minimum) ? 0f : minimum;
+        private void SubscribeToLandingCellPlacement()
+        {
+            if (!isActiveAndEnabled || landingCell == null)
+            {
+                return;
+            }
+
+            landingCell.Placed -= HandleLandingCellPlaced;
+            landingCell.Placed += HandleLandingCellPlaced;
+        }
+
+        private static void DestroyPortalObject(GameObject portalObject)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(portalObject);
+            }
+            else
+            {
+                DestroyImmediate(portalObject);
+            }
         }
 
         private void EnsurePlayerTraveller()
         {
-            if (playerRoot != null
-                && playerRoot.GetComponent<PortalExampleTraveller>() == null)
+            if (playerRoot == null)
             {
-                playerRoot.gameObject.AddComponent<PortalExampleTraveller>();
+                return;
+            }
+
+            PortalExampleTraveller resolved =
+                playerRoot.GetComponent<PortalExampleTraveller>();
+            if (resolved == null)
+            {
+                resolved =
+                    playerRoot.gameObject.AddComponent<PortalExampleTraveller>();
+            }
+            if (resolved == playerTraveller)
+            {
+                return;
+            }
+            if (playerTraveller != null)
+            {
+                playerTraveller.Teleported -= HandlePlayerTeleported;
+            }
+
+            playerTraveller = resolved;
+            if (isActiveAndEnabled)
+            {
+                playerTraveller.Teleported += HandlePlayerTeleported;
             }
         }
     }

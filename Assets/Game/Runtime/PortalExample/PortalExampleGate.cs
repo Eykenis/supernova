@@ -9,22 +9,53 @@ namespace Supernova.PortalExample
     public sealed class PortalExampleGate : MonoBehaviour
     {
         private const float ClipPlaneOffset = 0.04f;
+        private const float CharacterControllerEntryTolerance = 0.04f;
+        private const float WalkablePortalMinimumUpDot = 0.65f;
+        private const float WalkablePortalEntryTolerance = 0.12f;
         private static bool isRenderingPortal;
 
         [SerializeField] private PortalExampleGate linkedGate;
         [SerializeField] private Renderer surfaceRenderer;
         [SerializeField] private Camera portalCamera;
+        [SerializeField] private Shader seamlessClipShader;
         [SerializeField, Min(0.1f)] private float apertureRadius = 1.025f;
         [SerializeField, Range(0.25f, 1f)] private float resolutionScale = 0.7f;
         [SerializeField, Min(256)] private int maximumTextureSize = 1280;
 
         private readonly Dictionary<PortalExampleTraveller, float> travellerSides =
             new Dictionary<PortalExampleTraveller, float>();
+        private readonly Dictionary<PortalExampleTraveller, HashSet<Collider>>
+            travellerColliders =
+                new Dictionary<PortalExampleTraveller, HashSet<Collider>>();
 
         private MaterialPropertyBlock propertyBlock;
         private RenderTexture renderTexture;
 
         public PortalExampleGate LinkedGate => linkedGate;
+        internal Shader SeamlessClipShader => seamlessClipShader != null
+            ? seamlessClipShader
+            : linkedGate != null
+                ? linkedGate.seamlessClipShader
+                : null;
+        internal float WorldApertureRadius
+        {
+            get
+            {
+                Vector3 scale = transform.lossyScale;
+                return apertureRadius * Mathf.Max(
+                    Mathf.Abs(scale.x),
+                    Mathf.Abs(scale.y));
+            }
+        }
+
+        /// <summary>
+        /// Selects the destination used for rendering and traversal. Runtime-created
+        /// checkpoint entrances use this to share the scene's landing-cell exit.
+        /// </summary>
+        public void LinkTo(PortalExampleGate destination)
+        {
+            linkedGate = destination;
+        }
 
         private void OnEnable()
         {
@@ -36,7 +67,16 @@ namespace Supernova.PortalExample
         {
             RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
             ReleaseRenderTexture();
+            foreach (PortalExampleTraveller traveller
+                in travellerColliders.Keys)
+            {
+                if (traveller != null)
+                {
+                    traveller.CancelPortalTraversal(this);
+                }
+            }
             travellerSides.Clear();
+            travellerColliders.Clear();
         }
 
         private void OnTriggerEnter(Collider other)
@@ -59,10 +99,15 @@ namespace Supernova.PortalExample
             PortalExampleTraveller traveller = ResolveTraveller(other);
             if (traveller != null && linkedGate != null)
             {
-                float currentSide = GetSide(traveller.transform.position);
-                travellerSides[traveller] = currentSide;
-                if (IsInsideAperture(other))
+                HashSet<Collider> colliders = TrackCollider(traveller, other);
+                float currentSide = GetTraversalSide(traveller);
+                if (!travellerSides.ContainsKey(traveller))
                 {
+                    travellerSides[traveller] = currentSide;
+                }
+                if (IsInsideAperture(colliders))
+                {
+                    traveller.BeginPortalTraversal(this, linkedGate);
                     TryTeleportSweptEntry(traveller, currentSide);
                 }
             }
@@ -76,23 +121,34 @@ namespace Supernova.PortalExample
                 return;
             }
 
-            float currentSide = GetSide(traveller.transform.position);
+            HashSet<Collider> colliders = TrackCollider(traveller, other);
+            float currentSide = GetTraversalSide(traveller);
             if (!travellerSides.TryGetValue(traveller, out float previousSide))
             {
                 travellerSides[traveller] = currentSide;
                 return;
             }
 
-            if (!IsInsideAperture(other))
+            if (!IsInsideAperture(colliders))
             {
                 travellerSides[traveller] = currentSide;
+                return;
+            }
+            traveller.BeginPortalTraversal(this, linkedGate);
+
+            // A horizontal portal sits over solid terrain, so a grounded
+            // CharacterController cannot physically cross its plane. Retry the
+            // tolerant swept-entry path after cooldown as long as the feet remain
+            // over the circular opening.
+            if (TryTeleportSweptEntry(traveller, currentSide))
+            {
                 return;
             }
 
             if (previousSide > 0f && currentSide <= 0f
                 && traveller.Teleport(this, linkedGate))
             {
-                travellerSides.Remove(traveller);
+                ForgetTraveller(traveller);
                 linkedGate.RegisterArrival(traveller);
                 return;
             }
@@ -102,11 +158,20 @@ namespace Supernova.PortalExample
 
         internal void HandleTriggerExit(Collider other)
         {
-            PortalExampleTraveller traveller =
-                other.GetComponentInParent<PortalExampleTraveller>();
-            if (traveller != null)
+            PortalExampleTraveller traveller = FindTraveller(other);
+            if (traveller == null
+                || !travellerColliders.TryGetValue(
+                    traveller,
+                    out HashSet<Collider> colliders))
             {
-                travellerSides.Remove(traveller);
+                return;
+            }
+
+            colliders.Remove(other);
+            if (colliders.Count == 0)
+            {
+                ForgetTraveller(traveller);
+                traveller.CompletePortalTraversal(this);
             }
         }
 
@@ -136,21 +201,23 @@ namespace Supernova.PortalExample
 
         private static PortalExampleTraveller ResolveTraveller(Collider other)
         {
+            PortalExampleTraveller traveller = FindTraveller(other);
+            if (traveller != null)
+            {
+                return traveller;
+            }
             if (other == null)
             {
                 return null;
             }
 
-            PortalExampleTraveller traveller =
-                other.GetComponentInParent<PortalExampleTraveller>();
-            if (traveller != null)
-            {
-                return traveller;
-            }
-
             GameObject travellerObject = null;
             if (other.attachedRigidbody != null)
             {
+                if (other.attachedRigidbody.isKinematic)
+                {
+                    return null;
+                }
                 travellerObject = other.attachedRigidbody.gameObject;
             }
             else
@@ -169,27 +236,224 @@ namespace Supernova.PortalExample
                 : null;
         }
 
+        private static PortalExampleTraveller FindTraveller(Collider other)
+        {
+            if (other == null)
+            {
+                return null;
+            }
+
+            PortalExampleTraveller traveller =
+                other.GetComponentInParent<PortalExampleTraveller>();
+            if (traveller != null)
+            {
+                return traveller;
+            }
+            if (other.attachedRigidbody != null)
+            {
+                return other.attachedRigidbody
+                    .GetComponent<PortalExampleTraveller>();
+            }
+
+            CharacterController controller = other as CharacterController
+                ?? other.GetComponentInParent<CharacterController>();
+            return controller != null
+                ? controller.GetComponent<PortalExampleTraveller>()
+                : null;
+        }
+
         private bool TryTeleportSweptEntry(
             PortalExampleTraveller traveller,
             float currentSide)
         {
-            if (currentSide > 0f
+            if (!HasReachedEntryPlane(traveller, currentSide)
                 || !traveller.CanTeleport
-                || !traveller.TryGetWorldVelocity(out Vector3 velocity)
-                || Vector3.Dot(velocity, transform.forward) >= -0.01f
+                || !IsEnteringPortal(traveller)
                 || !traveller.Teleport(this, linkedGate))
             {
                 return false;
             }
 
-            travellerSides.Remove(traveller);
+            ForgetTraveller(traveller);
             linkedGate.RegisterArrival(traveller);
             return true;
+        }
+
+        private bool IsEnteringPortal(PortalExampleTraveller traveller)
+        {
+            if (traveller.TryGetWorldVelocity(out Vector3 velocity)
+                && Vector3.Dot(velocity, transform.forward) < -0.01f)
+            {
+                return true;
+            }
+
+            // A grounded CharacterController reports its collision-resolved
+            // velocity, which is normally zero against the terrain supporting a
+            // horizontal portal. A close feet-plane overlap inside an upward-facing
+            // aperture is therefore enough to confirm intentional entry.
+            return traveller.UsesCharacterController && IsWalkablePortal();
+        }
+
+        private bool HasReachedEntryPlane(
+            PortalExampleTraveller traveller,
+            float currentSide)
+        {
+            if (currentSide <= 0f)
+            {
+                return true;
+            }
+
+            if (!traveller.UsesCharacterController)
+            {
+                return false;
+            }
+
+            float entryTolerance = IsWalkablePortal()
+                ? WalkablePortalEntryTolerance
+                : CharacterControllerEntryTolerance;
+            return currentSide <= entryTolerance;
+        }
+
+        private bool IsWalkablePortal()
+        {
+            return Vector3.Dot(transform.forward, Vector3.up)
+                >= WalkablePortalMinimumUpDot;
         }
 
         private void RegisterArrival(PortalExampleTraveller traveller)
         {
             travellerSides[traveller] = GetSide(traveller.transform.position);
+            if (!travellerColliders.ContainsKey(traveller))
+            {
+                travellerColliders[traveller] = new HashSet<Collider>();
+            }
+        }
+
+        private HashSet<Collider> TrackCollider(
+            PortalExampleTraveller traveller,
+            Collider collider)
+        {
+            if (!travellerColliders.TryGetValue(
+                traveller,
+                out HashSet<Collider> colliders))
+            {
+                colliders = new HashSet<Collider>();
+                travellerColliders[traveller] = colliders;
+            }
+            if (collider != null)
+            {
+                colliders.Add(collider);
+            }
+            return colliders;
+        }
+
+        private void ForgetTraveller(PortalExampleTraveller traveller)
+        {
+            travellerSides.Remove(traveller);
+            travellerColliders.Remove(traveller);
+        }
+
+        private float GetTraversalSide(PortalExampleTraveller traveller)
+        {
+            if (traveller.TryGetCharacterController(
+                out CharacterController controller))
+            {
+                // A CharacterController cannot move its transform origin through
+                // a solid wall. Use the capsule's leading edge so a wall-mounted
+                // portal triggers when the player reaches its surface instead.
+                return GetMinimumSide(controller.bounds);
+            }
+
+            if (!traveller.TryGetRigidbody(out Rigidbody body))
+            {
+                return GetSide(traveller.transform.position);
+            }
+
+            float minimumSide = float.PositiveInfinity;
+            float maximumSide = float.NegativeInfinity;
+            Collider[] bodyColliders =
+                body.GetComponentsInChildren<Collider>(true);
+            Vector3 normal = transform.forward;
+            for (int index = 0; index < bodyColliders.Length; index++)
+            {
+                Collider collider = bodyColliders[index];
+                if (collider == null || !collider.enabled
+                    || !collider.gameObject.activeInHierarchy
+                    || collider.attachedRigidbody != body)
+                {
+                    continue;
+                }
+
+                Bounds bounds = collider.bounds;
+                Vector3 extent = bounds.extents;
+                float projectedExtent = Mathf.Abs(normal.x) * extent.x
+                    + Mathf.Abs(normal.y) * extent.y
+                    + Mathf.Abs(normal.z) * extent.z;
+                float centerSide = GetSide(bounds.center);
+                minimumSide = Mathf.Min(
+                    minimumSide,
+                    centerSide - projectedExtent);
+                maximumSide = Mathf.Max(
+                    maximumSide,
+                    centerSide + projectedExtent);
+            }
+
+            return float.IsPositiveInfinity(minimumSide)
+                || float.IsNegativeInfinity(maximumSide)
+                    ? GetSide(traveller.transform.position)
+                    : (minimumSide + maximumSide) * 0.5f;
+        }
+
+        private float GetMinimumSide(Bounds bounds)
+        {
+            Vector3 normal = transform.forward;
+            Vector3 extent = bounds.extents;
+            float projectedExtent = Mathf.Abs(normal.x) * extent.x
+                + Mathf.Abs(normal.y) * extent.y
+                + Mathf.Abs(normal.z) * extent.z;
+            return GetSide(bounds.center) - projectedExtent;
+        }
+
+        internal void CollectPortalPlaneObstacles(
+            List<Collider> results,
+            float requiredTunnelDepth)
+        {
+            if (results == null)
+            {
+                return;
+            }
+
+            float radius = WorldApertureRadius;
+            float frontDepth = Mathf.Max(0.08f, radius * 0.08f);
+            float backDepth = Mathf.Max(
+                frontDepth,
+                requiredTunnelDepth);
+            float halfDepth = (frontDepth + backDepth) * 0.5f;
+            Vector3 queryCenter = transform.position
+                + transform.forward * ((frontDepth - backDepth) * 0.5f);
+            Collider[] overlaps = Physics.OverlapBox(
+                queryCenter,
+                new Vector3(radius, radius, halfDepth),
+                transform.rotation,
+                Physics.AllLayers,
+                QueryTriggerInteraction.Ignore);
+            for (int index = 0; index < overlaps.Length; index++)
+            {
+                Collider overlap = overlaps[index];
+                if (overlap == null || !overlap.enabled || overlap.isTrigger)
+                {
+                    continue;
+                }
+                Rigidbody obstacleBody = overlap.attachedRigidbody;
+                if (obstacleBody != null && !obstacleBody.isKinematic)
+                {
+                    continue;
+                }
+                if (!results.Contains(overlap))
+                {
+                    results.Add(overlap);
+                }
+            }
         }
 
         private float GetSide(Vector3 worldPosition)
@@ -199,13 +463,25 @@ namespace Supernova.PortalExample
                 transform.forward);
         }
 
-        private bool IsInsideAperture(Collider other)
+        private bool IsInsideAperture(HashSet<Collider> colliders)
         {
-            Vector3 localCenter = transform.InverseTransformPoint(
-                other.bounds.center);
-            return localCenter.x * localCenter.x
-                + localCenter.y * localCenter.y
-                <= apertureRadius * apertureRadius;
+            foreach (Collider collider in colliders)
+            {
+                if (collider == null || !collider.enabled
+                    || !collider.gameObject.activeInHierarchy)
+                {
+                    continue;
+                }
+                Vector3 localCenter = transform.InverseTransformPoint(
+                    collider.bounds.center);
+                if (localCenter.x * localCenter.x
+                    + localCenter.y * localCenter.y
+                    <= apertureRadius * apertureRadius)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void OnBeginCameraRendering(

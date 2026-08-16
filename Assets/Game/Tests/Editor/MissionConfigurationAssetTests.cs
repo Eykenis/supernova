@@ -40,7 +40,7 @@ namespace Supernova.Tests
             Assert.That(level.MonsterGeneration, Is.Not.Null);
             Assert.That(level.TreasureGeneration, Is.Not.Null);
             Assert.That(level.HasCompleteGenerationConfiguration, Is.True);
-            Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
+            Assert.That(level.MissionTimeLimitSeconds, Is.EqualTo(180f));
             Assert.That(level.WorldSeed, Is.EqualTo(6667));
             Assert.That(level.RequiredFunds, Is.EqualTo(200));
             Assert.That(level.HomeSceneName, Is.EqualTo("Home"));
@@ -48,13 +48,13 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void FirstLevel_UsesThreeMinuteEvacuationCountdown()
+        public void FirstLevel_UsesThreeMinuteMissionCountdown()
         {
             LevelConfiguration level =
                 AssetDatabase.LoadAssetAtPath<LevelConfiguration>(LevelPaths[0]);
 
             Assert.That(level, Is.Not.Null);
-            Assert.That(level.EvacuationCountdownSeconds, Is.EqualTo(180f));
+            Assert.That(level.MissionTimeLimitSeconds, Is.EqualTo(180f));
         }
 
         [Test]
@@ -165,7 +165,6 @@ namespace Supernova.Tests
             Assert.That(configuration.MeshesBuiltPerFrame, Is.EqualTo(1));
             AssertDepthScaling(configuration.OreDepthProbability);
             AssertDepthScaling(configuration.TreasureDepthProbability);
-            AssertDepthScaling(configuration.MonsterDepthProbability);
         }
 
         [Test]
@@ -222,9 +221,15 @@ namespace Supernova.Tests
                 "InfiniteCaves must remain enabled for non-default levels.");
             Assert.That(
                 scenes.Any(scene =>
-                    scene.path == ProjectAssetPaths.Scenes.MainMenu && scene.enabled),
-                Is.False,
-                "The first-level loop must boot into Home instead of the old menu.");
+                    scene.path == ProjectAssetPaths.Scenes.SpawnShelterStoneTest
+                    && scene.enabled),
+                Is.True,
+                "The main-menu tutorial scene must be enabled in the build.");
+            Assert.That(
+                scenes.Count(scene =>
+                    scene.path == ProjectAssetPaths.Scenes.Home && scene.enabled),
+                Is.EqualTo(1),
+                "Home must be the single integrated main-menu entry scene.");
         }
 
         private static void AssertDepthScaling(DepthProbabilityProfile profile)

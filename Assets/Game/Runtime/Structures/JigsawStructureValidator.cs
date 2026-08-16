@@ -70,6 +70,7 @@ namespace Supernova.MinecraftCaves
                         piece.OutputPoolId,
                         "*",
                         "*",
+                        JigsawConnectorDefinition.Face.Forward,
                         string.Empty,
                         issues);
                 }
@@ -227,6 +228,7 @@ namespace Supernova.MinecraftCaves
                     connector.TargetPoolId,
                     connector.SocketName,
                     connector.TargetName,
+                    connector.Face,
                     connector.FallbackPoolId,
                     issues);
             }
@@ -238,16 +240,23 @@ namespace Supernova.MinecraftCaves
             string poolId,
             string socketName,
             string targetName,
+            JigsawConnectorDefinition.Face outputFace,
             string fallbackPoolId,
             List<Issue> issues)
         {
-            if (PoolHasMatch(feature, poolId, socketName, targetName)
+            if (PoolHasMatch(
+                    feature,
+                    poolId,
+                    socketName,
+                    targetName,
+                    outputFace)
                 || (fallbackPoolId.Length > 0
                     && PoolHasMatch(
                         feature,
                         fallbackPoolId,
                         socketName,
-                        targetName)))
+                        targetName,
+                        outputFace)))
             {
                 return;
             }
@@ -260,7 +269,8 @@ namespace Supernova.MinecraftCaves
             JigsawStructureFeatureSettings feature,
             string poolId,
             string socketName,
-            string targetName)
+            string targetName,
+            JigsawConnectorDefinition.Face outputFace)
         {
             for (int i = 0; i < feature.Pieces.Count; i++)
             {
@@ -273,7 +283,7 @@ namespace Supernova.MinecraftCaves
                 }
                 if (!piece.HasExplicitConnectors)
                 {
-                    return true;
+                    return !IsVertical(outputFace);
                 }
                 for (int connectorIndex = 0;
                     connectorIndex < piece.Connectors.Count;
@@ -282,6 +292,7 @@ namespace Supernova.MinecraftCaves
                     JigsawConnectorSettings input =
                         piece.Connectors[connectorIndex];
                     if (input.CanAcceptInput
+                        && FacesCanConnect(outputFace, input.Face)
                         && NamesMatch(targetName, input.SocketName)
                         && NamesMatch(input.TargetName, socketName))
                     {
@@ -290,6 +301,27 @@ namespace Supernova.MinecraftCaves
                 }
             }
             return false;
+        }
+
+        private static bool FacesCanConnect(
+            JigsawConnectorDefinition.Face output,
+            JigsawConnectorDefinition.Face input)
+        {
+            bool outputVertical = IsVertical(output);
+            bool inputVertical = IsVertical(input);
+            if (!outputVertical || !inputVertical)
+            {
+                return !outputVertical && !inputVertical;
+            }
+            return output == JigsawConnectorDefinition.Face.Up
+                ? input == JigsawConnectorDefinition.Face.Down
+                : input == JigsawConnectorDefinition.Face.Up;
+        }
+
+        private static bool IsVertical(JigsawConnectorDefinition.Face face)
+        {
+            return face == JigsawConnectorDefinition.Face.Up
+                || face == JigsawConnectorDefinition.Face.Down;
         }
 
         private static bool NamesMatch(string expected, string actual)

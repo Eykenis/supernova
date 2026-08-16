@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Diamond
   m_EditorClassIdentifier: 
   type: 13
-  displayName: YellowIron
+  displayName: 钻石
   group: 2
   durability: 50
   material: {fileID: 2100000, guid: bacb4a0d1f00adb4cb01f351f4ca302e, type: 2}

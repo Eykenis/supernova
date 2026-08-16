@@ -97,10 +97,10 @@ GameObject:
   m_Component:
   - component: {fileID: 2594763945754651981}
   - component: {fileID: 129895018234824985}
-  - component: {fileID: 5963867120668655260}
   - component: {fileID: 1765640612343632233}
   - component: {fileID: 6301634181288624334}
   - component: {fileID: 1136365571470066702}
+  - component: {fileID: 1136365571470066703}
   m_Layer: 0
   m_HasEditorInfo: 1
   m_Name: ExampleCaveCreature
@@ -162,23 +162,6 @@ Rigidbody:
   m_Interpolate: 1
   m_Constraints: 112
   m_CollisionDetection: 2
---- !u!114 &5963867120668655260
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2222813051484784447}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7db42a02dd664484997a9d597482a611, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  sourceCollider: {fileID: 0}
-  shape: {fileID: 11400000, guid: b66602a3bfcae5f4d8c8258309888e74, type: 2}
-  bakeVoxelSize: 0.42
-  showOccupiedVoxels: 1
-  previewColor: {r: 0.1, g: 0.85, b: 1, a: 0.22}
 --- !u!114 &1765640612343632233
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -192,10 +175,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   body: {fileID: 129895018234824985}
-  movementSpeed: 1.26
-  maximumHorizontalAcceleration: 99
-  voxelSize: 0.42
-  jumpVelocityMultiplier: 1.1
+  crowdCollider: {fileID: 1136365571470066703}
+  animationReferenceSpeed: 1.26
   turnSpeedInDegrees: 540
 --- !u!114 &6301634181288624334
 MonoBehaviour:
@@ -211,23 +192,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   caveWorld: {fileID: 0}
   playerFoot: {fileID: 0}
-  shapeAuthoring: {fileID: 0}
   motor: {fileID: 0}
   simulationDistance: 160
   pursuitDistance: 64
   pursuitRetentionDistance: 96
   attackDistance: 2
-  wanderRadius: 32
-  wanderLegRadius: 8
-  navigation:
-    safeFallHeight: 3
-    maximumJumpHeight: 1
-    maximumSingleMoveCost: 200
-    maximumExpandedNodes: 512
-  wanderRetryInterval: 8
-  wanderVerticalSearch: 8
-  solidDensityThreshold: 0
-  arrivalToleranceInVoxels: 0.999
   maximumHealth: 60
   vitals:
     maximumHealth: 100
@@ -243,9 +212,6 @@ MonoBehaviour:
   damagePercentagePerSquaredImpulse: 0.03
   drawDebug: 1
   currentState: 0
-  lastExpandedNodeCount: 0
-  observedSupport: {x: 0, y: 0, z: 0}
-  pathIndex: 0
 --- !u!136 &1136365571470066702
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -269,6 +235,29 @@ CapsuleCollider:
   m_Height: 1.6610911
   m_Direction: 1
   m_Center: {x: 0, y: 0.83054554, z: 0}
+--- !u!136 &1136365571470066703
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2222813051484784447}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.2
+  m_Height: 0.65
+  m_Direction: 1
+  m_Center: {x: 0, y: 0.45, z: 0}
 --- !u!1 &2549287462486588750
 GameObject:
   m_ObjectHideFlags: 0

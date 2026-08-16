@@ -10,6 +10,7 @@ namespace Supernova.MinecraftCaves
     public readonly struct JigsawStructureFeatureSettings
     {
         private readonly JigsawPieceSettings[] pieces;
+        private readonly int[] startPieceCandidateIndices;
 
         public JigsawStructureFeatureSettings(
             string stableId,
@@ -37,7 +38,8 @@ namespace Supernova.MinecraftCaves
             string structureSetId = null,
             int structureSetWeight = 1,
             int worldHeight = VoxelColumnChunkData.Height,
-            bool allowLayoutOutsidePlacementRegion = false)
+            bool allowLayoutOutsidePlacementRegion = false,
+            int[] startPieceCandidates = null)
         {
             if (string.IsNullOrWhiteSpace(stableId))
             {
@@ -183,6 +185,12 @@ namespace Supernova.MinecraftCaves
             }
             StartPieceIndex = startIndex;
             FirstPieceIndex = forcedFirstIndex;
+            // A mixed pool wants a different family's hub each layout. Candidates
+            // are validated here so the generator can pick one without re-checking.
+            startPieceCandidateIndices = BuildStartPieceCandidates(
+                startPieceCandidates,
+                startIndex,
+                pieces.Length);
 
             int regionVoxelSize = RegionSizeInChunks
                 * VoxelColumnChunkData.Width;
@@ -239,9 +247,41 @@ namespace Supernova.MinecraftCaves
         public ulong ContentHash { get; }
         public IReadOnlyList<JigsawPieceSettings> Pieces => pieces;
 
+        /// <summary>
+        /// Every module that may open a layout. This always contains
+        /// <see cref="StartPieceIndex"/> and holds more entries only for mixed
+        /// pools that rotate the opening hub between families.
+        /// </summary>
+        public IReadOnlyList<int> StartPieceCandidateIndices =>
+            startPieceCandidateIndices;
+
         public JigsawPieceSettings GetPiece(int index)
         {
             return pieces[index];
+        }
+
+        private static int[] BuildStartPieceCandidates(
+            int[] requested,
+            int startIndex,
+            int pieceCount)
+        {
+            if (requested == null || requested.Length == 0)
+            {
+                return new[] { startIndex };
+            }
+
+            var accepted = new List<int> { startIndex };
+            for (int i = 0; i < requested.Length; i++)
+            {
+                int candidate = requested[i];
+                if (candidate >= 0
+                    && candidate < pieceCount
+                    && !accepted.Contains(candidate))
+                {
+                    accepted.Add(candidate);
+                }
+            }
+            return accepted.ToArray();
         }
 
         private ulong ComputeContentHash()
@@ -271,6 +311,10 @@ namespace Supernova.MinecraftCaves
             AddHash(ref hash, StructureSetWeight);
             AddHash(ref hash, WorldHeight);
             AddHash(ref hash, AllowLayoutOutsidePlacementRegion ? 1 : 0);
+            for (int i = 0; i < startPieceCandidateIndices.Length; i++)
+            {
+                AddHash(ref hash, startPieceCandidateIndices[i]);
+            }
             for (int i = 0; i < pieces.Length; i++)
             {
                 JigsawPieceSettings piece = pieces[i];
@@ -306,6 +350,8 @@ namespace Supernova.MinecraftCaves
                 AddHash(ref hash, piece.HasTemplate ? 1 : 0);
                 AddHash(ref hash, (int)piece.TemplateContentHash);
                 AddHash(ref hash, (int)(piece.TemplateContentHash >> 32));
+                AddHash(ref hash, piece.PrimaryTypeOverride.Value);
+                AddHash(ref hash, piece.AccentTypeOverride.Value);
                 for (int connectorIndex = 0;
                     connectorIndex < piece.Connectors.Count;
                     connectorIndex++)

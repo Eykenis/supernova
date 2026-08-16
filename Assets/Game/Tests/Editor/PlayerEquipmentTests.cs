@@ -1,5 +1,6 @@
 using System.Reflection;
 using NUnit.Framework;
+using Supernova.Inputs;
 using Supernova.Gameplay;
 using Supernova.Voxels;
 using UnityEditor;
@@ -92,7 +93,8 @@ namespace Supernova.Tests
 
             Assert.That(asset, Is.Not.Null);
             Assert.That(asset.Slot, Is.EqualTo(PlayerEquipmentSlot.Back));
-            Assert.That(asset.ActivationKey, Is.EqualTo(KeyCode.V));
+            Assert.That(asset.ActivationAction,
+                Is.EqualTo(GameInputActionId.ToggleEquipment));
             Assert.That(asset.VisualPrefab, Is.SameAs(visual));
             JetpackEquipmentInteraction jetpack =
                 asset.Interaction as JetpackEquipmentInteraction;

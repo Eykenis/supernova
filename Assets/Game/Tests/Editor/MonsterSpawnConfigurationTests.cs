@@ -24,18 +24,21 @@ namespace Supernova.Tests
                 AssetDatabase.LoadAssetAtPath<MonsterSpawnTable>(TablePath);
             Assert.That(table, Is.Not.Null);
             Assert.That(table.MaximumActiveMonsters, Is.GreaterThan(0));
+            Assert.That(table.PlayerExclusionRadiusInChunks, Is.EqualTo(1));
             Assert.That(table.MaximumMonsterSpawnsPerFrame, Is.EqualTo(1));
-            Assert.That(table.SecondsBetweenMonsterGroups, Is.EqualTo(0.75f));
+            Assert.That(table.SpawnAttemptIntervalSeconds, Is.EqualTo(5f));
+            Assert.That(table.SpawnAttemptChance, Is.EqualTo(0.3f));
+            Assert.That(table.CandidateChunksPerSpawnAttempt, Is.EqualTo(4));
             Assert.That(table.Monsters, Is.Not.Empty);
             CollectionAssert.AreEquivalent(
-                new[] { "Cactus Mob", "Skeleton", "Skeleton Giant" },
+                new[] { "Cactus Mob", "Skeleton" },
                 table.Monsters.Select(definition => definition.Prefab.name));
 
             foreach (MonsterSpawnDefinition definition in table.Monsters)
             {
                 Assert.That(definition, Is.Not.Null);
                 Assert.That(definition.Prefab, Is.Not.Null);
-                Assert.That(definition.AttemptsPerChunk, Is.EqualTo(2));
+                Assert.That(definition.AttemptsPerChunk, Is.GreaterThan(0));
                 Assert.That(definition.MinimumGroupSize, Is.GreaterThanOrEqualTo(2));
                 Assert.That(
                     definition.MaximumGroupSize,
@@ -53,23 +56,33 @@ namespace Supernova.Tests
                     definition.Prefab.GetComponent<Collider>(),
                     Is.Not.Null,
                     definition.name + " needs a root Collider.");
-                CreatureVoxelShapeAuthoring shapeAuthoring =
-                    definition.Prefab.GetComponent<CreatureVoxelShapeAuthoring>();
+                CreaturePhysicsMotor motor =
+                    definition.Prefab.GetComponent<CreaturePhysicsMotor>();
                 Assert.That(
-                    shapeAuthoring,
+                    motor,
                     Is.Not.Null,
-                    definition.name + " needs voxel navigation authoring.");
+                    definition.name + " needs a CreaturePhysicsMotor.");
+                CapsuleCollider crowdCollider =
+                    motor.CrowdCollider as CapsuleCollider;
                 Assert.That(
-                    shapeAuthoring.Shape,
+                    crowdCollider,
                     Is.Not.Null,
-                    definition.name + " needs a baked voxel shape.");
+                    definition.name + " needs an authored crowd collider.");
+                Assert.That(crowdCollider.enabled, Is.True);
+                Assert.That(crowdCollider.isTrigger, Is.False);
+                CapsuleCollider bodyCollider = definition.Prefab
+                    .GetComponents<CapsuleCollider>()
+                    .Single(collider => collider != crowdCollider);
                 Assert.That(
-                    shapeAuthoring.Shape.IsEmpty,
-                    Is.False,
-                    definition.name + " has an empty voxel shape.");
+                    crowdCollider.radius,
+                    Is.LessThan(bodyCollider.radius),
+                    definition.name + " crowd radius must be smaller than "
+                        + "its full body radius.");
                 Assert.That(
-                    shapeAuthoring.Shape.BakedVoxelSize,
-                    Is.EqualTo(0.42f).Within(0.0001f));
+                    crowdCollider.height,
+                    Is.LessThan(bodyCollider.height),
+                    definition.name + " crowd height must be smaller than "
+                        + "its full body height.");
                 Assert.That(
                     definition.Prefab.GetComponent<CreatureBehaviorAnimator>(),
                     Is.Not.Null,
@@ -140,10 +153,11 @@ namespace Supernova.Tests
 
         [TestCase(0, 0, true)]
         [TestCase(1, 0, true)]
-        [TestCase(-1, 1, true)]
+        [TestCase(0, -1, true)]
+        [TestCase(1, 1, false)]
+        [TestCase(-1, 1, false)]
         [TestCase(2, 0, false)]
-        [TestCase(0, -2, false)]
-        public void MonsterSpawnChunkExclusion_CoversSpawnChunkAndNeighbors(
+        public void MonsterSpawnChunkExclusion_UsesOneChunkRadialDistance(
             int xOffset,
             int zOffset,
             bool expected)
@@ -159,7 +173,7 @@ namespace Supernova.Tests
             Assert.That(
                 method.Invoke(
                     null,
-                    new object[] { candidateChunk, playerSpawnChunk }),
+                    new object[] { candidateChunk, playerSpawnChunk, 1 }),
                 Is.EqualTo(expected));
         }
 

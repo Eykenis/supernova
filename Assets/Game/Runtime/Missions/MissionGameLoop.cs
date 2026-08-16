@@ -1,6 +1,9 @@
 using System.Collections;
+using Supernova.Audio;
+using Supernova.Inputs;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
+using Supernova.PortalExample;
 using Supernova.Shop;
 using Supernova.UI;
 using Supernova.Voxels;
@@ -14,6 +17,9 @@ namespace Supernova.Missions
     public sealed class MissionGameLoop : MonoBehaviour
     {
         private const int DebugCreditGrant = 100;
+        private const float CaveAmbienceVolumeScale = 0.01f;
+        private const float TransitionSoundVolumeScale = 0.6f;
+        private const float DefaultResultCountDurationSeconds = 2f;
         private static MissionGameLoop instance;
 
         private LevelConfiguration definition;
@@ -30,6 +36,8 @@ namespace Supernova.Missions
         private int displayedObjectiveStoredValue = int.MinValue;
         private int displayedObjectiveRequiredValue = int.MinValue;
         private string displayedObjectiveMissionName;
+        private int ambienceLoopId;
+        private bool playReadyAfterCaveLoad;
 
         public MissionRun CurrentRun => run;
         public int Credits => PlayerEconomy.Credits;
@@ -77,6 +85,7 @@ namespace Supernova.Missions
                 return;
             }
             instance = this;
+            ambienceLoopId = SoundEffectEvents.CreateLoopId();
             DontDestroyOnLoad(gameObject);
             Application.runInBackground = true;
             MissionAssetReferences missions = GameAssetCatalog.Current != null
@@ -108,6 +117,7 @@ namespace Supernova.Missions
         private void OnDestroy()
         {
             if (instance != this) return;
+            StopCaveAmbience();
             SceneManager.sceneLoaded -= HandleSceneLoaded;
             instance = null;
         }
@@ -115,7 +125,7 @@ namespace Supernova.Missions
         private void Update()
         {
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-            if (Input.GetKeyDown(KeyCode.F1))
+            if (GameInput.Pressed(GameInputActionId.DebugMission))
             {
                 PlayerEconomy.AddCredits(DebugCreditGrant);
                 SetPrompt(
@@ -132,13 +142,16 @@ namespace Supernova.Missions
 
             if (run != null && !run.IsFinished && caveSetup && !transitioning)
             {
-                run.Tick(Time.deltaTime);
+                int storedValue = extractionZone != null
+                    ? extractionZone.CurrentStoredValue
+                    : 0;
+                run.Tick(Time.deltaTime, storedValue);
                 RefreshObjective();
                 if (run.IsFinished) ShowResult();
             }
 
             if (missionUi != null && missionUi.IsResultVisible
-                && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.Space)))
+                && GameInput.Pressed(GameInputActionId.Submit))
             {
                 ReturnHome();
             }
@@ -149,6 +162,50 @@ namespace Supernova.Missions
             if (campaign != null && campaign.IsComplete)
                 return false;
             return BeginLevel(definition);
+        }
+
+        /// <summary>
+        /// Loads a scene while the persistent mission overlay is already fully
+        /// opaque, then fades the destination scene in after loading completes.
+        /// </summary>
+        public bool BeginSceneLoadFromBlack(string sceneName)
+        {
+            if (transitioning
+                || string.IsNullOrWhiteSpace(sceneName)
+                || !Application.CanStreamedLevelBeLoaded(sceneName))
+            {
+                return false;
+            }
+
+            StartCoroutine(LoadWithFadeInternal(sceneName, true));
+            return true;
+        }
+
+        /// <summary>
+        /// Makes the persistent scene fade available to an external transition.
+        /// The caller may drive its alpha before handing the scene load back to
+        /// <see cref="BeginSceneLoadFromBlack"/>.
+        /// </summary>
+        public CanvasGroup PrepareSceneFadeFromTransparent()
+        {
+            if (transitioning)
+                return null;
+
+            EnsureUi();
+            CanvasGroup fade = missionUi != null
+                ? missionUi.SceneFade
+                : null;
+            if (fade == null)
+                return null;
+
+            Canvas overlayCanvas = fade.GetComponentInParent<Canvas>(true);
+            if (overlayCanvas != null)
+                overlayCanvas.gameObject.SetActive(true);
+            fade.alpha = 0f;
+            fade.blocksRaycasts = true;
+            fade.gameObject.SetActive(true);
+            Canvas.ForceUpdateCanvases();
+            return fade;
         }
 
         public bool BeginLevel(LevelConfiguration level)
@@ -162,9 +219,20 @@ namespace Supernova.Missions
             definition = level;
             campaign?.SelectLevel(level);
             run = new MissionRun(
-                definition.EvacuationCountdownSeconds,
+                definition.MissionTimeLimitSeconds,
                 definition.RequiredFunds);
             InvalidateObjectiveCache();
+            playReadyAfterCaveLoad =
+                SceneManager.GetActiveScene().name == HomeSceneName;
+            if (playReadyAfterCaveLoad)
+            {
+                RequestSound(
+                    AudioAssets != null
+                        ? AudioAssets.MissionStart
+                        : null,
+                    transform.position,
+                    TransitionSoundVolumeScale);
+            }
             StartCoroutine(LoadWithFade(CaveSceneName));
             return true;
         }
@@ -172,22 +240,20 @@ namespace Supernova.Missions
         public void DeliverOre(int value)
         {
             run?.AddDeliveredValue(value);
-            SetPrompt("COLLECTED  +" + Mathf.Max(0, value));
             RefreshObjective();
         }
 
         /// <summary>
-        /// The value shown to the player as collected. Before evacuation this
-        /// includes the extraction Cell's live overlap tally; once evacuation
-        /// starts that tally has been banked into DeliveredValue, so only the
-        /// fixed total is shown.
+        /// The value shown to the player as collected. While the mission is
+        /// active this includes the extraction Cell's live overlap tally. At
+        /// timeout that tally is banked into DeliveredValue for final scoring.
         /// </summary>
         private int DisplayedCollectedValue
         {
             get
             {
                 if (run == null) return 0;
-                if (run.IsEvacuationCountdownActive) return run.DeliveredValue;
+                if (run.IsFinished) return run.DeliveredValue;
                 int extraction = extractionZone != null
                     ? extractionZone.CurrentStoredValue
                     : 0;
@@ -198,34 +264,11 @@ namespace Supernova.Missions
         public bool RequestEvacuation()
         {
             if (run == null || run.IsFinished || transitioning) return false;
-
-            int storedValue = extractionZone != null
-                ? extractionZone.CurrentStoredValue
-                : 0;
-            if (!run.TryStartEvacuationCountdown(storedValue))
-            {
-                int total = DisplayedCollectedValue;
-                if (run.IsEvacuationCountdownActive)
-                {
-                    SetPrompt("EVACUATION COUNTDOWN ALREADY ACTIVE");
-                }
-                else
-                {
-                    int missingValue = Mathf.Max(0, run.RequiredValue - total);
-                    SetPrompt(
-                        "RETURN LOCKED · NEED $" + missingValue
-                        + " MORE    STORED $" + total
-                        + " / $" + run.RequiredValue);
-                }
-                return false;
-            }
-
-            InvalidateObjectiveCache();
             SetPrompt(
-                "EVACUATION INITIATED · RETURN IN "
-                + FormatCountdown(run.TimeRemaining));
-            RefreshObjective();
-            return true;
+                "将在 "
+                + FormatCountdown(run.TimeRemaining)
+                + " 后结束任务");
+            return false;
         }
 
         public void ShowCellActionPrompt(bool home)
@@ -233,38 +276,17 @@ namespace Supernova.Missions
             if (home)
             {
                 SetPrompt(campaign != null && campaign.IsComplete
-                    ? "ALL MISSIONS COMPLETE"
-                    : "PRESS E AT CELL CONSOLE TO START " + MissionName);
+                    ? ""
+                    : "按 {{input:Gameplay/Interact}} 开始任务");
                 return;
             }
 
             if (run == null || run.IsFinished) return;
-            if (run.IsEvacuationCountdownActive)
-            {
-                SetPrompt("EVACUATION COUNTDOWN ACTIVE");
-                return;
-            }
-
-            int storedValue = DisplayedCollectedValue;
-            SetPrompt(storedValue >= run.RequiredValue
-                ? "PRESS E AT CELL CONSOLE TO BEGIN EVACUATION"
-                : "RETURN LOCKED · STORED $" + storedValue
-                    + " / $" + run.RequiredValue);
         }
 
         public void HideCellActionPrompt(bool home)
         {
-            if (home)
-            {
-                SetPrompt(campaign != null && campaign.IsComplete
-                    ? "CAMPAIGN COMPLETE    BALANCE: $" + Credits
-                    : "SHOP ONLINE    BALANCE: $" + Credits);
-            }
-            else if (run != null && run.IsEvacuationCountdownActive)
-            {
-                SetPrompt("EVACUATION COUNTDOWN ACTIVE");
-            }
-            else
+            if (!home)
             {
                 SetPrompt("");
             }
@@ -273,10 +295,32 @@ namespace Supernova.Missions
         public void NotifyStoredValueChanged(int value)
         {
             SetPrompt(
-                "TOTAL STORED VALUE: $" + Mathf.Max(0, DisplayedCollectedValue));
+                "已收集：$" + Mathf.Max(0, DisplayedCollectedValue));
             RefreshObjective();
             cellZone?.RefreshActionPrompt();
         }
+
+        public void NotifyStoredResourceAdded(
+            int value,
+            Vector3 _)
+        {
+            if (value <= 0) return;
+
+            RequestSound(
+                AudioAssets != null ? AudioAssets.CoinDeposit : null,
+                ResolvePlayerSoundPosition(),
+                1f);
+        }
+
+        private Vector3 ResolvePlayerSoundPosition()
+        {
+            VoxelPlayerController player =
+                FindObjectOfType<VoxelPlayerController>();
+            return player != null
+                ? player.transform.position
+                : transform.position;
+        }
+
 
         public void SetPrompt(string message)
         {
@@ -299,12 +343,23 @@ namespace Supernova.Missions
             caveSetup = false;
             extractionZone = null;
             cellZone = null;
-            if (scene.name == HomeSceneName) SetupHome();
+            if (scene.name == HomeSceneName)
+            {
+                StopCaveAmbience();
+                playReadyAfterCaveLoad = false;
+                SetupHome();
+            }
             else if (scene.name == CaveSceneName)
             {
+                StartCaveAmbience();
                 EnsureRunForDirectCaveEntry();
                 gameUi?.HideMissionTimer();
                 SetPrompt("");
+            }
+            else
+            {
+                StopCaveAmbience();
+                playReadyAfterCaveLoad = false;
             }
         }
 
@@ -314,7 +369,7 @@ namespace Supernova.Missions
                 return;
 
             run = new MissionRun(
-                definition.EvacuationCountdownSeconds,
+                definition.MissionTimeLimitSeconds,
                 definition.RequiredFunds);
             InvalidateObjectiveCache();
         }
@@ -323,19 +378,9 @@ namespace Supernova.Missions
         {
             CreateCellTrigger(FindCell(), true);
             gameUi?.HideMissionTimer();
-            if (campaign != null && campaign.IsComplete)
+            if (campaign == null || !campaign.IsComplete)
             {
-                missionUi.SetObjective("CAMPAIGN COMPLETE\nALL DESCENTS CLEARED");
-                missionUi.SetPrompt(
-                    "CAMPAIGN COMPLETE    BALANCE: $" + Credits);
-            }
-            else
-            {
-                missionUi.SetObjective(
-                    "SHIP BASE\nNEXT: LEVEL " + LevelNumberText
-                    + " · " + MissionName);
-                missionUi.SetPrompt(
-                    "SHOP ONLINE    BALANCE: $" + Credits);
+                missionUi.SetObjective("基地");
             }
         }
 
@@ -346,38 +391,6 @@ namespace Supernova.Missions
             if (player == null || world == null || !world.IsInitialLoadComplete) return;
 
             CreateCellTrigger(FindCell(), false);
-            if (!world.UsesExternalDenseLandingCell)
-            {
-                Vector3 cartPosition;
-                Quaternion cartRotation;
-                SpawnPointSceneStructure spawnStructure =
-                    FindObjectOfType<SpawnPointSceneStructure>();
-                if (spawnStructure != null)
-                {
-                    spawnStructure.GetMissionCartSpawnPose(
-                        out cartPosition,
-                        out cartRotation);
-                }
-                else
-                {
-                    cartPosition = player.transform.position
-                        + player.transform.right * 2.2f
-                        + player.transform.forward * 1.5f
-                        + Vector3.up * 0.5f;
-                    cartRotation = player.transform.rotation;
-                }
-
-                string authoredCartName = GameAssetCatalog.Current != null
-                    ? GameAssetCatalog.Current.SceneLookups.AuthoredCartObjectName
-                    : string.Empty;
-                GameObject authoredCart = string.IsNullOrWhiteSpace(authoredCartName)
-                    ? null
-                    : GameObject.Find(authoredCartName);
-                MissionCart.ConfigureExisting(
-                    authoredCart,
-                    cartPosition,
-                    cartRotation);
-            }
             ProximitySlidingDoor[] levelDoors =
                 FindObjectsOfType<ProximitySlidingDoor>(true);
             for (int i = 0; i < levelDoors.Length; i++)
@@ -385,6 +398,16 @@ namespace Supernova.Missions
                 levelDoors[i].SetStayOpenAfterFirstOpen(true);
             }
             caveSetup = true;
+            if (playReadyAfterCaveLoad)
+            {
+                RequestSound(
+                    AudioAssets != null
+                        ? AudioAssets.MissionReady
+                        : null,
+                    transform.position,
+                    TransitionSoundVolumeScale);
+                playReadyAfterCaveLoad = false;
+            }
             RefreshObjective();
         }
 
@@ -422,6 +445,18 @@ namespace Supernova.Missions
             Transform cell,
             BoxCollider trigger)
         {
+            SpawnPointSceneStructure spawnStructure =
+                cell.GetComponent<SpawnPointSceneStructure>();
+            if (spawnStructure != null)
+            {
+                Bounds extractionBounds =
+                    spawnStructure.MissionExtractionLocalBounds;
+                trigger.transform.localPosition = Vector3.zero;
+                trigger.center = extractionBounds.center;
+                trigger.size = extractionBounds.size;
+                return;
+            }
+
             Renderer[] renderers = cell.GetComponentsInChildren<Renderer>(true);
             if (renderers.Length == 0)
             {
@@ -434,7 +469,14 @@ namespace Supernova.Missions
                 rendererIndex < renderers.Length;
                 rendererIndex++)
             {
-                Bounds worldBounds = renderers[rendererIndex].bounds;
+                Renderer renderer = renderers[rendererIndex];
+                if (renderer.GetComponentInParent<PortalExampleGate>(true)
+                    != null)
+                {
+                    continue;
+                }
+
+                Bounds worldBounds = renderer.bounds;
                 Vector3 minimum = worldBounds.min;
                 Vector3 maximum = worldBounds.max;
                 for (int x = 0; x <= 1; x++)
@@ -512,7 +554,7 @@ namespace Supernova.Missions
                         && campaign.RecordOutcome(run.Outcome);
                     if (advanced)
                         definition = campaign.CurrentLevel;
-                    message = "MISSION COMPLETE"
+                    message = "任务完成"
                         + "\n\nCOLLECTED $" + run.DeliveredValue
                         + "\nBALANCE INCREASED $" + reward
                         + (advanced
@@ -522,20 +564,49 @@ namespace Supernova.Missions
                         + "\n\nPRESS ENTER TO RETURN";
                     break;
                 case MissionOutcome.LostInCaves:
-                    message = "MISSION FAILED"
+                    message = "任务结束"
                         + "\n\nEVACUATION WINDOW CLOSED."
                         + "\nYOU ARE LOST IN THE CAVES."
                         + "\n\nPRESS ENTER TO RETURN";
                     break;
                 default:
-                    message = "MISSION FAILED"
+                    message = "任务结束"
                         + "\n\nINSUFFICIENT RESOURCES COLLECTED"
                         + "\nCOLLECTED $" + run.DeliveredValue
                         + " / $" + run.RequiredValue
-                        + "\n\nPRESS ENTER TO RETURN";
+                        + "\n\nPRESS {{input:UI/Submit}} TO RETURN";
                     break;
             }
-            missionUi.ShowResult(message);
+            ShowAnimatedResult(message);
+        }
+
+        private void ShowAnimatedResult(string message)
+        {
+            string collectedToken = "$" + run.DeliveredValue;
+            int tokenIndex = message.IndexOf(
+                collectedToken,
+                System.StringComparison.Ordinal);
+            if (tokenIndex < 0)
+            {
+                missionUi.ShowResult(message);
+                return;
+            }
+
+            string prefix = message.Substring(0, tokenIndex + 1);
+            string suffix = message.Substring(
+                tokenIndex + collectedToken.Length);
+            SoundEffectCue cashGrowing = AudioAssets != null
+                ? AudioAssets.CashGrowing
+                : null;
+            RequestSound(cashGrowing, transform.position, 1f);
+            float duration = cashGrowing != null
+                ? cashGrowing.MaximumClipLength
+                : DefaultResultCountDurationSeconds;
+            missionUi.ShowResultCountAnimation(
+                prefix,
+                suffix,
+                run.DeliveredValue,
+                Mathf.Max(0.1f, duration));
         }
 
         private void ReturnHome()
@@ -547,6 +618,13 @@ namespace Supernova.Missions
 
         private IEnumerator LoadWithFade(string sceneName)
         {
+            return LoadWithFadeInternal(sceneName, false);
+        }
+
+        private IEnumerator LoadWithFadeInternal(
+            string sceneName,
+            bool beginFullyBlack)
+        {
             EnsureUi();
             CanvasGroup fade = missionUi.SceneFade;
             transitioning = true;
@@ -554,16 +632,21 @@ namespace Supernova.Missions
             {
                 if (fade != null)
                 {
-                    if (!fade.gameObject.activeSelf)
+                    if (beginFullyBlack)
+                        fade.alpha = 1f;
+                    else if (!fade.gameObject.activeSelf)
                         fade.alpha = 0f;
                     fade.gameObject.SetActive(true);
                     fade.blocksRaycasts = true;
                     Canvas.ForceUpdateCanvases();
                     yield return null;
-                    yield return FadeTo(
-                        fade,
-                        1f,
-                        missionUi.FadeOutSeconds);
+                    if (!beginFullyBlack)
+                    {
+                        yield return FadeTo(
+                            fade,
+                            1f,
+                            missionUi.FadeOutSeconds);
+                    }
                 }
 
                 yield return new WaitForEndOfFrame();
@@ -618,7 +701,7 @@ namespace Supernova.Missions
             EnsureUi();
             if (missionUi == null) return;
             int seconds = Mathf.CeilToInt(run.TimeRemaining);
-            if (!run.IsEvacuationCountdownActive)
+            if (!run.IsCountdownActive)
             {
                 gameUi?.HideMissionTimer();
             }
@@ -642,8 +725,8 @@ namespace Supernova.Missions
             displayedObjectiveRequiredValue = requiredValue;
             displayedObjectiveMissionName = missionName;
             missionUi.SetObjective(
-                "LEVEL " + LevelNumberText + " · " + missionName
-                + "\nCOLLECTED  $"
+                "第 " + LevelNumberText + " 关 · " + missionName
+                + "\n已收集  $"
                 + storedValue
                 + " / $" + requiredValue);
         }
@@ -677,6 +760,40 @@ namespace Supernova.Missions
                     gameUi);
             }
         }
+
+        private void StartCaveAmbience()
+        {
+            if (ambienceLoopId == 0)
+                ambienceLoopId = SoundEffectEvents.CreateLoopId();
+
+            SoundEffectEvents.RequestLoop(
+                ambienceLoopId,
+                AudioAssets != null ? AudioAssets.CaveAmbience : null,
+                transform,
+                CaveAmbienceVolumeScale);
+        }
+
+        private void StopCaveAmbience()
+        {
+            if (ambienceLoopId != 0)
+                SoundEffectEvents.RequestStopLoop(ambienceLoopId);
+        }
+
+        private static void RequestSound(
+            SoundEffectCue cue,
+            Vector3 worldPosition,
+            float volumeScale)
+        {
+            SoundEffectEvents.RequestPlay(
+                cue,
+                worldPosition,
+                volumeScale);
+        }
+
+        private static AudioAssetReferences AudioAssets =>
+            GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.Audio
+                : null;
 
         private string MissionName => definition != null
             ? definition.DisplayName

@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using Supernova.Audio;
 using Supernova.Gameplay;
 using Supernova.Voxels;
 using UnityEditor;
@@ -15,7 +16,7 @@ namespace Supernova.Editor.Gameplay
     public static class SolidGunAssetBuilder
     {
         private const string SessionKey =
-            "Supernova.SolidGunAssetBuilder.Ensured.V6";
+            "Supernova.SolidGunAssetBuilder.Ensured.V7";
         private const float ProjectileSpeed = 55f;
         private const float ActionCyclePeriod = 1f / 1.5f;
         private const int InitialAmmunition = 36;
@@ -78,81 +79,16 @@ namespace Supernova.Editor.Gameplay
             Material platformMaterial = EnsurePlatformMaterial();
             GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(
                 ProjectAssetPaths.Prefabs.SolidVoxelProjectile);
-            if (!rebuild
-                && existing != null
+            if (existing != null
                 && existing.GetComponent<SolidVoxelProjectile>() != null
                 && existing.GetComponent<SolidVoxelProjectile>()
                     .ConfigurationVersion >= 5)
             {
                 return existing;
             }
-
-            GameObject source = PrefabUtility.LoadPrefabContents(
-                ProjectAssetPaths.Prefabs.RifleProjectile);
-            if (source == null)
-            {
-                throw new InvalidOperationException(
-                    "Cannot build SolidGun ammunition because the centralized "
-                    + "rifle projectile prefab is missing.");
-            }
-
-            try
-            {
-                source.name = "SolidVoxelProjectile";
-                BallisticProjectile offensiveProjectile =
-                    source.GetComponent<BallisticProjectile>();
-                if (offensiveProjectile != null)
-                    Object.DestroyImmediate(offensiveProjectile);
-
-                SolidVoxelProjectile projectile =
-                    source.AddComponent<SolidVoxelProjectile>();
-                SerializedObject serialized = new SerializedObject(projectile);
-                SetReference(
-                    serialized,
-                    "body",
-                    source.GetComponent<Rigidbody>());
-                SetFloat(serialized, "damage", 0f);
-                SetFloat(serialized, "treasureImpulseMultiplier", 0f);
-                SetFloat(serialized, "maximumLifetime", 5f);
-                SetReference(
-                    serialized,
-                    "platformMaterial",
-                    platformMaterial);
-                SetInteger(
-                    serialized,
-                    "platformDiameter",
-                    PlatformDiameter);
-                SetFloat(
-                    serialized,
-                    "platformUnitSize",
-                    PlatformUnitSize);
-                SetFloat(
-                    serialized,
-                    "platformThickness",
-                    PlatformThickness);
-                SetFloat(
-                    serialized,
-                    "growthDuration",
-                    GrowthDuration);
-                SetInteger(serialized, "configurationVersion", 5);
-                serialized.ApplyModifiedPropertiesWithoutUndo();
-
-                GameObject saved = PrefabUtility.SaveAsPrefabAsset(
-                    source,
-                    ProjectAssetPaths.Prefabs.SolidVoxelProjectile);
-                if (saved == null)
-                {
-                    throw new InvalidOperationException(
-                        "Unity could not save the SolidGun projectile prefab.");
-                }
-            }
-            finally
-            {
-                PrefabUtility.UnloadPrefabContents(source);
-            }
-
-            return AssetDatabase.LoadAssetAtPath<GameObject>(
-                ProjectAssetPaths.Prefabs.SolidVoxelProjectile);
+            throw new InvalidOperationException(
+                "The centralized SolidGun projectile prefab is missing or "
+                + "out of date.");
         }
 
         private static Material EnsurePlatformMaterial()
@@ -186,19 +122,28 @@ namespace Supernova.Editor.Gameplay
         private static PlayerToolDefinition EnsureToolDefinition(
             GameObject projectilePrefab)
         {
-            PlayerToolDefinition rifle =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.RifleTool);
             GameObject solidGun = AssetDatabase.LoadAssetAtPath<GameObject>(
                 ProjectAssetPaths.Prefabs.SolidGun);
+            AnimationClip fireAnimation =
+                AssetDatabase.LoadAssetAtPath<AnimationClip>(
+                    ProjectAssetPaths.Animations.FireContinuous);
+            GameObject muzzleFlash = AssetDatabase.LoadAssetAtPath<GameObject>(
+                ProjectAssetPaths.Prefabs.MuzzleFlash);
+            SoundEffectCue shotSound =
+                AssetDatabase.LoadAssetAtPath<SoundEffectCue>(
+                    ProjectAssetPaths.Config.SolidGunShotSound);
             SolidVoxelProjectile projectile = projectilePrefab != null
                 ? projectilePrefab.GetComponent<SolidVoxelProjectile>()
                 : null;
-            if (rifle == null || solidGun == null || projectile == null)
+            if (solidGun == null
+                || fireAnimation == null
+                || muzzleFlash == null
+                || shotSound == null
+                || projectile == null)
             {
                 throw new InvalidOperationException(
-                    "Cannot configure SolidGun because its model, source rifle "
-                    + "configuration, or generated projectile is missing.");
+                    "Cannot configure SolidGun because a centralized model, "
+                    + "animation, muzzle flash, or projectile is missing.");
             }
 
             PlayerToolDefinition definition =
@@ -222,7 +167,11 @@ namespace Supernova.Editor.Gameplay
             SetInteger(
                 serialized,
                 "primaryAction",
-                (int)PlayerToolPrimaryAction.FireRifle);
+                (int)PlayerToolPrimaryAction.FireProjectile);
+            SetReference(
+                serialized,
+                "primaryActionSound",
+                shotSound);
             SetInteger(
                 serialized,
                 "animationTriggerMode",
@@ -230,12 +179,12 @@ namespace Supernova.Editor.Gameplay
             SetReference(
                 serialized,
                 "primaryActionAnimation",
-                rifle.PrimaryActionAnimation);
+                fireAnimation);
             SetReference(serialized, "heldModelPrefab", solidGun);
             SetInteger(
                 serialized,
                 "heldModelMountStrategy",
-                (int)HeldToolMountStrategy.Rifle);
+                (int)HeldToolMountStrategy.TwoHanded);
             SetBoolean(serialized, "allowMovementWhileUsing", true);
             SetFloat(serialized, "actionTriggerDelay", 0f);
             SetFloat(serialized, "actionCyclePeriod", ActionCyclePeriod);
@@ -249,11 +198,11 @@ namespace Supernova.Editor.Gameplay
             SetReference(
                 serialized,
                 "muzzleFlashPrefab",
-                rifle.MuzzleFlashPrefab);
+                muzzleFlash);
             SetFloat(
                 serialized,
                 "muzzleFlashLifetime",
-                rifle.MuzzleFlashLifetime);
+                0.75f);
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(definition);
             return definition;

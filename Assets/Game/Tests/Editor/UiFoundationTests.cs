@@ -2,7 +2,9 @@ using NUnit.Framework;
 using Supernova.UI;
 using TMPro;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace Supernova.Tests
@@ -74,23 +76,242 @@ namespace Supernova.Tests
             Assert.That(prefab.GetComponent<MainMenuView>(), Is.Not.Null);
             Assert.That(prefab.GetComponent<SciFiUiStyler>(), Is.Not.Null);
             Assert.That(prefab.GetComponentInChildren<UiSafeArea>(true), Is.Not.Null);
-            Assert.That(
-                prefab.transform.Find(
-                    UiHierarchyPaths.MainMenu.ExpeditionFrame)?.GetComponent<Image>(),
-                Is.Not.Null);
 
             MainMenuView view = prefab.GetComponent<MainMenuView>();
             Assert.That(view.PlayButton, Is.Not.Null);
+            Assert.That(view.TutorialButton, Is.Not.Null);
             Assert.That(view.SettingsButton, Is.Not.Null);
             Assert.That(view.QuitButton, Is.Not.Null);
             Assert.That(view.SettingsBackButton, Is.Not.Null);
             Assert.That(view.FullscreenToggle, Is.Not.Null);
             Assert.That(view.VolumeSlider, Is.Not.Null);
+            Assert.That(view.CharacterOverlay, Is.Not.Null);
 
             TMP_Text[] labels = prefab.GetComponentsInChildren<TMP_Text>(true);
             Assert.That(labels, Is.Not.Empty);
             foreach (TMP_Text label in labels)
                 Assert.That(label.fontSize, Is.GreaterThanOrEqualTo(14f), label.name);
+
+            GameObject instance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+            try
+            {
+                Assert.That(instance, Is.Not.Null);
+                MainMenuView runtimeView = instance.GetComponent<MainMenuView>();
+                Image backdrop = instance.transform.Find(
+                    UiHierarchyPaths.MainMenu.Backdrop)?.GetComponent<Image>();
+                Assert.That(backdrop, Is.Not.Null);
+
+                Color configuredGraphicColor =
+                    new Color(0.18f, 0.24f, 0.31f, 0.47f);
+                Graphic[] configuredGraphics =
+                    instance.GetComponentsInChildren<Graphic>(true);
+                for (int i = 0; i < configuredGraphics.Length; i++)
+                    configuredGraphics[i].color = configuredGraphicColor;
+
+                ColorBlock configuredButtonColors = ColorBlock.defaultColorBlock;
+                configuredButtonColors.normalColor =
+                    new Color(0.11f, 0.21f, 0.31f, 0.41f);
+                configuredButtonColors.highlightedColor =
+                    new Color(0.12f, 0.22f, 0.32f, 0.42f);
+                configuredButtonColors.selectedColor =
+                    new Color(0.13f, 0.23f, 0.33f, 0.43f);
+                configuredButtonColors.pressedColor =
+                    new Color(0.14f, 0.24f, 0.34f, 0.44f);
+                configuredButtonColors.disabledColor =
+                    new Color(0.15f, 0.25f, 0.35f, 0.45f);
+                Button[] configuredButtons =
+                    instance.GetComponentsInChildren<Button>(true);
+                for (int i = 0; i < configuredButtons.Length; i++)
+                    configuredButtons[i].colors = configuredButtonColors;
+
+                SciFiUiStyler runtimeStyler =
+                    instance.GetComponent<SciFiUiStyler>();
+                Assert.That(runtimeStyler, Is.Not.Null);
+                runtimeStyler.enabled = false;
+                runtimeStyler.enabled = true;
+                CanvasGroup group = runtimeView.PrepareHomePresentation();
+                Assert.That(group, Is.Not.Null);
+                for (int i = 0; i < configuredGraphics.Length; i++)
+                {
+                    Assert.That(
+                        configuredGraphics[i].color,
+                        Is.EqualTo(configuredGraphicColor),
+                        configuredGraphics[i].name
+                        + " must preserve its EditMode color.");
+                }
+                for (int i = 0; i < configuredButtons.Length; i++)
+                {
+                    AssertColorBlock(
+                        configuredButtons[i].colors,
+                        configuredButtonColors,
+                        configuredButtons[i].name);
+                }
+                Assert.That(
+                    instance.transform.Find(UiHierarchyPaths.MainMenu.Overline),
+                    Is.Null,
+                    "The redundant MAIN MENU // HOME BASE overline must stay removed.");
+                MainMenuCharacterOverlay overlay = runtimeView.CharacterOverlay;
+                Assert.That(overlay.OverlayImage.raycastTarget, Is.False);
+                Assert.That(
+                    overlay.GetComponent<CanvasGroup>().ignoreParentGroups,
+                    Is.True,
+                    "The character composite must remain above the fading menu group.");
+                Assert.That(
+                    instance.transform.Find("Safe Area/Header/Brand")
+                        ?.GetComponent<TMP_Text>().text,
+                    Is.Empty);
+                Assert.That(
+                    instance.transform.Find("Safe Area/Header/Build")
+                        ?.GetComponent<TMP_Text>().text,
+                    Is.Empty);
+                Image themeTitle = instance.transform.Find(
+                    UiHierarchyPaths.MainMenu.Title)?.GetComponent<Image>();
+                Assert.That(themeTitle, Is.Not.Null);
+                Assert.That(themeTitle.sprite, Is.Not.Null);
+                Assert.That(themeTitle.preserveAspect, Is.True);
+                Assert.That(themeTitle.raycastTarget, Is.False);
+                Assert.That(themeTitle.GetComponent<TMP_Text>(), Is.Null);
+                Assert.That(
+                    themeTitle.GetComponentInParent<LayoutGroup>(),
+                    Is.Null,
+                    "The title RectTransform must remain freely editable in EditMode.");
+                Transform characterOverlay =
+                    runtimeView.CharacterOverlay.transform;
+                Transform titleCanvasBranch = themeTitle.transform.parent;
+                Assert.That(
+                    characterOverlay.GetSiblingIndex(),
+                    Is.GreaterThan(titleCanvasBranch.GetSiblingIndex()),
+                    "The player composite must render after and obscure the title.");
+                AssertMenuButtonPresentation(
+                    instance.transform,
+                    UiHierarchyPaths.MainMenu.BeginDescent,
+                    "    开始游戏",
+                    46f);
+                AssertMenuButtonPresentation(
+                    instance.transform,
+                    UiHierarchyPaths.MainMenu.Tutorial,
+                    "    新手教程",
+                    26f);
+                AssertMenuButtonPresentation(
+                    instance.transform,
+                    UiHierarchyPaths.MainMenu.SystemSettings,
+                    "    设置",
+                    6f);
+                AssertMenuButtonPresentation(
+                    instance.transform,
+                    UiHierarchyPaths.MainMenu.LeaveExpedition,
+                    "    退出游戏",
+                    -14f);
+                Assert.That(
+                    instance.transform.Find("Safe Area/Footer/Controls")
+                        ?.GetComponent<TMP_Text>().text,
+                    Is.EqualTo("版本号: v1.0.0"));
+                Assert.That(
+                    instance.transform.Find("Safe Area/Footer/Signal")
+                        ?.GetComponent<TMP_Text>().text,
+                    Is.Empty);
+                Transform hero = instance.transform.Find(
+                    UiHierarchyPaths.MainMenu.Hero);
+                Assert.That(
+                    hero == null || !hero.gameObject.activeSelf,
+                    Is.True,
+                    "Home supplies the visible player instead of the old hero panel.");
+                Transform frame = instance.transform.Find(
+                    UiHierarchyPaths.MainMenu.ExpeditionFrame);
+                Assert.That(
+                    frame == null || !frame.gameObject.activeSelf,
+                    Is.True,
+                    "Decorative frame textures must be disabled in the Home menu.");
+                Image card = instance.transform.Find(
+                    UiHierarchyPaths.MainMenu.ExpeditionControl)?.GetComponent<Image>();
+                Assert.That(card, Is.Not.Null);
+                Assert.That(card.sprite, Is.Null);
+                Assert.That(
+                    instance.transform.Find(
+                        UiHierarchyPaths.MainMenu.BeginDescent
+                        + "/"
+                        + UiHierarchyPaths.MainMenu.AngledSurface)
+                        ?.GetComponent<AngledPanelGraphic>(),
+                    Is.Not.Null,
+                    "Menu buttons must use the gameplay HUD's procedural geometry.");
+                Assert.That(
+                    instance.transform.Find(
+                        UiHierarchyPaths.MainMenu.Tutorial
+                        + "/"
+                        + UiHierarchyPaths.MainMenu.AngledSurface)
+                        ?.GetComponent<AngledPanelGraphic>(),
+                    Is.Not.Null,
+                    "The tutorial row must use the gameplay HUD's procedural geometry.");
+            }
+            finally
+            {
+                if (instance != null)
+                    Object.DestroyImmediate(instance);
+            }
+        }
+
+        [Test]
+        public void HomeScene_ContainsEditableMainMenuAndSceneReferences()
+        {
+            Scene homeScene = SceneManager.GetSceneByPath(ProjectAssetPaths.Scenes.Home);
+            bool closeAfterTest = !homeScene.IsValid() || !homeScene.isLoaded;
+            if (closeAfterTest)
+            {
+                homeScene = EditorSceneManager.OpenScene(
+                    ProjectAssetPaths.Scenes.Home,
+                    OpenSceneMode.Additive);
+            }
+
+            try
+            {
+                GameObject menuRoot = null;
+                GameObject[] roots = homeScene.GetRootGameObjects();
+                for (int i = 0; i < roots.Length; i++)
+                {
+                    if (roots[i].name == UiHierarchyPaths.MainMenu.SceneRoot)
+                    {
+                        menuRoot = roots[i];
+                        break;
+                    }
+                }
+
+                Assert.That(menuRoot, Is.Not.Null);
+                MainMenuController controller =
+                    menuRoot.GetComponent<MainMenuController>();
+                Assert.That(controller, Is.Not.Null);
+                Assert.That(
+                    menuRoot.GetComponentInChildren<MainMenuView>(true),
+                    Is.Not.Null);
+
+                SerializedObject serializedController =
+                    new SerializedObject(controller);
+                Assert.That(
+                    serializedController.FindProperty("uguiView").objectReferenceValue,
+                    Is.Not.Null);
+                Assert.That(
+                    serializedController.FindProperty("perspectiveCamera")
+                        .objectReferenceValue,
+                    Is.Not.Null);
+                Assert.That(
+                    serializedController.FindProperty("menuCharacterAnimator")
+                        .objectReferenceValue,
+                    Is.Not.Null);
+                Assert.That(
+                    serializedController.FindProperty("playerToolController")
+                        .objectReferenceValue,
+                    Is.Not.Null);
+                Assert.That(
+                    serializedController.FindProperty("menuIdleAnimation"),
+                    Is.Not.Null);
+                Assert.That(
+                    serializedController.FindProperty("menuFieldOfView").floatValue,
+                    Is.InRange(15f, 120f));
+            }
+            finally
+            {
+                if (closeAfterTest)
+                    EditorSceneManager.CloseScene(homeScene, true);
+            }
         }
 
         [Test]
@@ -105,6 +326,45 @@ namespace Supernova.Tests
             Assert.That(bodyMaterial.shader, Is.Not.Null);
             Assert.That(bodyMaterial.shader.isSupported, Is.True);
             Assert.That(ShaderUtil.GetShaderMessages(bodyMaterial.shader), Is.Empty);
+        }
+
+        private static void AssertColorBlock(
+            ColorBlock actual,
+            ColorBlock expected,
+            string objectName)
+        {
+            Assert.That(actual.normalColor, Is.EqualTo(expected.normalColor), objectName);
+            Assert.That(
+                actual.highlightedColor,
+                Is.EqualTo(expected.highlightedColor),
+                objectName);
+            Assert.That(
+                actual.selectedColor,
+                Is.EqualTo(expected.selectedColor),
+                objectName);
+            Assert.That(actual.pressedColor, Is.EqualTo(expected.pressedColor), objectName);
+            Assert.That(
+                actual.disabledColor,
+                Is.EqualTo(expected.disabledColor),
+                objectName);
+        }
+
+        private static void AssertMenuButtonPresentation(
+            Transform root,
+            string path,
+            string expectedText,
+            float expectedY)
+        {
+            RectTransform button = root.Find(path) as RectTransform;
+            TMP_Text label = button != null
+                ? button.Find(UiHierarchyPaths.Pause.Label)?.GetComponent<TMP_Text>()
+                : null;
+
+            Assert.That(button, Is.Not.Null, path);
+            Assert.That(label, Is.Not.Null, path + " label");
+            Assert.That(label.text, Is.EqualTo(expectedText), path);
+            Assert.That(label.fontSize, Is.EqualTo(30f), path);
+            Assert.That(button.anchoredPosition.y, Is.EqualTo(expectedY), path);
         }
     }
 }

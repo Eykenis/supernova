@@ -94,6 +94,7 @@ namespace Supernova.UI
         [SerializeField] private Color loadingBackdrop =
             new Color(0.025f, 0.028f, 0.035f, 1f);
         [SerializeField, Min(2f)] private float loadingProgressThickness = 6f;
+        [SerializeField, Min(0.05f)] private float loadingTransitionSeconds = 3f;
 
         [Header("Mission Layout")]
         [SerializeField] private Vector2 missionObjectivePosition =
@@ -182,6 +183,8 @@ namespace Supernova.UI
         public Color LoadingBackdrop => loadingBackdrop;
         public float LoadingProgressThickness =>
             Mathf.Max(2f, loadingProgressThickness);
+        public float LoadingTransitionSeconds =>
+            Mathf.Max(0.05f, loadingTransitionSeconds);
         public Vector2 MissionObjectivePosition => missionObjectivePosition;
         public Vector2 MissionObjectiveSize => missionObjectiveSize;
         public Vector2 MissionPromptPosition => missionPromptPosition;

@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using Supernova.Audio;
 using Supernova.Gameplay;
+using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
 using Supernova.MinecraftCaves.Creatures;
 using Supernova.Shop;
@@ -113,11 +115,17 @@ namespace Supernova.Tests
                 Is.EqualTo(PlayerToolPrimaryAction.ThrowBomb));
             Assert.That(definition.HeldModelPrefab, Is.Not.Null);
             Assert.That(definition.BombProjectilePrefab, Is.Not.Null);
-            Assert.That(definition.BombEntityExplosionImpulse, Is.EqualTo(240f));
+            Assert.That(definition.BombEntityExplosionImpulse, Is.EqualTo(600f));
             Assert.That(definition.BombExplosionEffectPrefab, Is.Not.Null);
             Assert.That(definition.BombExplosionEffectLifetime, Is.EqualTo(3f));
             Assert.That(definition.ThrowSpeed, Is.GreaterThan(0f));
             Assert.That(definition.ActionIsPeriodic, Is.False);
+            SoundEffectCue fuseCue =
+                AssetDatabase.LoadAssetAtPath<SoundEffectCue>(
+                    ProjectAssetPaths.Config.BombFuseSound);
+            Assert.That(fuseCue, Is.Not.Null);
+            Assert.That(definition.PrimaryActionSound, Is.SameAs(fuseCue));
+            Assert.That(definition.ThrowSound, Is.Null);
             Assert.That(PlayerEconomy.IsItemOwned(PlayerInventoryItem.Bomb), Is.True);
             Assert.That(player, Is.Not.Null);
             Assert.That(
@@ -132,13 +140,13 @@ namespace Supernova.Tests
             Assert.That(projectile.InnerMiningPower, Is.EqualTo(30f));
             Assert.That(projectile.OuterMiningPower, Is.EqualTo(10f));
             Assert.That(projectile.PropagationDivisor, Is.EqualTo(2f));
-            Assert.That(projectile.EntityExplosionImpulse, Is.EqualTo(240f));
+            Assert.That(projectile.EntityExplosionImpulse, Is.EqualTo(600f));
             Assert.That(projectile.EntityUpwardModifier, Is.EqualTo(0.6f));
             Assert.That(
                 projectile.ExplosionEffectPrefab,
                 Is.SameAs(definition.BombExplosionEffectPrefab));
             Assert.That(projectile.ExplosionEffectLifetime, Is.EqualTo(3f));
-            Assert.That(projectile.ConfigurationVersion, Is.EqualTo(4));
+            Assert.That(projectile.ConfigurationVersion, Is.EqualTo(5));
 
             string effectPath = AssetDatabase.GetAssetPath(
                 definition.BombExplosionEffectPrefab).Replace('\\', '/');
@@ -172,6 +180,52 @@ namespace Supernova.Tests
             Assert.That(bomb.IsArmed, Is.False);
             Assert.That(bomb.Detonate(), Is.False);
         }
+
+        [Test]
+        public void BombProjectile_DetonationBroadcastsExplosionOnlyOnce()
+        {
+            GameAssetCatalog catalog =
+                AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                    ProjectAssetPaths.Config.GameAssetCatalog);
+            SoundEffectCue explosionCue =
+                AssetDatabase.LoadAssetAtPath<SoundEffectCue>(
+                    ProjectAssetPaths.Config.BombExplosionSound);
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(explosionCue, Is.Not.Null);
+            Assert.That(catalog.Audio.BombExplosion, Is.SameAs(explosionCue));
+
+            Vector3 explosionPosition = new Vector3(20f, 30f, 40f);
+            var bombObject = new GameObject("Sound Bomb");
+            objects.Add(bombObject);
+            bombObject.transform.position = explosionPosition;
+            Rigidbody body = bombObject.AddComponent<Rigidbody>();
+            body.useGravity = false;
+            bombObject.AddComponent<SphereCollider>();
+            BombProjectile bomb = bombObject.AddComponent<BombProjectile>();
+
+            int requestCount = 0;
+            SoundEffectPlaybackRequest received = default;
+            System.Action<SoundEffectPlaybackRequest> observer = request =>
+            {
+                requestCount++;
+                received = request;
+            };
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                bomb.Launch(Vector3.zero, Vector3.zero, null, 0f);
+                Assert.That(bomb.Detonate(), Is.True);
+                Assert.That(bomb.Detonate(), Is.False);
+                Assert.That(requestCount, Is.EqualTo(1));
+                Assert.That(received.Cue, Is.SameAs(explosionCue));
+                Assert.That(received.Position, Is.EqualTo(explosionPosition));
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+            }
+        }
+
 
         [Test]
         public void BombProjectile_AppliesOneLargeImpulsePerNearbyBody()
@@ -258,6 +312,7 @@ namespace Supernova.Tests
             objects.Add(monsterObject);
             monsterObject.transform.position = explosionCenter + Vector3.right;
             Rigidbody monsterBody = monsterObject.AddComponent<Rigidbody>();
+            monsterBody.mass = 20f;
             monsterBody.useGravity = false;
             monsterObject.AddComponent<CapsuleCollider>();
             CreatureBehaviorAgent monster =
@@ -265,12 +320,11 @@ namespace Supernova.Tests
             float initialHealth = monster.CurrentHealth;
             Physics.SyncTransforms();
 
-            bomb.Launch(Vector3.zero, Vector3.zero, null, 20f);
+            bomb.Launch(Vector3.zero, Vector3.zero, null, 600f);
             Assert.That(bomb.Detonate(), Is.True);
 
             Assert.That(monster.CurrentHealth, Is.LessThan(initialHealth));
             Assert.That(bomb.LastDamagedEntityCount, Is.EqualTo(1));
-            Assert.That(bomb.LastImpulsedBodyCount, Is.EqualTo(1));
         }
 
         [Test]

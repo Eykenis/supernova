@@ -51,7 +51,9 @@ namespace Supernova.MinecraftCaves
             Vector3Int templateAnchor,
             bool templateWritesAir,
             float[] templateDensitySettings,
-            VoxelTypeId[] templateTypeSettings)
+            VoxelTypeId[] templateTypeSettings,
+            VoxelTypeId primaryTypeOverride = default,
+            VoxelTypeId accentTypeOverride = default)
         {
             if (string.IsNullOrWhiteSpace(stableId))
             {
@@ -153,6 +155,13 @@ namespace Supernova.MinecraftCaves
             templateTypes = hasTemplateData
                 ? (VoxelTypeId[])templateTypeSettings.Clone()
                 : null;
+            // A mixed pool draws modules from several families, so a module has to
+            // remember the palette it was authored against. Air means "no override"
+            // and the owning feature's palette is used unchanged.
+            PrimaryTypeOverride = primaryTypeOverride;
+            AccentTypeOverride = accentTypeOverride.IsAir
+                ? primaryTypeOverride
+                : accentTypeOverride;
             TemplateContentHash = 0UL;
             TemplateContentHash = ComputeTemplateContentHash();
         }
@@ -203,6 +212,9 @@ namespace Supernova.MinecraftCaves
         public Vector3Int TemplateAnchor { get; }
         public bool TemplateWritesAir { get; }
         public ulong TemplateContentHash { get; }
+        public VoxelTypeId PrimaryTypeOverride { get; }
+        public VoxelTypeId AccentTypeOverride { get; }
+        public bool HasPaletteOverride => !PrimaryTypeOverride.IsAir;
         public int MaximumVoxelHeight => HasTemplate
             ? TemplateSize.y
             : Math.Max(MaximumHeight, Height + VerticalDelta);

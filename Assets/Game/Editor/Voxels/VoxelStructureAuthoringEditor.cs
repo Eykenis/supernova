@@ -47,6 +47,10 @@ namespace Supernova.Voxels.Editor
                     ClearCells(authoring);
                 }
             }
+            if (GUILayout.Button("Open Box-Selection Offset Tool"))
+            {
+                VoxelStructureOffsetWindow.OpenFor(authoring);
+            }
             DrawSocketControls(authoring);
         }
 
@@ -418,6 +422,207 @@ namespace Supernova.Voxels.Editor
         }
     }
 
+    /// <summary>
+    /// Keeps bulk movement available while the Scene view owns the current
+    /// selection. This also stays open in Play Mode, allowing the Game view to
+    /// place voxels while the Scene view box-selects and moves them.
+    /// </summary>
+    public sealed class VoxelStructureOffsetWindow : EditorWindow
+    {
+        [SerializeField] private VoxelStructureAuthoring authoring;
+        [SerializeField] private Vector3Int offset = Vector3Int.zero;
+
+        [MenuItem("Tools/Supernova/Voxels/Voxel Structure Offset")]
+        public static void OpenFromMenu()
+        {
+            VoxelStructureOffsetWindow window = GetWindow<
+                VoxelStructureOffsetWindow>("Voxel Offset");
+            window.TryAdoptSelectionAuthoring();
+            window.Show();
+        }
+
+        internal static void OpenFor(VoxelStructureAuthoring value)
+        {
+            VoxelStructureOffsetWindow window = GetWindow<
+                VoxelStructureOffsetWindow>("Voxel Offset");
+            window.authoring = value;
+            window.Show();
+            window.Repaint();
+        }
+
+        private void OnEnable()
+        {
+            TryAdoptSelectionAuthoring();
+        }
+
+        private void OnSelectionChange()
+        {
+            TryAdoptSelectionAuthoring();
+            Repaint();
+        }
+
+        private void OnGUI()
+        {
+            EditorGUILayout.LabelField(
+                "Box-Selection Voxel Offset",
+                EditorStyles.boldLabel);
+            authoring = (VoxelStructureAuthoring)EditorGUILayout.ObjectField(
+                "Structure Authoring",
+                authoring,
+                typeof(VoxelStructureAuthoring),
+                true);
+            if (authoring == null)
+            {
+                EditorGUILayout.HelpBox(
+                    "Select a Voxel Structure Authoring object or one of its voxels.",
+                    MessageType.Info);
+                return;
+            }
+
+            VoxelStructureCellAuthoring[] selected = GetSelectedCells(authoring);
+            VoxelStructureCellAuthoring[] all = authoring.GetComponentsInChildren<
+                VoxelStructureCellAuthoring>(false);
+            EditorGUILayout.LabelField(
+                "Selection",
+                $"{selected.Length} / {all.Length} voxels");
+            offset = EditorGUILayout.Vector3IntField("Voxel Offset", offset);
+
+            EditorGUILayout.HelpBox(
+                "Drag a rectangle in the Scene view, then apply an integer offset. "
+                + "The move is rejected as a whole if any destination is outside "
+                + "Size or occupied by an unselected voxel.",
+                MessageType.None);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(
+                           selected.Length == 0 || offset == Vector3Int.zero))
+                {
+                    if (GUILayout.Button($"Offset Selected ({selected.Length})"))
+                    {
+                        ApplyCellOffset(selected, "Offset Selected Structure Voxels");
+                    }
+                }
+                using (new EditorGUI.DisabledScope(
+                           all.Length == 0 || offset == Vector3Int.zero))
+                {
+                    if (GUILayout.Button($"Offset All ({all.Length})"))
+                    {
+                        ApplyCellOffset(all, "Offset All Structure Voxels");
+                    }
+                }
+            }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "Fast Whole-Structure Offset",
+                EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Changes only Anchor (Anchor -= Offset), so the complete saved "
+                + "structure moves relative to its placement point without moving "
+                + "or selecting every voxel. The shifted Anchor must remain inside Size.",
+                MessageType.Info);
+            using (new EditorGUI.DisabledScope(offset == Vector3Int.zero))
+            {
+                if (GUILayout.Button("Offset Whole Structure Via Anchor"))
+                {
+                    ApplyWholeStructureOffset();
+                }
+            }
+
+            if (Application.isPlaying)
+            {
+                EditorGUILayout.HelpBox(
+                    "Play Mode: successful offsets are saved immediately to the assigned asset.",
+                    MessageType.Warning);
+            }
+        }
+
+        private void ApplyCellOffset(
+            VoxelStructureCellAuthoring[] cells,
+            string undoName)
+        {
+            Transform[] transforms = cells
+                .Where(cell => cell != null)
+                .Select(cell => cell.transform)
+                .ToArray();
+            if (!Application.isPlaying)
+            {
+                Undo.RecordObjects(transforms, undoName);
+            }
+            if (!authoring.TryOffsetCells(cells, offset, out string error))
+            {
+                EditorUtility.DisplayDialog("Cannot Offset Voxels", error, "OK");
+                return;
+            }
+
+            FinishOffset();
+        }
+
+        private void ApplyWholeStructureOffset()
+        {
+            if (!Application.isPlaying)
+            {
+                Undo.RecordObject(authoring, "Offset Whole Voxel Structure");
+            }
+            if (!authoring.TryOffsetWholeStructure(offset, out string error))
+            {
+                EditorUtility.DisplayDialog(
+                    "Cannot Offset Structure",
+                    error,
+                    "OK");
+                return;
+            }
+
+            EditorUtility.SetDirty(authoring);
+            FinishOffset();
+        }
+
+        private void FinishOffset()
+        {
+            EditorSceneManager.MarkSceneDirty(authoring.gameObject.scene);
+            SceneView.RepaintAll();
+            if (Application.isPlaying
+                && !authoring.TrySaveAssignedAsset(out string saveError))
+            {
+                EditorUtility.DisplayDialog(
+                    "Structure Offset Was Not Saved",
+                    saveError,
+                    "OK");
+            }
+        }
+
+        private void TryAdoptSelectionAuthoring()
+        {
+            Transform active = Selection.activeTransform;
+            if (active == null)
+            {
+                return;
+            }
+
+            VoxelStructureAuthoring selectedAuthoring =
+                active.GetComponent<VoxelStructureAuthoring>()
+                ?? active.GetComponentInParent<VoxelStructureAuthoring>();
+            if (selectedAuthoring != null)
+            {
+                authoring = selectedAuthoring;
+            }
+        }
+
+        private static VoxelStructureCellAuthoring[] GetSelectedCells(
+            VoxelStructureAuthoring targetAuthoring)
+        {
+            return Selection.transforms
+                .Select(item => item != null
+                    ? item.GetComponent<VoxelStructureCellAuthoring>()
+                    : null)
+                .Where(cell => cell != null
+                    && cell.transform.IsChildOf(targetAuthoring.transform))
+                .Distinct()
+                .ToArray();
+        }
+    }
+
     public static class VoxelStructureWorkflowBuilder
     {
         private const string CatalogPath =
@@ -427,7 +632,7 @@ namespace Supernova.Voxels.Editor
         private const string DefaultVoxelTypePath =
             VoxelTypeFolder + "/Default.asset";
         private const string StoneVoxelTypePath =
-            VoxelTypeFolder + "/Stone.asset";
+            ProjectAssetPaths.Config.StoneVoxel;
         private const string OreVoxelTypePath =
             VoxelTypeFolder + "/Ore.asset";
         private const string OreFeatureFolder =
@@ -450,7 +655,7 @@ namespace Supernova.Voxels.Editor
             EnsureFolder(ProjectAssetPaths.Folders.Config, "VoxelTypes");
             EnsureFolder(ProjectAssetPaths.Folders.Config, "OreFeatures");
             EnsureFolder(ProjectAssetPaths.Folders.Config, "Worlds");
-            EnsureFolder(ProjectAssetPaths.Folders.Game, "Structures");
+            EnsureFolder(ProjectAssetPaths.Folders.Config, "Structures");
 
             VoxelTypeDefinition[] definitions =
             {

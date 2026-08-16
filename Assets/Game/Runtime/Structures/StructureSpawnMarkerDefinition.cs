@@ -1,7 +1,5 @@
 using System;
 using Supernova.Gameplay;
-using Supernova.MinecraftCaves.Creatures;
-using Supernova.Voxels;
 using UnityEngine;
 
 namespace Supernova.MinecraftCaves
@@ -16,16 +14,14 @@ namespace Supernova.MinecraftCaves
     {
         public enum Kind
         {
-            Treasure,
-            Monster,
-            Checkpoint,
-            PlayerSpawn,
+            Treasure = 0,
+            Checkpoint = 2,
+            PlayerSpawn = 3,
         }
 
         [SerializeField] private string stableId = "marker";
         [SerializeField] private Kind kind = Kind.Treasure;
         [SerializeField] private TreasureDefinition treasure;
-        [SerializeField] private MonsterSpawnDefinition monster;
         [SerializeField] private GameObject checkpointPrefab;
 
         [Header("Placement")]
@@ -35,7 +31,7 @@ namespace Supernova.MinecraftCaves
         [SerializeField, Range(0f, 360f)] private float yaw;
         [Tooltip("Chance this marker produces anything at all.")]
         [SerializeField, Range(0f, 1f)] private float spawnChance = 1f;
-        [Tooltip("How many instances to place. Monsters spread around the point.")]
+        [Tooltip("How many instances to place around this point.")]
         [SerializeField, Min(1)] private int count = 1;
         [Tooltip("Horizontal scatter radius in voxels when Count is above one.")]
         [SerializeField, Min(0f)] private float scatterRadiusInVoxels = 1.5f;
@@ -49,7 +45,6 @@ namespace Supernova.MinecraftCaves
             : stableId.Trim();
         public Kind MarkerKind => kind;
         public TreasureDefinition Treasure => treasure;
-        public MonsterSpawnDefinition Monster => monster;
         public GameObject CheckpointPrefab => checkpointPrefab;
 
         /// <summary>
@@ -69,8 +64,8 @@ namespace Supernova.MinecraftCaves
                     return true;
                 }
                 return kind == Kind.Treasure
-                    ? treasure != null && treasure.Prefab != null
-                    : monster != null && monster.Prefab != null;
+                    && treasure != null
+                    && treasure.Prefab != null;
             }
         }
 
@@ -103,12 +98,6 @@ namespace Supernova.MinecraftCaves
             kind = Kind.Treasure;
         }
 
-        public void ConfigureMonster(MonsterSpawnDefinition value)
-        {
-            monster = value;
-            kind = Kind.Monster;
-        }
-
         internal StructureSpawnMarkerSettings CreateSettings()
         {
             ClampConfiguration();
@@ -116,7 +105,6 @@ namespace Supernova.MinecraftCaves
                 StableId,
                 kind,
                 treasure,
-                monster,
                 checkpointPrefab,
                 localOffset,
                 yaw,
@@ -150,7 +138,6 @@ namespace Supernova.MinecraftCaves
             string stableId,
             StructureSpawnMarkerDefinition.Kind kind,
             TreasureDefinition treasure,
-            MonsterSpawnDefinition monster,
             GameObject checkpointPrefab,
             Vector3Int localOffset,
             float yaw,
@@ -165,7 +152,6 @@ namespace Supernova.MinecraftCaves
                 : stableId.Trim();
             Kind = kind;
             Treasure = treasure;
-            Monster = monster;
             CheckpointPrefab = checkpointPrefab;
             LocalOffset = localOffset;
             Yaw = yaw;
@@ -182,7 +168,6 @@ namespace Supernova.MinecraftCaves
         public string StableId { get; }
         public StructureSpawnMarkerDefinition.Kind Kind { get; }
         public TreasureDefinition Treasure { get; }
-        public MonsterSpawnDefinition Monster { get; }
         public GameObject CheckpointPrefab { get; }
         public Vector3Int LocalOffset { get; }
         public float Yaw { get; }
@@ -211,8 +196,8 @@ namespace Supernova.MinecraftCaves
                     return true;
                 }
                 return Kind == StructureSpawnMarkerDefinition.Kind.Treasure
-                    ? Treasure != null && Treasure.Prefab != null
-                    : Monster != null && Monster.Prefab != null;
+                    && Treasure != null
+                    && Treasure.Prefab != null;
             }
         }
 
@@ -245,7 +230,6 @@ namespace Supernova.MinecraftCaves
         public StructureSpawnRequest(
             StructureSpawnMarkerDefinition.Kind kind,
             TreasureDefinition treasure,
-            MonsterSpawnDefinition monster,
             Vector3Int voxelPosition,
             float yaw,
             bool snapToFloor,
@@ -253,7 +237,6 @@ namespace Supernova.MinecraftCaves
         {
             Kind = kind;
             Treasure = treasure;
-            Monster = monster;
             VoxelPosition = voxelPosition;
             Yaw = yaw;
             SnapToFloor = snapToFloor;
@@ -262,7 +245,6 @@ namespace Supernova.MinecraftCaves
 
         public StructureSpawnMarkerDefinition.Kind Kind { get; }
         public TreasureDefinition Treasure { get; }
-        public MonsterSpawnDefinition Monster { get; }
         public Vector3Int VoxelPosition { get; }
         public float Yaw { get; }
         public bool SnapToFloor { get; }

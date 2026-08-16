@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using Supernova.Effects;
 using Supernova.Gameplay;
 using Supernova.MinecraftCaves;
 using Supernova.Missions;
@@ -154,7 +155,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MinedOreDrop_UsesVoxelCountAndConfiguredUnitValue()
+        public void MinedOreDrop_UsesActualVolumeForMassAndValue()
         {
             GameObject target = Create("Recovered Ore");
             target.AddComponent<Rigidbody>().isKinematic = true;
@@ -165,40 +166,70 @@ namespace Supernova.Tests
             drop.Configure(
                 new VoxelTypeId(3),
                 4,
+                2.4f,
                 mesh,
                 10f,
                 null,
                 10,
                 0.25f);
 
-            Assert.That(drop.Value, Is.EqualTo(40));
-            Assert.That(drop.Valuable.InitialValue, Is.EqualTo(40));
+            Assert.That(drop.VoxelCount, Is.EqualTo(4));
+            Assert.That(drop.RepresentedFullVoxelVolume, Is.EqualTo(2.4f));
+            Assert.That(drop.Value, Is.EqualTo(24));
+            Assert.That(drop.Valuable.InitialValue, Is.EqualTo(24));
             Assert.That(drop.Valuable.Fragility, Is.EqualTo(0.25f));
-            Assert.That(drop.Body.mass, Is.EqualTo(40f));
+            Assert.That(drop.Body.mass, Is.EqualTo(24f));
         }
 
         [Test]
-        public void CartCargoZone_PreventsValueLossOnlyWhileResourceOverlaps()
+        public void MinedOreDrop_TerrainRebuildWaitBlocksDamageAndRestoresMotion()
         {
-            GameObject zoneObject = Create("Cargo Zone");
-            BoxCollider zoneCollider = zoneObject.AddComponent<BoxCollider>();
-            zoneCollider.isTrigger = true;
-            CartCargoValueZone zone =
-                zoneObject.AddComponent<CartCargoValueZone>();
-            ValuableObject valuable = CreateValuable("Ore", 100, 0.5f);
-            Collider resourceCollider = valuable.GetComponent<Collider>();
+            GameObject target = Create("Recovered Ore");
+            Rigidbody body = target.AddComponent<Rigidbody>();
+            target.AddComponent<BoxCollider>();
+            MinedOreDrop drop = target.AddComponent<MinedOreDrop>();
+            var mesh = new Mesh();
+            var velocity = new Vector3(1f, 2f, 3f);
+            var angularVelocity = new Vector3(0.25f, 0.5f, 0.75f);
+            body.velocity = velocity;
+            body.angularVelocity = angularVelocity;
+            drop.Configure(
+                new VoxelTypeId(3),
+                1,
+                1f,
+                mesh,
+                1f,
+                null,
+                100,
+                0.5f);
 
-            InvokeTrigger(zone, "OnTriggerEnter", resourceCollider);
+            MethodInfo suspend = typeof(MinedOreDrop).GetMethod(
+                "SuspendForTerrainColliderRebuild",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo release = typeof(MinedOreDrop).GetMethod(
+                "ReleaseAfterTerrainColliderRebuild",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(suspend, Is.Not.Null);
+            Assert.That(release, Is.Not.Null);
 
-            Assert.That(valuable.IsCollisionValueLossProtected, Is.True);
-            Assert.That(valuable.ApplyCollisionImpulse(12f), Is.Zero);
-            Assert.That(valuable.CurrentValue, Is.EqualTo(100));
+            suspend.Invoke(drop, null);
 
-            InvokeTrigger(zone, "OnTriggerExit", resourceCollider);
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.True);
+            Assert.That(body.isKinematic, Is.True);
+            Assert.That(body.detectCollisions, Is.False);
+            Assert.That(drop.Valuable.IsCollisionValueLossProtected, Is.True);
+            Assert.That(drop.Valuable.ApplyCollisionImpulse(100f), Is.Zero);
+            Assert.That(drop.Value, Is.EqualTo(100));
 
-            Assert.That(valuable.IsCollisionValueLossProtected, Is.False);
-            Assert.That(valuable.ApplyCollisionImpulse(3f), Is.EqualTo(6));
-            Assert.That(valuable.CurrentValue, Is.EqualTo(94));
+            release.Invoke(drop, null);
+
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.False);
+            Assert.That(body.isKinematic, Is.False);
+            Assert.That(body.detectCollisions, Is.True);
+            Assert.That(body.velocity, Is.EqualTo(velocity));
+            Assert.That(body.angularVelocity, Is.EqualTo(angularVelocity));
+            Assert.That(drop.Valuable.IsCollisionValueLossProtected, Is.False);
+            Assert.That(drop.Valuable.ApplyCollisionImpulse(3f), Is.GreaterThan(0));
         }
 
         [Test]
@@ -211,60 +242,31 @@ namespace Supernova.Tests
             ValuableObject valuable = CreateValuable("Ore", 100, 0.5f);
             Collider resourceCollider = valuable.GetComponent<Collider>();
 
-            InvokeTrigger(extraction, "OnTriggerEnter", resourceCollider);
+            // Damage taken before delivery must still be reflected, so the zone
+            // cannot cache the authored value at entry time.
             valuable.ApplyCollisionImpulse(3f);
+            Assert.That(valuable.CurrentValue, Is.EqualTo(94));
+
+            InvokeTrigger(extraction, "OnTriggerEnter", resourceCollider);
 
             Assert.That(extraction.CurrentStoredValue, Is.EqualTo(94));
         }
 
         [Test]
-        public void SpawnStructure_CartPoseFollowsFinalCellTransform()
+        public void ExtractionZone_ProtectsBankedValueFromFurtherImpacts()
         {
-            GameObject cell = Create("Cell");
-            cell.transform.SetPositionAndRotation(
-                new Vector3(10f, 20f, 30f),
-                Quaternion.Euler(0f, 90f, 0f));
-            SpawnPointSceneStructure structure =
-                cell.AddComponent<SpawnPointSceneStructure>();
+            GameObject extractionObject = Create("Extraction");
+            OreExtractionZone extraction =
+                extractionObject.AddComponent<OreExtractionZone>();
+            extraction.Configure(null);
+            ValuableObject valuable = CreateValuable("Ore", 100, 0.5f);
+            Collider resourceCollider = valuable.GetComponent<Collider>();
 
-            structure.GetMissionCartSpawnPose(
-                out Vector3 position,
-                out Quaternion rotation);
+            InvokeTrigger(extraction, "OnTriggerEnter", resourceCollider);
+            Assert.That(valuable.ApplyCollisionImpulse(3f), Is.Zero);
 
-            Assert.That(
-                Vector3.Distance(
-                    position,
-                    cell.transform.TransformPoint(
-                        new Vector3(-2.2f, 0.55f, -1.5f))),
-                Is.LessThan(0.0001f));
-            Assert.That(
-                Quaternion.Angle(rotation, cell.transform.rotation),
-                Is.LessThan(0.001f));
-        }
-
-        [Test]
-        public void ExistingSceneCart_IsRepositionedAndGetsCargoProtectionZone()
-        {
-            GameObject cartObject = Create("EmptyCart");
-            cartObject.AddComponent<Rigidbody>().useGravity = false;
-            cartObject.AddComponent<BoxCollider>().size =
-                new Vector3(1f, 0.7f, 1.5f);
-            Vector3 position = new Vector3(4f, 5f, 6f);
-            Quaternion rotation = Quaternion.Euler(0f, 35f, 0f);
-
-            MissionCart cart = MissionCart.ConfigureExisting(
-                cartObject,
-                position,
-                rotation);
-
-            Assert.That(cart, Is.Not.Null);
-            Assert.That(cartObject.transform.position, Is.EqualTo(position));
-            Assert.That(
-                Quaternion.Angle(cartObject.transform.rotation, rotation),
-                Is.LessThan(0.001f));
-            Assert.That(
-                cartObject.GetComponentInChildren<CartCargoValueZone>(),
-                Is.Not.Null);
+            Assert.That(valuable.CurrentValue, Is.EqualTo(100));
+            Assert.That(extraction.CurrentStoredValue, Is.EqualTo(100));
         }
 
         [Test]
@@ -423,6 +425,13 @@ namespace Supernova.Tests
 
             Assert.That(effect, Is.Not.Null);
             Assert.That(effect.FragmentBodies.Count, Is.EqualTo(3));
+            for (int i = 0; i < effect.FragmentBodies.Count; i++)
+            {
+                Assert.That(
+                    effect.FragmentBodies[i]
+                        .GetComponent<RigidbodyImpactFeedback>(),
+                    Is.Not.Null);
+            }
             Assert.That(
                 effect.FragmentBodies[0].mass,
                 Is.EqualTo(2f).Within(0.0001f));
@@ -452,6 +461,7 @@ namespace Supernova.Tests
             drop.Configure(
                 new VoxelTypeId(3),
                 4,
+                4f,
                 sourceMesh,
                 1f,
                 null,

@@ -55,11 +55,11 @@
                 <ui:VisualElement name="settings-panel" class="settings-panel">
                     <ui:Label text="SYSTEM SETTINGS" class="settings-title" />
                     <ui:Label text="DISPLAY" class="settings-section" />
-                    <ui:Toggle name="fullscreen-toggle" label="FULLSCREEN" class="setting-toggle" />
-                    <ui:Label text="AUDIO" class="settings-section audio-section" />
-                    <ui:Slider name="volume-slider" label="MASTER VOLUME" low-value="0" high-value="100" value="80" class="volume-slider" />
+                    <ui:Toggle name="fullscreen-toggle" label="全屏" class="setting-toggle" />
+                    <ui:Label text="声音" class="settings-section audio-section" />
+                    <ui:Slider name="volume-slider" label="主音量" low-value="0" high-value="100" value="80" class="volume-slider" />
                     <ui:Label name="volume-value" text="80%" class="volume-value" />
-                    <ui:Button name="settings-back-button" text="RETURN" class="menu-button settings-back" />
+                    <ui:Button name="settings-back-button" text="返回" class="menu-button settings-back" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

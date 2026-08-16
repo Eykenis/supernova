@@ -17,15 +17,12 @@ namespace Supernova.Editor.Gameplay
     /// </summary>
     public static class HomeShopAssetBuilder
     {
-        private const int GunPrice = 300;
-        private const int SmgPrice = 500;
         private const int FlashlightPrice = 100;
         private const int SolidGunPrice = 650;
-        private const int AttractionModulePrice = 450;
-        private const int CartPrice = 250;
+        private const int PortalGunPrice = SolidGunPrice;
         private const string ProductAnchorPrefix = "Shop Product ";
         private const string SessionKey =
-            "Supernova.HomeShopAssetBuilder.Ensured.V4";
+            "Supernova.HomeShopAssetBuilder.Ensured.V6";
         private static bool waitingForEditMode;
 
         [InitializeOnLoadMethod]
@@ -94,41 +91,16 @@ namespace Supernova.Editor.Gameplay
 
             Material wireframe = LoadRequired<Material>(
                 ProjectAssetPaths.Materials.ShopGeometryWireframe);
-            PlayerToolDefinition gunTool = LoadRequired<PlayerToolDefinition>(
-                ProjectAssetPaths.Config.RifleTool);
             PlayerToolDefinition flashlightTool =
                 LoadRequired<PlayerToolDefinition>(
                     ProjectAssetPaths.Config.FlashlightTool);
-            GameObject smgModel = LoadRequired<GameObject>(
-                ProjectAssetPaths.Prefabs.Smg);
             GameObject solidGunModel = LoadRequired<GameObject>(
                 ProjectAssetPaths.Prefabs.SolidGun);
-            GameObject attractionModule = EnsureAttractionModuleDisplay();
-            GameObject cartModel = LoadRequired<GameObject>(
-                ProjectAssetPaths.ThirdParty.EmptyCart);
-            PlayerToolDefinition smgTool = EnsureSmgTool(gunTool, smgModel);
-            PlayerToolDefinition cartTool = EnsureCartTool();
+            GameObject portalGunModel = LoadRequired<GameObject>(
+                ProjectAssetPaths.Prefabs.PortalGun);
 
             var products = new List<ShopProductProfile>
             {
-                EnsureItemProduct(
-                    ProjectAssetPaths.Config.GunProduct,
-                    "GunProduct",
-                    "gun",
-                    "Gun",
-                    GunPrice,
-                    PlayerInventoryItem.Gun,
-                    gunTool.HeldModelPrefab,
-                    wireframe),
-                EnsureItemProduct(
-                    ProjectAssetPaths.Config.SmgProduct,
-                    "SMGProduct",
-                    "smg",
-                    "SMG",
-                    SmgPrice,
-                    PlayerInventoryItem.SMG,
-                    smgModel,
-                    wireframe),
                 EnsureItemProduct(
                     ProjectAssetPaths.Config.FlashlightProduct,
                     "FlashlightProduct",
@@ -147,87 +119,20 @@ namespace Supernova.Editor.Gameplay
                     PlayerInventoryItem.SolidGun,
                     solidGunModel,
                     wireframe),
-                EnsureUpgradeProduct(
-                    attractionModule,
-                    wireframe),
-                EnsureCartProduct(
-                    cartModel,
+                EnsureItemProduct(
+                    ProjectAssetPaths.Config.PortalGunProduct,
+                    "PortalGunProduct",
+                    "portal-gun",
+                    "PortalGun",
+                    PortalGunPrice,
+                    PlayerInventoryItem.PortalGun,
+                    portalGunModel,
                     wireframe),
             };
 
-            EnsurePlayerRegistration(smgTool, cartTool);
             EnsureHomeSceneShop(products);
             AssetDatabase.SaveAssets();
             return products;
-        }
-
-        private static PlayerToolDefinition EnsureSmgTool(
-            PlayerToolDefinition gunTool,
-            GameObject smgModel)
-        {
-            PlayerToolDefinition definition =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.SmgTool);
-            if (definition == null)
-            {
-                definition =
-                    ScriptableObject.CreateInstance<PlayerToolDefinition>();
-                AssetDatabase.CreateAsset(
-                    definition,
-                    ProjectAssetPaths.Config.SmgTool);
-            }
-
-            EditorUtility.CopySerialized(gunTool, definition);
-            definition.name = "SMGTool";
-            SerializedObject serialized = new SerializedObject(definition);
-            serialized.FindProperty("item").intValue =
-                (int)PlayerInventoryItem.SMG;
-            serialized.FindProperty("heldModelPrefab").objectReferenceValue =
-                smgModel;
-            serialized.FindProperty("actionCyclePeriod").floatValue = 1f / 12f;
-            serialized.FindProperty("actionIsPeriodic").boolValue = true;
-            serialized.FindProperty("initialAmmunition").intValue = 180;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            EditorUtility.SetDirty(definition);
-            return definition;
-        }
-
-        private static PlayerToolDefinition EnsureCartTool()
-        {
-            PlayerToolDefinition definition =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.CartTool);
-            if (definition == null)
-            {
-                definition =
-                    ScriptableObject.CreateInstance<PlayerToolDefinition>();
-                AssetDatabase.CreateAsset(
-                    definition,
-                    ProjectAssetPaths.Config.CartTool);
-            }
-
-            definition.name = "CartTool";
-            SerializedObject serialized = new SerializedObject(definition);
-            serialized.FindProperty("item").intValue =
-                (int)PlayerInventoryItem.Cart;
-            serialized.FindProperty("primaryAction").intValue =
-                (int)PlayerToolPrimaryAction.TowCart;
-            serialized.FindProperty("animationTriggerMode").intValue =
-                (int)PlayerToolAnimationTriggerMode.Single;
-            serialized.FindProperty("primaryActionAnimation")
-                .objectReferenceValue = null;
-            serialized.FindProperty("heldModelPrefab")
-                .objectReferenceValue = null;
-            serialized.FindProperty("heldModelMountStrategy").intValue =
-                (int)HeldToolMountStrategy.SingleHand;
-            serialized.FindProperty("allowMovementWhileUsing").boolValue =
-                true;
-            serialized.FindProperty("actionTriggerDelay").floatValue = 0f;
-            serialized.FindProperty("actionCyclePeriod").floatValue = 0.02f;
-            serialized.FindProperty("actionIsPeriodic").boolValue = false;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            EditorUtility.SetDirty(definition);
-            return definition;
         }
 
         private static ShopProductProfile EnsureItemProduct(
@@ -261,152 +166,6 @@ namespace Supernova.Editor.Gameplay
             return profile;
         }
 
-        private static ShopProductProfile EnsureUpgradeProduct(
-            GameObject displayPrefab,
-            Material wireframe)
-        {
-            ShopProductProfile profile =
-                AssetDatabase.LoadAssetAtPath<ShopProductProfile>(
-                    ProjectAssetPaths.Config.AttractionModuleProduct);
-            if (profile == null)
-            {
-                profile =
-                    ScriptableObject.CreateInstance<ShopProductProfile>();
-                profile.name = "AttractionModuleProduct";
-                AssetDatabase.CreateAsset(
-                    profile,
-                    ProjectAssetPaths.Config.AttractionModuleProduct);
-            }
-
-            profile.ConfigureUpgrade(
-                "attraction-module",
-                "牵引模块升级 +400N",
-                AttractionModulePrice,
-                PlayerUpgrade.AttractionModule,
-                FirstPersonCartAttractor.AttractionModuleUpgradeForce,
-                displayPrefab,
-                wireframe);
-            EditorUtility.SetDirty(profile);
-            return profile;
-        }
-
-        private static ShopProductProfile EnsureCartProduct(
-            GameObject displayPrefab,
-            Material wireframe)
-        {
-            ShopProductProfile profile = EnsureItemProduct(
-                ProjectAssetPaths.Config.CartProduct,
-                "CartProduct",
-                "cart",
-                "Cart",
-                CartPrice,
-                PlayerInventoryItem.Cart,
-                displayPrefab,
-                wireframe);
-            profile.ConfigureDisplayTransform(
-                new Vector3(0f, -0.35f, 0f),
-                new Vector3(0f, 90f, 0f),
-                Vector3.one * 0.65f);
-            EditorUtility.SetDirty(profile);
-            return profile;
-        }
-
-        private static GameObject EnsureAttractionModuleDisplay()
-        {
-            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(
-                ProjectAssetPaths.Prefabs.AttractionModuleDisplay);
-            if (existing != null) return existing;
-
-            var root = new GameObject("AttractionModuleDisplay");
-            try
-            {
-                GameObject core = GameObject.CreatePrimitive(
-                    PrimitiveType.Cube);
-                core.name = "Module Core";
-                core.transform.SetParent(root.transform, false);
-                core.transform.localScale =
-                    new Vector3(0.7f, 0.35f, 0.9f);
-                Object.DestroyImmediate(core.GetComponent<Collider>());
-
-                for (int side = -1; side <= 1; side += 2)
-                {
-                    GameObject coil = GameObject.CreatePrimitive(
-                        PrimitiveType.Cylinder);
-                    coil.name = side < 0 ? "Left Coil" : "Right Coil";
-                    coil.transform.SetParent(root.transform, false);
-                    coil.transform.localPosition =
-                        new Vector3(side * 0.48f, 0f, 0f);
-                    coil.transform.localRotation =
-                        Quaternion.Euler(0f, 0f, 90f);
-                    coil.transform.localScale =
-                        new Vector3(0.28f, 0.18f, 0.28f);
-                    Object.DestroyImmediate(coil.GetComponent<Collider>());
-                }
-
-                return PrefabUtility.SaveAsPrefabAsset(
-                    root,
-                    ProjectAssetPaths.Prefabs.AttractionModuleDisplay);
-            }
-            finally
-            {
-                Object.DestroyImmediate(root);
-            }
-        }
-
-        private static void EnsurePlayerRegistration(
-            params PlayerToolDefinition[] requiredTools)
-        {
-            GameObject playerRoot = PrefabUtility.LoadPrefabContents(
-                ProjectAssetPaths.Prefabs.Player);
-            try
-            {
-                PlayerToolController controller =
-                    playerRoot.GetComponent<PlayerToolController>();
-                if (controller == null)
-                {
-                    throw new InvalidOperationException(
-                        "The player prefab has no PlayerToolController.");
-                }
-
-                SerializedObject serialized = new SerializedObject(controller);
-                SerializedProperty definitions =
-                    serialized.FindProperty("toolDefinitions");
-                for (int toolIndex = 0;
-                     toolIndex < requiredTools.Length;
-                     toolIndex++)
-                {
-                    PlayerToolDefinition requiredTool =
-                        requiredTools[toolIndex];
-                    bool found = false;
-                    for (int i = 0; i < definitions.arraySize; i++)
-                    {
-                        if (definitions.GetArrayElementAtIndex(i)
-                                .objectReferenceValue == requiredTool)
-                        {
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
-                    {
-                        int index = definitions.arraySize;
-                        definitions.InsertArrayElementAtIndex(index);
-                        definitions.GetArrayElementAtIndex(index)
-                            .objectReferenceValue = requiredTool;
-                    }
-                }
-
-                serialized.ApplyModifiedPropertiesWithoutUndo();
-                PrefabUtility.SaveAsPrefabAsset(
-                    playerRoot,
-                    ProjectAssetPaths.Prefabs.Player);
-            }
-            finally
-            {
-                PrefabUtility.UnloadPrefabContents(playerRoot);
-            }
-        }
-
         private static void EnsureHomeSceneShop(
             IReadOnlyList<ShopProductProfile> products)
         {
@@ -436,6 +195,21 @@ namespace Supernova.Editor.Gameplay
                 shopRoot.GetComponent<HomeShopController>();
             if (legacy != null) Object.DestroyImmediate(legacy);
 
+            var wantedAnchors = new HashSet<string>();
+            for (int i = 0; i < products.Count; i++)
+                wantedAnchors.Add(ProductAnchorPrefix + products[i].ProductId);
+            for (int i = shopRoot.transform.childCount - 1; i >= 0; i--)
+            {
+                Transform child = shopRoot.transform.GetChild(i);
+                if (child.name.StartsWith(
+                        ProductAnchorPrefix,
+                        StringComparison.Ordinal)
+                    && !wantedAnchors.Contains(child.name))
+                {
+                    Object.DestroyImmediate(child.gameObject);
+                }
+            }
+
             for (int i = 0; i < products.Count; i++)
             {
                 string anchorName = ProductAnchorPrefix + products[i].ProductId;
@@ -448,7 +222,7 @@ namespace Supernova.Editor.Gameplay
                 }
                 anchor.localPosition =
                     new Vector3(
-                        (i - (products.Count - 1) * 0.5f) * 2.2f,
+                        (i - (products.Count - 1) * 0.5f) * 5f,
                         0f,
                         0f);
                 anchor.localRotation = Quaternion.identity;
@@ -462,6 +236,10 @@ namespace Supernova.Editor.Gameplay
                 SerializedObject serialized = new SerializedObject(controller);
                 serialized.FindProperty("productProfile")
                     .objectReferenceValue = products[i];
+                serialized.FindProperty("productLocalPosition")
+                    .vector3Value = Vector3.zero;
+                serialized.FindProperty("interactionDistance")
+                    .floatValue = 2.4f;
                 serialized.ApplyModifiedPropertiesWithoutUndo();
             }
 

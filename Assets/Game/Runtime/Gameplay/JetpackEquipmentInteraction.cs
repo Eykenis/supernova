@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -7,7 +8,6 @@ namespace Supernova.Gameplay
         menuName = "Supernova/Player/Equipment Interactions/Jetpack")]
     public sealed class JetpackEquipmentInteraction : PlayerEquipmentInteraction
     {
-        [SerializeField] private KeyCode toggleKey = KeyCode.V;
         [SerializeField, Min(0f)] private float initialLiftDistance = 0.3f;
         [SerializeField, Min(0.01f)] private float launchDuration = 1f;
         [SerializeField, Min(0f)] private float ascendSpeed = 3.5f;
@@ -16,9 +16,12 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0.01f)] private float launchAnimationDuration = 1.5f;
         [SerializeField] private AnimationClip hoverAnimation;
 
-        public override KeyCode ActivationKey => toggleKey;
+        public override GameInputActionId ActivationAction =>
+            GameInputActionId.ToggleEquipment;
         public override string InteractionHint =>
-            "V TOGGLE  //  SPACE ASCEND  //  SHIFT DESCEND";
+            "{{input:Gameplay/ToggleEquipment}} TOGGLE  //  "
+            + "{{input:Gameplay/Jump}} ASCEND  //  "
+            + "{{input:Gameplay/Sprint}} DESCEND";
         public float InitialLiftDistance => Mathf.Max(0f, initialLiftDistance);
         public float LaunchDuration => Mathf.Max(0.01f, launchDuration);
         public float AscendSpeed => Mathf.Max(0f, ascendSpeed);
@@ -88,7 +91,7 @@ namespace Supernova.Gameplay
             public override void TickInput()
             {
                 if (Cursor.lockState == CursorLockMode.Locked
-                    && Input.GetKeyDown(settings.ActivationKey))
+                    && GameInput.Pressed(settings.ActivationAction))
                 {
                     Trigger();
                 }
@@ -130,9 +133,8 @@ namespace Supernova.Gameplay
                     || !characterController.gameObject.activeInHierarchy)
                     return false;
 
-                bool ascendHeld = Input.GetKey(KeyCode.Space);
-                bool descendHeld = Input.GetKey(KeyCode.LeftShift)
-                    || Input.GetKey(KeyCode.RightShift);
+                bool ascendHeld = GameInput.Held(GameInputActionId.Jump);
+                bool descendHeld = GameInput.Held(GameInputActionId.Sprint);
                 Vector3 velocity = settings.GetHoverVelocity(
                     planarMovement,
                     moveSpeed,

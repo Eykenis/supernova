@@ -2,7 +2,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using Supernova.Audio;
 using Supernova.Gameplay;
+using Supernova.Infrastructure;
 using Supernova.MinecraftCaves.Creatures;
 using Supernova.Shop;
 using Supernova.UI;
@@ -94,121 +96,6 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void RifleTool_UsesConfiguredAnimationStateMachine()
-        {
-            PlayerToolDefinition rifle =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.RifleTool);
-            GameObject playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-                ProjectAssetPaths.Prefabs.Player);
-            UnityAnimatorController controller =
-                AssetDatabase.LoadAssetAtPath<UnityAnimatorController>(
-                    ProjectAssetPaths.Animations.PlayerController);
-
-            Assert.That(rifle, Is.Not.Null);
-            Assert.That(rifle.Item, Is.EqualTo(PlayerInventoryItem.Rifle));
-            Assert.That(
-                rifle.PrimaryAction,
-                Is.EqualTo(PlayerToolPrimaryAction.FireRifle));
-            Assert.That(
-                rifle.AnimationTriggerMode,
-                Is.EqualTo(PlayerToolAnimationTriggerMode.Continuous));
-            Assert.That(rifle.PrimaryActionAnimation, Is.Not.Null);
-            Assert.That(rifle.HeldModelPrefab, Is.Not.Null);
-            Assert.That(
-                rifle.HeldModelMountStrategy,
-                Is.EqualTo(HeldToolMountStrategy.Rifle));
-            Assert.That(rifle.AllowMovementWhileUsing, Is.True);
-            Assert.That(rifle.FirearmProjectilePrefab, Is.Not.Null);
-            Assert.That(rifle.ProjectileSpeed, Is.GreaterThan(0f));
-            Assert.That(rifle.RoundsPerSecond, Is.EqualTo(8f));
-            Assert.That(rifle.FirearmAnimationSpeedMultiplier, Is.EqualTo(0.8f));
-            Assert.That(rifle.InitialAmmunition, Is.GreaterThan(0));
-            Assert.That(rifle.MuzzleFlashPrefab, Is.Not.Null);
-            Assert.That(
-                playerPrefab.GetComponent<PlayerToolController>()
-                    .GetDefinition(PlayerInventoryItem.Rifle),
-                Is.SameAs(rifle));
-
-            AnimatorControllerLayer rifleLayer = controller.layers.Single(
-                layer => layer.name == "Rifle Locomotion Layer");
-            string[] stateNames = rifleLayer.stateMachine.states
-                .Select(child => child.state.name)
-                .ToArray();
-            CollectionAssert.AreEquivalent(
-                new[] { "Rifle Idle", "Rifle Move" },
-                stateNames);
-            Assert.That(rifleLayer.defaultWeight, Is.Zero);
-
-            AnimatorControllerLayer rifleArmsLayer = controller.layers.Single(
-                layer => layer.name == "Rifle Arms Layer");
-            Assert.That(rifleArmsLayer.defaultWeight, Is.Zero);
-            Assert.That(
-                rifleArmsLayer.blendingMode,
-                Is.EqualTo(AnimatorLayerBlendingMode.Override));
-            Assert.That(rifleArmsLayer.avatarMask, Is.Not.Null);
-            Assert.That(
-                rifleArmsLayer.avatarMask.GetHumanoidBodyPartActive(
-                    AvatarMaskBodyPart.Body),
-                Is.False,
-                "Crouch and jump keep ownership of the torso and legs.");
-            Assert.That(
-                rifleArmsLayer.avatarMask.GetHumanoidBodyPartActive(
-                    AvatarMaskBodyPart.LeftArm),
-                Is.True);
-            Assert.That(
-                rifleArmsLayer.avatarMask.GetHumanoidBodyPartActive(
-                    AvatarMaskBodyPart.RightArm),
-                Is.True);
-            AnimatorState rifleArms = rifleArmsLayer.stateMachine.states
-                .Single(child => child.state.name == "Rifle Arms")
-                .state;
-            Assert.That(rifleArms.motion, Is.SameAs(
-                rifleLayer.stateMachine.states.Single(
-                    child => child.state.name == "Rifle Idle").state.motion));
-        }
-
-        [Test]
-        public void RifleAmmunitionInventory_ConsumesOneRoundPerShot()
-        {
-            var ammunition = new PlayerAmmunitionInventory();
-            ammunition.Initialize(PlayerInventoryItem.Rifle, 2);
-
-            Assert.That(ammunition.TryConsume(PlayerInventoryItem.Rifle), Is.True);
-            Assert.That(ammunition.Get(PlayerInventoryItem.Rifle), Is.EqualTo(1));
-            Assert.That(ammunition.TryConsume(PlayerInventoryItem.Rifle), Is.True);
-            Assert.That(ammunition.TryConsume(PlayerInventoryItem.Rifle), Is.False);
-            Assert.That(ammunition.Get(PlayerInventoryItem.Rifle), Is.Zero);
-        }
-
-        [Test]
-        public void RifleAnimationSpeedMultiplier_UsesConfiguredActionPeriod()
-        {
-            PlayerToolDefinition rifle =
-                ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            try
-            {
-                SetPrivateField(
-                    rifle,
-                    "primaryAction",
-                    PlayerToolPrimaryAction.FireRifle);
-                SetPrivateField(rifle, "actionCyclePeriod", 0.2f);
-                Assert.That(
-                    rifle.FirearmAnimationSpeedMultiplier,
-                    Is.EqualTo(0.5f));
-
-                SetPrivateField(rifle, "actionCyclePeriod", 0.05f);
-                Assert.That(
-                    rifle.FirearmAnimationSpeedMultiplier,
-                    Is.EqualTo(2f));
-            }
-            finally
-            {
-                Object.DestroyImmediate(rifle);
-            }
-        }
-
-        [Test]
         public void ToolActionTiming_ExposesIndependentDelayAndPeriod()
         {
             PlayerToolDefinition definition =
@@ -226,162 +113,6 @@ namespace Supernova.Tests
             finally
             {
                 Object.DestroyImmediate(definition);
-            }
-        }
-
-        [Test]
-        public void RifleProjectile_IsFastContinuousAndConfiguredToDestroyOnImpact()
-        {
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
-                ProjectAssetPaths.Prefabs.RifleProjectile);
-            Assert.That(prefab, Is.Not.Null);
-            BallisticProjectile configured =
-                prefab.GetComponent<BallisticProjectile>();
-            Assert.That(configured, Is.Not.Null);
-            Assert.That(prefab.GetComponent<Rigidbody>(), Is.Not.Null);
-            Assert.That(prefab.GetComponent<Collider>(), Is.Not.Null);
-
-            GameObject instance = Object.Instantiate(prefab);
-            objects.Add(instance);
-            BallisticProjectile projectile =
-                instance.GetComponent<BallisticProjectile>();
-            Vector3 velocity = Vector3.forward * 180f;
-            projectile.Launch(velocity, null);
-
-            Assert.That(projectile.Body.velocity, Is.EqualTo(velocity));
-            Assert.That(projectile.Body.useGravity, Is.False);
-            Assert.That(
-                projectile.Body.collisionDetectionMode,
-                Is.EqualTo(CollisionDetectionMode.ContinuousDynamic));
-            Assert.That(
-                projectile.CalculateTreasureImpulse(velocity),
-                Is.EqualTo(
-                    velocity
-                    * projectile.Body.mass
-                    * projectile.TreasureImpulseMultiplier));
-
-            Material projectileMaterial = AssetDatabase.LoadAssetAtPath<Material>(
-                ProjectAssetPaths.Materials.RifleProjectile);
-            Assert.That(projectileMaterial, Is.Not.Null);
-            Assert.That(projectileMaterial.shader, Is.Not.Null);
-            Assert.That(
-                projectileMaterial.shader.name,
-                Is.EqualTo("Universal Render Pipeline/Unlit"));
-            Assert.That(projectileMaterial.shader.isSupported, Is.True);
-        }
-
-        [Test]
-        public void RifleMuzzleFlash_UsesOnlyProjectOwnedDependencies()
-        {
-            GameObject effect = AssetDatabase.LoadAssetAtPath<GameObject>(
-                ProjectAssetPaths.Prefabs.MuzzleFlash);
-            GameObject rifle = AssetDatabase.LoadAssetAtPath<GameObject>(
-                ProjectAssetPaths.Prefabs.Smg);
-
-            Assert.That(effect, Is.Not.Null);
-            Assert.That(effect.GetComponentsInChildren<ParticleSystem>(true),
-                Is.Not.Empty);
-            Assert.That(effect.GetComponentInChildren<Light>(true), Is.Not.Null);
-            Assert.That(rifle, Is.Not.Null);
-            Assert.That(
-                rifle.GetComponentInChildren<WeaponMuzzle>(true),
-                Is.Not.Null);
-
-            string[] materialPaths =
-            {
-                ProjectAssetPaths.Materials.MuzzleFlashFlame,
-                ProjectAssetPaths.Materials.MuzzleFlashCore,
-                ProjectAssetPaths.Materials.MuzzleFlashSecondary,
-                ProjectAssetPaths.Materials.MuzzleFlashSmoke,
-                ProjectAssetPaths.Materials.MuzzleFlashDistortion,
-            };
-            for (int i = 0; i < materialPaths.Length; i++)
-            {
-                string path = materialPaths[i];
-                Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
-                Assert.That(material, Is.Not.Null, path);
-                Assert.That(material.shader, Is.Not.Null, path);
-                Assert.That(material.shader.isSupported, Is.True, path);
-                if (i < 3)
-                {
-                    Assert.That(
-                        material.shader.name,
-                        Is.EqualTo("Universal Render Pipeline/Particles/Unlit"),
-                        path);
-                }
-            }
-
-            string[] dependencies = AssetDatabase.GetDependencies(
-                ProjectAssetPaths.Prefabs.MuzzleFlash,
-                true);
-            Assert.That(
-                dependencies,
-                Has.None.Contains("/3rd/"),
-                "The production muzzle flash must not reference its source package.");
-        }
-
-        [Test]
-        public void ProductionRifleAnimations_CreateIndependentValidHumanoidAvatars()
-        {
-            string[] paths =
-            {
-                ProjectAssetPaths.ThirdParty.RifleIdle,
-                ProjectAssetPaths.ThirdParty.RifleMove,
-                ProjectAssetPaths.ThirdParty.RifleFire,
-            };
-
-            foreach (string path in paths)
-            {
-                ModelImporter importer = AssetImporter.GetAtPath(path)
-                    as ModelImporter;
-                Avatar avatar = AssetDatabase.LoadAllAssetsAtPath(path)
-                    .OfType<Avatar>()
-                    .FirstOrDefault();
-
-                Assert.That(importer, Is.Not.Null, path);
-                Assert.That(
-                    importer.animationType,
-                    Is.EqualTo(ModelImporterAnimationType.Human),
-                    path);
-                Assert.That(
-                    importer.avatarSetup,
-                    Is.EqualTo(ModelImporterAvatarSetup.CreateFromThisModel),
-                    path);
-                Assert.That(importer.sourceAvatar, Is.Null, path);
-                Assert.That(avatar, Is.Not.Null, path);
-                Assert.That(avatar.isHuman, Is.True, path);
-                Assert.That(avatar.isValid, Is.True, path);
-            }
-        }
-
-        [Test]
-        public void RifleAction_UsesArmsOnlyToolLayerEvenWhenStanding()
-        {
-            GameObject playerObject = Create("Player");
-            VoxelPlayerController player =
-                playerObject.AddComponent<VoxelPlayerController>();
-            PlayerToolDefinition rifle =
-                ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            try
-            {
-                SetPrivateField(
-                    rifle,
-                    "primaryAction",
-                    PlayerToolPrimaryAction.FireRifle);
-                SetPrivateField(player, "activeToolDefinition", rifle);
-                SetPrivateField(player, "toolUpperBodyLayerIndex", 3);
-                SetPrivateField(player, "crouchToolArmsLayerIndex", 5);
-
-                MethodInfo resolveLayer = typeof(VoxelPlayerController).GetMethod(
-                    "ResolveToolActionLayerIndex",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-                Assert.That(resolveLayer, Is.Not.Null);
-                Assert.That(resolveLayer.Invoke(player, null), Is.EqualTo(5),
-                    "Rifle fire must exclude Body and Root curves in every stance.");
-            }
-            finally
-            {
-                Object.DestroyImmediate(rifle);
             }
         }
 
@@ -450,61 +181,14 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MagnetActionState_StartsAndStopsAttractorThroughStateLifecycle()
-        {
-            GameObject playerObject = Create("Player");
-            playerObject.AddComponent<CharacterController>();
-
-            GameObject cameraObject = new GameObject("Camera");
-            cameraObject.transform.SetParent(playerObject.transform);
-            Camera camera = cameraObject.AddComponent<Camera>();
-            PerspectiveCameraController perspective =
-                playerObject.AddComponent<PerspectiveCameraController>();
-            perspective.Bind(playerObject.transform, null, camera, new Renderer[0]);
-            perspective.SetMode(PlayerViewMode.FirstPerson, true);
-
-            FirstPersonCartAttractor attractor =
-                playerObject.AddComponent<FirstPersonCartAttractor>();
-            PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
-            PlayerToolDefinition magnet = ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            SetPrivateField(magnet, "item", PlayerInventoryItem.Magnet);
-            SetPrivateField(magnet, "primaryAction", PlayerToolPrimaryAction.AttractCart);
-            SetPrivateField(inventory, "toolDefinitions", new[] { magnet });
-            Assert.That(
-                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
-                Is.True);
-            inventory.SelectSlot(1);
-            VoxelPlayerController player = playerObject.AddComponent<VoxelPlayerController>();
-
-            MethodInfo awake = typeof(VoxelPlayerController).GetMethod(
-                "Awake", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(awake, Is.Not.Null);
-            awake.Invoke(player, null);
-
-            FieldInfo field = typeof(VoxelPlayerController).GetField(
-                "stateMachine", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(field, Is.Not.Null);
-            var machine = (CharacterStateMachine<PlayerCharacterState>)field.GetValue(player);
-            Assert.That(machine, Is.Not.Null);
-
-            machine.Change(PlayerCharacterState.ToolAction);
-            Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.ToolAction));
-            Assert.That(attractor.IsActionActive, Is.True);
-
-            machine.Change(PlayerCharacterState.Idle);
-            Assert.That(attractor.IsActionActive, Is.False);
-            Object.DestroyImmediate(magnet);
-        }
-
-        [Test]
         public void ToolDefinitions_SelectGameplayActionAndAnimationPerInventoryItem()
         {
             GameObject playerObject = Create("Player");
             PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
             PlayerToolDefinition pickaxe = ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            PlayerToolDefinition magnet = ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            PlayerToolDefinition bomb = ScriptableObject.CreateInstance<PlayerToolDefinition>();
             AnimationClip pickaxeClip = new AnimationClip();
-            AnimationClip magnetClip = new AnimationClip();
+            AnimationClip bombClip = new AnimationClip();
 
             SetPrivateField(pickaxe, "item", PlayerInventoryItem.Pickaxe);
             SetPrivateField(pickaxe, "primaryAction", PlayerToolPrimaryAction.MineVoxel);
@@ -513,19 +197,19 @@ namespace Supernova.Tests
                 "animationTriggerMode",
                 PlayerToolAnimationTriggerMode.Periodic);
             SetPrivateField(pickaxe, "primaryActionAnimation", pickaxeClip);
-            SetPrivateField(magnet, "item", PlayerInventoryItem.Magnet);
-            SetPrivateField(magnet, "primaryAction", PlayerToolPrimaryAction.AttractCart);
+            SetPrivateField(bomb, "item", PlayerInventoryItem.Bomb);
+            SetPrivateField(bomb, "primaryAction", PlayerToolPrimaryAction.ThrowBomb);
             SetPrivateField(
-                magnet,
+                bomb,
                 "animationTriggerMode",
                 PlayerToolAnimationTriggerMode.Single);
-            SetPrivateField(magnet, "primaryActionAnimation", magnetClip);
-            SetPrivateField(inventory, "toolDefinitions", new[] { pickaxe, magnet });
+            SetPrivateField(bomb, "primaryActionAnimation", bombClip);
+            SetPrivateField(inventory, "toolDefinitions", new[] { pickaxe, bomb });
             Assert.That(
                 inventory.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
                 Is.True);
             Assert.That(
-                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
+                inventory.ConfigureSlot(1, PlayerInventoryItem.Bomb),
                 Is.True);
 
             inventory.SelectSlot(0);
@@ -535,78 +219,185 @@ namespace Supernova.Tests
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
             Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(pickaxeClip));
             inventory.SelectSlot(1);
-            Assert.That(inventory.SelectedDefinition, Is.SameAs(magnet));
+            Assert.That(inventory.SelectedDefinition, Is.SameAs(bomb));
             Assert.That(
                 inventory.SelectedDefinition.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Single));
-            Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(magnetClip));
+            Assert.That(inventory.SelectedDefinition.PrimaryActionAnimation, Is.SameAs(bombClip));
 
             Object.DestroyImmediate(pickaxeClip);
-            Object.DestroyImmediate(magnetClip);
+            Object.DestroyImmediate(bombClip);
             Object.DestroyImmediate(pickaxe);
-            Object.DestroyImmediate(magnet);
+            Object.DestroyImmediate(bomb);
         }
 
         [Test]
-        public void ToolAssets_ConfigurePickaxeCadenceAndMagnetGameplayAction()
+        public void ToolAssets_ConfigurePickaxeCadenceAndThrowProjectile()
         {
             PlayerToolDefinition pickaxe = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
                 ProjectAssetPaths.Config.PickaxeTool);
-            PlayerToolDefinition magnet = AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                ProjectAssetPaths.Config.MagnetTool);
 
             Assert.That(pickaxe, Is.Not.Null);
-            Assert.That(magnet, Is.Not.Null);
             Assert.That(
                 pickaxe.AnimationTriggerMode,
                 Is.EqualTo(PlayerToolAnimationTriggerMode.Periodic));
             Assert.That(pickaxe.ActionTriggerDelay, Is.EqualTo(0.42f));
             Assert.That(pickaxe.ActionCyclePeriod, Is.EqualTo(0.75f));
             Assert.That(pickaxe.ActionIsPeriodic, Is.True);
-            Assert.That(
-                magnet.PrimaryAction,
-                Is.EqualTo(PlayerToolPrimaryAction.AttractCart));
-            Assert.That(magnet.ActionIsPeriodic, Is.False);
+            Assert.That(pickaxe.CanThrowPickaxe, Is.True);
         }
 
         [Test]
-        public void ToolAssets_ConfigureIndependentGameplayTiming()
-        {
-            PlayerToolDefinition flashlight =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.FlashlightTool);
-            PlayerToolDefinition rifle =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.RifleTool);
-            PlayerToolDefinition smg =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.SmgTool);
-            PlayerToolDefinition solidGun =
-                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.SolidGunTool);
-
-            Assert.That(flashlight.ActionTriggerDelay, Is.GreaterThanOrEqualTo(0f));
-            Assert.That(flashlight.ActionCyclePeriod, Is.EqualTo(0.35f));
-            Assert.That(flashlight.ActionIsPeriodic, Is.False);
-            Assert.That(rifle.ActionCyclePeriod, Is.EqualTo(0.125f));
-            Assert.That(rifle.ActionIsPeriodic, Is.True);
-            Assert.That(smg.ActionCyclePeriod, Is.EqualTo(1f / 12f).Within(0.0001f));
-            Assert.That(smg.ActionIsPeriodic, Is.True);
-            Assert.That(
-                solidGun.ActionCyclePeriod,
-                Is.EqualTo(1f / 1.5f).Within(0.0001f));
-            Assert.That(solidGun.ActionIsPeriodic, Is.True);
-        }
-
-        [Test]
-        public void ToolAssets_ConfigurePickaxeModelAndLeaveMagnetModelEmpty()
+        public void PickaxeTool_ConfiguresMonsterHitPunchCue()
         {
             PlayerToolDefinition pickaxe =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
                     ProjectAssetPaths.Config.PickaxeTool);
-            PlayerToolDefinition magnet =
+
+            Assert.That(pickaxe, Is.Not.Null);
+            Assert.That(pickaxe.MonsterHitSound, Is.Not.Null);
+            Assert.That(
+                AssetDatabase.GetAssetPath(pickaxe.MonsterHitSound),
+                Is.EqualTo(ProjectAssetPaths.Config.PickaxeMonsterHitSound));
+
+            SerializedObject serializedCue =
+                new SerializedObject(pickaxe.MonsterHitSound);
+            SerializedProperty clips = serializedCue.FindProperty("clips");
+            Assert.That(clips.arraySize, Is.EqualTo(3));
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    clips.GetArrayElementAtIndex(0).objectReferenceValue),
+                Is.EqualTo(ProjectAssetPaths.Audio.Punch1));
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    clips.GetArrayElementAtIndex(1).objectReferenceValue),
+                Is.EqualTo(ProjectAssetPaths.Audio.Punch2));
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    clips.GetArrayElementAtIndex(2).objectReferenceValue),
+                Is.EqualTo(ProjectAssetPaths.Audio.Punch3));
+        }
+
+        [Test]
+        public void PickaxeTool_ConfiguresMiningWooshAndThrownImpactCues()
+        {
+            PlayerToolDefinition pickaxe =
                 AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
-                    ProjectAssetPaths.Config.MagnetTool);
+                    ProjectAssetPaths.Config.PickaxeTool);
+
+            Assert.That(pickaxe, Is.Not.Null);
+            Assert.That(
+                AssetDatabase.GetAssetPath(pickaxe.PrimaryActionSound),
+                Is.EqualTo(ProjectAssetPaths.Config.PickaxeWooshSound));
+            Assert.That(
+                AssetDatabase.GetAssetPath(pickaxe.MiningHitSound),
+                Is.EqualTo(ProjectAssetPaths.Config.PickaxeMiningHitSound));
+            Assert.That(
+                AssetDatabase.GetAssetPath(pickaxe.ThrownTerrainHitSound),
+                Is.EqualTo(
+                    ProjectAssetPaths.Config.PickaxeThrownImpactSound));
+
+            SerializedProperty mineClips = new SerializedObject(
+                    pickaxe.MiningHitSound)
+                .FindProperty("clips");
+            string[] expectedMineClips =
+            {
+                ProjectAssetPaths.Audio.Mine1,
+                ProjectAssetPaths.Audio.Mine2,
+                ProjectAssetPaths.Audio.Mine3,
+                ProjectAssetPaths.Audio.Mine4,
+                ProjectAssetPaths.Audio.Mine5,
+                ProjectAssetPaths.Audio.Mine6,
+                ProjectAssetPaths.Audio.Mine7,
+                ProjectAssetPaths.Audio.Mine8,
+                ProjectAssetPaths.Audio.Mine9,
+                ProjectAssetPaths.Audio.Mine10,
+            };
+            Assert.That(mineClips.arraySize, Is.EqualTo(10));
+            for (int i = 0; i < expectedMineClips.Length; i++)
+            {
+                Assert.That(
+                    AssetDatabase.GetAssetPath(
+                        mineClips.GetArrayElementAtIndex(i)
+                            .objectReferenceValue),
+                    Is.EqualTo(expectedMineClips[i]));
+            }
+
+            SerializedObject serializedWoosh =
+                new SerializedObject(pickaxe.PrimaryActionSound);
+            SerializedProperty wooshClips =
+                serializedWoosh.FindProperty("clips");
+            Assert.That(wooshClips.arraySize, Is.EqualTo(1));
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    wooshClips.GetArrayElementAtIndex(0)
+                        .objectReferenceValue),
+                Is.EqualTo(ProjectAssetPaths.Audio.Woosh));
+            Assert.That(
+                serializedWoosh.FindProperty("volume").floatValue,
+                Is.EqualTo(0.6f).Within(0.0001f));
+
+            SerializedProperty thrownClips = new SerializedObject(
+                    pickaxe.ThrownTerrainHitSound)
+                .FindProperty("clips");
+            Assert.That(thrownClips.arraySize, Is.EqualTo(1));
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    thrownClips.GetArrayElementAtIndex(0)
+                        .objectReferenceValue),
+                Is.EqualTo(ProjectAssetPaths.Audio.PickaxeThrown));
+        }
+
+        [Test]
+        public void PickaxeAndFlashlight_ConfigureSharedThrowCue()
+        {
+            PlayerToolDefinition pickaxe =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.PickaxeTool);
+            PlayerToolDefinition flashlight =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.FlashlightTool);
+
+            Assert.That(pickaxe, Is.Not.Null);
+            Assert.That(flashlight, Is.Not.Null);
+            Assert.That(pickaxe.ThrowSound, Is.Not.Null);
+            Assert.That(flashlight.ThrowSound, Is.SameAs(pickaxe.ThrowSound));
+            Assert.That(
+                AssetDatabase.GetAssetPath(pickaxe.ThrowSound),
+                Is.EqualTo(ProjectAssetPaths.Config.ToolThrowSound));
+
+            SerializedProperty clips = new SerializedObject(
+                    pickaxe.ThrowSound)
+                .FindProperty("clips");
+            Assert.That(clips.arraySize, Is.EqualTo(1));
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    clips.GetArrayElementAtIndex(0)
+                        .objectReferenceValue),
+                Is.EqualTo(ProjectAssetPaths.Audio.Throw));
+        }
+
+        [Test]
+        public void ToolDefinition_NoLongerDeclaresAPerToolSecondaryAction()
+        {
+            // Right click is unconditionally the magnet and the throw has its own
+            // key, so no tool overrides the secondary action any more.
+            Assert.That(
+                typeof(PlayerToolDefinition).GetProperty("SecondaryAction"),
+                Is.Null);
+            Assert.That(
+                typeof(PlayerToolDefinition).GetField(
+                    "secondaryAction",
+                    BindingFlags.Instance | BindingFlags.NonPublic),
+                Is.Null);
+        }
+
+        [Test]
+        public void ToolAssets_ConfigurePickaxeModel()
+        {
+            PlayerToolDefinition pickaxe =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.PickaxeTool);
 
             Assert.That(pickaxe, Is.Not.Null);
             Assert.That(pickaxe.HeldModelPrefab, Is.Not.Null);
@@ -614,147 +405,79 @@ namespace Supernova.Tests
             Assert.That(
                 pickaxe.HeldModelMountStrategy,
                 Is.EqualTo(HeldToolMountStrategy.SingleHand));
-            Assert.That(magnet, Is.Not.Null);
-            Assert.That(magnet.HeldModelPrefab, Is.Null);
         }
 
         [Test]
-        public void InventorySelection_ReplacesModelAtToolMountAndSupportsNullModel()
+        public void SuspendItem_RemovesTheToolThenRestoresItsOriginalSlot()
         {
             GameObject playerObject = Create("Player");
             PlayerToolController inventory =
                 playerObject.AddComponent<PlayerToolController>();
-            GameObject mountObject = Create("Tool Model Mount");
-            mountObject.transform.SetParent(playerObject.transform);
-            GameObject pickaxeModel = Create("Pickaxe Model Prefab");
             PlayerToolDefinition pickaxe =
-                ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            PlayerToolDefinition magnet =
                 ScriptableObject.CreateInstance<PlayerToolDefinition>();
             try
             {
-                SetPrivateField(
-                    pickaxe,
-                    "item",
-                    PlayerInventoryItem.Pickaxe);
-                SetPrivateField(pickaxe, "heldModelPrefab", pickaxeModel);
-                SetPrivateField(
-                    magnet,
-                    "item",
-                    PlayerInventoryItem.Magnet);
+                SetPrivateField(pickaxe, "item", PlayerInventoryItem.Pickaxe);
                 SetPrivateField(
                     inventory,
                     "toolDefinitions",
-                    new[] { pickaxe, magnet });
-                SetPrivateField(
-                    inventory,
-                    "toolModelMount",
-                    mountObject.transform);
+                    new[] { pickaxe });
                 Assert.That(
-                    inventory.ConfigureSlot(
-                        0,
-                        PlayerInventoryItem.Pickaxe),
+                    inventory.ConfigureSlot(2, PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                inventory.SelectSlot(2);
+
+                Assert.That(
+                    inventory.SuspendItem(PlayerInventoryItem.Pickaxe),
                     Is.True);
                 Assert.That(
-                    inventory.ConfigureSlot(
-                        1,
-                        PlayerInventoryItem.Magnet),
+                    inventory.IsItemSuspended(PlayerInventoryItem.Pickaxe),
                     Is.True);
-
-                inventory.SelectSlot(0);
-                Assert.That(inventory.EquippedToolModel, Is.Not.Null);
                 Assert.That(
-                    inventory.EquippedToolModel.transform.parent,
-                    Is.SameAs(mountObject.transform));
+                    inventory.GetItemAtSlot(2),
+                    Is.EqualTo(PlayerInventoryItem.Empty));
+                Assert.That(
+                    inventory.SelectedItem,
+                    Is.EqualTo(PlayerInventoryItem.Empty));
+                // A suspended item cannot be dragged back in from the menu.
+                Assert.That(
+                    inventory.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
+                    Is.False);
+                // Suspending twice is refused, so a second throw cannot duplicate it.
+                Assert.That(
+                    inventory.SuspendItem(PlayerInventoryItem.Pickaxe),
+                    Is.False);
 
-                inventory.SelectSlot(1);
-                Assert.That(inventory.EquippedToolModel, Is.Null);
-                Assert.That(mountObject.transform.childCount, Is.Zero);
+                Assert.That(
+                    inventory.RestoreSuspendedItem(PlayerInventoryItem.Pickaxe),
+                    Is.True);
+                Assert.That(
+                    inventory.IsItemSuspended(PlayerInventoryItem.Pickaxe),
+                    Is.False);
+                Assert.That(
+                    inventory.GetItemAtSlot(2),
+                    Is.EqualTo(PlayerInventoryItem.Pickaxe));
+                Assert.That(
+                    inventory.SelectedItem,
+                    Is.EqualTo(PlayerInventoryItem.Pickaxe));
+                Assert.That(
+                    inventory.RestoreSuspendedItem(PlayerInventoryItem.Pickaxe),
+                    Is.False);
             }
             finally
             {
                 Object.DestroyImmediate(pickaxe);
-                Object.DestroyImmediate(magnet);
             }
-        }
-
-        [Test]
-        public void RifleMount_UsesDedicatedHandChildAndPreservesPrefabRootPose()
-        {
-            GameObject playerObject = Create("Player");
-            PlayerToolController inventory =
-                playerObject.AddComponent<PlayerToolController>();
-            GameObject handMountObject = Create("Tool Model Mount");
-            handMountObject.transform.SetParent(playerObject.transform);
-            GameObject rifleModel = Create("Rifle Model Prefab");
-            rifleModel.transform.localPosition = new Vector3(0.1f, -0.2f, 0.3f);
-            rifleModel.transform.localRotation = Quaternion.Euler(12f, 23f, 34f);
-            rifleModel.transform.localScale = new Vector3(2f, 3f, 4f);
-            PlayerToolDefinition rifle =
-                ScriptableObject.CreateInstance<PlayerToolDefinition>();
-            try
-            {
-                SetPrivateField(rifle, "item", PlayerInventoryItem.Rifle);
-                SetPrivateField(rifle, "heldModelPrefab", rifleModel);
-                SetPrivateField(
-                    rifle,
-                    "heldModelMountStrategy",
-                    HeldToolMountStrategy.Rifle);
-                SetPrivateField(
-                    inventory,
-                    "toolModelMount",
-                    handMountObject.transform);
-
-                MethodInfo applyModel = typeof(PlayerToolController).GetMethod(
-                    "ApplyEquippedToolModel",
-                    BindingFlags.Instance | BindingFlags.NonPublic);
-                Assert.That(applyModel, Is.Not.Null);
-                applyModel.Invoke(inventory, new object[] { rifle });
-
-                Transform equipped = inventory.EquippedToolModel.transform;
-                Assert.That(equipped.parent.name, Is.EqualTo("Rifle Model Mount"));
-                Assert.That(
-                    equipped.parent.parent,
-                    Is.SameAs(handMountObject.transform));
-                Assert.That(equipped.localPosition, Is.EqualTo(rifleModel.transform.localPosition));
-                Assert.That(
-                    Quaternion.Angle(equipped.localRotation, rifleModel.transform.localRotation),
-                    Is.LessThan(0.001f));
-                Assert.That(equipped.localScale, Is.EqualTo(rifleModel.transform.localScale));
-            }
-            finally
-            {
-                Object.DestroyImmediate(rifle);
-            }
-        }
-
-        [Test]
-        public void InventorySelection_EnablesMagnetOnlyWhenConfiguredSlotIsSelected()
-        {
-            GameObject playerObject = Create("Player");
-            FirstPersonCartAttractor attractor =
-                playerObject.AddComponent<FirstPersonCartAttractor>();
-            PlayerToolController inventory = playerObject.AddComponent<PlayerToolController>();
-
-            Assert.That(
-                inventory.ConfigureSlot(1, PlayerInventoryItem.Magnet),
-                Is.True);
-            inventory.SelectSlot(1);
-            Assert.That(attractor.DeviceEnabled, Is.True);
-
-            inventory.SelectSlot(2);
-            Assert.That(attractor.DeviceEnabled, Is.False);
-            Assert.That(
-                inventory.SelectedItem,
-                Is.EqualTo(PlayerInventoryItem.Empty));
         }
 
         [Test]
         public void PlayerDamage_TransitionsThroughHurtToDead()
         {
             GameObject playerObject = Create("Player");
+            playerObject.transform.position = new Vector3(10000f, 10000f, 10000f);
             playerObject.AddComponent<CharacterController>();
             VoxelPlayerController player = playerObject.AddComponent<VoxelPlayerController>();
+            SetPrivateField(player, "view", playerObject.transform);
             var hit = new DamageInfo(10f, null, Vector3.zero, Vector3.forward);
 
             Assert.That(player.ReceiveDamage(hit), Is.True);
@@ -764,51 +487,6 @@ namespace Supernova.Tests
             Assert.That(player.ReceiveDamage(lethal), Is.True);
             Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.Dead));
             Assert.That(player.IsAlive, Is.False);
-        }
-
-        [Test]
-        public void PlayerDamage_ReleasesAnimationLayersThatCoverHitReaction()
-        {
-            RuntimeAnimatorController runtimeController =
-                AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
-                    ProjectAssetPaths.Animations.PlayerController);
-            GameObject playerObject = Create("Player");
-            playerObject.AddComponent<CharacterController>();
-            VoxelPlayerController player =
-                playerObject.AddComponent<VoxelPlayerController>();
-            GameObject visual = Create("Visual");
-            visual.transform.SetParent(playerObject.transform);
-            Animator animator = visual.AddComponent<Animator>();
-            animator.runtimeAnimatorController = runtimeController;
-            player.SetAnimator(animator);
-            animator.Update(0f);
-
-            string[] coveringLayers =
-            {
-                "Rifle Locomotion Layer",
-                "Rifle Arms Layer",
-                "Tool UpperBody Layer",
-                "Crouch Tool Arms Layer",
-            };
-            foreach (string layerName in coveringLayers)
-            {
-                int layerIndex = animator.GetLayerIndex(layerName);
-                Assert.That(layerIndex, Is.GreaterThanOrEqualTo(0));
-                animator.SetLayerWeight(layerIndex, 1f);
-            }
-
-            var hit = new DamageInfo(
-                10f, null, Vector3.zero, Vector3.forward);
-            Assert.That(player.ReceiveDamage(hit), Is.True);
-            Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.Hurt));
-
-            foreach (string layerName in coveringLayers)
-            {
-                int layerIndex = animator.GetLayerIndex(layerName);
-                Assert.That(animator.GetLayerWeight(layerIndex),
-                    Is.Zero.Within(0.001f),
-                    layerName + " must release the full-body hit reaction.");
-            }
         }
 
         [Test]
@@ -869,7 +547,8 @@ namespace Supernova.Tests
             GameObject playerObject = Create("Player");
             PlayerProfile profile = playerObject.AddComponent<PlayerProfile>();
 
-            Assert.That(profile.CrouchKey, Is.EqualTo(KeyCode.LeftControl));
+            // The crouch key now lives in the Gameplay/Crouch binding, so the
+            // profile only owns the movement and collider tuning.
             Assert.That(profile.CrouchMoveSpeed, Is.EqualTo(2f));
             Assert.That(profile.CrouchMoveSpeed, Is.LessThan(profile.MoveSpeed));
             Assert.That(profile.CrouchColliderHeight, Is.EqualTo(1f));
@@ -1198,6 +877,57 @@ namespace Supernova.Tests
             }
         }
 
+        [TestCase(PlayerInventoryItem.SolidGun)]
+        [TestCase(PlayerInventoryItem.PortalGun)]
+        public void FirearmCooldown_ReportsRemainingCycleForHotbar(
+            PlayerInventoryItem item)
+        {
+            GameObject playerObject = Create("Player");
+            playerObject.AddComponent<CharacterController>();
+            PlayerToolController tools =
+                playerObject.AddComponent<PlayerToolController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            PlayerToolDefinition definition =
+                ScriptableObject.CreateInstance<PlayerToolDefinition>();
+            try
+            {
+                SetPrivateField(definition, "item", item);
+                SetPrivateField(
+                    definition,
+                    "primaryAction",
+                    PlayerToolPrimaryAction.FireProjectile);
+                SetPrivateField(definition, "actionCyclePeriod", 0.8f);
+                SetPrivateField(
+                    tools,
+                    "toolDefinitions",
+                    new[] { definition });
+
+                FieldInfo cycleTimesField = typeof(VoxelPlayerController)
+                    .GetField(
+                        "nextToolActionCycleTimes",
+                        BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(cycleTimesField, Is.Not.Null);
+                var cycleTimes =
+                    (Dictionary<PlayerToolDefinition, float>)
+                    cycleTimesField.GetValue(player);
+                cycleTimes[definition] = Time.time + 0.5f;
+
+                Assert.That(
+                    player.TryGetToolActionCooldown(
+                        item,
+                        out float remainingSeconds,
+                        out float durationSeconds),
+                    Is.True);
+                Assert.That(remainingSeconds, Is.EqualTo(0.5f).Within(0.02f));
+                Assert.That(durationSeconds, Is.EqualTo(0.8f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(definition);
+            }
+        }
+
         [Test]
         public void ToolUpperBodyLayer_ReturnsWeightToZeroAfterActionFinishes()
         {
@@ -1244,6 +974,12 @@ namespace Supernova.Tests
         [Test]
         public void CreatureAttack_DamagesPlayerThroughSharedContract()
         {
+            GameAssetCatalog catalog =
+                AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                    ProjectAssetPaths.Config.GameAssetCatalog);
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.Audio.CreatureHitPlayer, Is.Not.Null);
+
             GameObject playerObject = Create("Player");
             playerObject.transform.position = Vector3.forward;
             playerObject.AddComponent<CharacterController>();
@@ -1257,11 +993,72 @@ namespace Supernova.Tests
             MethodInfo applyAttack = typeof(CreatureBehaviorAgent).GetMethod(
                 "ApplyAttack", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(applyAttack, Is.Not.Null);
-            applyAttack.Invoke(creature, new object[] { Vector3.forward });
+            int soundCount = 0;
+            SoundEffectPlaybackRequest received = default;
+            System.Action<SoundEffectPlaybackRequest> observer = request =>
+            {
+                soundCount++;
+                received = request;
+            };
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                applyAttack.Invoke(creature, new object[] { Vector3.forward });
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+            }
 
             Assert.That(player.CurrentHealth, Is.LessThan(player.MaximumHealth));
             Assert.That(player.CurrentState, Is.EqualTo(PlayerCharacterState.Hurt));
+            Assert.That(soundCount, Is.EqualTo(1));
+            Assert.That(
+                received.Cue,
+                Is.SameAs(catalog.Audio.CreatureHitPlayer));
+            Assert.That(received.Position, Is.EqualTo(playerObject.transform.position));
         }
+
+        [Test]
+        public void CreatureAttackSwing_BroadcastsWoosh()
+        {
+            GameAssetCatalog catalog =
+                AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                    ProjectAssetPaths.Config.GameAssetCatalog);
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.Audio.CreatureAttack, Is.Not.Null);
+
+            GameObject creatureObject = Create("Creature Swing");
+            creatureObject.AddComponent<CapsuleCollider>();
+            CreatureBehaviorAgent creature =
+                creatureObject.AddComponent<CreatureBehaviorAgent>();
+            MethodInfo enterAttack = typeof(CreatureBehaviorAgent).GetMethod(
+                "EnterAttack",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(enterAttack, Is.Not.Null);
+
+            int soundCount = 0;
+            SoundEffectPlaybackRequest received = default;
+            System.Action<SoundEffectPlaybackRequest> observer = request =>
+            {
+                soundCount++;
+                received = request;
+            };
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                enterAttack.Invoke(creature, null);
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+            }
+
+            Assert.That(soundCount, Is.EqualTo(1));
+            Assert.That(received.Cue, Is.SameAs(catalog.Audio.CreatureAttack));
+            Assert.That(received.Position, Is.EqualTo(creatureObject.transform.position));
+        }
+
 
         [Test]
         public void CreatureCollisionDamage_UsesSharedMassNormalizedImpulseRule()
@@ -1364,14 +1161,17 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerAttack_DamagesCreatureThroughSharedContract()
+        public void PickaxeAttack_DamagesCreatureAndBroadcastsPunchCue()
         {
             GameObject playerObject = Create("Player");
             playerObject.AddComponent<CharacterController>();
             VoxelPlayerController player = playerObject.AddComponent<VoxelPlayerController>();
+            SoundEffectCue punchCue =
+                ScriptableObject.CreateInstance<SoundEffectCue>();
 
             GameObject creatureObject = Create("Creature");
-            creatureObject.transform.position = Vector3.forward;
+            creatureObject.transform.position =
+                playerObject.transform.position + Vector3.forward;
             creatureObject.AddComponent<CapsuleCollider>();
             CreatureBehaviorAgent creature = creatureObject.AddComponent<CreatureBehaviorAgent>();
             Physics.SyncTransforms();
@@ -1379,10 +1179,158 @@ namespace Supernova.Tests
             MethodInfo performAttack = typeof(VoxelPlayerController).GetMethod(
                 "PerformAttack", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(performAttack, Is.Not.Null);
-            performAttack.Invoke(player, null);
 
-            Assert.That(creature.CurrentHealth, Is.LessThan(creature.MaximumHealth));
-            Assert.That(creature.CurrentState, Is.EqualTo(CreatureBehaviorState.Hurt));
+            int soundRequestCount = 0;
+            SoundEffectPlaybackRequest received = default;
+            System.Action<SoundEffectPlaybackRequest> observer = request =>
+            {
+                received = request;
+                soundRequestCount++;
+            };
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                performAttack.Invoke(player, new object[] { punchCue });
+
+                Assert.That(
+                    creature.CurrentHealth,
+                    Is.LessThan(creature.MaximumHealth));
+                Assert.That(
+                    creature.CurrentState,
+                    Is.EqualTo(CreatureBehaviorState.Hurt));
+                Assert.That(soundRequestCount, Is.EqualTo(1));
+                Assert.That(received.Cue, Is.SameAs(punchCue));
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+                Object.DestroyImmediate(punchCue);
+            }
+        }
+
+        [Test]
+        public void PickaxeAttack_EmptySwingDoesNotBroadcastPunchCue()
+        {
+            GameObject playerObject = Create("Player");
+            playerObject.transform.position = new Vector3(20000f, 20000f, 20000f);
+            playerObject.AddComponent<CharacterController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            SetPrivateField(player, "view", playerObject.transform);
+            SoundEffectCue punchCue =
+                ScriptableObject.CreateInstance<SoundEffectCue>();
+            MethodInfo performAttack = typeof(VoxelPlayerController).GetMethod(
+                "PerformAttack",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(performAttack, Is.Not.Null);
+
+            int soundRequestCount = 0;
+            System.Action<SoundEffectPlaybackRequest> observer =
+                _ => soundRequestCount++;
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                performAttack.Invoke(player, new object[] { punchCue });
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+                Object.DestroyImmediate(punchCue);
+            }
+
+            Assert.That(soundRequestCount, Is.Zero);
+        }
+
+        [Test]
+        public void PickaxeLeftClickCycle_BroadcastsWooshWithoutAVoxelTarget()
+        {
+            GameObject playerObject = Create("Player");
+            playerObject.transform.position =
+                new Vector3(20000f, 20000f, 20000f);
+            playerObject.AddComponent<CharacterController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            PlayerToolDefinition pickaxe =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.PickaxeTool);
+            MethodInfo startCycle = typeof(VoxelPlayerController).GetMethod(
+                "StartToolActionCycle",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(startCycle, Is.Not.Null);
+
+            int soundRequestCount = 0;
+            SoundEffectPlaybackRequest received = default;
+            System.Action<SoundEffectPlaybackRequest> observer = request =>
+            {
+                received = request;
+                soundRequestCount++;
+            };
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                Assert.That(
+                    startCycle.Invoke(player, new object[] { pickaxe }),
+                    Is.EqualTo(true));
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+            }
+
+            Assert.That(soundRequestCount, Is.EqualTo(1));
+            Assert.That(received.Cue, Is.SameAs(pickaxe.PrimaryActionSound));
+            Assert.That(received.Position, Is.EqualTo(playerObject.transform.position));
+        }
+
+        [Test]
+        public void FlashlightThrow_BroadcastsThrowCueAfterProjectileSpawns()
+        {
+            GameObject playerObject = Create("Player");
+            playerObject.transform.position =
+                new Vector3(20000f, 20000f, 20000f);
+            playerObject.AddComponent<CharacterController>();
+            VoxelPlayerController player =
+                playerObject.AddComponent<VoxelPlayerController>();
+            SetPrivateField(player, "view", playerObject.transform);
+            PlayerToolDefinition flashlight =
+                AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                    ProjectAssetPaths.Config.FlashlightTool);
+            MethodInfo executeAction = typeof(VoxelPlayerController).GetMethod(
+                "ExecuteConfiguredToolAction",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(executeAction, Is.Not.Null);
+
+            int soundRequestCount = 0;
+            SoundEffectPlaybackRequest received = default;
+            System.Action<SoundEffectPlaybackRequest> observer = request =>
+            {
+                received = request;
+                soundRequestCount++;
+            };
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                Assert.That(
+                    executeAction.Invoke(
+                        player,
+                        new object[] { flashlight }),
+                    Is.EqualTo(true));
+                PersistentLightProjectile[] projectiles =
+                    Object.FindObjectsOfType<PersistentLightProjectile>();
+                Assert.That(projectiles, Has.Length.EqualTo(1));
+                objects.Add(projectiles[0].gameObject);
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+            }
+
+            Assert.That(soundRequestCount, Is.EqualTo(1));
+            Assert.That(received.Cue, Is.SameAs(flashlight.ThrowSound));
+            Assert.That(received.Position, Is.EqualTo(playerObject.transform.position));
+            Assert.That(
+                received.VolumeScale,
+                Is.EqualTo(0.5f).Within(0.0001f));
         }
 
         [Test]
@@ -1408,7 +1356,7 @@ namespace Supernova.Tests
                 BindingFlags.Instance | BindingFlags.NonPublic);
             FieldInfo pendingAttacksField =
                 typeof(VoxelPlayerController).GetField(
-                    "pendingMiningAttackTimes",
+                    "pendingMiningAttacks",
                     BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(scheduleAttack, Is.Not.Null);
             Assert.That(applyAttacks, Is.Not.Null);
@@ -1416,18 +1364,25 @@ namespace Supernova.Tests
 
             float healthBeforeImpact = creature.CurrentHealth;
             float scheduledAt = Time.time;
-            scheduleAttack.Invoke(player, new object[] { 0.42f });
-            var pendingAttacks =
-                (Queue<float>)pendingAttacksField.GetValue(player);
+            scheduleAttack.Invoke(player, new object[] { 0.42f, null });
+            object pendingAttacks = pendingAttacksField.GetValue(player);
+            object pendingAttack = pendingAttacks.GetType()
+                .GetMethod("Peek")
+                .Invoke(pendingAttacks, null);
+            float triggerTime = (float)pendingAttack.GetType()
+                .GetProperty("TriggerTime")
+                .GetValue(pendingAttack, null);
             Assert.That(
-                pendingAttacks.Peek() - scheduledAt,
+                triggerTime - scheduledAt,
                 Is.EqualTo(0.42f).Within(0.001f));
 
             applyAttacks.Invoke(player, null);
             Assert.That(creature.CurrentHealth, Is.EqualTo(healthBeforeImpact));
 
-            pendingAttacks.Clear();
-            pendingAttacks.Enqueue(Time.time - 0.01f);
+            pendingAttacks.GetType()
+                .GetMethod("Clear")
+                .Invoke(pendingAttacks, null);
+            scheduleAttack.Invoke(player, new object[] { 0f, null });
             applyAttacks.Invoke(player, null);
             Assert.That(creature.CurrentHealth, Is.LessThan(healthBeforeImpact));
         }

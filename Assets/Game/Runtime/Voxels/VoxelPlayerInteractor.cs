@@ -1,3 +1,4 @@
+using Supernova.Audio;
 using Supernova.Effects;
 using Supernova.Gameplay;
 using UnityEngine;
@@ -26,12 +27,13 @@ namespace Supernova.Voxels
         private int raycastMask;
         private bool hasPendingMine;
         private SolidVoxelPrototype pendingMinePlatform;
-        private Vector3Int pendingMineVoxel;
+        private VoxelTargetReference pendingMineTarget;
         private Vector3 pendingMineDirection;
         private Vector3 pendingMinePoint;
         private Vector3 pendingMineNormal;
         private VoxelMiningBrushSettings pendingMineBrush =
             VoxelMiningBrushSettings.SingleVoxel;
+        private SoundEffectCue pendingMineSound;
         private float pendingMineTime;
 
         private IVoxelTerrain Terrain => terrain as IVoxelTerrain;
@@ -77,12 +79,21 @@ namespace Supernova.Voxels
         {
             return TryScheduleMineAtCrosshair(
                 delay,
-                VoxelMiningBrushSettings.SingleVoxel);
+                VoxelMiningBrushSettings.SingleVoxel,
+                null);
         }
 
         public bool TryScheduleMineAtCrosshair(
             float delay,
             VoxelMiningBrushSettings brush)
+        {
+            return TryScheduleMineAtCrosshair(delay, brush, null);
+        }
+
+        public bool TryScheduleMineAtCrosshair(
+            float delay,
+            VoxelMiningBrushSettings brush,
+            SoundEffectCue miningHitSound)
         {
             ResolveReferences();
 
@@ -95,15 +106,7 @@ namespace Supernova.Voxels
                 return false;
             }
 
-            bool foundVoxel = TryGetTarget(
-                    out Vector3Int removeVoxel,
-                    out bool canRemove,
-                    out _,
-                    out _,
-                    out Vector3 mineDirection,
-                    out Vector3 hitPoint,
-                    out Vector3 hitNormal)
-                && canRemove;
+            bool foundVoxel = TryGetTarget(out VoxelTargetHit voxelHit);
             bool foundPlatform = TryGetPlatformTarget(
                 out SolidVoxelPrototype platform,
                 out RaycastHit platformHit);
@@ -115,16 +118,22 @@ namespace Supernova.Voxels
             if (foundPlatform
                 && (!foundVoxel
                     || platformHit.distance * platformHit.distance
-                        <= (hitPoint - viewCamera.transform.position)
+                        <= (voxelHit.Point - viewCamera.transform.position)
                             .sqrMagnitude))
             {
                 float platformDelay = Mathf.Max(0f, delay);
                 if (platformDelay <= 0f)
-                    return platform.DestroyByMining();
+                {
+                    bool mined = platform.DestroyByMining();
+                    if (mined)
+                        PlayMiningSound(miningHitSound, platformHit.point);
+                    return mined;
+                }
 
                 pendingMinePlatform = platform;
                 pendingMinePoint = platformHit.point;
                 pendingMineNormal = platformHit.normal;
+                pendingMineSound = miningHitSound;
                 pendingMineTime = Time.time + platformDelay;
                 hasPendingMine = true;
                 return true;
@@ -133,27 +142,28 @@ namespace Supernova.Voxels
             float clampedDelay = Mathf.Max(0f, delay);
             if (clampedDelay <= 0f)
             {
-                bool mined = Terrain.TryMineBrush(
-                    removeVoxel,
-                    mineDirection,
+                bool mined = voxelHit.Target.TryMineBrush(
+                    viewCamera.transform.forward,
                     brush,
                     out VoxelMiningBrushResult result);
                 if (mined)
                 {
                     PlayMiningImpact(
-                        hitPoint,
-                        hitNormal,
-                        mineDirection,
+                        voxelHit.Point,
+                        voxelHit.Normal,
+                        viewCamera.transform.forward,
                         result);
+                    PlayMiningSound(miningHitSound, voxelHit.Point);
                 }
                 return mined;
             }
 
-            pendingMineVoxel = removeVoxel;
-            pendingMineDirection = mineDirection;
-            pendingMinePoint = hitPoint;
-            pendingMineNormal = hitNormal;
+            pendingMineTarget = voxelHit.Target;
+            pendingMineDirection = viewCamera.transform.forward;
+            pendingMinePoint = voxelHit.Point;
+            pendingMineNormal = voxelHit.Normal;
             pendingMineBrush = brush;
+            pendingMineSound = miningHitSound;
             pendingMineTime = Time.time + clampedDelay;
             hasPendingMine = true;
             return true;
@@ -163,39 +173,25 @@ namespace Supernova.Voxels
         {
             result = default;
             ResolveReferences();
+            bool foundVoxel = TryGetTarget(out VoxelTargetHit voxelHit);
             if (TryGetPlatformTarget(
                     out SolidVoxelPrototype platform,
                     out RaycastHit platformHit)
-                && (!TryGetTarget(
-                        out _,
-                        out bool comparedCanRemove,
-                        out _,
-                        out _,
-                        out _,
-                        out Vector3 comparedPoint,
-                        out _)
-                    || !comparedCanRemove
+                && (!foundVoxel
                     || platformHit.distance * platformHit.distance
-                        <= (comparedPoint - viewCamera.transform.position)
+                        <= (voxelHit.Point - viewCamera.transform.position)
                             .sqrMagnitude))
             {
                 return platform.DestroyByMining();
             }
 
-            if (!TryGetTarget(
-                    out Vector3Int removeVoxel,
-                    out bool canRemove,
-                    out _,
-                    out _,
-                    out Vector3 mineDirection,
-                    out Vector3 hitPoint,
-                    out Vector3 hitNormal)
-                || !canRemove)
+            if (!foundVoxel)
             {
                 return false;
             }
 
-            bool mined = Terrain.TryMineVoxel(removeVoxel, out result);
+            Vector3 mineDirection = viewCamera.transform.forward;
+            bool mined = voxelHit.Target.TryMineVoxel(out result);
             if (mined)
             {
                 var brushResult = new VoxelMiningBrushResult(
@@ -206,8 +202,8 @@ namespace Supernova.Voxels
                     result.Destroyed ? 1 : 0,
                     result);
                 PlayMiningImpact(
-                    hitPoint,
-                    hitNormal,
+                    voxelHit.Point,
+                    voxelHit.Normal,
                     mineDirection,
                     brushResult);
             }
@@ -220,48 +216,33 @@ namespace Supernova.Voxels
         {
             result = default;
             ResolveReferences();
+            bool foundVoxel = TryGetTarget(out VoxelTargetHit voxelHit);
             if (TryGetPlatformTarget(
                     out SolidVoxelPrototype platform,
                     out RaycastHit platformHit)
-                && (!TryGetTarget(
-                        out _,
-                        out bool comparedCanRemove,
-                        out _,
-                        out _,
-                        out _,
-                        out Vector3 comparedPoint,
-                        out _)
-                    || !comparedCanRemove
+                && (!foundVoxel
                     || platformHit.distance * platformHit.distance
-                        <= (comparedPoint - viewCamera.transform.position)
+                        <= (voxelHit.Point - viewCamera.transform.position)
                             .sqrMagnitude))
             {
                 return platform.DestroyByMining();
             }
 
-            if (!TryGetTarget(
-                    out Vector3Int removeVoxel,
-                    out bool canRemove,
-                    out _,
-                    out _,
-                    out Vector3 mineDirection,
-                    out Vector3 hitPoint,
-                    out Vector3 hitNormal)
-                || !canRemove)
+            if (!foundVoxel)
             {
                 return false;
             }
 
-            bool mined = Terrain.TryMineBrush(
-                removeVoxel,
+            Vector3 mineDirection = viewCamera.transform.forward;
+            bool mined = voxelHit.Target.TryMineBrush(
                 mineDirection,
                 brush,
                 out result);
             if (mined)
             {
                 PlayMiningImpact(
-                    hitPoint,
-                    hitNormal,
+                    voxelHit.Point,
+                    voxelHit.Normal,
                     mineDirection,
                     result);
             }
@@ -274,28 +255,27 @@ namespace Supernova.Voxels
             hasPendingMine = false;
             SolidVoxelPrototype platform = pendingMinePlatform;
             pendingMinePlatform = null;
+            SoundEffectCue miningHitSound = pendingMineSound;
+            pendingMineSound = null;
             if (platform != null)
             {
-                platform.DestroyByMining();
+                if (platform.DestroyByMining())
+                    PlayMiningSound(miningHitSound, pendingMinePoint);
                 return;
             }
 
-            IVoxelTerrain voxelTerrain = Terrain;
-            if (voxelTerrain != null)
+            bool mined = pendingMineTarget.TryMineBrush(
+                pendingMineDirection,
+                pendingMineBrush,
+                out VoxelMiningBrushResult result);
+            if (mined)
             {
-                bool mined = voxelTerrain.TryMineBrush(
-                    pendingMineVoxel,
+                PlayMiningImpact(
+                    pendingMinePoint,
+                    pendingMineNormal,
                     pendingMineDirection,
-                    pendingMineBrush,
-                    out VoxelMiningBrushResult result);
-                if (mined)
-                {
-                    PlayMiningImpact(
-                        pendingMinePoint,
-                        pendingMineNormal,
-                        pendingMineDirection,
-                        result);
-                }
+                    result);
+                PlayMiningSound(miningHitSound, pendingMinePoint);
             }
         }
 
@@ -303,41 +283,28 @@ namespace Supernova.Voxels
         {
             hasPendingMine = false;
             pendingMinePlatform = null;
+            pendingMineTarget = default;
+            pendingMineSound = null;
         }
 
-        private bool TryGetTarget(
-            out Vector3Int removeVoxel,
-            out bool canRemove,
-            out Vector3Int placeVoxel,
-            out bool canPlace,
-            out Vector3 mineDirection,
-            out Vector3 hitPoint,
-            out Vector3 hitNormal)
+        private bool TryGetTarget(out VoxelTargetHit targetHit)
         {
-            removeVoxel = default;
-            placeVoxel = default;
-            canRemove = false;
-            canPlace = false;
-            mineDirection = default;
-            hitPoint = default;
-            hitNormal = default;
+            targetHit = default;
 
             IVoxelTerrain voxelTerrain = Terrain;
-            if (viewCamera == null || voxelTerrain == null || voxelTerrain.World == null)
+            if (viewCamera == null)
             {
                 return false;
             }
 
             Vector3 camPos = viewCamera.transform.position;
             Vector3 forward = viewCamera.transform.forward;
-            mineDirection = forward;
-
-            // Primary ray from the true camera position (the proven behavior).
-            bool foundHit = TryRaycastTerrain(
+            bool foundHit = VoxelTargetResolver.TryRaycast(
                 new Ray(camPos, forward),
                 Profile.InteractionReach,
+                raycastMask,
                 voxelTerrain,
-                out RaycastHit hit);
+                out targetHit);
 
             // Fallback for the "face pressed against a block" case: a non-convex
             // MeshCollider reports no hit when the ray starts inside it, so retry
@@ -347,44 +314,16 @@ namespace Supernova.Voxels
                 float backstep = Profile.MineRayBackstep;
                 if (backstep > 0f)
                 {
-                    foundHit = TryRaycastTerrain(
+                    foundHit = VoxelTargetResolver.TryRaycast(
                         new Ray(camPos - forward * backstep, forward),
                         Profile.InteractionReach + backstep,
+                        raycastMask,
                         voxelTerrain,
-                        out hit);
+                        out targetHit);
                 }
             }
 
-            if (!foundHit)
-            {
-                return false;
-            }
-
-            hitPoint = hit.point;
-            hitNormal = hit.normal;
-
-            // A Marching Cubes triangle belongs to one grid cell. Resolve only from
-            // the eight samples around that surface cell instead of marching farther
-            // into the terrain, which could select a solid sample behind the visible
-            // surface. Sampling just inside/outside also handles hits on cell borders.
-            float sideOffset = voxelTerrain.VoxelSize * 0.05f;
-            canRemove = TryResolveCellSample(
-                hit.point + forward * sideOffset,
-                hit.point,
-                camPos,
-                forward,
-                voxelTerrain,
-                true,
-                out removeVoxel);
-            canPlace = TryResolveCellSample(
-                hit.point - forward * sideOffset,
-                hit.point,
-                camPos,
-                forward,
-                voxelTerrain,
-                false,
-                out placeVoxel);
-            return canRemove || canPlace;
+            return foundHit;
         }
 
         private bool TryGetPlatformTarget(
@@ -547,6 +486,13 @@ namespace Supernova.Voxels
                 miningDirection,
                 voxelColor,
                 result);
+        }
+
+        private static void PlayMiningSound(
+            SoundEffectCue miningHitSound,
+            Vector3 hitPoint)
+        {
+            SoundEffectEvents.RequestPlay(miningHitSound, hitPoint);
         }
 
         private void ResolveReferences()

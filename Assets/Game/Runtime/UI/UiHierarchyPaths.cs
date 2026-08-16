@@ -4,21 +4,39 @@ namespace Supernova.UI
     {
         public static class MainMenu
         {
+            public const string SceneRoot = "Home Main Menu";
+            public const string AngledSurface = "Angled Surface";
             public const string Backdrop = "Backdrop";
+            public const string Title = "Safe Area/Title";
+            public const string HeaderDivider = "Safe Area/Header/Divider";
+            public const string FooterDivider = "Safe Area/Footer/Divider";
             public const string Hero = "Safe Area/Hero";
             public const string ExpeditionControl = "Safe Area/Expedition Control";
+            public const string Overline = ExpeditionControl + "/Overline";
             public const string BeginDescent =
                 "Safe Area/Expedition Control/Main Panel/Begin Descent";
+            public const string BeginDescentLabel = BeginDescent + "/Label";
+            public const string Tutorial =
+                "Safe Area/Expedition Control/Main Panel/Tutorial";
+            public const string TutorialLabel = Tutorial + "/Label";
             public const string SystemSettings =
                 "Safe Area/Expedition Control/Main Panel/System Settings";
+            public const string SystemSettingsLabel = SystemSettings + "/Label";
             public const string LeaveExpedition =
                 "Safe Area/Expedition Control/Main Panel/Leave Expedition";
+            public const string LeaveExpeditionLabel = LeaveExpedition + "/Label";
             public const string Return =
                 "Safe Area/Expedition Control/Settings Panel/Return";
             public const string FullscreenBackground =
                 "Safe Area/Expedition Control/Settings Panel/Fullscreen/Background";
+            public const string FullscreenCheckmark =
+                "Safe Area/Expedition Control/Settings Panel/Fullscreen/Background/Checkmark";
             public const string MasterVolumeBackground =
                 "Safe Area/Expedition Control/Settings Panel/Master Volume/Background";
+            public const string MasterVolumeFill =
+                "Safe Area/Expedition Control/Settings Panel/Master Volume/Fill Area/Fill";
+            public const string MasterVolumeHandle =
+                "Safe Area/Expedition Control/Settings Panel/Master Volume/Handle Slide Area/Handle";
             public const string ExpeditionFrame =
                 ExpeditionControl + "/" + Decoration.Frame;
 
@@ -65,6 +83,8 @@ namespace Supernova.UI
             public const string Item = "Item";
             public const string Key = "Key";
             public const string AngledSurface = "Angled Surface";
+            public const string CooldownOverlay = "Cooldown Overlay";
+            public const string CooldownLabel = "Cooldown Label";
             public const string HealthHeaderTitle = "Header/Title";
             public const string HealthHeaderValue = "Header/Value";
             public const string HealthFrame = HealthPanel + "/" + Decoration.Frame;
@@ -101,9 +121,29 @@ namespace Supernova.UI
                 return SlotName(oneBasedIndex) + "/" + AngledSurface;
             }
 
+            public static string SlotCooldownOverlay(int oneBasedIndex)
+            {
+                return SlotName(oneBasedIndex) + "/" + CooldownOverlay;
+            }
+
+            public static string SlotCooldownLabel(int oneBasedIndex)
+            {
+                return SlotName(oneBasedIndex) + "/" + CooldownLabel;
+            }
+
             public static string HotbarSlotAngledSurface(int oneBasedIndex)
             {
                 return HotbarSlot(oneBasedIndex) + "/" + AngledSurface;
+            }
+
+            public static string HotbarSlotCooldownOverlay(int oneBasedIndex)
+            {
+                return HotbarSlot(oneBasedIndex) + "/" + CooldownOverlay;
+            }
+
+            public static string HotbarSlotCooldownLabel(int oneBasedIndex)
+            {
+                return HotbarSlot(oneBasedIndex) + "/" + CooldownLabel;
             }
 
             public static string HealthSegment(int oneBasedIndex)
@@ -136,7 +176,9 @@ namespace Supernova.UI
             public const string Settings = "Settings";
             public const string QuitToMenu = "Quit To Menu";
             public const string QuitToDesktop = "Quit To Desktop";
-            public const string SettingsPanel = "Settings Panel";
+                        public const string InputBindingsPanel = "Input Bindings Panel";
+            public const string Controls = "Controls";
+public const string SettingsPanel = "Settings Panel";
             public const string Fullscreen = "Fullscreen";
             public const string MasterVolume = "Master Volume";
             public const string VolumeValue = "Value";
@@ -145,7 +187,9 @@ namespace Supernova.UI
             public const string FullSettings = FullMainOptions + "/" + Settings;
             public const string FullQuitToMenu = FullMainOptions + "/" + QuitToMenu;
             public const string FullQuitToDesktop = FullMainOptions + "/" + QuitToDesktop;
-            public const string FullSettingsPanel = FullMenu + "/" + SettingsPanel;
+                        public const string FullInputBindingsPanel = FullMenu + "/" + InputBindingsPanel;
+            public const string FullControls = FullSettingsPanel + "/" + Controls;
+public const string FullSettingsPanel = FullMenu + "/" + SettingsPanel;
             public const string FullFullscreen = FullSettingsPanel + "/" + Fullscreen;
             public const string FullMasterVolume = FullSettingsPanel + "/" + MasterVolume;
             public const string FullSettingsBack = FullSettingsPanel + "/" + SettingsBack;
@@ -244,6 +288,20 @@ namespace Supernova.UI
             public const string NameLabel = Panel + "/Name";
             public const string StatsLabel = Panel + "/Stats";
             public const string RuleLine = Panel + "/Rule";
+        }
+
+        public static class Debug
+        {
+            public const string CanvasName = "Debug Canvas";
+            public const string WindowName = "FPS Window";
+            public const string AccentName = "Accent";
+            public const string HeaderName = "Header";
+            public const string FpsValueName = "FPS Value";
+            public const string Canvas = CanvasName;
+            public const string Window = Canvas + "/" + WindowName;
+            public const string Accent = Window + "/" + AccentName;
+            public const string Header = Window + "/" + HeaderName;
+            public const string FpsValue = Window + "/" + FpsValueName;
         }
 
         public static class Decoration

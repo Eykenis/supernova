@@ -1,4 +1,5 @@
 using System.Collections;
+using Supernova.Inputs;
 using System.Collections.Generic;
 using Supernova.MinecraftCaves;
 using Supernova.Voxels;
@@ -48,7 +49,7 @@ namespace Supernova.Missions
         {
             if (playerOverlaps.Count == 0
                 || sequenceRunning
-                || !Input.GetKeyDown(KeyCode.E))
+                || !GameInput.Pressed(GameInputActionId.Interact))
                 return;
 
             if (homeMode)

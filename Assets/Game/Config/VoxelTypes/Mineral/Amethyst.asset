@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Amethyst
   m_EditorClassIdentifier: 
   type: 14
-  displayName: Amethyst
+  displayName: 紫水晶原石
   group: 2
   durability: 30
   material: {fileID: 2100000, guid: 022ab0efec6d9404fa05144232327527, type: 2}

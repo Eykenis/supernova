@@ -1,3 +1,4 @@
+using Supernova.Effects;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -8,6 +9,7 @@ namespace Supernova.Gameplay
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody))]
+    [RequireComponent(typeof(RigidbodyImpactFeedback))]
     public sealed class PhysicsAttractable : MonoBehaviour
     {
         [SerializeField] private bool canBeAttracted = true;
@@ -25,6 +27,11 @@ namespace Supernova.Gameplay
                 if (cachedBody == null) cachedBody = GetComponent<Rigidbody>();
                 return cachedBody;
             }
+        }
+
+        private void Awake()
+        {
+            RigidbodyImpactFeedback.Ensure(Body);
         }
 
         public void SetCanBeAttracted(bool value)

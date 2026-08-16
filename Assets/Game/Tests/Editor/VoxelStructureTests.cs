@@ -179,6 +179,249 @@ namespace Supernova.Tests
             }
         }
 
+        [Test]
+        public void RuntimeAuthoring_OffsetsSelectedCellsAtomically()
+        {
+            var root = new GameObject("Offset Structure Authoring");
+            try
+            {
+                VoxelStructureAuthoring authoring =
+                    root.AddComponent<VoxelStructureAuthoring>();
+                authoring.Configure(
+                    null,
+                    null,
+                    new Vector3Int(4, 3, 3),
+                    new Vector3Int(1, 1, 1),
+                    Vector3.zero);
+                Assert.That(
+                    authoring.TryCreatePaintCell(
+                        new Vector3Int(0, 1, 1),
+                        out VoxelStructureCellAuthoring selected),
+                    Is.True);
+                Assert.That(
+                    authoring.TryCreatePaintCell(
+                        new Vector3Int(2, 1, 1),
+                        out VoxelStructureCellAuthoring stationary),
+                    Is.True);
+
+                Assert.That(
+                    authoring.TryOffsetCells(
+                        new[] { selected },
+                        Vector3Int.right,
+                        out string offsetError),
+                    Is.True,
+                    offsetError);
+                Assert.That(
+                    selected.transform.localPosition,
+                    Is.EqualTo(new Vector3(1f, 1f, 1f)));
+
+                Assert.That(
+                    authoring.TryOffsetCells(
+                        new[] { selected },
+                        Vector3Int.right,
+                        out offsetError),
+                    Is.False);
+                Assert.That(offsetError, Does.Contain("occupied"));
+                Assert.That(
+                    selected.transform.localPosition,
+                    Is.EqualTo(new Vector3(1f, 1f, 1f)),
+                    "A rejected group move must not mutate any selected cell.");
+                Assert.That(
+                    stationary.transform.localPosition,
+                    Is.EqualTo(new Vector3(2f, 1f, 1f)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeAuthoring_FillsRepaintsAndClearsInclusiveBox()
+        {
+            var root = new GameObject("Fill Structure Authoring");
+            try
+            {
+                VoxelStructureAuthoring authoring =
+                    root.AddComponent<VoxelStructureAuthoring>();
+                authoring.Configure(
+                    null,
+                    null,
+                    new Vector3Int(4, 3, 2),
+                    Vector3Int.zero,
+                    Vector3.zero);
+                Assert.That(
+                    authoring.TryCreatePaintCell(
+                        new Vector3Int(2, 1, 1),
+                        out VoxelStructureCellAuthoring existing),
+                    Is.True);
+                existing.Configure(0.25f, new VoxelTypeId(9));
+
+                Assert.That(
+                    authoring.TryFillPaintBox(
+                        new Vector3Int(2, 1, 1),
+                        new Vector3Int(1, 0, 0),
+                        out int changed),
+                    Is.True);
+                Assert.That(changed, Is.EqualTo(8));
+                for (int z = 0; z <= 1; z++)
+                {
+                    for (int y = 0; y <= 1; y++)
+                    {
+                        for (int x = 1; x <= 2; x++)
+                        {
+                            VoxelStructureCellAuthoring cell =
+                                authoring.FindCell(new Vector3Int(x, y, z));
+                            Assert.That(cell, Is.Not.Null);
+                            Assert.That(cell.Type, Is.EqualTo(VoxelTypeId.Default));
+                            Assert.That(cell.Density, Is.EqualTo(1f));
+                        }
+                    }
+                }
+                Assert.That(authoring.FindCell(Vector3Int.zero), Is.Null);
+
+                Assert.That(
+                    authoring.TryFillPaintBox(
+                        new Vector3Int(1, 0, 0),
+                        new Vector3Int(2, 1, 1),
+                        out changed),
+                    Is.True);
+                Assert.That(changed, Is.Zero);
+
+                Assert.That(
+                    authoring.TryClearBox(
+                        new Vector3Int(2, 1, 0),
+                        new Vector3Int(1, 0, 0),
+                        out int removed),
+                    Is.True);
+                Assert.That(removed, Is.EqualTo(4));
+                for (int y = 0; y <= 1; y++)
+                {
+                    for (int x = 1; x <= 2; x++)
+                    {
+                        Assert.That(
+                            authoring.FindCell(new Vector3Int(x, y, 0)),
+                            Is.Null);
+                        Assert.That(
+                            authoring.FindCell(new Vector3Int(x, y, 1)),
+                            Is.Not.Null);
+                    }
+                }
+
+                Assert.That(
+                    authoring.TryClearBox(
+                        new Vector3Int(1, 0, 0),
+                        new Vector3Int(2, 1, 0),
+                        out removed),
+                    Is.True);
+                Assert.That(removed, Is.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeAuthoring_OffsetsWholeStructureByMovingAnchorOnly()
+        {
+            var root = new GameObject("Anchor Offset Structure Authoring");
+            try
+            {
+                VoxelStructureAuthoring authoring =
+                    root.AddComponent<VoxelStructureAuthoring>();
+                authoring.Configure(
+                    null,
+                    null,
+                    new Vector3Int(5, 5, 5),
+                    new Vector3Int(2, 2, 2),
+                    Vector3.zero);
+
+                Assert.That(
+                    authoring.TryOffsetWholeStructure(
+                        new Vector3Int(1, -1, 0),
+                        out string offsetError),
+                    Is.True,
+                    offsetError);
+                Assert.That(
+                    authoring.Anchor,
+                    Is.EqualTo(new Vector3Int(1, 3, 2)));
+
+                Assert.That(
+                    authoring.TryOffsetWholeStructure(
+                        new Vector3Int(2, 0, 0),
+                        out offsetError),
+                    Is.False);
+                Assert.That(offsetError, Does.Contain("outside"));
+                Assert.That(
+                    authoring.Anchor,
+                    Is.EqualTo(new Vector3Int(1, 3, 2)),
+                    "A rejected fast offset must preserve the previous Anchor.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void StoneTestWorld_UsesMinimumChunkAndSectionEnvelope()
+        {
+            Assert.That(
+                VoxelStructureStoneTestWorld.CalculateMinimumChunkGrid(
+                    new Vector3Int(19, 20, 40)),
+                Is.EqualTo(new Vector3Int(1, 1, 2)));
+            Assert.That(
+                VoxelStructureStoneTestWorld.GetWorldVoxelSize(
+                    new Vector3Int(1, 1, 2)),
+                Is.EqualTo(new Vector3Int(32, 32, 64)));
+        }
+
+        [Test]
+        public void StoneTestWorld_FillsPaddingAndAppliesAuthoredAir()
+        {
+            VoxelStructureAsset structure =
+                ScriptableObject.CreateInstance<VoxelStructureAsset>();
+            try
+            {
+                var size = new Vector3Int(19, 20, 40);
+                int sampleCount = size.x * size.y * size.z;
+                float[] densities = new float[sampleCount];
+                ushort[] types = new ushort[sampleCount];
+                System.Array.Fill(densities, -1f);
+                structure.SetData(
+                    size,
+                    Vector3Int.zero,
+                    Vector3.up,
+                    densities,
+                    types);
+
+                InfiniteVoxelWorld world = VoxelStructureStoneTestWorld.BuildWorld(
+                    structure,
+                    new VoxelTypeId(2),
+                    out Vector3Int chunkGrid);
+
+                Assert.That(chunkGrid, Is.EqualTo(new Vector3Int(1, 1, 2)));
+                Assert.That(world.ChunkCount, Is.EqualTo(2));
+                Assert.That(world.GetSampleOrDefault(0, 0, 0).IsSolid(), Is.False);
+                Assert.That(
+                    world.GetSampleOrDefault(31, 0, 0).Type,
+                    Is.EqualTo(new VoxelTypeId(2)));
+                Assert.That(
+                    world.GetSampleOrDefault(0, 31, 0).Type,
+                    Is.EqualTo(new VoxelTypeId(2)));
+                Assert.That(
+                    world.GetSampleOrDefault(0, 0, 63).Type,
+                    Is.EqualTo(new VoxelTypeId(2)));
+                Assert.That(world.GetSampleOrDefault(0, 32, 0).IsSolid(), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(structure);
+            }
+        }
+
+
         private VoxelTypeDefinition CreateDefinition(
             ushort type,
             int durability,

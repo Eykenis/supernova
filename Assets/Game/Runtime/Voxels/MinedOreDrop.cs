@@ -15,9 +15,12 @@ namespace Supernova.Voxels
         ValuableObject.IBreakEffect
     {
         public const float DefaultMassDensity = 10f;
+        public const float RecoveredLinearScale = 0.68f;
 
         [SerializeField] private VoxelTypeId voxelType = VoxelTypeId.Default;
         [SerializeField, Min(1)] private int voxelCount = 1;
+        [SerializeField, Min(0.000001f)]
+        private float representedFullVoxelVolume = 1f;
         [SerializeField, Min(0.001f)] private float massDensity =
             DefaultMassDensity;
 
@@ -25,11 +28,20 @@ namespace Supernova.Voxels
         private ValuableObject cachedValuable;
         private Mesh ownedMesh;
         private Material ownedMaterial;
+        private bool isWaitingForTerrainColliderRebuild;
+        private bool restoreIsKinematic;
+        private bool restoreDetectCollisions;
+        private Vector3 suspendedVelocity;
+        private Vector3 suspendedAngularVelocity;
 
         public VoxelTypeId VoxelType => voxelType;
         public int VoxelCount => voxelCount;
+        public float RepresentedFullVoxelVolume =>
+            Mathf.Max(0f, representedFullVoxelVolume);
         public float MassDensity => massDensity;
         public Mesh Mesh => ownedMesh;
+        public bool IsWaitingForTerrainColliderRebuild =>
+            isWaitingForTerrainColliderRebuild;
         public BreakFragmentEffect LastBreakEffect { get; private set; }
         public ValuableObject Valuable
         {
@@ -53,21 +65,79 @@ namespace Supernova.Voxels
         public void Configure(
             VoxelTypeId type,
             int representedVoxelCount,
+            float representedVolumeInFullVoxels,
             Mesh mesh,
             float density = DefaultMassDensity,
             Material material = null,
-            int valuePerVoxel = 1,
+            int valuePerFullVoxel = 1,
             float fragility = 0.25f)
         {
             voxelType = type.IsAir ? VoxelTypeId.Default : type;
             voxelCount = Mathf.Max(1, representedVoxelCount);
+            representedFullVoxelVolume = Mathf.Max(
+                0.000001f,
+                representedVolumeInFullVoxels);
             massDensity = Mathf.Max(0.001f, density);
             ownedMesh = mesh;
             ownedMaterial = material;
-            Body.mass = massDensity * voxelCount;
+            Body.mass = Mathf.Max(
+                0.01f,
+                massDensity * representedFullVoxelVolume);
             Valuable.Configure(
-                voxelCount * Mathf.Max(1, valuePerVoxel),
+                CalculateInitialValue(
+                    representedFullVoxelVolume,
+                    valuePerFullVoxel),
                 fragility);
+        }
+
+        public static int CalculateInitialValue(
+            float representedVolumeInFullVoxels,
+            int valuePerFullVoxel)
+        {
+            return Mathf.Max(
+                1,
+                Mathf.RoundToInt(
+                    Mathf.Max(0f, representedVolumeInFullVoxels)
+                        * Mathf.Max(1, valuePerFullVoxel)));
+        }
+
+        internal void SuspendForTerrainColliderRebuild()
+        {
+            if (isWaitingForTerrainColliderRebuild)
+            {
+                return;
+            }
+
+            Rigidbody body = Body;
+            restoreIsKinematic = body.isKinematic;
+            restoreDetectCollisions = body.detectCollisions;
+            suspendedVelocity = body.velocity;
+            suspendedAngularVelocity = body.angularVelocity;
+            isWaitingForTerrainColliderRebuild = true;
+
+            Valuable.SetCollisionValueLossProtected(this, true);
+            body.detectCollisions = false;
+            body.isKinematic = true;
+        }
+
+        internal void ReleaseAfterTerrainColliderRebuild()
+        {
+            if (!isWaitingForTerrainColliderRebuild)
+            {
+                return;
+            }
+
+            Rigidbody body = Body;
+            isWaitingForTerrainColliderRebuild = false;
+            body.isKinematic = restoreIsKinematic;
+            body.detectCollisions = restoreDetectCollisions;
+            if (!restoreIsKinematic)
+            {
+                body.velocity = suspendedVelocity;
+                body.angularVelocity = suspendedAngularVelocity;
+                body.WakeUp();
+            }
+            Valuable.SetCollisionValueLossProtected(this, false);
         }
 
         public bool TrySpawnBreakEffect(

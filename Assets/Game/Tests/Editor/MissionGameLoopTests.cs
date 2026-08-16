@@ -1,9 +1,16 @@
 using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
+using Supernova.Audio;
+using Supernova.Infrastructure;
+using Supernova.MinecraftCaves;
 using Supernova.Missions;
+using Supernova.PortalExample;
 using Supernova.UI;
+using Supernova.Voxels;
+using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools.Utils;
 
 namespace Supernova.Tests
 {
@@ -62,6 +69,33 @@ namespace Supernova.Tests
                 + "starting its fade or any scene load.");
             Assert.That(fade.gameObject.activeSelf, Is.True);
             Assert.That(fade.alpha, Is.EqualTo(0f).Within(0.0001f));
+        }
+
+        [Test]
+        public void SceneLoadFromBlack_PreservesOpaqueFrameBeforeLoading()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop =
+                loopObject.AddComponent<MissionGameLoop>();
+            CanvasGroup fade = loop.PrepareSceneFadeFromTransparent();
+            Assert.That(fade, Is.Not.Null);
+
+            fade.alpha = 0.42f;
+            MethodInfo loadWithFadeInternal = typeof(MissionGameLoop).GetMethod(
+                "LoadWithFadeInternal",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(loadWithFadeInternal, Is.Not.Null);
+            IEnumerator transition = (IEnumerator)loadWithFadeInternal.Invoke(
+                loop,
+                new object[] { "Unused Test Scene", true });
+
+            Assert.That(transition.MoveNext(), Is.True);
+            Assert.That(transition.Current, Is.Null);
+            Assert.That(fade.gameObject.activeSelf, Is.True);
+            Assert.That(
+                fade.alpha,
+                Is.EqualTo(1f).Within(0.0001f),
+                "A pre-faded transition must stay black until scene loading begins.");
         }
 
         [Test]
@@ -204,6 +238,223 @@ namespace Supernova.Tests
                 Is.GreaterThanOrEqualTo(roomRenderer.bounds.max.y));
             Assert.That(trigger.bounds.max.z,
                 Is.GreaterThanOrEqualTo(roomRenderer.bounds.max.z));
+        }
+
+        [Test]
+        public void CellValueTrigger_IgnoresRemotePortalRenderers()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo createCellTrigger = typeof(MissionGameLoop).GetMethod(
+                "CreateCellTrigger",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(createCellTrigger, Is.Not.Null);
+
+            var cellObject = new GameObject("Cave Cell");
+            cellObject.transform.SetParent(loopObject.transform);
+            cellObject.transform.position = new Vector3(300f, 0f, 0f);
+            cellObject.transform.localScale = Vector3.one * 0.7f;
+
+            GameObject authoredRoom = GameObject.CreatePrimitive(
+                PrimitiveType.Cube);
+            authoredRoom.name = "Authored Cell Bounds";
+            authoredRoom.transform.SetParent(cellObject.transform, false);
+            authoredRoom.transform.localScale = new Vector3(8f, 4f, 7f);
+            Renderer roomRenderer = authoredRoom.GetComponent<Renderer>();
+
+            var portalObject = new GameObject("Remote Checkpoint Portal");
+            portalObject.SetActive(false);
+            portalObject.transform.SetParent(cellObject.transform, false);
+            portalObject.AddComponent<PortalExampleGate>();
+            portalObject.transform.position = Vector3.zero;
+
+            GameObject portalSurface = GameObject.CreatePrimitive(
+                PrimitiveType.Cube);
+            portalSurface.name = "Remote Portal Surface";
+            portalSurface.transform.SetParent(portalObject.transform, false);
+            Renderer portalRenderer = portalSurface.GetComponent<Renderer>();
+
+            Physics.SyncTransforms();
+            createCellTrigger.Invoke(
+                loop,
+                new object[] { cellObject.transform, false });
+
+            OreExtractionZone extraction =
+                cellObject.GetComponentInChildren<OreExtractionZone>();
+            Assert.That(extraction, Is.Not.Null);
+            BoxCollider trigger = extraction.GetComponent<BoxCollider>();
+            Assert.That(trigger, Is.Not.Null);
+            Assert.That(trigger.bounds.Contains(roomRenderer.bounds.center),
+                Is.True);
+            Assert.That(trigger.bounds.Contains(portalRenderer.bounds.center),
+                Is.False,
+                "A checkpoint portal placed in the cave must not stretch the "
+                + "landing Cell's extraction trigger back to the checkpoint.");
+            Assert.That(trigger.bounds.size.x, Is.LessThan(20f));
+        }
+
+        [Test]
+        public void ConfiguredCellValueTrigger_UsesCabinExtractionBounds()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo createCellTrigger = typeof(MissionGameLoop).GetMethod(
+                "CreateCellTrigger",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(createCellTrigger, Is.Not.Null);
+
+            var cellObject = new GameObject("Configured Cave Cell");
+            cellObject.transform.SetParent(loopObject.transform);
+            cellObject.transform.position = new Vector3(300f, 0f, 0f);
+            cellObject.transform.localScale = Vector3.one * 0.7f;
+            SpawnPointSceneStructure structure =
+                cellObject.AddComponent<SpawnPointSceneStructure>();
+
+            createCellTrigger.Invoke(
+                loop,
+                new object[] { cellObject.transform, false });
+
+            OreExtractionZone extraction =
+                cellObject.GetComponentInChildren<OreExtractionZone>();
+            Assert.That(extraction, Is.Not.Null);
+            BoxCollider trigger = extraction.GetComponent<BoxCollider>();
+            Bounds expected = structure.MissionExtractionLocalBounds;
+            Assert.That(trigger.center,
+                Is.EqualTo(expected.center)
+                    .Using(Vector3ComparerWithEqualsOperator.Instance));
+            Assert.That(trigger.size,
+                Is.EqualTo(expected.size)
+                    .Using(Vector3ComparerWithEqualsOperator.Instance));
+            Assert.That(
+                trigger.bounds.Contains(new Vector3(300f, 0.5f, -7f)),
+                Is.False,
+                "The exterior portal approach must remain outside mission storage.");
+        }
+
+        [Test]
+        public void OreExtraction_FirstPositiveResourceBroadcastsCoinCueAtPlayer()
+        {
+            GameAssetCatalog catalog =
+                AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
+                    ProjectAssetPaths.Config.GameAssetCatalog);
+            Assert.That(catalog, Is.Not.Null);
+            Assert.That(catalog.Audio.CoinDeposit, Is.Not.Null);
+            Assert.That(
+                catalog.Audio.CoinDeposit.SpatialBlend,
+                Is.Zero.Within(0.0001f),
+                "Coin deposit is a UI cue and must not use 3D attenuation.");
+
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+
+            var playerObject = new GameObject("Player");
+            playerObject.transform.SetParent(loopObject.transform);
+            playerObject.transform.position = new Vector3(-8f, 2f, 11f);
+            playerObject.AddComponent<CharacterController>();
+            playerObject.AddComponent<VoxelPlayerController>();
+
+            var zoneObject = new GameObject("Extraction Zone");
+            zoneObject.transform.SetParent(loopObject.transform);
+            zoneObject.AddComponent<BoxCollider>().isTrigger = true;
+            OreExtractionZone zone =
+                zoneObject.AddComponent<OreExtractionZone>();
+            zone.Configure(loop);
+
+            var resourceObject = new GameObject("Valuable Resource");
+            resourceObject.transform.SetParent(loopObject.transform);
+            resourceObject.transform.position = new Vector3(3f, 4f, 5f);
+            BoxCollider firstOverlap =
+                resourceObject.AddComponent<BoxCollider>();
+            BoxCollider secondOverlap =
+                resourceObject.AddComponent<BoxCollider>();
+            MethodInfo storeOverlap = typeof(OreExtractionZone).GetMethod(
+                "StoreOverlap",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(storeOverlap, Is.Not.Null);
+
+            int notificationCount = 0;
+            SoundEffectPlaybackRequest received = default;
+            System.Action<SoundEffectPlaybackRequest> observer = request =>
+            {
+                received = request;
+                notificationCount++;
+            };
+            SoundEffectEvents.PlaybackRequested += observer;
+            try
+            {
+                object[] firstArguments =
+                {
+                    resourceObject.GetInstanceID(),
+                    resourceObject,
+                    null,
+                    125,
+                    firstOverlap,
+                };
+                storeOverlap.Invoke(zone, firstArguments);
+                storeOverlap.Invoke(zone, firstArguments);
+                storeOverlap.Invoke(
+                    zone,
+                    new object[]
+                    {
+                        resourceObject.GetInstanceID(),
+                        resourceObject,
+                        null,
+                        125,
+                        secondOverlap,
+                    });
+
+                Assert.That(notificationCount, Is.EqualTo(1));
+                Assert.That(
+                    received.Cue,
+                    Is.SameAs(catalog.Audio.CoinDeposit));
+                Assert.That(
+                    received.Position,
+                    Is.EqualTo(playerObject.transform.position));
+            }
+            finally
+            {
+                SoundEffectEvents.PlaybackRequested -= observer;
+            }
+        }
+
+        [Test]
+        public void MissionAudio_UsesRequestedVolumeScales()
+        {
+            FieldInfo ambienceVolume = typeof(MissionGameLoop).GetField(
+                "CaveAmbienceVolumeScale",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            FieldInfo transitionVolume = typeof(MissionGameLoop).GetField(
+                "TransitionSoundVolumeScale",
+                BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.That(ambienceVolume, Is.Not.Null);
+            Assert.That(transitionVolume, Is.Not.Null);
+            Assert.That(
+                (float)ambienceVolume.GetRawConstantValue(),
+                Is.EqualTo(0.05f).Within(0.0001f));
+            Assert.That(
+                (float)transitionVolume.GetRawConstantValue(),
+                Is.EqualTo(0.6f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ResultCountAnimation_EasesFromZeroToTarget()
+        {
+            MethodInfo evaluate = typeof(MissionUiView).GetMethod(
+                "EvaluateResultCount",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(evaluate, Is.Not.Null);
+
+            int start = (int)evaluate.Invoke(null, new object[] { 1000, 0f });
+            int middle = (int)evaluate.Invoke(
+                null,
+                new object[] { 1000, 0.5f });
+            int end = (int)evaluate.Invoke(null, new object[] { 1000, 1f });
+
+            Assert.That(start, Is.Zero);
+            Assert.That(middle, Is.GreaterThan(500));
+            Assert.That(middle, Is.LessThan(1000));
+            Assert.That(end, Is.EqualTo(1000));
         }
     }
 }

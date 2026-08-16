@@ -78,8 +78,26 @@ namespace Supernova.MinecraftCaves
         {
             return CanEmitOutput
                 && input.CanAcceptInput
+                && FacesCanConnect(Face, input.Face)
                 && MatchesName(TargetName, input.SocketName)
                 && MatchesName(input.TargetName, SocketName);
+        }
+
+        private static bool FacesCanConnect(
+            JigsawConnectorDefinition.Face output,
+            JigsawConnectorDefinition.Face input)
+        {
+            bool outputVertical = output == JigsawConnectorDefinition.Face.Up
+                || output == JigsawConnectorDefinition.Face.Down;
+            bool inputVertical = input == JigsawConnectorDefinition.Face.Up
+                || input == JigsawConnectorDefinition.Face.Down;
+            if (!outputVertical || !inputVertical)
+            {
+                return !outputVertical && !inputVertical;
+            }
+            return output == JigsawConnectorDefinition.Face.Up
+                ? input == JigsawConnectorDefinition.Face.Down
+                : input == JigsawConnectorDefinition.Face.Up;
         }
 
         private static bool MatchesName(string expected, string actual)

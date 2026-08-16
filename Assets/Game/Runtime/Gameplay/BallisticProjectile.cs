@@ -1,3 +1,4 @@
+using Supernova.Effects;
 using UnityEngine;
 
 namespace Supernova.Gameplay
@@ -8,6 +9,7 @@ namespace Supernova.Gameplay
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody), typeof(Collider))]
+    [RequireComponent(typeof(RigidbodyImpactFeedback))]
     public class BallisticProjectile : MonoBehaviour
     {
         [SerializeField] private Rigidbody body;
@@ -27,7 +29,7 @@ namespace Supernova.Gameplay
 
         private void Awake()
         {
-            ConfigureBody();
+            RigidbodyImpactFeedback.Ensure(ConfigureBody());
         }
 
         private void OnEnable()

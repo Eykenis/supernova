@@ -18,7 +18,7 @@ MonoBehaviour:
   accentVoxelType: {fileID: 11400000, guid: 202a238be2391e34b89347de524ec2b3, type: 2}
   placementStrategy: 2
   seedSalt: 1511502046
-  regionSizeInChunks: 4
+  regionSizeInChunks: 5
   placementChance: 1
   minFloorHeight: 48
   maxFloorHeight: 48
@@ -130,7 +130,6 @@ MonoBehaviour:
     - stableId: checkpoint_disk
       kind: 2
       treasure: {fileID: 0}
-      monster: {fileID: 0}
       checkpointPrefab: {fileID: 569513102036810919, guid: 791ddfa151c04644e8b21f483462e124,
         type: 3}
       localOffset: {x: 0, y: 1, z: 0}
@@ -143,7 +142,6 @@ MonoBehaviour:
     - stableId: player_spawn
       kind: 3
       treasure: {fileID: 0}
-      monster: {fileID: 0}
       checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 2, z: -6}
       yaw: 0

@@ -16,7 +16,7 @@ namespace Supernova.Voxels
         [SerializeField] private string stableId = "socket";
         [Tooltip("Template sample the opening is centred on, in local coordinates.")]
         [SerializeField] private Vector3Int localPosition;
-        [Tooltip("Wall the socket faces, relative to the template's forward axis.")]
+        [Tooltip("Surface the socket faces, relative to the template's forward axis.")]
         [SerializeField]
         private JigsawConnectorDefinition.Face face =
             JigsawConnectorDefinition.Face.Forward;
@@ -32,6 +32,7 @@ namespace Supernova.Voxels
 
         [Header("Opening")]
         [SerializeField, Min(1)] private int openingWidth = 3;
+        [Tooltip("Vertical size on a wall socket; forward/back size on an Up/Down socket.")]
         [SerializeField, Min(1)] private int openingHeight = 3;
         [SerializeField, Range(0f, 1f)] private float activationChance = 1f;
 

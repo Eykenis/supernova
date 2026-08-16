@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: WornBrick
   m_EditorClassIdentifier: 
   type: 10
-  displayName: Worn Brick
+  displayName: "\u7816\u5757"
   group: 0
   durability: 3
+  structuralSupport: 0
   material: {fileID: 2100000, guid: 9e4e6dcd826ecd8439c59627676feb39, type: 2}

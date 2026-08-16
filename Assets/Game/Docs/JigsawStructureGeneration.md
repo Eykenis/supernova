@@ -103,13 +103,13 @@ regionSizeInChunks * VoxelColumnChunkData.Width
 
 ### Geometry and Decoration
 
-- `Shape`：`Room`、`Corridor`、`Crossing`、`Stairs`。
+- `Shape`：`Room`、`Corridor`、`Crossing`、`Stairs`、`VerticalShaft`。
 - `BuildStyle.Excavated`：先雕空内部，再写支撑等 accent。
 - `BuildStyle.Masonry`：依次执行 Shell、Air、Accent pass，确保相邻模块不会互相封门。
 - `ConnectorPattern`：仅在 `connectors` 为空时使用的兼容模式。
-- `Decoration`：`SupportFrames`、`LibraryShelves`、`Pillars`、`PrisonCells`、`PortalFrame` 等程序化装饰。
+- `Decoration`：`SupportFrames`、`LibraryShelves`、`Pillars`、`PrisonCells`、`PortalFrame`、`SpiralStairs` 等程序化装饰。
 
-Box 使用宽、深、高范围；Passage 使用长度范围、宽、高和楼梯 `verticalDelta`。宽度会规范为奇数，楼梯现在也会在最小/最大长度范围内随机选择。
+Box（`Room` / `Crossing` / `VerticalShaft`）使用宽、深、高范围；Passage 使用长度范围、宽、高和楼梯 `verticalDelta`。宽度会规范为奇数，楼梯现在也会在最小/最大长度范围内随机选择。`SpiralStairs` 仍可用于通用原型模块，但当前正式 `NetherFortress` 不使用楼梯或顶底板开孔：它使用 7×16×7 的空心 `VerticalShaft` 作为电梯井式 corridor，在井道侧墙的两个不同高度各开一个 3×5 门洞，并由 9×7×9 landing 承接另一端房间。
 
 ## 5. 显式 Socket
 
@@ -119,18 +119,18 @@ Box 使用宽、深、高范围；Passage 使用长度范围、宽、高和楼�
 
 - `stableId`：模块内唯一的接口 ID。
 - `role`：`Input`、`Output` 或 `Bidirectional`。
-- `face`：相对模块朝向的 `Forward`、`Right`、`Back`、`Left`；piece 旋转后自动转换到世界方向。
-- `joint`：预留的对齐语义；当前水平程序化布局使用 `Aligned`。
+- `face`：`Forward`、`Right`、`Back`、`Left`、`Up`、`Down`；水平面随 piece yaw 转到世界方向，上下保持竖直。
+- `joint`：预留的对齐语义；当前程序化布局使用 `Aligned`。
 - `socketName` / `targetName`：名称匹配。`*` 为通配符；输出的 target 必须匹配输入的 name，输入的 target 也必须匹配输出的 name。
 - `targetPoolId`：该出口的主候选池。
 - `fallbackPoolId`：主池所有候选均失败后尝试的终止池。
-- `alongOffset`：Passage 侧面 socket 沿通道的偏移；-1 使用中点。
-- `lateralOffset`：前/后墙接口相对中心的横向偏移。
-- `verticalOffset`：开口底部相对地板的高度。
+- `alongOffset`：Passage 侧面 / 上下 socket 沿通道的偏移；-1 使用中点。
+- `lateralOffset`：socket 表面内的横向偏移。
+- `verticalOffset`：水平墙面开口底部相对地板的高度。
 - `activationChance`：该出口进入 frontier 的概率。
-- `openingWidth` / `openingHeight`：实际在 Masonry 外壳中雕出的开口尺寸。
+- `openingWidth` / `openingHeight`：水平面为门洞宽高，上下表面为水平孔洞的宽度 / 前后长度。
 
-候选模块会枚举所有兼容 input socket，计算旋转和平移，使父输出与子输入相邻对齐。输入门洞和输出门洞都会进入 piece 的 opening 列表，因此走廊侧分支也会真正雕通，不再只生成几何上相邻但被墙隔开的分支。
+候选模块会枚举所有兼容 input socket，计算旋转和平移，使父输出与子输入相邻对齐。水平面之间可用 yaw 互配；通用 `Up` 只匹配 `Down`、`Down` 只匹配 `Up`，piece 不会翻转。socket 激活只会把分支加入 frontier；只有子 piece 真正放置成功后，父输出与子输入才会同时进入 opening 列表并雕通两侧表面。`NetherFortress` 电梯链使用保留的 `fort_lift_*` socket 名称，这些名称必须精确匹配，不能由 DenseJigsaw 的 `*` 通配 socket 消费。对于只有一个必选出口的 `VerticalShaft`，生成器会在放置井道前预留一个 piece 数量、一个深度层级并检查 landing 的碰撞与边界；landing 连接还会优先于普通 frontier 处理。若完整链路无法放下，井道不会生成，源房间的墙面门洞也保持封闭。通用 `Down` opening 仍会阻止 `FoundationFill` / `SupportToGround` 回填孔洞。
 
 ## 6. 布局算法
 
@@ -186,6 +186,8 @@ feature.ContentHash + worldSeed + regionX + regionZ + placementCentre
 - `fortress_hall`：宽走廊和概率侧支路。
 - `fortress_crossing`：带柱的三向交叉厅。
 - `fortress_stairs`：上下层连接。
+- `fortress_vertical_up_shaft` / `fortress_vertical_down_shaft`：由低概率墙面门洞进入的空心电梯井式 corridor；上下门洞相差 10 个体素，不生成楼梯，也不破坏房间楼板。
+- `fortress_vertical_landing`：井道另一端的完整落地房间，随后重新进入水平 corridor 池，禁止连续堆叠井道。
 - `fortress_library`：带环形书架的终止房间，数量 1～2。
 - `fortress_prison`：带程序化牢房栅栏的稀有终止房间，最多 2 个。
 - `fortress_portal_room`：带门框的必需目标房间，最多且至少 1 个。

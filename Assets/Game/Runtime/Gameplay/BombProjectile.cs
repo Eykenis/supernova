@@ -1,3 +1,6 @@
+using Supernova.Audio;
+using Supernova.Effects;
+using Supernova.Infrastructure;
 using Supernova.Voxels;
 using System.Collections.Generic;
 using UnityEngine;
@@ -11,6 +14,7 @@ namespace Supernova.Gameplay
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody), typeof(Collider))]
+    [RequireComponent(typeof(RigidbodyImpactFeedback))]
     public sealed class BombProjectile : MonoBehaviour
     {
         [SerializeField] private Rigidbody body;
@@ -82,7 +86,7 @@ namespace Supernova.Gameplay
 
         private void Awake()
         {
-            ResolveBody();
+            RigidbodyImpactFeedback.Ensure(ResolveBody());
         }
 
         private void OnEnable()
@@ -139,22 +143,31 @@ namespace Supernova.Gameplay
 
             hasExploded = true;
             isArmed = false;
+            Vector3 explosionCenter = transform.position;
+            AudioAssetReferences audio = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.Audio
+                : null;
+            SoundEffectEvents.RequestPlay(
+                audio != null ? audio.BombExplosion : null,
+                explosionCenter);
+
             if (terrain != null)
             {
                 LastExplosionAffectedTerrain = terrain.TryMineExplosion(
-                    transform.position,
+                    explosionCenter,
                     ExplosionSettings,
                     out VoxelExplosionResult result);
                 LastExplosionResult = result;
             }
 
-            SpawnExplosionEffect(transform.position);
+            SpawnExplosionEffect(explosionCenter);
             LastImpulsedBodyCount = ApplyEntityExplosionImpulse(
-                transform.position);
+                explosionCenter);
 
             DisableAndDestroy();
             return true;
         }
+
 
         private int ApplyEntityExplosionImpulse(Vector3 explosionCenter)
         {

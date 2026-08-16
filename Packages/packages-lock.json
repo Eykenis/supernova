@@ -249,6 +249,12 @@
       },
       "url": "https://packages.tuanjie.cn"
     },
+    "info.flandre.coacd": {
+      "version": "file:info.flandre.coacd",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    },
     "jp.lilxyzw.liltoon": {
       "version": "file:jp.lilxyzw.liltoon",
       "depth": 0,

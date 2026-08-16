@@ -18,9 +18,9 @@ MonoBehaviour:
   accentVoxelType: {fileID: 11400000, guid: 2c8e05f588ced714181b788fd544c5cb, type: 2}
   placementStrategy: 0
   seedSalt: 271828
-  regionSizeInChunks: 6
-  placementChance: 0.6
-  minFloorHeight: 56
+  regionSizeInChunks: 5
+  placementChance: 0.35
+  minFloorHeight: 20
   maxFloorHeight: 190
   ringStructureCount: 128
   ringCount: 8
@@ -30,7 +30,7 @@ MonoBehaviour:
   structureSetWeight: 3
   maxPieces: 38
   maxDepth: 9
-  maxHorizontalDistance: 84
+  maxHorizontalDistance: 79
   firstPieceId: fortress_bridge
   layoutAttempts: 6
   connectorPlacementAttempts: 8
@@ -224,18 +224,7 @@ MonoBehaviour:
       inset: 0
       chance: 1
       perimeterOnly: 1
-    spawnMarkers:
-    - stableId: span_patrol
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 6}
-      yaw: 0
-      spawnChance: 0.45
-      count: 2
-      scatterRadiusInVoxels: 2
-      snapToFloor: 1
-      floorSearchDistance: 6
+    spawnMarkers: []
   - stableId: fortress_junction
     displayName: Span Junction
     poolId: bridge
@@ -251,13 +240,13 @@ MonoBehaviour:
     shape: 2
     buildStyle: 1
     connectorPattern: 0
-    decoration: 3
+    decoration: 0
     voxelTemplate: {fileID: 0}
     templateWritesAir: 1
-    minimumWidth: 17
-    maximumWidth: 17
-    minimumDepth: 17
-    maximumDepth: 17
+    minimumWidth: 21
+    maximumWidth: 21
+    minimumDepth: 21
+    maximumDepth: 21
     minimumHeight: 9
     maximumHeight: 9
     minimumLength: 8
@@ -324,6 +313,34 @@ MonoBehaviour:
       verticalOffset: 1
       activationChance: 0.7
       openingWidth: 5
+      openingHeight: 5
+    - stableId: upper_elevator_door
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_lift_up_out
+      targetName: fort_lift_up_in
+      targetPoolId: vertical_up
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: 9
+      verticalOffset: 1
+      activationChance: 0.12
+      openingWidth: 3
+      openingHeight: 5
+    - stableId: lower_elevator_door
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_lift_down_out
+      targetName: fort_lift_down_in
+      targetPoolId: vertical_down
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: -9
+      verticalOffset: 1
+      activationChance: 0.08
+      openingWidth: 3
       openingHeight: 5
     processors:
     - stableId: junction_pillars
@@ -481,21 +498,10 @@ MonoBehaviour:
       chance: 1
       perimeterOnly: 1
     spawnMarkers:
-    - stableId: terrace_guard
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.7
-      count: 3
-      scatterRadiusInVoxels: 3
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: terrace_cache
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 2, y: 1, z: -2}
       yaw: 0
       spawnChance: 0.5
@@ -559,21 +565,10 @@ MonoBehaviour:
       chance: 1
       perimeterOnly: 0
     spawnMarkers:
-    - stableId: vault_warden
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
-      localOffset: {x: 0, y: 1, z: 3}
-      yaw: 0
-      spawnChance: 1
-      count: 1
-      scatterRadiusInVoxels: 3
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: vault_hoard
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: -3}
       yaw: 0
       spawnChance: 1
@@ -581,6 +576,230 @@ MonoBehaviour:
       scatterRadiusInVoxels: 3
       snapToFloor: 1
       floorSearchDistance: 6
+  - stableId: fortress_vertical_up_shaft
+    displayName: Rising Elevator Corridor
+    poolId: vertical_up
+    outputPoolId: vertical_landing
+    startPiece: 0
+    weight: 16
+    minimumGraphDepth: 1
+    maximumGraphDepth: 8
+    minimumCount: 0
+    maximumCount: 3
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 4
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 16
+    maximumHeight: 16
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0
+    descendingChance: 0.5
+    decorationSpacing: 4
+    connectors:
+    - stableId: from_below
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_lift_up_in
+      targetName: fort_lift_up_out
+      targetPoolId: vertical_up
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 5
+    - stableId: continue_up
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_lift_up_exit
+      targetName: fort_lift_up_landing
+      targetPoolId: vertical_landing
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 11
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 5
+    processors: []
+    spawnMarkers: []
+  - stableId: fortress_vertical_down_shaft
+    displayName: Descending Elevator Corridor
+    poolId: vertical_down
+    outputPoolId: vertical_landing
+    startPiece: 0
+    weight: 16
+    minimumGraphDepth: 1
+    maximumGraphDepth: 8
+    minimumCount: 0
+    maximumCount: 3
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 4
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 7
+    maximumWidth: 7
+    minimumDepth: 7
+    maximumDepth: 7
+    minimumHeight: 16
+    maximumHeight: 16
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0
+    descendingChance: 0.5
+    decorationSpacing: 4
+    connectors:
+    - stableId: from_above
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_lift_down_in
+      targetName: fort_lift_down_out
+      targetPoolId: vertical_down
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 11
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 5
+    - stableId: continue_down
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_lift_down_exit
+      targetName: fort_lift_down_landing
+      targetPoolId: vertical_landing
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 5
+    processors: []
+    spawnMarkers: []
+  - stableId: fortress_vertical_landing
+    displayName: Elevator Landing
+    poolId: vertical_landing
+    outputPoolId: corridor
+    startPiece: 0
+    weight: 16
+    minimumGraphDepth: 1
+    maximumGraphDepth: 9
+    minimumCount: 0
+    maximumCount: 6
+    allowConsecutive: 0
+    requiredByDepth: 0
+    shape: 0
+    buildStyle: 1
+    connectorPattern: 0
+    decoration: 0
+    voxelTemplate: {fileID: 0}
+    templateWritesAir: 1
+    minimumWidth: 9
+    maximumWidth: 9
+    minimumDepth: 9
+    maximumDepth: 9
+    minimumHeight: 7
+    maximumHeight: 7
+    minimumLength: 8
+    maximumLength: 12
+    width: 3
+    height: 4
+    verticalDelta: 4
+    sideBranchChance: 0.25
+    descendingChance: 0.5
+    decorationSpacing: 4
+    connectors:
+    - stableId: from_below
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_lift_up_landing
+      targetName: fort_lift_up_exit
+      targetPoolId: vertical_landing
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 5
+    - stableId: from_above
+      role: 0
+      face: 2
+      joint: 0
+      socketName: fort_lift_down_landing
+      targetName: fort_lift_down_exit
+      targetPoolId: vertical_landing
+      fallbackPoolId:
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 5
+    - stableId: corridor_exit
+      role: 1
+      face: 0
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: corridor
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 1
+      openingWidth: 3
+      openingHeight: 5
+    - stableId: side_exit
+      role: 1
+      face: 1
+      joint: 0
+      socketName: fort_branch
+      targetName: fort_entry
+      targetPoolId: corridor
+      fallbackPoolId: terminators
+      alongOffset: -1
+      lateralOffset: 0
+      verticalOffset: 1
+      activationChance: 0.35
+      openingWidth: 3
+      openingHeight: 5
+    processors:
+    - stableId: landing_foundation
+      kind: 1
+      palette: 0
+      maximumDistance: 2
+      inset: 1
+      chance: 1
+      perimeterOnly: 0
+    spawnMarkers: []
   - stableId: fortress_bridge_end
     displayName: Broken Span
     poolId: terminators

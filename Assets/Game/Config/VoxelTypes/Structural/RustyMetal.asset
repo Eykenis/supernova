@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: RustyMetal
   m_EditorClassIdentifier: 
   type: 8
-  displayName: Rusted Iron
+  displayName: 铁块
   group: 0
   durability: 6
   material: {fileID: 2100000, guid: 5026d57170f9de34098fd7a050991bb8, type: 2}

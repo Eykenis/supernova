@@ -26,6 +26,99 @@ namespace Supernova.Tests
             if (eventSystemObject != null) Object.DestroyImmediate(eventSystemObject);
         }
 
+        /// <summary>
+        /// The crosshair durability line reports a tier instead of the raw number,
+        /// and the unbreakable sentinel (bedrock's int.MaxValue durability) must
+        /// resolve to a stable label rather than a negative value.
+        /// </summary>
+        [TestCase(1f, "硬度：很低")]
+        [TestCase(80f, "硬度：很高")]
+        [TestCase(999f, "硬度：极高")]
+        [TestCase(1000f, "无法摧毁")]
+        [TestCase(2147483647f, "无法摧毁")]
+        public void CrosshairVoxelStats_ReportsDurabilityTier(
+            float durability,
+            string expected)
+        {
+            hudObject = new GameObject("Crosshair Info");
+            CrosshairInfoDisplay display =
+                hudObject.AddComponent<CrosshairInfoDisplay>();
+            var statsObject = new GameObject("Stats", typeof(RectTransform));
+            statsObject.transform.SetParent(hudObject.transform, false);
+            TMP_Text stats = statsObject.AddComponent<TextMeshProUGUI>();
+            display.StatsLabel = stats;
+
+            System.Type infoType = typeof(CrosshairInfoDisplay).Assembly
+                .GetType("Supernova.UI.CrosshairLookAtInfo");
+            System.Type targetType = typeof(CrosshairInfoDisplay).Assembly
+                .GetType("Supernova.UI.CrosshairTargetType");
+            Assert.That(infoType, Is.Not.Null);
+            Assert.That(targetType, Is.Not.Null);
+
+            object info = System.Activator.CreateInstance(
+                infoType,
+                new object[]
+                {
+                    System.Enum.Parse(targetType, "Voxel"),
+                    "Bedrock",
+                    durability,
+                    0f,
+                    0,
+                });
+            MethodInfo showInfo = typeof(CrosshairInfoDisplay).GetMethod(
+                "ShowInfo",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(showInfo, Is.Not.Null);
+            showInfo.Invoke(display, new[] { info });
+
+            Assert.That(stats.text, Is.EqualTo(expected));
+        }
+
+        [TestCase(0f, "硬度：很低")]
+        [TestCase(4f, "硬度：很低")]
+        [TestCase(5f, "硬度：低")]
+        [TestCase(14f, "硬度：低")]
+        [TestCase(15f, "硬度：中")]
+        [TestCase(34f, "硬度：中")]
+        [TestCase(35f, "硬度：高")]
+        [TestCase(59f, "硬度：高")]
+        [TestCase(60f, "硬度：很高")]
+        [TestCase(99f, "硬度：很高")]
+        [TestCase(100f, "硬度：极高")]
+        [TestCase(999f, "硬度：极高")]
+        [TestCase(1000f, "无法摧毁")]
+        [TestCase(2147483647f, "无法摧毁")]
+        public void FormatDurabilityLabel_MapsDurabilityToTier(
+            float durability,
+            string expected)
+        {
+            Assert.That(
+                CrosshairInfoDisplay.FormatDurabilityLabel(durability),
+                Is.EqualTo(expected));
+        }
+
+        [TestCase(0f, "极低")]
+        [TestCase(0.01f, "极低")]
+        [TestCase(0.06f, "极低")]
+        [TestCase(0.07f, "低")]
+        [TestCase(0.15f, "低")]
+        [TestCase(0.16f, "中")]
+        [TestCase(0.25f, "中")]
+        [TestCase(0.29f, "中")]
+        [TestCase(0.30f, "高")]
+        [TestCase(0.49f, "高")]
+        [TestCase(0.50f, "极高")]
+        [TestCase(0.90f, "极高")]
+        [TestCase(1f, "极高")]
+        public void ResolveFragilityTier_MapsFragilityToTier(
+            float fragility,
+            string expected)
+        {
+            Assert.That(
+                CrosshairInfoDisplay.ResolveFragilityTier(fragility),
+                Is.EqualTo(expected));
+        }
+
         [Test]
         public void RebuildDefaultView_CreatesUguiCrosshairAndHealthWidget()
         {
@@ -139,6 +232,50 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void FpsDebugWindow_StartsHiddenAndCanBeToggled()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+
+            controller.RebuildDefaultView();
+
+            Transform debugWindow = hudObject.transform.Find(
+                UiHierarchyPaths.Debug.Window);
+            TMP_Text fpsValue = hudObject.transform.Find(
+                UiHierarchyPaths.Debug.FpsValue)?.GetComponent<TMP_Text>();
+            Assert.That(controller.DebugCanvas, Is.Not.Null);
+            Assert.That(debugWindow, Is.Not.Null);
+            Assert.That(fpsValue, Is.SameAs(controller.FpsDebugValueLabel));
+            Assert.That(fpsValue.text, Is.EqualTo("FPS  --"));
+            Assert.That(controller.IsFpsDebugVisible, Is.False);
+
+            controller.ToggleFpsDebugWindow();
+
+            Assert.That(controller.IsFpsDebugVisible, Is.True);
+            controller.ToggleFpsDebugWindow();
+            Assert.That(controller.IsFpsDebugVisible, Is.False);
+        }
+
+        [Test]
+        public void FpsDebugWindow_ReportsAverageUnscaledFrameRate()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+            controller.SetFpsDebugVisible(true);
+            MethodInfo updateFps = typeof(GameHudController).GetMethod(
+                "UpdateFpsDebugWindow",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            for (int i = 0; i < 13; i++)
+                updateFps.Invoke(controller, new object[] { 0.02f });
+
+            Assert.That(controller.FpsDebugValueLabel.text, Is.EqualTo("FPS  50"));
+        }
+
+        [Test]
         public void Compass_FormatsCardinalsAndTracksWrappedHeading()
         {
             hudObject = new GameObject("Game HUD");
@@ -184,8 +321,8 @@ namespace Supernova.Tests
                 "The pause overlay should fully cover gameplay with opaque dark gray.");
             Assert.That(
                 options.Length,
-                Is.EqualTo(7),
-                "Four primary actions plus fullscreen, volume, and settings back are expected.");
+                Is.EqualTo(10),
+                "Primary actions, settings controls, and binding-menu actions are expected.");
             Assert.That(
                 systemField.GetComponent<PauseMenuWedgeGraphic>(),
                 Is.Not.Null);
@@ -215,6 +352,15 @@ namespace Supernova.Tests
             Assert.That(
                 hudObject.transform.Find(UiHierarchyPaths.Pause.FullSettings)
                     .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullControls)
+                    .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(
+                hudObject.transform.Find(
+                    UiHierarchyPaths.Pause.FullInputBindingsPanel)
+                    .GetComponent<InputBindingSettingsView>(),
                 Is.Not.Null);
             Assert.That(
                 hudObject.transform.Find(UiHierarchyPaths.Pause.FullQuitToMenu)
@@ -611,6 +757,42 @@ namespace Supernova.Tests
             Assert.That(second.color, Is.EqualTo(Color.clear));
             Assert.That(secondSurface.color, Is.Not.EqualTo(firstSurface.color));
             Assert.That(controller.InventorySource, Is.SameAs(inventory));
+        }
+
+        [Test]
+        public void HotbarCooldown_ShowsSlantedFillAndRoundedSeconds()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+
+            FieldInfo presenterField = typeof(GameHudController).GetField(
+                "hotbarPresenter",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(presenterField, Is.Not.Null);
+            HotbarPresenter hotbar =
+                (HotbarPresenter)presenterField.GetValue(controller);
+            hotbar.SetCooldown(0, 0.31f, 0.7f);
+
+            HotbarCooldownOverlayGraphic overlay = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HotbarSlotCooldownOverlay(1))
+                ?.GetComponent<HotbarCooldownOverlayGraphic>();
+            TMP_Text label = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HotbarSlotCooldownLabel(1))
+                ?.GetComponent<TMP_Text>();
+            Assert.That(overlay, Is.Not.Null);
+            Assert.That(label, Is.Not.Null);
+            Assert.That(overlay.gameObject.activeSelf, Is.True);
+            Assert.That(overlay.FillAmount, Is.EqualTo(0.31f / 0.7f).Within(0.001f));
+            Assert.That(label.gameObject.activeSelf, Is.True);
+            Assert.That(label.text, Is.EqualTo("0.4s"));
+
+            hotbar.SetCooldown(0, 0f, 0.7f);
+
+            Assert.That(overlay.gameObject.activeSelf, Is.False);
+            Assert.That(label.gameObject.activeSelf, Is.False);
+            Assert.That(label.text, Is.Empty);
         }
 
         [Test]

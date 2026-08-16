@@ -29,7 +29,20 @@ namespace Supernova.Tests
                 Is.EqualTo(PlayerInventoryItem.SolidGun));
             Assert.That(
                 definition.PrimaryAction,
-                Is.EqualTo(PlayerToolPrimaryAction.FireRifle));
+                Is.EqualTo(PlayerToolPrimaryAction.FireProjectile));
+            Assert.That(definition.PrimaryActionSound, Is.Not.Null);
+            Assert.That(
+                AssetDatabase.GetAssetPath(definition.PrimaryActionSound),
+                Is.EqualTo(ProjectAssetPaths.Config.SolidGunShotSound));
+            SerializedProperty shotClips =
+                new SerializedObject(definition.PrimaryActionSound)
+                    .FindProperty("clips");
+            Assert.That(shotClips.arraySize, Is.EqualTo(1));
+            Assert.That(
+                AssetDatabase.GetAssetPath(
+                    shotClips.GetArrayElementAtIndex(0)
+                        .objectReferenceValue),
+                Is.EqualTo(ProjectAssetPaths.Audio.Laser));
             Assert.That(definition.HeldModelPrefab, Is.SameAs(solidGun));
             Assert.That(definition.FirearmProjectilePrefab, Is.Not.Null);
             Assert.That(

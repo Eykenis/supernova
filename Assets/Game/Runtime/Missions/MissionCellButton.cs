@@ -1,3 +1,4 @@
+using Supernova.Infrastructure;
 using UnityEngine;
 
 namespace Supernova.Missions
@@ -83,6 +84,20 @@ namespace Supernova.Missions
 
             Renderer renderer = part.GetComponent<Renderer>();
             if (renderer == null) return;
+            Material material = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.UI.MissionCellConsoleMaterial
+                : null;
+            if (material != null)
+            {
+                renderer.sharedMaterial = material;
+            }
+            else
+            {
+                Debug.LogError(
+                    "Mission Cell console material is missing from the "
+                    + "preloaded game asset catalog.",
+                    parent);
+            }
             var properties = new MaterialPropertyBlock();
             properties.SetColor("_BaseColor", color);
             properties.SetColor("_Color", color);

@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: Bedrock
   m_EditorClassIdentifier: 
   type: 4
-  displayName: Bedrock
+  displayName: 基岩
   group: 1
   durability: 2147483647
+  structuralSupport: 1
   material: {fileID: 2100000, guid: 3fc2279b5b04f264283e09c06a778479, type: 2}

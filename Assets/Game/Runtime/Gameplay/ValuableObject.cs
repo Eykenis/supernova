@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Supernova.Effects;
 using Supernova.UI;
 using UnityEngine;
 
@@ -11,6 +12,7 @@ namespace Supernova.Gameplay
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody))]
+    [RequireComponent(typeof(RigidbodyImpactFeedback))]
     public sealed class ValuableObject :
         MonoBehaviour,
         ICollisionImpulseDamageReceiver
@@ -106,6 +108,7 @@ namespace Supernova.Gameplay
             float lossPercentagePerSquaredImpulse =
                 DefaultValueLossPercentagePerSquaredImpulse)
         {
+            RigidbodyImpactFeedback.Ensure(GetComponent<Rigidbody>());
             initialValue = Mathf.Max(0, value);
             currentValue = initialValue;
             fragility = Mathf.Clamp01(objectFragility);

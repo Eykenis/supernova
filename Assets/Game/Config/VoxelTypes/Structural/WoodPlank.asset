@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: WoodPlank
   m_EditorClassIdentifier: 
   type: 12
-  displayName: Plank
+  displayName: 木板
   group: 1
   durability: 1
   material: {fileID: 2100000, guid: bded6829162bbec4aaaba62e99c2539e, type: 2}

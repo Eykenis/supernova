@@ -1,6 +1,4 @@
 using UnityEngine;
-using UnityEngine.Serialization;
-
 namespace Supernova.Gameplay
 {
     /// <summary>
@@ -13,7 +11,6 @@ namespace Supernova.Gameplay
         [Header("Locomotion")]
         [SerializeField, Min(0f)] private float moveSpeed = 4f;
         [SerializeField, Min(0f)] private float crouchMoveSpeed = 2f;
-        [SerializeField] private KeyCode crouchKey = KeyCode.LeftControl;
         [SerializeField, Min(0.01f)] private float crouchBlendDuration = 0.15f;
         [Tooltip("CharacterController height used while crouching. The feet stay at the standing height.")]
         [SerializeField, Min(0.01f)] private float crouchColliderHeight = 1f;
@@ -37,11 +34,6 @@ namespace Supernova.Gameplay
 
         [Header("Animation")]
         [SerializeField, Min(0.1f)] private float alternateIdleDelay = 15f;
-        [SerializeField] private KeyCode smileKey = KeyCode.Q;
-        [FormerlySerializedAs("knockdownKey")]
-        [SerializeField] private KeyCode hitKey = KeyCode.K;
-        [SerializeField] private KeyCode dieKey = KeyCode.L;
-        [SerializeField] private KeyCode recoverKey = KeyCode.R;
         [SerializeField] private float kocchiDistance = 2f;
 
         [Header("Voxel interaction")]
@@ -50,13 +42,11 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0f)] private float mineRayBackstep = 0.35f;
 
         [Header("Debug fly")]
-        [SerializeField] private KeyCode debugToggleKey = KeyCode.F3;
         [SerializeField, Min(0f)] private float debugFlySpeed = 12f;
         [SerializeField, Min(1f)] private float debugFlySpeedMultiplier = 3f;
 
         public float MoveSpeed => Mathf.Max(0f, moveSpeed);
         public float CrouchMoveSpeed => Mathf.Max(0f, crouchMoveSpeed);
-        public KeyCode CrouchKey => crouchKey;
         public float CrouchBlendDuration => Mathf.Max(0.01f, crouchBlendDuration);
         public float CrouchColliderHeight => Mathf.Max(0.01f, crouchColliderHeight);
         public float JumpHeight => Mathf.Max(0f, jumpHeight);
@@ -75,14 +65,9 @@ namespace Supernova.Gameplay
         public float HurtDuration => Mathf.Max(0.02f, hurtDuration);
         public LayerMask AttackLayers => attackLayers;
         public float AlternateIdleDelay => Mathf.Max(0.1f, alternateIdleDelay);
-        public KeyCode SmileKey => smileKey;
-        public KeyCode HitKey => hitKey;
-        public KeyCode DieKey => dieKey;
-        public KeyCode RecoverKey => recoverKey;
         public float KocchiDistance => Mathf.Max(0f, kocchiDistance);
         public float InteractionReach => Mathf.Max(0.1f, interactionReach);
         public float MineRayBackstep => Mathf.Max(0f, mineRayBackstep);
-        public KeyCode DebugToggleKey => debugToggleKey;
         public float DebugFlySpeed => Mathf.Max(0f, debugFlySpeed);
         public float DebugFlySpeedMultiplier => Mathf.Max(1f, debugFlySpeedMultiplier);
 

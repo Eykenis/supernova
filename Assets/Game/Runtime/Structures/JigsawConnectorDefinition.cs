@@ -16,6 +16,8 @@ namespace Supernova.MinecraftCaves
             Right,
             Back,
             Left,
+            Up,
+            Down,
         }
 
         public enum Role
@@ -43,13 +45,14 @@ namespace Supernova.MinecraftCaves
         [SerializeField] private string fallbackPoolId;
 
         [Header("Placement")]
-        [Tooltip("Offset along a wall. For passage side sockets, -1 uses the midpoint.")]
+        [Tooltip("Offset along a surface. For passage side and vertical sockets, -1 uses the midpoint.")]
         [SerializeField] private int alongOffset = -1;
-        [Tooltip("Offset across a forward/back face from its centre.")]
+        [Tooltip("Offset across the socket surface from its centre.")]
         [SerializeField] private int lateralOffset;
         [SerializeField, Min(0)] private int verticalOffset = 1;
         [SerializeField, Range(0f, 1f)] private float activationChance = 1f;
         [SerializeField, Min(1)] private int openingWidth = 3;
+        [Tooltip("Vertical size on a wall socket; forward/back size on an Up/Down socket.")]
         [SerializeField, Min(1)] private int openingHeight = 3;
 
         public void Configure(

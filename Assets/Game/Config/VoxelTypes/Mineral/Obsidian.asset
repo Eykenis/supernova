@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Obsidian
   m_EditorClassIdentifier: 
   type: 11
-  displayName: Obsidian
+  displayName: 黑曜石
   group: 2
   durability: 80
   material: {fileID: 2100000, guid: 245862d287dbc454fbdb4d077f07e214, type: 2}

@@ -61,12 +61,43 @@ namespace Supernova.Tests
             drop.Configure(
                 new VoxelTypeId(3),
                 4,
+                2.4f,
                 new Mesh(),
-                valuePerVoxel: 25);
+                valuePerFullVoxel: 25);
 
             InvokeTrigger(zone, "OnTriggerEnter", collider);
 
-            Assert.That(zone.CurrentStoredValue, Is.EqualTo(100));
+            Assert.That(zone.CurrentStoredValue, Is.EqualTo(60));
+        }
+
+        [Test]
+        public void StoredTreasure_IsProtectedFromCollisionValueLoss()
+        {
+            zoneObject = new GameObject("Extraction");
+            OreExtractionZone zone = zoneObject.AddComponent<OreExtractionZone>();
+            zone.Configure(null);
+
+            definition = ScriptableObject.CreateInstance<TreasureDefinition>();
+            definition.Configure(null, 75, 2f, 1f, 1);
+            treasureObject = new GameObject("Treasure");
+            treasureObject.AddComponent<Rigidbody>().isKinematic = true;
+            BoxCollider collider = treasureObject.AddComponent<BoxCollider>();
+            TreasurePickup treasure =
+                treasureObject.AddComponent<TreasurePickup>();
+            treasure.Configure(definition);
+            ValuableObject valuable = treasure.Valuable;
+
+            InvokeTrigger(zone, "OnTriggerEnter", collider);
+            Assert.That(valuable.IsCollisionValueLossProtected, Is.True,
+                "Treasure inside the extraction trigger must be collision-safe.");
+
+            Assert.That(valuable.ApplyCollisionImpulse(500f), Is.Zero);
+            Assert.That(zone.CurrentStoredValue, Is.EqualTo(75),
+                "A banked delivery must not lose value to impacts.");
+
+            InvokeTrigger(zone, "OnTriggerExit", collider);
+            Assert.That(valuable.IsCollisionValueLossProtected, Is.False,
+                "Leaving the trigger must restore normal collision damage.");
         }
 
         private static void InvokeTrigger(

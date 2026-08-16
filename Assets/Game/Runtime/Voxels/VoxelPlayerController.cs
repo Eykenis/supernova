@@ -1,5 +1,10 @@
 using System.Collections.Generic;
+using Supernova.Audio;
+using Supernova.Inputs;
 using Supernova.Gameplay;
+using Supernova.Infrastructure;
+using Supernova.MinecraftCaves;
+using Supernova.Missions;
 using Supernova.UI;
 using UnityEngine;
 
@@ -61,18 +66,42 @@ namespace Supernova.Voxels
         private const string PrimaryActionPlaceholderClipName = "ToolPrimaryActionPlaceholder";
         private const string EquipmentLocomotionPlaceholderClipName =
             "EquipmentLocomotionPlaceholder";
-        private const string RifleLocomotionLayerName =
-            "Rifle Locomotion Layer";
-        private const string RifleArmsLayerName = "Rifle Arms Layer";
+        private const string FirearmLocomotionLayerName =
+            "Firearm Locomotion Layer";
+        private const string FirearmArmsLayerName = "Firearm Arms Layer";
         private const float ToolUpperBodyLayerBlendDuration = 0.12f;
         private const float CrouchArmsLayerBlendDuration = 0.12f;
-        private const float RifleLocomotionLayerBlendDuration = 0.12f;
+        private const float FirearmLocomotionLayerBlendDuration = 0.12f;
+        private const float StandingMovementSoundPitch = 1.75f;
+        private const float CrouchingMovementSoundPitch = 1f;
+        private const float MagnetSoundVolumeScale = 0.5f;
+        private const float MagnetSoundFadeSeconds = 0.2f;
+        private const float ConfiguredThrowSoundVolumeScale = 0.5f;
+        private const float SmallLandingSoundSpeedThreshold = 8f;
+        private const float BigLandingSoundSpeedThreshold = 16f;
         private const int CrouchClearanceHitCapacity = 32;
+        /// <summary>Metres of rope let out or taken in per scroll-wheel step.</summary>
+        private const float RopeReelMetresPerStep = 1.5f;
+        /// <summary>Scroll magnitude below which the wheel counts as untouched.</summary>
+        private const float ScrollDeadZone = 0.01f;
+        /// <summary>
+        /// Squared metres below which a rope position correction is not worth a
+        /// CharacterController.Move call.
+        /// </summary>
+        private const float RopeCorrectionEpsilon = 0.0000001f;
 
         [SerializeField] private Transform view;
         [SerializeField] private Animator animator;
         [Tooltip("Optional external target for kocchiFlag. A camera parented to this player is ignored.")]
         [SerializeField] private Transform kocchiTarget;
+
+        [Header("Sound")]
+        [Tooltip("Loop played while the character is walking. Standing movement uses 1.75x pitch and crouched movement uses the cue's original pitch.")]
+        [SerializeField] private SoundEffectCue movementSound;
+        [Tooltip("Movement loop used throughout the Home scene. It keeps the same standing and crouched pitch multipliers as the default movement loop.")]
+        [SerializeField] private SoundEffectCue homeCellMovementSound;
+        [Tooltip("Loop played while a magnet attraction is active. The audio manager resumes this clip from its last global sample offset.")]
+        [SerializeField] private SoundEffectCue magnetSound;
 
         [Header("Runtime")]
         [SerializeField] private PlayerCharacterState currentState;
@@ -80,8 +109,8 @@ namespace Supernova.Voxels
         private CharacterController characterController;
         private PerspectiveCameraController perspectiveCamera;
 
-        private FirstPersonCartAttractor cartAttractor;
-        private GrabHookController grabHook;
+        private FirstPersonMagnetInteractor magnetInteractor;
+        private PickaxeThrowController pickaxeThrow;
         private PlayerToolController toolController;
         private PlayerEquipmentController equipmentController;
         private VoxelPlayerInteractor voxelInteractor;
@@ -95,8 +124,8 @@ namespace Supernova.Voxels
         private bool hasThirdPersonTargetYaw;
         private float idleSeconds;
         private float stateSeconds;
-        private readonly Queue<float> pendingMiningAttackTimes =
-            new Queue<float>();
+        private readonly Queue<ScheduledMiningAttack> pendingMiningAttacks =
+            new Queue<ScheduledMiningAttack>();
         private readonly List<ScheduledToolAction> pendingToolActions =
             new List<ScheduledToolAction>();
         private readonly Dictionary<PlayerToolDefinition, float>
@@ -126,11 +155,15 @@ namespace Supernova.Voxels
         private bool equipmentLocomotionAnimationActive;
         private bool equipmentLocomotionExitRequested;
         private PlayerToolDefinition activeToolDefinition;
+        private bool magnetHoldAnimationActive;
+        private PlayerToolDefinition magnetHoldAnimationDefinition;
+
+        private bool throwKeyRearmed = true;
         private PlayerToolController subscribedToolController;
         private int pickaxeStrikeParity;
         private int crouchArmsLocomotionLayerIndex = -1;
-        private int rifleLocomotionLayerIndex = -1;
-        private int rifleArmsLayerIndex = -1;
+        private int firearmLocomotionLayerIndex = -1;
+        private int firearmArmsLayerIndex = -1;
         private int toolUpperBodyLayerIndex = -1;
         private int crouchToolArmsLayerIndex = -1;
         private int activeToolActionLayerIndex = -1;
@@ -139,11 +172,20 @@ namespace Supernova.Voxels
         private float crouchToolArmsLayerTargetWeight;
         private float crouchToolArmsLayerWeight;
         private float crouchArmsLocomotionLayerWeight;
-        private float rifleLocomotionLayerTargetWeight;
-        private float rifleLocomotionLayerWeight;
-        private float rifleArmsLayerTargetWeight;
-        private float rifleArmsLayerWeight;
+        private float firearmLocomotionLayerTargetWeight;
+        private float firearmLocomotionLayerWeight;
+        private float firearmArmsLayerTargetWeight;
+        private float firearmArmsLayerWeight;
         private bool toolUpperBodyActionObserved;
+        private int movementSoundLoopId;
+        private bool movementSoundPlaying;
+        private float activeMovementSoundPitch;
+        private SoundEffectCue activeMovementSoundCue;
+        private int magnetSoundLoopId;
+        private bool magnetSoundPlaying;
+        private bool landingSoundGroundStateInitialized;
+        private bool wasGroundedForLandingSound;
+        private float maximumAirborneFallSpeed;
         private readonly Collider[] crouchClearanceHits =
             new Collider[CrouchClearanceHitCapacity];
         private bool controllerDimensionsCached;
@@ -167,18 +209,66 @@ namespace Supernova.Voxels
             public float TriggerTime { get; }
         }
 
+        private readonly struct ScheduledMiningAttack
+        {
+            public ScheduledMiningAttack(
+                float triggerTime,
+                SoundEffectCue monsterHitSound)
+            {
+                TriggerTime = triggerTime;
+                MonsterHitSound = monsterHitSound;
+            }
+
+            public float TriggerTime { get; }
+            public SoundEffectCue MonsterHitSound { get; }
+        }
+
         public GameObject Owner => gameObject;
         public float CurrentHealth => vitals != null ? vitals.CurrentHealth : 0f;
         public float MaximumHealth => vitals != null ? vitals.MaximumHealth : Profile.MaximumHealth;
         public float CrouchPoseWeight => crouchArmsLocomotionLayerWeight;
-        public bool IsRifleSelected => toolController != null
-            && toolController.IsRifleSelected;
+        public bool IsFirearmSelected => toolController != null
+            && toolController.IsFirearmSelected;
         public bool IsAlive => vitals != null && vitals.IsAlive;
         public bool DebugFlyMode => debugFlyMode;
         public Animator CharacterAnimator => animator;
         public float VerticalVelocity => motor != null ? motor.VerticalVelocity : 0f;
         public PlayerCharacterState CurrentState => currentState;
         public bool IsCrouching => crouchColliderActive;
+
+        /// <summary>
+        /// Returns the active action-cycle cooldown for an inventory item. Timers
+        /// are stored per tool definition, so unequipped hotbar slots keep their
+        /// own remaining time.
+        /// </summary>
+        public bool TryGetToolActionCooldown(
+            PlayerInventoryItem item,
+            out float remainingSeconds,
+            out float durationSeconds)
+        {
+            remainingSeconds = 0f;
+            durationSeconds = 0f;
+            ResolveReferences();
+            PlayerToolDefinition definition = toolController != null
+                ? toolController.GetDefinition(item)
+                : null;
+            if (definition == null || !definition.IsFirearm)
+                return false;
+
+            durationSeconds = definition.ActionCyclePeriod;
+            if (!nextToolActionCycleTimes.TryGetValue(
+                    definition,
+                    out float nextCycleTime))
+            {
+                return false;
+            }
+
+            remainingSeconds = Mathf.Clamp(
+                nextCycleTime - Time.time,
+                0f,
+                durationSeconds);
+            return remainingSeconds > 0f;
+        }
 
         private PlayerProfile Profile
         {
@@ -192,6 +282,8 @@ namespace Supernova.Voxels
 
         private void Awake()
         {
+            movementSoundLoopId = SoundEffectEvents.CreateLoopId();
+            magnetSoundLoopId = SoundEffectEvents.CreateLoopId();
             ResolveReferences();
             EnsureVitals(true);
             CacheAnimatorParameters();
@@ -207,6 +299,7 @@ namespace Supernova.Voxels
                     ? toolController.SelectedDefinition
                     : null);
             EnsureMotor();
+            ResetLandingSoundTracking();
             EnsureStateMachine();
             if (characterController != null) characterController.enabled = !debugFlyMode;
             stateMachine.Start(vitals.IsAlive ? PlayerCharacterState.Idle : PlayerCharacterState.Dead);
@@ -214,9 +307,12 @@ namespace Supernova.Voxels
 
         private void OnDisable()
         {
+            StopMovementSound();
+            ResetLandingSoundTracking();
             UnsubscribeFromToolSelection();
+            CancelSecondaryAction();
             debugFlyMode = false;
-            pendingMiningAttackTimes.Clear();
+            pendingMiningAttacks.Clear();
             pendingToolActions.Clear();
             nextToolActionCycleTimes.Clear();
             equipmentController?.CancelActiveLocomotionOverride();
@@ -233,16 +329,28 @@ namespace Supernova.Voxels
         private void Update()
         {
             if (!Application.isPlaying) return;
-            if (GameHudController.IsGameplayInputBlocked) return;
+            if (GameHudController.IsGameplayInputBlocked)
+            {
+                // Opening a menu mid-drag must not leave the magnet latched or an
+                // aimed throw charged, because right-click release is never seen.
+                CancelSecondaryAction();
+                StopMovementSound();
+                return;
+            }
 
             ResolveReferences();
             EnsureMotor();
             EnsureStateMachine();
             ApplyPendingMiningAttacksIfReady();
             ApplyPendingToolActionsIfReady();
-            if (characterController == null) return;
+            if (characterController == null)
+            {
+                StopMovementSound();
+                return;
+            }
 
-            if (Input.GetKeyDown(Profile.DebugToggleKey)) SetDebugFlyMode(!debugFlyMode);
+            if (GameInput.Pressed(GameInputActionId.DebugFlyToggle))
+                SetDebugFlyMode(!debugFlyMode);
             input = CaptureInput();
             UpdateCrouchCollider(
                 input.CrouchHeld
@@ -263,13 +371,269 @@ namespace Supernova.Voxels
                 stateMachine.Tick(Time.deltaTime);
             }
 
+            TickSecondaryAction();
             TickCrouchArmsLocomotionLayerBlend(Time.deltaTime);
-            TickRifleLocomotionLayerBlend(Time.deltaTime);
-            TickRifleArmsLayerBlend(Time.deltaTime);
+            TickFirearmLocomotionLayerBlend(Time.deltaTime);
+            TickFirearmArmsLayerBlend(Time.deltaTime);
             TickToolUpperBodyLayerBlend(Time.deltaTime);
+            TickMagnetHoldAnimationLoop();
+
             currentState = stateMachine.Current;
+            UpdateLandingSound();
+            UpdateMovementSound();
             UpdateExpressionAnimation();
         }
+
+        private void UpdateMovementSound()
+        {
+            if (!TryGetActiveMovementSoundPitch(out float pitch))
+            {
+                StopMovementSound();
+                return;
+            }
+
+            SoundEffectCue selectedSound = SelectMovementSound(
+                movementSound,
+                homeCellMovementSound,
+                IsInHomeScene());
+            if (selectedSound == null)
+            {
+                StopMovementSound();
+                return;
+            }
+
+            if (movementSoundLoopId == 0)
+                movementSoundLoopId = SoundEffectEvents.CreateLoopId();
+            if (movementSoundPlaying
+                && activeMovementSoundCue == selectedSound
+                && Mathf.Approximately(activeMovementSoundPitch, pitch))
+            {
+                return;
+            }
+
+            movementSoundPlaying = SoundEffectEvents.RequestLoop(
+                movementSoundLoopId,
+                selectedSound,
+                transform,
+                1f,
+                pitch);
+            activeMovementSoundCue = movementSoundPlaying
+                ? selectedSound
+                : null;
+            activeMovementSoundPitch = movementSoundPlaying ? pitch : 0f;
+        }
+
+        private bool IsInHomeScene()
+        {
+            LevelConfiguration level =
+                MissionGameLoop.CurrentLevelConfiguration;
+            string homeSceneName = level != null
+                ? level.HomeSceneName
+                : GameAssetCatalog.Current != null
+                    && GameAssetCatalog.Current.SceneLookups != null
+                        ? GameAssetCatalog.Current.SceneLookups.MainMenuSceneName
+                        : null;
+            return IsHomeScene(
+                UnityEngine.SceneManagement.SceneManager
+                    .GetActiveScene().name,
+                homeSceneName);
+        }
+
+        private static bool IsHomeScene(
+            string currentSceneName,
+            string homeSceneName)
+        {
+            return !string.IsNullOrEmpty(homeSceneName)
+                && currentSceneName == homeSceneName;
+        }
+
+        private static SoundEffectCue SelectMovementSound(
+            SoundEffectCue defaultSound,
+            SoundEffectCue homeSceneSound,
+            bool isInHomeScene)
+        {
+            return isInHomeScene && homeSceneSound != null
+                ? homeSceneSound
+                : defaultSound;
+        }
+
+
+        private void StopMovementSound()
+        {
+            if (movementSoundPlaying && movementSoundLoopId != 0)
+                SoundEffectEvents.RequestStopLoop(movementSoundLoopId);
+            movementSoundPlaying = false;
+            activeMovementSoundPitch = 0f;
+            activeMovementSoundCue = null;
+        }
+
+        private void UpdateLandingSound()
+        {
+            if (motor == null || debugFlyMode)
+            {
+                ResetLandingSoundTracking();
+                return;
+            }
+
+            bool grounded = motor.IsGrounded;
+            float downwardYAxisSpeed =
+                GetDownwardYAxisSpeed(motor.CombinedVelocity);
+            if (!landingSoundGroundStateInitialized)
+            {
+                landingSoundGroundStateInitialized = true;
+                wasGroundedForLandingSound = grounded;
+                maximumAirborneFallSpeed = grounded
+                    ? 0f
+                    : downwardYAxisSpeed;
+                return;
+            }
+
+            if (!grounded)
+            {
+                maximumAirborneFallSpeed = Mathf.Max(
+                    maximumAirborneFallSpeed,
+                    downwardYAxisSpeed);
+            }
+            else if (!wasGroundedForLandingSound)
+            {
+                float landingYAxisSpeed = Mathf.Max(
+                    maximumAirborneFallSpeed,
+                    GetDownwardYAxisSpeed(
+                        new Vector3(0f, motor.VerticalVelocity, 0f)));
+                AudioAssetReferences audio = GameAssetCatalog.Current != null
+                    ? GameAssetCatalog.Current.Audio
+                    : null;
+                SoundEffectCue cue = SelectLandingSound(
+                    landingYAxisSpeed,
+                    audio != null ? audio.PlayerFallSmall : null,
+                    audio != null ? audio.PlayerFallBig : null);
+                SoundEffectEvents.RequestPlay(cue, transform.position);
+                maximumAirborneFallSpeed = 0f;
+            }
+
+            wasGroundedForLandingSound = grounded;
+        }
+
+        private void ResetLandingSoundTracking()
+        {
+            landingSoundGroundStateInitialized = false;
+            wasGroundedForLandingSound = false;
+            maximumAirborneFallSpeed = 0f;
+        }
+
+        private static SoundEffectCue SelectLandingSound(
+            float downwardYAxisSpeed,
+            SoundEffectCue smallCue,
+            SoundEffectCue bigCue)
+        {
+            if (downwardYAxisSpeed >= BigLandingSoundSpeedThreshold)
+                return bigCue != null ? bigCue : smallCue;
+            if (downwardYAxisSpeed >= SmallLandingSoundSpeedThreshold)
+                return smallCue;
+            return null;
+        }
+
+        private static float GetDownwardYAxisSpeed(Vector3 velocity)
+        {
+            return Mathf.Max(0f, -velocity.y);
+        }
+
+
+
+        private void UpdateMagnetSound(bool active)
+        {
+            if (!active || magnetSound == null)
+            {
+                StopMagnetSound();
+                return;
+            }
+
+            if (magnetSoundPlaying) return;
+            if (magnetSoundLoopId == 0)
+                magnetSoundLoopId = SoundEffectEvents.CreateLoopId();
+
+            magnetSoundPlaying = SoundEffectEvents.RequestLoop(
+                magnetSoundLoopId,
+                magnetSound,
+                transform,
+                MagnetSoundVolumeScale,
+                1f,
+                MagnetSoundFadeSeconds);
+        }
+
+        private void StopMagnetSound()
+        {
+            if (magnetSoundPlaying && magnetSoundLoopId != 0)
+            {
+                SoundEffectEvents.RequestStopLoop(
+                    magnetSoundLoopId,
+                    MagnetSoundFadeSeconds);
+            }
+            magnetSoundPlaying = false;
+        }
+
+        private static bool TryGetMovementSoundPitch(
+            PlayerCharacterState state,
+            out float pitch)
+        {
+            switch (state)
+            {
+                case PlayerCharacterState.Move:
+                    pitch = StandingMovementSoundPitch;
+                    return true;
+                case PlayerCharacterState.CrouchMove:
+                    pitch = CrouchingMovementSoundPitch;
+                    return true;
+                default:
+                    pitch = 0f;
+                    return false;
+            }
+        }
+
+        private bool TryGetActiveMovementSoundPitch(out float pitch)
+        {
+            if (TryGetMovementSoundPitch(currentState, out pitch))
+                return true;
+
+            bool movementInputActive =
+                input.Move.sqrMagnitude
+                >= Profile.MovingThreshold * Profile.MovingThreshold;
+            bool swinging = magnetInteractor != null
+                && magnetInteractor.IsPullingTowardsPickaxe;
+            return currentState == PlayerCharacterState.ToolAction
+                && TryGetToolActionMovementSoundPitch(
+                    activeToolDefinition != null
+                        && activeToolDefinition.AllowMovementWhileUsing,
+                    motor != null && motor.IsGrounded,
+                    crouchColliderActive,
+                    movementInputActive,
+                    swinging,
+                    out pitch);
+        }
+
+        private static bool TryGetToolActionMovementSoundPitch(
+            bool toolAllowsMovement,
+            bool grounded,
+            bool crouching,
+            bool movementInputActive,
+            bool swinging,
+            out float pitch)
+        {
+            if (!toolAllowsMovement
+                || !grounded
+                || !movementInputActive
+                || swinging)
+            {
+                pitch = 0f;
+                return false;
+            }
+
+            pitch = crouching
+                ? CrouchingMovementSoundPitch
+                : StandingMovementSoundPitch;
+            return true;
+        }
+
 
         public bool ReceiveDamage(in DamageInfo damage)
         {
@@ -316,6 +680,100 @@ namespace Supernova.Voxels
                 maximumSpeed);
         }
 
+        /// <summary>
+        /// The player's current gravity-plus-external velocity, which is what a rope
+        /// constraint has to operate on.
+        /// </summary>
+        public Vector3 CombinedVelocity
+        {
+            get
+            {
+                ResolveReferences();
+                EnsureMotor();
+                return motor != null ? motor.CombinedVelocity : Vector3.zero;
+            }
+        }
+
+        /// <summary>
+        /// Applies a rope's distance constraint to the player. Only the outward radial
+        /// velocity is removed, so the player keeps swinging along the arc, and the
+        /// player is pulled back onto the rope's sphere so the rope cannot stretch.
+        /// Returns true while the rope is taut.
+        /// </summary>
+        public bool ApplyRopeConstraint(Vector3 anchor, float ropeLength)
+        {
+            ResolveReferences();
+            EnsureMotor();
+            if (motor == null) return false;
+
+            Vector3 anchorToPlayer = GetRopeAttachPoint() - anchor;
+            Vector3 constrained = RopeConstraint.ApplyTautConstraint(
+                motor.CombinedVelocity,
+                anchorToPlayer,
+                ropeLength,
+                out bool taut);
+            if (taut) motor.SetCombinedVelocity(constrained);
+
+            // Cancelling velocity is not enough on its own. Gravity is integrated and
+            // applied before this runs, so every frame leaks a sub-frame of outward
+            // displacement; without a positional fix the rope creeps longer and the
+            // velocity correction overshoots, which reads as vertical jitter.
+            Vector3 correction = RopeConstraint.CalculatePositionCorrection(
+                anchorToPlayer,
+                ropeLength);
+            if (correction.sqrMagnitude > RopeCorrectionEpsilon
+                && characterController != null
+                && characterController.enabled)
+            {
+                characterController.Move(correction);
+                taut = true;
+            }
+            return taut;
+        }
+
+        /// <summary>Adds an instantaneous velocity change, such as a rope yank.</summary>
+        public void AddExternalVelocity(Vector3 velocity, float maximumSpeed)
+        {
+            ResolveReferences();
+            EnsureMotor();
+            motor?.AddExternalVelocity(velocity, maximumSpeed);
+        }
+
+        /// <summary>
+        /// Overwrites the player's gravity-plus-external velocity. Used when releasing
+        /// a rope to scale the swing momentum the player flies away with.
+        /// </summary>
+        public void SetCombinedVelocity(Vector3 velocity)
+        {
+            ResolveReferences();
+            EnsureMotor();
+            motor?.SetCombinedVelocity(velocity);
+        }
+
+        /// <summary>
+        /// The point a rope is treated as attached to. Using the capsule centre rather
+        /// than the feet keeps the swing radius stable as the player rotates.
+        /// </summary>
+        public Vector3 GetRopeAttachPoint()
+        {
+            ResolveReferences();
+            return characterController != null
+                ? characterController.bounds.center
+                : transform.position;
+        }
+
+        /// <summary>
+        /// Advances the motor by one step with an explicit movement input. Exists so
+        /// motor behaviour such as external-velocity decay can be verified without
+        /// entering play mode.
+        /// </summary>
+        public void StepMotor(Vector3 planarMovement, float deltaTime)
+        {
+            ResolveReferences();
+            EnsureMotor();
+            motor?.Tick(planarMovement, deltaTime);
+        }
+
         public void ClearExternalVelocity()
         {
             ResolveReferences();
@@ -332,38 +790,51 @@ namespace Supernova.Voxels
 
         private PlayerInputSnapshot CaptureInput()
         {
-            Vector2 movement = new Vector2(
-                Input.GetAxisRaw("Horizontal"),
-                Input.GetAxisRaw("Vertical"));
-            bool grabHookMovementLocked =
-                grabHook != null && grabHook.LocksPlayerMovement;
-            if (grabHookMovementLocked)
-                movement = Vector2.zero;
+            Vector2 movement = GameInput.ReadVector2(GameInputActionId.Move);
             if (movement.sqrMagnitude > 1f) movement.Normalize();
             bool acceptsAction = Cursor.lockState == CursorLockMode.Locked;
-            bool primaryHeld = acceptsAction && Input.GetMouseButton(0);
-            bool towingCart = cartAttractor != null && cartAttractor.IsTowingCart;
-            bool cartTowClickConsumed = cartAttractor != null
-                && cartAttractor.ConsumedCartTowClickThisFrame;
+            bool primaryHeld = acceptsAction
+                && GameInput.Held(GameInputActionId.PrimaryAction);
             return new PlayerInputSnapshot(
                 movement,
                 acceptsAction
-                    && !grabHookMovementLocked
-                    && Input.GetButtonDown("Jump"),
-                primaryHeld && !towingCart && !cartTowClickConsumed
+                    && GameInput.Pressed(GameInputActionId.Jump),
+                primaryHeld
                     && toolController != null
                     && toolController.CanUseSelectedPrimaryAction(),
-                Input.GetKey(Profile.CrouchKey),
-                acceptsAction ? Input.mouseScrollDelta.y : 0f);
+                acceptsAction
+                    && GameInput.Held(GameInputActionId.SecondaryAction),
+                acceptsAction
+                    && GameInput.Held(GameInputActionId.ThrowPickaxe),
+                GameInput.Held(GameInputActionId.Crouch),
+                acceptsAction
+                    ? ReadScrollSteps()
+                    : 0f);
+        }
+
+        /// <summary>
+        /// Scroll wheel as a signed step count. Mathf.Sign must not be used here: it
+        /// returns +1 for an input of exactly zero, which would report a full scroll
+        /// step on every idle frame.
+        /// </summary>
+        private static float ReadScrollSteps()
+        {
+            float scroll =
+                GameInput.ReadVector2(GameInputActionId.HotbarScroll).y;
+            if (scroll > ScrollDeadZone) return 1f;
+            if (scroll < -ScrollDeadZone) return -1f;
+            return 0f;
         }
 
 
 
         private void TickLocomotion(float deltaTime, bool acceptInput)
         {
-            bool movementLocked =
-                grabHook != null && grabHook.LocksPlayerMovement;
-            Vector2 movement = acceptInput && !movementLocked
+            // While swinging on a rope the movement keys pump the swing instead of
+            // walking, so they must not also drive the ground motor.
+            bool swinging = magnetInteractor != null
+                && magnetInteractor.IsPullingTowardsPickaxe;
+            Vector2 movement = acceptInput && !swinging
                 ? input.Move
                 : Vector2.zero;
             Vector3 worldMovement = GetWorldMovement(movement);
@@ -505,7 +976,7 @@ namespace Supernova.Voxels
             return moving ? PlayerCharacterState.Move : PlayerCharacterState.Idle;
         }
 
-        private void PerformAttack()
+        private void PerformAttack(SoundEffectCue monsterHitSound)
         {
             Vector3 forward = view != null ? view.forward : transform.forward;
             Vector3 origin = view != null
@@ -521,23 +992,35 @@ namespace Supernova.Voxels
                 Profile.AttackMinimumForwardDot,
                 Profile.AttackDamage,
                 Profile.AttackImpulse,
+                out int damagedMonsterCount,
                 Profile.AttackLayers.value);
+            if (damagedMonsterCount > 0)
+            {
+                SoundEffectEvents.RequestPlay(
+                    monsterHitSound,
+                    centre);
+            }
         }
 
-        private void ScheduleMiningAttack(float delay)
+        private void ScheduleMiningAttack(
+            float delay,
+            SoundEffectCue monsterHitSound)
         {
-            pendingMiningAttackTimes.Enqueue(
-                Time.time + Mathf.Max(0f, delay));
+            pendingMiningAttacks.Enqueue(
+                new ScheduledMiningAttack(
+                    Time.time + Mathf.Max(0f, delay),
+                    monsterHitSound));
         }
 
         private void ApplyPendingMiningAttacksIfReady()
         {
-            while (pendingMiningAttackTimes.Count > 0
-                && Time.time >= pendingMiningAttackTimes.Peek())
+            while (pendingMiningAttacks.Count > 0
+                && Time.time >= pendingMiningAttacks.Peek().TriggerTime)
             {
-                pendingMiningAttackTimes.Dequeue();
+                ScheduledMiningAttack attack =
+                    pendingMiningAttacks.Dequeue();
                 voxelInteractor?.ApplyPendingMineIfReady();
-                PerformAttack();
+                PerformAttack(attack.MonsterHitSound);
             }
         }
 
@@ -546,22 +1029,22 @@ namespace Supernova.Voxels
             Vector3 forward = view != null ? view.forward : transform.forward;
             Vector3 right = view != null ? view.right : transform.right;
             Vector3 movement = right * moveInput.x + forward * moveInput.y;
-            if (Input.GetKey(KeyCode.Space)) movement += Vector3.up;
-            if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.C)) movement -= Vector3.up;
+            if (GameInput.Held(GameInputActionId.DebugFlyUp))
+                movement += Vector3.up;
+            if (GameInput.Held(GameInputActionId.DebugFlyDown))
+                movement -= Vector3.up;
             if (movement.sqrMagnitude > 1f) movement.Normalize();
-            float multiplier = Input.GetKey(KeyCode.LeftShift) ? Profile.DebugFlySpeedMultiplier : 1f;
-            transform.position += movement * Profile.DebugFlySpeed * multiplier * Time.deltaTime;
+            float multiplier = GameInput.Held(GameInputActionId.DebugFlyFast)
+                ? Profile.DebugFlySpeedMultiplier
+                : 1f;
+            transform.position += movement
+                * Profile.DebugFlySpeed
+                * multiplier
+                * Time.deltaTime;
         }
 
         private bool TryUpdateEquipmentLocomotion()
         {
-            if (grabHook != null && grabHook.LocksPlayerMovement)
-            {
-                equipmentController?.CancelActiveLocomotionOverride();
-                StopEquipmentLocomotionAnimation(true);
-                return false;
-            }
-
             if (input.CrouchHeld || crouchColliderActive)
             {
                 equipmentController?.CancelActiveLocomotionOverride();
@@ -609,17 +1092,26 @@ namespace Supernova.Voxels
             {
                 return;
             }
-            if (hasSmileFlag) animator.SetBool(SmileFlag, Input.GetKey(Profile.SmileKey));
-            if (hasHitFlag && Input.GetKeyDown(Profile.HitKey))
+            if (hasSmileFlag)
+            {
+                animator.SetBool(
+                    SmileFlag,
+                    GameInput.Held(GameInputActionId.DebugSmile));
+            }
+            if (hasHitFlag && GameInput.Pressed(GameInputActionId.DebugHit))
                 animator.SetTrigger(HitFlag);
-            if (hasDieFlag && Input.GetKeyDown(Profile.DieKey))
+            if (hasDieFlag && GameInput.Pressed(GameInputActionId.DebugDie))
                 animator.SetTrigger(DieFlag);
-            if (hasRecoverFlag && Input.GetKeyDown(Profile.RecoverKey))
+            if (hasRecoverFlag
+                && GameInput.Pressed(GameInputActionId.DebugRecover))
+            {
                 animator.SetTrigger(RecoverFlag);
+            }
 
             bool kocchi = false;
             Transform target = kocchiTarget;
-            if (target == null && Camera.main != null && !Camera.main.transform.IsChildOf(transform))
+            if (target == null && Camera.main != null
+                && !Camera.main.transform.IsChildOf(transform))
             {
                 target = Camera.main.transform;
             }
@@ -651,18 +1143,18 @@ namespace Supernova.Voxels
             if (hasIdleFlag) animator.SetBool(IdleFlag, idle);
             if (hasCrouchFlag) animator.SetBool(CrouchFlag, crouching);
             if (hasCrouchMoveFlag) animator.SetBool(CrouchMoveFlag, crouchMoving);
-            bool rifleSelected = IsRifleSelected;
-            rifleLocomotionLayerTargetWeight = rifleSelected
+            bool firearmSelected = IsFirearmSelected;
+            firearmLocomotionLayerTargetWeight = firearmSelected
                 && !jumping
                 && !crouching
                 && (walking
                     || idle
                     || activeToolDefinition != null
                         && activeToolDefinition.PrimaryAction
-                            == PlayerToolPrimaryAction.FireRifle)
+                            == PlayerToolPrimaryAction.FireProjectile)
                 ? 1f
                 : 0f;
-            rifleArmsLayerTargetWeight = rifleSelected
+            firearmArmsLayerTargetWeight = firearmSelected
                 && (jumping || crouching)
                 ? 1f
                 : 0f;
@@ -672,6 +1164,7 @@ namespace Supernova.Voxels
         {
             ResolveReferences();
             EnsureMotor();
+            ResetLandingSoundTracking();
             EnsureStateMachine();
             if (enabled && stateMachine.IsRunning
                 && stateMachine.Current == PlayerCharacterState.ToolAction)
@@ -710,13 +1203,13 @@ namespace Supernova.Voxels
 
             if (perspectiveCamera != null) perspectiveCamera.SetPlayerRoot(transform);
 
-            if (cartAttractor == null)
+            if (magnetInteractor == null)
             {
-                cartAttractor = GetComponent<FirstPersonCartAttractor>();
+                magnetInteractor = GetComponent<FirstPersonMagnetInteractor>();
             }
-            if (grabHook == null)
+            if (pickaxeThrow == null)
             {
-                grabHook = GetComponent<GrabHookController>();
+                pickaxeThrow = GetComponent<PickaxeThrowController>();
             }
             if (toolController == null)
             {
@@ -782,13 +1275,12 @@ namespace Supernova.Voxels
 
         private void ConfigureMotor(float moveSpeed)
         {
-            float gravity = grabHook != null && grabHook.IsAttached
-                ? 0f
-                : Profile.Gravity;
+            // Gravity always applies. A rope that cancelled gravity could not swing:
+            // the fall is what builds the pendulum in the first place.
             motor.Configure(
                 moveSpeed,
                 Profile.JumpHeight,
-                gravity,
+                Profile.Gravity,
                 Profile.GroundedForce);
         }
 
@@ -933,13 +1425,13 @@ namespace Supernova.Voxels
                 && animator.runtimeAnimatorController != null
                 ? animator.GetLayerIndex("Crouch Arms Locomotion Layer")
                 : -1;
-            rifleLocomotionLayerIndex = animator != null
+            firearmLocomotionLayerIndex = animator != null
                 && animator.runtimeAnimatorController != null
-                ? animator.GetLayerIndex(RifleLocomotionLayerName)
+                ? animator.GetLayerIndex(FirearmLocomotionLayerName)
                 : -1;
-            rifleArmsLayerIndex = animator != null
+            firearmArmsLayerIndex = animator != null
                 && animator.runtimeAnimatorController != null
-                ? animator.GetLayerIndex(RifleArmsLayerName)
+                ? animator.GetLayerIndex(FirearmArmsLayerName)
                 : -1;
             toolUpperBodyLayerIndex = animator != null && animator.runtimeAnimatorController != null
                 ? animator.GetLayerIndex("Tool UpperBody Layer")
@@ -954,17 +1446,17 @@ namespace Supernova.Voxels
             crouchToolArmsLayerTargetWeight = 0f;
             crouchToolArmsLayerWeight = 0f;
             crouchArmsLocomotionLayerWeight = 0f;
-            rifleLocomotionLayerTargetWeight = 0f;
-            rifleLocomotionLayerWeight = 0f;
-            rifleArmsLayerTargetWeight = 0f;
-            rifleArmsLayerWeight = 0f;
+            firearmLocomotionLayerTargetWeight = 0f;
+            firearmLocomotionLayerWeight = 0f;
+            firearmArmsLayerTargetWeight = 0f;
+            firearmArmsLayerWeight = 0f;
             toolUpperBodyActionObserved = false;
             if (crouchArmsLocomotionLayerIndex >= 0)
                 animator.SetLayerWeight(crouchArmsLocomotionLayerIndex, 0f);
-            if (rifleLocomotionLayerIndex >= 0)
-                animator.SetLayerWeight(rifleLocomotionLayerIndex, 0f);
-            if (rifleArmsLayerIndex >= 0)
-                animator.SetLayerWeight(rifleArmsLayerIndex, 0f);
+            if (firearmLocomotionLayerIndex >= 0)
+                animator.SetLayerWeight(firearmLocomotionLayerIndex, 0f);
+            if (firearmArmsLayerIndex >= 0)
+                animator.SetLayerWeight(firearmArmsLayerIndex, 0f);
             if (toolUpperBodyLayerIndex >= 0)
                 animator.SetLayerWeight(toolUpperBodyLayerIndex, 0f);
             if (crouchToolArmsLayerIndex >= 0)
@@ -1027,22 +1519,27 @@ namespace Supernova.Voxels
             if (active
                 && activeToolDefinition != null
                 && activeToolDefinition.PrimaryAction
-                    == PlayerToolPrimaryAction.FireRifle)
+                    == PlayerToolPrimaryAction.FireProjectile)
             {
-                EnterRifleContinuousActionImmediately();
+                EnterFirearmContinuousActionImmediately();
             }
         }
 
         private void SetToolActionAnimationSpeed(PlayerToolDefinition definition)
         {
-            if (!hasToolActionSpeed || animator == null) return;
             float multiplier = definition != null
                 ? definition.FirearmAnimationSpeedMultiplier
                 : 1f;
+            SetToolActionAnimationSpeedMultiplier(multiplier);
+        }
+
+        private void SetToolActionAnimationSpeedMultiplier(float multiplier)
+        {
+            if (!hasToolActionSpeed || animator == null) return;
             animator.SetFloat(ToolActionSpeed, multiplier);
         }
 
-        private void EnterRifleContinuousActionImmediately()
+        private void EnterFirearmContinuousActionImmediately()
         {
             if (activeToolActionLayerIndex < 0) return;
             int stateHash = activeToolActionLayerIndex == crouchToolArmsLayerIndex
@@ -1086,40 +1583,40 @@ namespace Supernova.Voxels
                 crouchArmsLocomotionLayerWeight);
         }
 
-        private void TickRifleLocomotionLayerBlend(float deltaTime)
+        private void TickFirearmLocomotionLayerBlend(float deltaTime)
         {
             if (animator == null
                 || animator.runtimeAnimatorController == null
-                || rifleLocomotionLayerIndex < 0)
+                || firearmLocomotionLayerIndex < 0)
             {
                 return;
             }
 
-            float blendSpeed = 1f / RifleLocomotionLayerBlendDuration;
-            rifleLocomotionLayerWeight = Mathf.MoveTowards(
-                rifleLocomotionLayerWeight,
-                rifleLocomotionLayerTargetWeight,
+            float blendSpeed = 1f / FirearmLocomotionLayerBlendDuration;
+            firearmLocomotionLayerWeight = Mathf.MoveTowards(
+                firearmLocomotionLayerWeight,
+                firearmLocomotionLayerTargetWeight,
                 blendSpeed * deltaTime);
             animator.SetLayerWeight(
-                rifleLocomotionLayerIndex,
-                rifleLocomotionLayerWeight);
+                firearmLocomotionLayerIndex,
+                firearmLocomotionLayerWeight);
         }
 
-        private void TickRifleArmsLayerBlend(float deltaTime)
+        private void TickFirearmArmsLayerBlend(float deltaTime)
         {
             if (animator == null
                 || animator.runtimeAnimatorController == null
-                || rifleArmsLayerIndex < 0)
+                || firearmArmsLayerIndex < 0)
             {
                 return;
             }
 
-            float blendSpeed = 1f / RifleLocomotionLayerBlendDuration;
-            rifleArmsLayerWeight = Mathf.MoveTowards(
-                rifleArmsLayerWeight,
-                rifleArmsLayerTargetWeight,
+            float blendSpeed = 1f / FirearmLocomotionLayerBlendDuration;
+            firearmArmsLayerWeight = Mathf.MoveTowards(
+                firearmArmsLayerWeight,
+                firearmArmsLayerTargetWeight,
                 blendSpeed * deltaTime);
-            animator.SetLayerWeight(rifleArmsLayerIndex, rifleArmsLayerWeight);
+            animator.SetLayerWeight(firearmArmsLayerIndex, firearmArmsLayerWeight);
         }
 
         private void TickToolUpperBodyLayerBlend(float deltaTime)
@@ -1182,9 +1679,10 @@ namespace Supernova.Voxels
                 : toolController != null
                     ? toolController.SelectedDefinition
                     : null;
-            bool rifleAction = definition != null
-                && definition.PrimaryAction == PlayerToolPrimaryAction.FireRifle;
-            return (crouching || rifleAction) && crouchToolArmsLayerIndex >= 0
+            bool firearmAction = definition != null
+                && definition.PrimaryAction
+                    == PlayerToolPrimaryAction.FireProjectile;
+            return (crouching || firearmAction) && crouchToolArmsLayerIndex >= 0
                 ? crouchToolArmsLayerIndex
                 : toolUpperBodyLayerIndex;
         }
@@ -1217,24 +1715,15 @@ namespace Supernova.Voxels
             {
                 case PlayerToolPrimaryAction.MineVoxel:
                     return true;
-                case PlayerToolPrimaryAction.AttractCart:
-                    return cartAttractor != null && cartAttractor.CanOperate;
                 case PlayerToolPrimaryAction.ThrowPersistentLight:
                     return definition.ProjectilePrefab != null;
                 case PlayerToolPrimaryAction.ThrowBomb:
                     return definition.BombProjectilePrefab != null;
-                case PlayerToolPrimaryAction.FireRifle:
+                case PlayerToolPrimaryAction.FireProjectile:
                     return definition.FirearmProjectilePrefab != null
                         && toolController != null
                         && toolController.GetAmmunition(definition.Item)
                             > CountPendingToolActions(definition);
-                case PlayerToolPrimaryAction.FireGrabHook:
-                    return grabHook != null
-                        && grabHook.CanBeginAim(definition);
-                case PlayerToolPrimaryAction.TowCart:
-                    // FirstPersonCartAttractor handles towing as a click
-                    // toggle before the held-action state machine runs.
-                    return false;
                 default:
                     return false;
             }
@@ -1261,19 +1750,22 @@ namespace Supernova.Voxels
 
         private void ApplyToolActionAnimation(PlayerToolDefinition definition)
         {
-            if (definition == null
-                || definition.PrimaryActionAnimation == null
-                || !EnsureToolAnimatorController())
-            {
-                return;
-            }
+            if (definition == null) return;
+            ApplyPlaceholderAnimation(definition.PrimaryActionAnimation);
+        }
 
-            if (activePrimaryActionAnimation == definition.PrimaryActionAnimation)
-                return;
+        /// <summary>
+        /// Points the shared upper-body placeholder slot at <paramref name="clip"/>.
+        /// Both the primary action and the magnet hold pose drive the same slot.
+        /// </summary>
+        private bool ApplyPlaceholderAnimation(AnimationClip clip)
+        {
+            if (clip == null || !EnsureToolAnimatorController()) return false;
+            if (activePrimaryActionAnimation == clip) return true;
 
-            toolAnimatorController[PrimaryActionPlaceholderClipName] =
-                definition.PrimaryActionAnimation;
-            activePrimaryActionAnimation = definition.PrimaryActionAnimation;
+            toolAnimatorController[PrimaryActionPlaceholderClipName] = clip;
+            activePrimaryActionAnimation = clip;
+            return true;
         }
 
         private void SubscribeToToolSelection()
@@ -1548,6 +2040,8 @@ namespace Supernova.Voxels
         {
             EnsureMotor();
             stateSeconds = 0f;
+            // The primary action takes over the shared upper-body slot.
+            ApplyMagnetHoldAnimation(false);
             activeToolDefinition = toolController != null
                 ? toolController.SelectedDefinition
                 : null;
@@ -1558,31 +2052,11 @@ namespace Supernova.Voxels
             StartConfiguredToolActionAnimation();
 
             if (activeToolDefinition == null) return;
-            if (activeToolDefinition.PrimaryAction
-                == PlayerToolPrimaryAction.FireGrabHook)
-            {
-                grabHook?.BeginAim(activeToolDefinition);
-                return;
-            }
             StartToolActionCycle(activeToolDefinition);
         }
 
         private void ExitToolAction()
         {
-            if (activeToolDefinition != null
-                && activeToolDefinition.PrimaryAction == PlayerToolPrimaryAction.AttractCart)
-            {
-                RemovePendingToolActions(activeToolDefinition);
-                cartAttractor?.EndAttraction();
-            }
-            if (activeToolDefinition != null
-                && activeToolDefinition.PrimaryAction
-                    == PlayerToolPrimaryAction.FireGrabHook
-                && grabHook != null
-                && grabHook.IsAiming)
-            {
-                grabHook.CancelAim();
-            }
             StopConfiguredToolActionAnimation();
             activeToolDefinition = null;
         }
@@ -1599,6 +2073,13 @@ namespace Supernova.Voxels
                     : ScheduleToolAction(definition, triggerTime);
             if (!scheduled) return false;
 
+            if (definition.PrimaryAction == PlayerToolPrimaryAction.MineVoxel)
+            {
+                SoundEffectEvents.RequestPlay(
+                    definition.PrimaryActionSound,
+                    transform.position);
+            }
+
             nextToolActionCycleTimes[definition] =
                 Time.time + definition.ActionCyclePeriod;
             return true;
@@ -1607,15 +2088,18 @@ namespace Supernova.Voxels
         private bool ScheduleMiningToolAction(PlayerToolDefinition definition)
         {
             float delay = definition.ActionTriggerDelay;
-            ScheduleMiningAttack(delay);
             bool isPickaxe = definition.Item == PlayerInventoryItem.Pickaxe;
+            ScheduleMiningAttack(
+                delay,
+                isPickaxe ? definition.MonsterHitSound : null);
             int strikeNumber = isPickaxe ? pickaxeStrikeParity + 1 : 1;
             VoxelMiningBrushSettings brush =
                 definition.GetMiningBrushForStrike(strikeNumber);
             bool scheduled = voxelInteractor != null
                 && voxelInteractor.TryScheduleMineAtCrosshair(
                     delay,
-                    brush);
+                    brush,
+                    isPickaxe ? definition.MiningHitSound : null);
             if (scheduled && isPickaxe)
             {
                 pickaxeStrikeParity ^= 1;
@@ -1676,20 +2160,38 @@ namespace Supernova.Voxels
             PlayerToolDefinition definition)
         {
             if (definition == null) return false;
+
+            bool executed;
             switch (definition.PrimaryAction)
             {
-                case PlayerToolPrimaryAction.AttractCart:
-                    return cartAttractor != null
-                        && cartAttractor.BeginAttraction();
                 case PlayerToolPrimaryAction.ThrowPersistentLight:
-                    return ThrowConfiguredProjectile(definition) != null;
+                    executed = ThrowConfiguredProjectile(definition) != null;
+                    break;
                 case PlayerToolPrimaryAction.ThrowBomb:
-                    return ThrowConfiguredBomb(definition) != null;
-                case PlayerToolPrimaryAction.FireRifle:
-                    return FireConfiguredProjectile(definition) != null;
+                    executed = ThrowConfiguredBomb(definition) != null;
+                    break;
+                case PlayerToolPrimaryAction.FireProjectile:
+                    executed = FireConfiguredProjectile(definition) != null;
+                    break;
                 default:
-                    return false;
+                    executed = false;
+                    break;
             }
+
+            if (executed)
+            {
+                bool usesConfiguredThrowSound = definition.ThrowSound != null;
+                SoundEffectEvents.RequestPlay(
+                    usesConfiguredThrowSound
+                        ? definition.ThrowSound
+                        : definition.PrimaryActionSound,
+                    transform.position,
+                    usesConfiguredThrowSound
+                        ? ConfiguredThrowSoundVolumeScale
+                        : 1f);
+            }
+
+            return executed;
         }
 
         private void TickToolAction(float deltaTime)
@@ -1703,29 +2205,6 @@ namespace Supernova.Voxels
             }
 
             stateSeconds += deltaTime;
-            if (activeToolDefinition.PrimaryAction
-                == PlayerToolPrimaryAction.FireGrabHook)
-            {
-                TickLocomotion(
-                    deltaTime,
-                    activeToolDefinition.AllowMovementWhileUsing);
-                if (input.PrimaryActionHeld) return;
-
-                if (Cursor.lockState == CursorLockMode.Locked)
-                {
-                    grabHook?.ReleaseThrow();
-                    nextToolActionCycleTimes[activeToolDefinition] =
-                        Time.time
-                        + activeToolDefinition.ActionCyclePeriod;
-                }
-                else
-                {
-                    grabHook?.CancelAim();
-                }
-                SelectGroundOrAirState();
-                return;
-            }
-
             TickLocomotion(deltaTime, activeToolDefinition.AllowMovementWhileUsing);
             bool actionHeld = input.PrimaryActionHeld;
             if (!actionHeld
@@ -1733,14 +2212,6 @@ namespace Supernova.Voxels
             {
                 SelectGroundOrAirState();
                 return;
-            }
-
-            if (activeToolDefinition.PrimaryAction
-                == PlayerToolPrimaryAction.AttractCart)
-            {
-                TickAttractorToolAction();
-                if (stateMachine.Current != PlayerCharacterState.ToolAction)
-                    return;
             }
 
             if (actionHeld
@@ -1752,22 +2223,296 @@ namespace Supernova.Voxels
             }
         }
 
-        private void TickAttractorToolAction()
+        /// <summary>
+        /// Right click is always the magnet, whatever tool is held, and the pickaxe
+        /// throw has its own key. Both run alongside the locomotion state machine so
+        /// they stay available while the player moves and mines.
+        /// </summary>
+        private void TickSecondaryAction()
         {
-            if (cartAttractor == null)
+            TickPickaxeThrowAction(input.ThrowPickaxeHeld);
+            TickMagnetSecondaryAction(input.SecondaryActionHeld);
+        }
+
+        private void TickMagnetSecondaryAction(bool held)
+        {
+            if (magnetInteractor == null)
             {
-                SelectGroundOrAirState();
+                StopMagnetSound();
                 return;
             }
 
-            if (!cartAttractor.IsActionActive)
+            if (!held)
             {
-                if (CountPendingToolActions(activeToolDefinition) > 0) return;
-                SelectGroundOrAirState();
+                if (magnetInteractor.IsActionActive)
+                    magnetInteractor.EndAttraction();
+                StopMagnetSound();
+                ApplyMagnetHoldAnimation(false);
                 return;
             }
 
-            cartAttractor.TickAttraction(input.AttractionDistanceSteps);
+            if (!magnetInteractor.IsActionActive)
+            {
+                magnetInteractor.BeginAttraction(ResolvePickaxeDefinition());
+            }
+            else
+            {
+                // While the rope is live the scroll wheel reels it instead of moving
+                // the ordinary magnet's hold point, and the movement keys drive the
+                // swing rather than walking.
+                if (magnetInteractor.IsPullingTowardsPickaxe)
+                {
+                    magnetInteractor.SetRopeSwingInput(
+                        GetWorldMovement(input.Move));
+                    // RequestRopeReel is positive-shortens. Scrolling forward gives
+                    // +1 and should draw the player in, so the step maps straight
+                    // through with no inversion.
+                    magnetInteractor.RequestRopeReel(
+                        input.AttractionDistanceSteps * RopeReelMetresPerStep);
+                    magnetInteractor.TickAttraction();
+                }
+                else
+                {
+                    magnetInteractor.TickAttraction(
+                        input.AttractionDistanceSteps);
+                }
+            }
+
+            bool actionActive = magnetInteractor.IsActionActive;
+            UpdateMagnetSound(magnetInteractor.IsAttractingTarget);
+            ApplyMagnetHoldAnimation(actionActive);
+        }
+
+        /// <summary>
+        /// Holds the two-handed magnet pose while attracting. A primary action owns
+        /// the same upper-body layer, so mining keeps priority over the pose.
+        /// </summary>
+        private void ApplyMagnetHoldAnimation(bool active)
+        {
+            bool wanted = active && activeToolDefinition == null;
+            if (magnetHoldAnimationActive == wanted) return;
+
+            magnetHoldAnimationActive = wanted;
+            // Hide the equipped model while the magnet pose owns the hands so it
+            // cannot clip through the held animation.
+            toolController?.SetEquippedToolModelHidden(wanted);
+            if (wanted)
+            {
+                PlayerToolDefinition definition = ResolveMagnetHoldDefinition();
+                AnimationClip clip = definition != null
+                    ? definition.MagnetHoldAnimation
+                    : null;
+                if (clip == null)
+                {
+                    magnetHoldAnimationActive = false;
+                    toolController?.SetEquippedToolModelHidden(false);
+                    return;
+                }
+                if (!ApplyPlaceholderAnimation(clip))
+                {
+                    magnetHoldAnimationActive = false;
+                    toolController?.SetEquippedToolModelHidden(false);
+                    return;
+                }
+
+                magnetHoldAnimationDefinition = definition;
+                SetContinuousToolActionAnimation(true);
+                SetToolActionAnimationSpeedMultiplier(
+                    definition.MagnetHoldLoopSpeedMultiplier);
+                PlayMagnetHoldAnimationAt(
+                    definition.MagnetHoldLoopStartNormalized);
+                return;
+            }
+
+            SetContinuousToolActionAnimation(false);
+            magnetHoldAnimationDefinition = null;
+        }
+
+        private PlayerToolDefinition ResolveMagnetHoldDefinition()
+        {
+            PlayerToolDefinition selected = toolController != null
+                ? toolController.SelectedDefinition
+                : null;
+            if (selected != null && selected.MagnetHoldAnimation != null)
+                return selected;
+
+            // An empty slot still gets the magnet, so fall back to the pickaxe's
+            // configured pose rather than leaving the hands in the locomotion pose.
+            PlayerToolDefinition pickaxe = ResolvePickaxeDefinition();
+            return pickaxe != null && pickaxe.MagnetHoldAnimation != null
+                ? pickaxe
+                : null;
+        }
+
+        private void TickMagnetHoldAnimationLoop()
+        {
+            if (!magnetHoldAnimationActive
+                || magnetHoldAnimationDefinition == null
+                || animator == null
+                || animator.runtimeAnimatorController == null
+                || activeToolActionLayerIndex < 0)
+            {
+                return;
+            }
+
+            AnimatorStateInfo state =
+                animator.GetCurrentAnimatorStateInfo(activeToolActionLayerIndex);
+            if (state.shortNameHash != ToolContinuousActionState
+                || animator.IsInTransition(activeToolActionLayerIndex))
+            {
+                return;
+            }
+
+            float loopStart =
+                magnetHoldAnimationDefinition.MagnetHoldLoopStartNormalized;
+            float loopEnd =
+                magnetHoldAnimationDefinition.MagnetHoldLoopEndNormalized;
+            float blendDuration =
+                magnetHoldAnimationDefinition.MagnetHoldLoopBlendNormalized;
+
+            // A very slow frame can step past the whole blend window. Recover by
+            // wrapping immediately instead of cross-fading from the clip's unrelated
+            // first frame, which Unity would already have sampled at this point.
+            if (state.normalizedTime >= loopEnd)
+            {
+                PlayMagnetHoldAnimationAt(
+                    WrapMagnetHoldNormalizedTime(
+                        state.normalizedTime,
+                        loopStart,
+                        loopEnd));
+                return;
+            }
+
+            float blendStart = GetMagnetHoldLoopBlendStart(
+                loopStart,
+                loopEnd,
+                blendDuration);
+            if (blendDuration <= 0f || state.normalizedTime < blendStart) return;
+
+            CrossFadeMagnetHoldAnimation(loopStart, blendDuration);
+        }
+
+        private void PlayMagnetHoldAnimationAt(float normalizedTime)
+        {
+            if (animator == null || activeToolActionLayerIndex < 0) return;
+            int stateHash = activeToolActionLayerIndex == crouchToolArmsLayerIndex
+                ? ToolArmsContinuousActionState
+                : ToolUpperBodyContinuousActionState;
+            animator.Play(stateHash, activeToolActionLayerIndex, normalizedTime);
+        }
+
+        private void CrossFadeMagnetHoldAnimation(
+            float normalizedTime,
+            float normalizedDuration)
+        {
+            if (animator == null || activeToolActionLayerIndex < 0) return;
+            int stateHash = activeToolActionLayerIndex == crouchToolArmsLayerIndex
+                ? ToolArmsContinuousActionState
+                : ToolUpperBodyContinuousActionState;
+            animator.CrossFade(
+                stateHash,
+                normalizedDuration,
+                activeToolActionLayerIndex,
+                normalizedTime);
+        }
+
+        private static float GetMagnetHoldLoopBlendStart(
+            float loopStart,
+            float loopEnd,
+            float blendDuration)
+        {
+            float start = Mathf.Clamp(loopStart, 0f, 0.95f);
+            float end = Mathf.Clamp(loopEnd, start + 0.05f, 1f);
+            float maximumBlend = (end - start) * 0.45f;
+            return end - Mathf.Clamp(blendDuration, 0f, maximumBlend);
+        }
+
+        private static float WrapMagnetHoldNormalizedTime(
+            float normalizedTime,
+            float loopStart,
+            float loopEnd)
+        {
+            float start = Mathf.Clamp(loopStart, 0f, 0.95f);
+            float end = Mathf.Clamp(loopEnd, start + 0.05f, 1f);
+            if (normalizedTime < end) return normalizedTime;
+
+            return start + Mathf.Repeat(normalizedTime - start, end - start);
+        }
+
+        /// <summary>
+        /// Hold the throw key to aim, release to launch. The key must be released and
+        /// pressed again to start another throw, so recovering a pickaxe while still
+        /// holding the key cannot immediately fling it back out.
+        /// </summary>
+        private void TickPickaxeThrowAction(bool held)
+        {
+            if (pickaxeThrow == null) return;
+
+            if (!held)
+            {
+                throwKeyRearmed = true;
+                if (!pickaxeThrow.IsAiming) return;
+                if (Cursor.lockState == CursorLockMode.Locked)
+                    pickaxeThrow.ReleaseThrow();
+                else
+                    pickaxeThrow.CancelAim();
+                return;
+            }
+
+            if (pickaxeThrow.IsAiming || !throwKeyRearmed) return;
+
+            // With a pickaxe already out, the key recalls it instead of aiming a
+            // second throw. Consume the press either way so holding the key cannot
+            // recall and immediately re-throw.
+            if (pickaxeThrow.HasThrowInFlight)
+            {
+                throwKeyRearmed = false;
+                // Drop the rope first, so the magnet is not left towing a pickaxe
+                // that has started flying home.
+                if (magnetInteractor != null
+                    && magnetInteractor.IsPullingTowardsPickaxe)
+                {
+                    magnetInteractor.EndAttraction();
+                }
+                pickaxeThrow.RecallThrow();
+                return;
+            }
+
+            PlayerToolDefinition pickaxe = ResolvePickaxeDefinition();
+            if (pickaxe == null) return;
+            // A held key that cannot start an aim is consumed, so releasing it later
+            // never counts as a throw.
+            if (!pickaxeThrow.BeginAim(pickaxe))
+                throwKeyRearmed = false;
+        }
+
+        private void CancelPickaxeThrowAim()
+        {
+            if (pickaxeThrow != null && pickaxeThrow.IsAiming)
+                pickaxeThrow.CancelAim();
+        }
+
+        private void CancelSecondaryAction()
+        {
+            CancelPickaxeThrowAim();
+            if (magnetInteractor != null
+                && magnetInteractor.IsActionActive)
+            {
+                magnetInteractor.EndAttraction();
+            }
+            StopMagnetSound();
+            ApplyMagnetHoldAnimation(false);
+        }
+
+        /// <summary>
+        /// The pickaxe definition supplies the magnet's retrieval tuning, so a
+        /// thrown pickaxe can be recovered while holding any other tool.
+        /// </summary>
+        private PlayerToolDefinition ResolvePickaxeDefinition()
+        {
+            return toolController != null
+                ? toolController.GetDefinition(PlayerInventoryItem.Pickaxe)
+                : null;
         }
 
         private BallisticProjectile FireConfiguredProjectile(
@@ -1939,10 +2684,10 @@ namespace Supernova.Voxels
 
         private void SuppressOverrideAnimationLayers()
         {
-            rifleLocomotionLayerTargetWeight = 0f;
-            rifleLocomotionLayerWeight = 0f;
-            rifleArmsLayerTargetWeight = 0f;
-            rifleArmsLayerWeight = 0f;
+            firearmLocomotionLayerTargetWeight = 0f;
+            firearmLocomotionLayerWeight = 0f;
+            firearmArmsLayerTargetWeight = 0f;
+            firearmArmsLayerWeight = 0f;
             toolUpperBodyLayerTargetWeight = 0f;
             toolUpperBodyLayerWeight = 0f;
             crouchToolArmsLayerTargetWeight = 0f;
@@ -1951,10 +2696,10 @@ namespace Supernova.Voxels
             if (animator == null || animator.runtimeAnimatorController == null)
                 return;
 
-            if (rifleLocomotionLayerIndex >= 0)
-                animator.SetLayerWeight(rifleLocomotionLayerIndex, 0f);
-            if (rifleArmsLayerIndex >= 0)
-                animator.SetLayerWeight(rifleArmsLayerIndex, 0f);
+            if (firearmLocomotionLayerIndex >= 0)
+                animator.SetLayerWeight(firearmLocomotionLayerIndex, 0f);
+            if (firearmArmsLayerIndex >= 0)
+                animator.SetLayerWeight(firearmArmsLayerIndex, 0f);
             if (toolUpperBodyLayerIndex >= 0)
                 animator.SetLayerWeight(toolUpperBodyLayerIndex, 0f);
             if (crouchToolArmsLayerIndex >= 0)
@@ -1969,12 +2714,16 @@ namespace Supernova.Voxels
                 Vector2 move,
                 bool jumpPressed,
                 bool primaryActionHeld,
+                bool secondaryActionHeld,
+                bool throwPickaxeHeld,
                 bool crouchHeld,
                 float attractionDistanceSteps)
             {
                 Move = move;
                 JumpPressed = jumpPressed;
                 PrimaryActionHeld = primaryActionHeld;
+                SecondaryActionHeld = secondaryActionHeld;
+                ThrowPickaxeHeld = throwPickaxeHeld;
                 CrouchHeld = crouchHeld;
                 AttractionDistanceSteps = attractionDistanceSteps;
             }
@@ -1982,6 +2731,8 @@ namespace Supernova.Voxels
             public Vector2 Move { get; }
             public bool JumpPressed { get; }
             public bool PrimaryActionHeld { get; }
+            public bool SecondaryActionHeld { get; }
+            public bool ThrowPickaxeHeld { get; }
             public bool CrouchHeld { get; }
             public float AttractionDistanceSteps { get; }
         }
@@ -2026,10 +2777,40 @@ namespace Supernova.Voxels
                 float deltaTime,
                 float maximumSpeed);
             void ResetExternalVelocity();
+            /// <summary>
+            /// Gravity and external motion combined. A rope has to constrain the whole
+            /// velocity, but the motor keeps the fall in VerticalVelocity and
+            /// everything else in externalVelocity, so it has to be composed here.
+            /// </summary>
+            Vector3 CombinedVelocity { get; }
+            /// <summary>
+            /// Replaces the combined velocity, splitting it back into the motor's
+            /// vertical and external channels.
+            /// </summary>
+            void SetCombinedVelocity(Vector3 velocity);
+            void AddExternalVelocity(Vector3 velocity, float maximumSpeed);
         }
 
         private sealed class CharacterControllerMotor : IPlayerMotor
         {
+            /// <summary>Per-second fraction of external momentum lost while standing.</summary>
+            private const float GroundedExternalDamping = 8f;
+            /// <summary>Light air drag, so a released swing still carries the player.</summary>
+            private const float AirborneExternalDamping = 0.35f;
+            /// <summary>Below this squared speed the residue is snapped to zero.</summary>
+            private const float ExternalVelocityCutoff = 0.01f;
+            /// <summary>
+            /// Fraction of the into-surface momentum removed on impact. Just under one
+            /// leaves a trace of push so the player still settles against the surface
+            /// rather than detaching from it.
+            /// </summary>
+            private const float ImpactAbsorption = 0.9f;
+            /// <summary>
+            /// Squared metres of undelivered displacement below which an impact is
+            /// treated as ordinary contact jitter rather than a real collision.
+            /// </summary>
+            private const float BlockedDisplacementEpsilon = 0.0000001f;
+
             private readonly CharacterController controller;
             private float moveSpeed;
             private float jumpHeight;
@@ -2077,8 +2858,18 @@ namespace Supernova.Voxels
                 Vector3 velocity = planarMovement * moveSpeed
                     + Vector3.up * VerticalVelocity
                     + externalVelocity;
-                CollisionFlags collisions = controller.Move(
-                    velocity * deltaTime);
+                Vector3 intended = velocity * deltaTime;
+                Vector3 startPosition = controller.transform.position;
+                CollisionFlags collisions = controller.Move(intended);
+                if ((collisions & CollisionFlags.Sides) != 0)
+                {
+                    // Only sideways impacts need this. Ground and ceiling contact is
+                    // handled below, and reacting to their blocked displacement too
+                    // would absorb ordinary standing-still momentum.
+                    AbsorbBlockedMomentum(
+                        intended,
+                        controller.transform.position - startPosition);
+                }
                 if ((collisions & CollisionFlags.Below) != 0
                     && externalVelocity.y < 0f)
                 {
@@ -2089,6 +2880,61 @@ namespace Supernova.Voxels
                 {
                     externalVelocity.y = 0f;
                 }
+
+                DecayExternalVelocity(wasGrounded, deltaTime);
+            }
+
+            /// <summary>
+            /// Removes the part of the external momentum that a wall just refused to
+            /// let through. Whatever horizontal displacement the controller did not
+            /// deliver is the direction it was blocked in, so cancelling the velocity
+            /// along that direction stops the player pressing into the wall after
+            /// hitting it, while the sideways part survives so they slide along it
+            /// instead of sticking.
+            /// </summary>
+            private void AbsorbBlockedMomentum(
+                Vector3 intended,
+                Vector3 actual)
+            {
+                if (externalVelocity.sqrMagnitude <= 0.000001f) return;
+
+                // Vertical blocking is the ground and ceiling's business, and mixing it
+                // in here would let standing on a floor eat horizontal momentum.
+                Vector3 blocked = intended - actual;
+                blocked.y = 0f;
+                if (blocked.sqrMagnitude <= BlockedDisplacementEpsilon) return;
+
+                Vector3 blockedDirection = blocked.normalized;
+                // Only momentum heading into the obstruction is absorbed; motion along
+                // or away from it is left untouched.
+                float intoSurface = Vector3.Dot(externalVelocity, blockedDirection);
+                if (intoSurface <= 0f) return;
+
+                externalVelocity -= blockedDirection
+                    * (intoSurface * Mathf.Clamp01(ImpactAbsorption));
+            }
+
+            /// <summary>
+            /// Bleeds off external velocity so momentum handed to the motor by a rope,
+            /// an explosion, or a pull eventually stops. Without this the player keeps
+            /// drifting forever, because nothing else ever reduces it.
+            /// </summary>
+            private void DecayExternalVelocity(bool grounded, float deltaTime)
+            {
+                if (externalVelocity.sqrMagnitude <= 0.000001f)
+                {
+                    externalVelocity = Vector3.zero;
+                    return;
+                }
+
+                // Standing on ground scrubs momentum quickly (boots on rock); in the
+                // air only light drag applies, so a swing release still carries.
+                float damping = grounded
+                    ? GroundedExternalDamping
+                    : AirborneExternalDamping;
+                externalVelocity *= Mathf.Clamp01(1f - damping * deltaTime);
+                if (externalVelocity.sqrMagnitude < ExternalVelocityCutoff)
+                    externalVelocity = Vector3.zero;
             }
 
             public void ResetVerticalVelocity()
@@ -2113,6 +2959,29 @@ namespace Supernova.Voxels
             public void ResetExternalVelocity()
             {
                 externalVelocity = Vector3.zero;
+            }
+
+            public Vector3 CombinedVelocity =>
+                externalVelocity + Vector3.up * VerticalVelocity;
+
+            public void SetCombinedVelocity(Vector3 velocity)
+            {
+                // Keep the fall in the vertical channel and the rest external, so
+                // grounding, jumping and ceiling clamps keep working unchanged.
+                VerticalVelocity = velocity.y;
+                externalVelocity = new Vector3(velocity.x, 0f, velocity.z);
+            }
+
+            public void AddExternalVelocity(
+                Vector3 velocity,
+                float maximumSpeed)
+            {
+                if (velocity.sqrMagnitude <= 0f) return;
+
+                externalVelocity += velocity;
+                externalVelocity = Vector3.ClampMagnitude(
+                    externalVelocity,
+                    Mathf.Max(0f, maximumSpeed));
             }
         }
     }

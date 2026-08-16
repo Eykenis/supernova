@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Jetpack
   m_EditorClassIdentifier: 
   equipmentId: jetpack
-  displayName: Jetpack
+  displayName: 喷气背包
   slot: 0
   visualPrefab: {fileID: 1082287062398939119, guid: d62b21bd8456ca2449bfbc8f2ea5e9a0,
     type: 3}

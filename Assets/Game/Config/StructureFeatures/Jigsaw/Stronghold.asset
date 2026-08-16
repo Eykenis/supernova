@@ -18,9 +18,9 @@ MonoBehaviour:
   accentVoxelType: {fileID: 11400000, guid: 6ba7c8169f26a2740ac4c458f0d19f2c, type: 2}
   placementStrategy: 1
   seedSalt: 161803
-  regionSizeInChunks: 6
+  regionSizeInChunks: 5
   placementChance: 0.3
-  minFloorHeight: 34
+  minFloorHeight: 20
   maxFloorHeight: 190
   ringStructureCount: 96
   ringCount: 6
@@ -30,7 +30,7 @@ MonoBehaviour:
   structureSetWeight: 1
   maxPieces: 40
   maxDepth: 9
-  maxHorizontalDistance: 84
+  maxHorizontalDistance: 79
   firstPieceId: stronghold_hall
   layoutAttempts: 8
   connectorPlacementAttempts: 8
@@ -466,23 +466,12 @@ MonoBehaviour:
     - stableId: library_tome
       kind: 0
       treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
       spawnChance: 1
       count: 1
       scatterRadiusInVoxels: 2
-      snapToFloor: 1
-      floorSearchDistance: 6
-    - stableId: library_guard
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 3, y: 1, z: -3}
-      yaw: 0
-      spawnChance: 0.6
-      count: 2
-      scatterRadiusInVoxels: 3
       snapToFloor: 1
       floorSearchDistance: 6
   - stableId: stronghold_prison
@@ -534,21 +523,10 @@ MonoBehaviour:
       openingHeight: 5
     processors: []
     spawnMarkers:
-    - stableId: prison_inmates
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 2}
-      yaw: 0
-      spawnChance: 0.9
-      count: 3
-      scatterRadiusInVoxels: 4
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: prison_remains
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: -3}
       yaw: 0
       spawnChance: 0.75
@@ -626,21 +604,10 @@ MonoBehaviour:
       chance: 0.3
       perimeterOnly: 1
     spawnMarkers:
-    - stableId: portal_warden
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
-      localOffset: {x: 0, y: 1, z: 4}
-      yaw: 0
-      spawnChance: 1
-      count: 1
-      scatterRadiusInVoxels: 3
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: portal_relic
       kind: 0
       treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: -2}
       yaw: 0
       spawnChance: 1
@@ -651,7 +618,7 @@ MonoBehaviour:
     - stableId: portal_hoard
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: -4, y: 1, z: -2}
       yaw: 0
       spawnChance: 0.85

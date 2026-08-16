@@ -238,6 +238,7 @@ Output socket 的 `Activation Chance` 控制该出口是否进入生长队列。
 | `Pillars` | 内部立柱 | 大厅 |
 | `PrisonCells` | 牢房栅栏（中间留门） | 监牢 |
 | `PortalFrame` | 传送门框 | 目标房间 |
+| `SpiralStairs` | 生成程序化螺旋坡道的通用/原型装饰；当前正式 NetherFortress 不使用 | 实验性 `VerticalShaft` 或大厅 |
 
 ### 2.6 Build Style 怎么选
 
@@ -283,19 +284,19 @@ fortress_portal_room  SupportToGround(24) + ClearAbove(2) + Weathering(Accent, 0
 mineshaft_storage     SupportToGround(16)
 ```
 
-## 4. 放宝藏和怪物（Spawn Markers）
+## 4. 放宝藏和特殊位置（Spawn Markers）
 
-世界的自然散布不知道结构存在，所以它不会保证"传送门房间有 Boss"或
-"图书室台座上有战利品"。用 spawn marker 手工指定。
+世界的自然散布不知道结构存在，所以它不会保证"图书室台座上有战利品"。
+这类非怪物内容用 spawn marker 手工指定；怪物统一走世界级随机生成。
 
 每个模块展开 `Spawn Markers` 添加，字段：
 
 | 字段 | 说明 |
 |---|---|
 | Stable Id | 模块内唯一 |
-| Kind | `Treasure` 或 `Monster` |
+| Kind | `Treasure`、`Checkpoint` 或 `PlayerSpawn` |
 | Treasure | Kind = Treasure 时指定 `TreasureDefinition` 资产 |
-| Monster | Kind = Monster 时指定 `MonsterSpawnDefinition` 资产 |
+| Checkpoint Prefab | Kind = Checkpoint 时指定检查点模型 |
 | Local Offset | 相对模块原点的偏移，**在模块自身坐标系内**（见下） |
 | Yaw | 在模块朝向之上再叠加的旋转角度 |
 | Spawn Chance | 这个 marker 是否触发的概率 |
@@ -328,34 +329,28 @@ mineshaft_storage     SupportToGround(16)
 落在第一个"下方是实体、自身是空气"的位置。找不到就**不生成**这个实例。
 
 这让你不必精确对齐地板高度——大致放在房间里、勾上 Snap To Floor 就行。
-对于本来就该悬空的东西（吊灯、飞行怪）关掉它。
+对于本来就该悬空的东西关掉它。
 
 ⚠️ 关掉 Snap To Floor 时请确认 marker 位置确实是空气，否则宝箱会嵌在墙里。
 
-### 4.3 怪物名额
+### 4.3 怪物自然生成
 
-marker 怪物用**独立名额**，不占用自然生成的额度：
+Jigsaw 不再使用 marker 固定生成怪物。所有怪物都从 `MonsterSpawnTable` 中
+均匀随机选择，并遵守：
 
-- `MonsterSpawnTable.Maximum Active Monsters` — 自然散布的上限
-- `MonsterSpawnTable.Maximum Marker Monsters` — 结构 marker 的上限
+- `Maximum Active Monsters` — 当前自然怪物总上限；
+- `Player Exclusion Radius In Chunks` — 玩家周围禁止生成的区块半径，默认 3；
+- `Spawn Attempt Interval Seconds` — 两次生成判定间隔，默认 5 秒；
+- `Spawn Attempt Chance` — 每次判定生成一只怪物的概率，默认 0.3；
+- `Candidate Chunks Per Spawn Attempt` — 判定成功后最多抽查的远处区块数，默认 4；
+- 每个 `MonsterSpawnDefinition` 的地面搜索尝试次数。
 
-好处是世界里怪物再多，你设计的 Boss 房照样会出怪。但 marker 名额也有上限，
-超出后新的 marker 怪物会被跳过。如果地图里 Boss 房很多，把
-`Maximum Marker Monsters` 调大。
+每 5 秒最多排队一只怪物，不会再因整批区块同时完成而集中刷怪。候选区块与
+真正实例化时都会按玩家**当前位置**检查径向距离，3 个区块半径内的候选
+都会被跳过。使用外部 landing cell 的 DenseJigsaw 会等玩家第一次从传送门
+进入内部后才启动计时。
 
 ### 4.4 典型配法
-
-**Boss 房（传送门房间放一只精英怪）**
-
-```text
-Stable Id = portal_boss
-Kind = Monster
-Monster = <你的精英怪 MonsterSpawnDefinition>
-Local Offset = (0, 1, 0)
-Spawn Chance = 1
-Count = 1
-Snap To Floor = ✅   Floor Search Distance = 6
-```
 
 **图书室战利品（两件宝藏散在房间里）**
 
@@ -367,18 +362,6 @@ Local Offset = (0, 1, 0)
 Spawn Chance = 1
 Count = 2
 Scatter Radius In Voxels = 3
-Snap To Floor = ✅
-```
-
-**走廊里偶遇的小怪（一半概率、三只一群）**
-
-```text
-Stable Id = hall_patrol
-Kind = Monster
-Local Offset = (0, 1, 4)      # 从通道起点向前 4 格
-Spawn Chance = 0.5
-Count = 3
-Scatter Radius In Voxels = 2
 Snap To Floor = ✅
 ```
 
@@ -493,7 +476,7 @@ marker，会自动继承模板的。这样手绘的房间连带它的战利品�
 | `Required piece cannot appear within maxDepth` | 必需模块的深度区间与 Max Depth 无交集 | 调小模块的 `Minimum Graph Depth` 或调大结构 `Max Depth` |
 | `duplicate processor ID` | 同模块内处理器 ID 重复 | 改名 |
 | `duplicate spawn marker ID` | 同模块内 marker ID 重复 | 改名 |
-| `has no Treasure/Monster prefab assigned` | marker 没指定资产 | 填上 `Treasure` 或 `Monster` 字段 |
+| `has no Treasure prefab assigned` | treasure marker 没指定资产 | 填上 `Treasure` 字段 |
 | `placement region narrower than twice its layout radius` | 违反 1.2 的硬约束 | 增大 Region Size 或减小 Max Horizontal Distance |
 
 资产还可能直接报红字异常（`TryCreateSettings` 失败）：
@@ -558,12 +541,12 @@ marker，会自动继承模板的。这样手绘的房间连带它的战利品�
 | 资产 | 值得参考的地方 |
 |---|---|
 | `AbandonedMineshaft.asset` | Excavated 隧道网络、木支撑装饰、封口模块 |
-| `Stronghold.asset` | **ConcentricRings 选址**、必达房间（portal room）、Boss marker |
-| `NetherFortress.asset` | **双池** bridge→corridor 分区、深支柱 processor、**structure set 竞争** |
+| `Stronghold.asset` | **ConcentricRings 选址**、必达房间（portal room） |
+| `NetherFortress.asset` | **双池** bridge→corridor 分区、低概率墙门→空心电梯井→landing、深支柱 processor、**structure set 竞争** |
 | `AncientCity.asset` | **手绘模板作起点**、模板自带 socket |
 | `CaveVillage.asset` | **道路优先布局**：房屋挂在道路侧插口、模板自带 marker |
 | `AncientPrison.asset` | 小尺寸高密度、风化 processor |
-| `CactusGrotto.asset` | 全 Excavated 无砌造、椭球模板、群体怪物 marker |
+| `CactusGrotto.asset` | 全 Excavated 无砌造、椭球模板 |
 
 需要新结构就复制一份最接近的资产（Ctrl+D）再改，或按第 1 节从零新建。
 改坏了用 Undo，或从版本控制恢复那个 `.asset` 文件。
@@ -648,7 +631,7 @@ marker，会自动继承模板的。这样手绘的房间连带它的战利品�
 
 | 字段 | 说明 |
 |---|---|
-| Shape | `Room` / `Corridor` / `Crossing` / `Stairs` |
+| Shape | `Room` / `Corridor` / `Crossing` / `Stairs` / `VerticalShaft` |
 | Build Style | `Excavated` / `Masonry` |
 | Connector Pattern | 仅在 Explicit Sockets 为空时生效的兼容模式 |
 | Decoration | 见 2.5 节 |
@@ -686,17 +669,36 @@ marker，会自动继承模板的。这样手绘的房间连带它的战利品�
 |---|---|
 | Stable Id | 模块内唯一 |
 | Role | `Input` / `Output` / `Bidirectional` |
-| Face | `Forward` / `Right` / `Back` / `Left`，相对模块朝向，旋转后自动换算 |
+| Face | `Forward` / `Right` / `Back` / `Left` / `Up` / `Down`；水平面随模块 yaw 换算，上下保持世界竖直 |
 | Joint | 预留，当前用 `Aligned` |
 | Socket Name | 自身名字 |
 | Target Name | 期望对方的名字，`*` 通配 |
 | Target Pool Id | 该出口的主候选池 |
 | Fallback Pool Id | 主池全失败后尝试的封口池 |
-| Along Offset | Passage 侧面 socket 沿通道的偏移，`-1` 用中点 |
-| Lateral Offset | 前后墙接口相对中心的横向偏移 |
-| Vertical Offset | 开口底部相对地板的高度 |
+| Along Offset | Passage 侧面或上下 socket 沿通道的偏移，`-1` 用中点；Box 上下 socket 的 `-1` 表示中心 |
+| Lateral Offset | socket 表面内的横向偏移 |
+| Vertical Offset | 水平墙面开口底部相对地板的高度；上下 socket 不使用 |
 | Activation Chance | 该出口进入生长队列的概率 |
-| Opening Width / Height | 实际雕出的门洞尺寸 |
+| Opening Width / Height | 水平 socket 为门洞宽高；上下 socket 为水平孔洞的左右宽度 / 前后长度 |
+
+通用垂直连接仍要求父 `Up` 输出只由子 `Down` 输入消费、父 `Down` 输出只由
+子 `Up` 输入消费；生成器不会翻转 piece。当前正式 `NetherFortress` 不使用这类
+顶底板 socket，也不生成楼梯，而是通过不同高度的水平墙面门洞实现垂直换层。
+
+推荐配置与当前资产一致：junction 的 `Forward` 墙在 `lateralOffset = +9 / -9`
+处各放一个 3×5 output，`Activation Chance` 分别为 `0.12`（向上）与 `0.08`
+（向下），显著低于普通水平出口。它们连接 7×16×7 的空心 `VerticalShaft`；
+井道的 `Back` input 与 `Forward` output 使用 `verticalOffset = 1 / 11`（向上）
+或 `11 / 1`（向下），把另一端 9×7×9 landing 放到相差 10 个体素的高度。
+所有 opening 都在侧墙，因此来源房间、井道底板和顶板、landing 楼板保持完整。
+
+该链使用保留的 `fort_lift_*` socket 名称，必须精确匹配；DenseJigsaw 的 `*`
+通配 socket 不能消费它们，方向、角色和低概率也必须保留。只有子 piece 真正
+放置成功才雕刻两侧 opening。对于只有一个必选出口的 `VerticalShaft`，生成器
+还会在放置井道前预留一个 piece 数量和一个深度层级，并预检 landing 的边界、
+半径与碰撞，再优先处理该出口。若 landing 无法落位，整条井道分支被拒绝，
+来源墙面不会开门。这样每个已生成入口都必然连接另一房间，同时不会连续堆叠
+竖井；玩家如何在空井内升降由其他玩法系统负责。
 
 ### 10.4 Spawn Marker 级（StructureSpawnMarkerDefinition）
 
@@ -757,14 +759,14 @@ A：可以。多个 Input socket 时，生成器会在所有兼容入口中等�
 对齐，于是同一个房间可能从不同方向被接入。
 
 **Q：想让某个房间必定有一只 Boss。**
-A：在该模块加一个 `Kind = Monster`、`Spawn Chance = 1` 的 spawn marker，
-见第 4 节。注意 Boss 房本身也要 `Minimum Count = 1`（见 2.1 节），否则
-房间本身都不一定出现。
+A：当前不支持结构固定怪物。怪物统一由世界自然生成；Boss 应通过任务或
+独立遭遇战系统触发，不要添加 Jigsaw monster marker。
 
 **Q：宝箱嵌在墙里 / 浮在空中。**
 A：勾上 marker 的 `Snap To Floor` 并给足 `Floor Search Distance`（6 左右）。
 见 4.2 节。
 
-**Q：结构里的怪物没出现。**
-A：三种可能：`Maximum Marker Monsters` 已满；marker 的 prefab 没填（校验会
-报 Error）；`Snap To Floor` 找不到地面而放弃。检查 Inspector 的校验提示。
+**Q：附近一直没有怪物。**
+A：自然怪物不会在玩家当前区块周围 3 个区块内生成；每 5 秒的判定也只有
+0.3 概率成功。还要检查 `Maximum Active Monsters`、是否已经首次穿过 Dense
+传送门，以及远处候选区块的地面与头顶空间是否满足要求。

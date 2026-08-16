@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using System.Collections.Generic;
 using Supernova.UI;
 using Supernova.Voxels;
@@ -31,8 +32,6 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0.01f)] private float mouseSensitivity = 2f;
         [SerializeField] private bool lockCursorOnEnable = true;
         [SerializeField] private bool clickToRecaptureCursor = true;
-        [FormerlySerializedAs("switchKey")]
-        [SerializeField] private KeyCode switchViewKey = KeyCode.F5;
         [FormerlySerializedAs("initialMode")]
         [SerializeField] private PlayerViewMode initialViewMode = PlayerViewMode.FirstPerson;
 
@@ -95,7 +94,11 @@ namespace Supernova.Gameplay
         private float smoothedUpperBodyPitch;
         private float smoothedUpperBodyYaw;
         private bool cursorLockRequested;
+        private const int LookInputSuppressionFrameCount = 5;
+        private int suppressLookInputThroughFrame = -1;
         private bool hasApplicationFocus = true;
+        private bool menuPresentationActive;
+        private bool menuFirstPersonVisibilityActive;
         private readonly List<ShadowBoneProxy> shadowBoneProxies =
             new List<ShadowBoneProxy>();
         private readonly List<ShadowRendererProxy> shadowRendererProxies =
@@ -104,6 +107,7 @@ namespace Supernova.Gameplay
             new Dictionary<Transform, Transform>();
         private Transform shadowProxySourceHead;
         private GameObject shadowProxyHeadRoot;
+        private Transform skinnedMeshCullingRoot;
 
         private sealed class ShadowBoneProxy
         {
@@ -123,6 +127,8 @@ namespace Supernova.Gameplay
 
         public PlayerViewMode CurrentMode => currentMode;
         public Camera ControlledCamera => controlledCamera;
+        public Transform PlayerRoot => playerRoot;
+        public bool IsMenuPresentationActive => menuPresentationActive;
         public float MouseSensitivity => Mathf.Max(0.01f, mouseSensitivity);
         public bool LockCursorOnEnable => lockCursorOnEnable;
         public bool CursorLockRequested => cursorLockRequested;
@@ -179,6 +185,7 @@ namespace Supernova.Gameplay
 
         private void Awake()
         {
+            lookPitch = 0f;
             ResolveReferences();
             SetMode(initialViewMode, true);
         }
@@ -205,7 +212,7 @@ namespace Supernova.Gameplay
 
             if (Cursor.lockState != CursorLockMode.Locked
                 && clickToRecaptureCursor
-                && Input.GetMouseButtonDown(0))
+                && GameInput.Pressed(GameInputActionId.PrimaryAction))
             {
                 cursorLockRequested = true;
                 SetCursorLocked(true);
@@ -218,11 +225,15 @@ namespace Supernova.Gameplay
                 SetCursorLocked(true);
             }
 
-            if (Input.GetKeyDown(switchViewKey))
+            if (GameInput.Pressed(GameInputActionId.TogglePerspective))
             {
                 CycleMode();
             }
-            if (Cursor.lockState == CursorLockMode.Locked) UpdateLook();
+            if (Cursor.lockState == CursorLockMode.Locked)
+            {
+                if (!ShouldSuppressLookInput())
+                    UpdateLook();
+            }
         }
 
         private void LateUpdate()
@@ -230,7 +241,10 @@ namespace Supernova.Gameplay
             ResolveReferences();
             if (controlledCamera == null || playerRoot == null) return;
 
-            SetFirstPersonRendererState(currentMode == PlayerViewMode.FirstPerson);
+            SetFirstPersonRendererState(
+                currentMode == PlayerViewMode.FirstPerson
+                && (!menuPresentationActive
+                    || menuFirstPersonVisibilityActive));
             UpdateUpperBodyPose();
             UpdateCrouchArmPose();
             SyncFirstPersonShadowProxies();
@@ -278,14 +292,17 @@ namespace Supernova.Gameplay
 
         private void UpdateLook()
         {
-            FirstPersonCartAttractor attractor =
-                GetComponentInParent<FirstPersonCartAttractor>();
+            FirstPersonMagnetInteractor attractor =
+                GetComponentInParent<FirstPersonMagnetInteractor>();
             if (attractor != null && attractor.IsManipulatingHeldObject)
             {
                 return;
             }
-            float mouseX = Input.GetAxis("Mouse X") * Mathf.Max(0.01f, mouseSensitivity);
-            float mouseY = Input.GetAxis("Mouse Y") * Mathf.Max(0.01f, mouseSensitivity);
+            Vector2 look = GameInput.ReadVector2(GameInputActionId.Look);
+            float sensitivity = Mathf.Max(0.01f, mouseSensitivity)
+                * LookSensitivitySettings.Multiplier;
+            float mouseX = look.x * sensitivity;
+            float mouseY = look.y * sensitivity;
             if (currentMode == PlayerViewMode.ThirdPerson)
             {
                 AddLookYaw(mouseX);
@@ -307,6 +324,8 @@ namespace Supernova.Gameplay
             {
                 playerRoot = root;
                 playerController = null;
+                skinnedMeshCullingRoot = null;
+                EnsurePlayerSkinnedMeshesUpdateOffscreen();
             }
         }
 
@@ -326,7 +345,10 @@ namespace Supernova.Gameplay
                 ? PlayerViewMode.FirstPerson
                 : PlayerViewMode.ThirdPerson;
             bool firstPerson = currentMode == PlayerViewMode.FirstPerson;
-            SetFirstPersonRendererState(firstPerson);
+            SetFirstPersonRendererState(
+                firstPerson
+                && (!menuPresentationActive
+                    || menuFirstPersonVisibilityActive));
 
             if (!firstPerson && previousMode != PlayerViewMode.ThirdPerson)
             {
@@ -343,6 +365,25 @@ namespace Supernova.Gameplay
             smoothedUpperBodyYaw = 0f;
         }
 
+        public void SetMenuPresentationActive(bool active)
+        {
+            if (menuPresentationActive != active)
+                menuFirstPersonVisibilityActive = false;
+            menuPresentationActive = active;
+            SetFirstPersonRendererState(
+                currentMode == PlayerViewMode.FirstPerson
+                && (!active || menuFirstPersonVisibilityActive));
+        }
+
+        public void SetMenuFirstPersonVisibilityActive(bool active)
+        {
+            menuFirstPersonVisibilityActive = menuPresentationActive && active;
+            SetFirstPersonRendererState(
+                currentMode == PlayerViewMode.FirstPerson
+                && (!menuPresentationActive
+                    || menuFirstPersonVisibilityActive));
+        }
+
         public void Bind(
             Transform root,
             Transform head,
@@ -351,9 +392,11 @@ namespace Supernova.Gameplay
         {
             playerRoot = root;
             playerController = null;
+            skinnedMeshCullingRoot = null;
             animatedHead = head;
             controlledCamera = camera;
             firstPersonHiddenRenderers = renderersHiddenInFirstPerson;
+            EnsurePlayerSkinnedMeshesUpdateOffscreen();
             if (animatedHead != null && controlledCamera != null)
             {
                 CacheAnimatedHeadScale();
@@ -870,7 +913,7 @@ namespace Supernova.Gameplay
         private void UpdateCrouchArmPose()
         {
             if (playerController == null || crouchArmForwardAngle <= 0f) return;
-            if (playerController.IsRifleSelected) return;
+            if (playerController.IsFirearmSelected) return;
             float forwardAngle = crouchArmForwardAngle
                 * Mathf.Clamp01(playerController.CrouchPoseWeight);
             if (forwardAngle <= 0f) return;
@@ -923,7 +966,7 @@ namespace Supernova.Gameplay
                     cursorLockRequested = true;
                 SetCursorLocked(false);
             }
-            else if (cursorLockRequested && !GameHudController.IsModalMenuOpen)
+            else if (cursorLockRequested && !GameHudController.IsGameplayInputBlocked)
             {
                 SetCursorLocked(true);
             }
@@ -938,15 +981,30 @@ namespace Supernova.Gameplay
             if (Application.isPlaying) SetCursorLocked(false);
         }
 
-        private static void SetCursorLocked(bool locked)
+        private void SetCursorLocked(bool locked)
         {
-            Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.lockState = locked
+                ? CursorLockMode.Locked
+                : CursorLockMode.None;
             Cursor.visible = !locked;
+            if (locked)
+            {
+                suppressLookInputThroughFrame = Mathf.Max(
+                    suppressLookInputThroughFrame,
+                    Time.frameCount + LookInputSuppressionFrameCount);
+            }
         }
+
+        private bool ShouldSuppressLookInput()
+        {
+            return Time.frameCount <= suppressLookInputThroughFrame;
+        }
+
 
         private void ResolveReferences()
         {
             if (playerRoot == null) playerRoot = transform;
+            EnsurePlayerSkinnedMeshesUpdateOffscreen();
             if (playerController == null || playerController.transform != playerRoot)
                 playerController = playerRoot.GetComponent<VoxelPlayerController>();
             if (characterAnimator == null)
@@ -983,6 +1041,31 @@ namespace Supernova.Gameplay
                 }
                 CacheAnimatedHeadScale();
             }
+        }
+
+        private void EnsurePlayerSkinnedMeshesUpdateOffscreen()
+        {
+            if (playerRoot == null || skinnedMeshCullingRoot == playerRoot)
+            {
+                return;
+            }
+
+            SkinnedMeshRenderer[] renderers =
+                playerRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                SkinnedMeshRenderer renderer = renderers[i];
+                if (renderer != null)
+                {
+                    // MagicaCloth and the first-person upper-body pose can move
+                    // vertices beyond the imported local bounds. Keeping the
+                    // skinning update alive lets Unity refresh those bounds
+                    // before frustum culling, preventing the entire garment
+                    // from disappearing at the edge of the camera view.
+                    renderer.updateWhenOffscreen = true;
+                }
+            }
+            skinnedMeshCullingRoot = playerRoot;
         }
     }
 }

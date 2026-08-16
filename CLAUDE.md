@@ -29,3 +29,5 @@ Move or rename Unity assets with their `.meta` files intact, preferably inside t
 ## 要求
 
 禁止使用硬编码路径，应查找全局路径表，并更新该表以适配路径加载.
+
+禁止 git stash，未明确时，git 只允许 add remove commit push pull

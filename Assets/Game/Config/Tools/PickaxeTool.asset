@@ -14,6 +14,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 1
   primaryAction: 1
+  primaryActionSound: {fileID: 11400000, guid: 19ec82b1a0f157e4ca208863cbb6344e, type: 2}
+  throwSound: {fileID: 11400000, guid: d4f4c8e6b02582d46a3829384a89b9df, type: 2}
+  miningHitSound: {fileID: 11400000, guid: bc66f66cbc779874eb226dea45bcee89, type: 2}
+  monsterHitSound: {fileID: 11400000, guid: 6f0204e773a07094284727c3a742db3b, type: 2}
+  thrownTerrainHitSound: {fileID: 11400000, guid: ce5b4c083d721994cbfa7b58a64de89f,
+    type: 2}
+  magnetHoldAnimation: {fileID: 7400000, guid: 22d99a9df90a7b142a2b2fa9a9f4d66d, type: 3}
+  magnetHoldLoopStartNormalized: 0.7
+  magnetHoldLoopEndNormalized: 1
+  magnetHoldLoopBlendNormalized: 0.45
+  magnetHoldLoopSpeedMultiplier: 0.33333334
   animationTriggerMode: 1
   primaryActionAnimation: {fileID: 7400000, guid: 89a3527a255c7c742bc515e47351fbf1,
     type: 2}
@@ -29,22 +40,33 @@ MonoBehaviour:
   upwardThrowSpeed: 1.5
   throwSpinSpeed: 8
   throwForwardOffset: 0.75
+  bombProjectilePrefab: {fileID: 0}
+  bombEntityExplosionImpulse: 240
+  bombExplosionEffectPrefab: {fileID: 0}
+  bombExplosionEffectLifetime: 3
+  thrownPickaxePrefab: {fileID: 5950344990439101858, guid: bfa15a0c39faec84aa83e8ce04d45ff1,
+    type: 3}
+  pickaxeThrowSpeed: 22
+  pickaxeSpinRevolutions: 2.4
+  pickaxePickupDistance: 1.6
+  pickaxeMagnetPullAcceleration: 34
+  pickaxeMagnetMaximumPullSpeed: 16
+  pickaxeMagnetRange: 25
+  pickaxeMagnetAimAngle: 20
+  ropeReelInSpeed: 0
+  ropeManualReelSpeed: 4
+  ropeMinimumLength: 2.5
+  ropeYankStrength: 0.35
+  ropeMaximumYankSpeed: 7
+  ropeSwingAcceleration: 5
+  ropeSwingInputResponse: 5
+  ropeMaximumSpeed: 34
+  ropeReleaseMomentum: 1
   firearmProjectilePrefab: {fileID: 0}
   projectileSpeed: 180
   initialAmmunition: 120
   muzzleFlashPrefab: {fileID: 0}
   muzzleFlashLifetime: 0.75
-  grabHookProjectileModelPrefab: {fileID: 0}
-  grabHookLaunchSpeed: 36
-  grabHookMaximumLength: 30
-  grabHookCollisionRadius: 0.12
-  grabHookRetractSpeed: 45
-  grabHookAimPredictionDuration: 3
-  grabHookAimPredictionStep: 0.05
-  grabHookArrivalDistance: 1.25
-  grabHookPullAcceleration: 32
-  grabHookMaximumPullSpeed: 18
-  grabHookRopeWidth: 0.035
   miningPower: 4
   miningEvenHitMultiplier: 3
   miningPropagationDivisor: 2

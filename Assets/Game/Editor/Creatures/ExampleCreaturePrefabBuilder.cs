@@ -11,7 +11,6 @@ namespace Supernova.MinecraftCaves.Editor.Creatures
         private const float VoxelSize = 0.42f;
         private const string AssetFolder = ProjectAssetPaths.Folders.ExampleCreatureAssets;
         private const string PrefabPath = AssetFolder + "/ExampleCaveCreature.prefab";
-        private const string ShapePath = AssetFolder + "/ExampleCaveCreatureVoxelShape.asset";
         private const string BodyMaterialPath = AssetFolder + "/ExampleCreatureBody.mat";
         private const string DarkMaterialPath = AssetFolder + "/ExampleCreatureDark.mat";
         private const string FaceMaterialPath = AssetFolder + "/ExampleCreatureFace.mat";
@@ -121,22 +120,13 @@ namespace Supernova.MinecraftCaves.Editor.Creatures
                     | RigidbodyConstraints.FreezeRotationZ;
             }
 
-            CreatureVoxelShapeAuthoring authoring =
-                root.GetComponent<CreatureVoxelShapeAuthoring>();
-            if (authoring == null)
-            {
-                authoring = root.AddComponent<CreatureVoxelShapeAuthoring>();
-                CreatureVoxelShape existingShape =
-                    AssetDatabase.LoadAssetAtPath<CreatureVoxelShape>(ShapePath);
-                authoring.Configure(null, existingShape, VoxelSize);
-            }
 
             CreaturePhysicsMotor motor = root.GetComponent<CreaturePhysicsMotor>();
             if (motor == null)
             {
                 motor = root.AddComponent<CreaturePhysicsMotor>();
             }
-            motor.Configure(rigidbody, VoxelSize);
+            motor.Configure(rigidbody);
 
             if (root.GetComponent<CreatureBehaviorAgent>() == null)
             {

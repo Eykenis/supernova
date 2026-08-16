@@ -1,3 +1,4 @@
+using Supernova.Inputs;
 using UnityEngine;
 
 namespace Supernova.Voxels
@@ -23,9 +24,19 @@ namespace Supernova.Voxels
         private bool cursorLocked;
         private bool savePending;
         private float saveAtTime;
+        private bool fillModeEnabled;
+        private bool hasFirstFillPoint;
+        private bool hasSecondFillPoint;
+        private Vector3Int firstFillPoint;
+        private Vector3Int secondFillPoint;
 
         public float EditDistance => editDistance;
         public bool SavePending => savePending;
+        public bool FillModeEnabled => fillModeEnabled;
+        public bool HasFirstFillPoint => hasFirstFillPoint;
+        public bool HasSecondFillPoint => hasSecondFillPoint;
+        public Vector3Int FirstFillPoint => firstFillPoint;
+        public Vector3Int SecondFillPoint => secondFillPoint;
 
         public void Configure(
             VoxelStructureAuthoring structureAuthoring,
@@ -52,32 +63,51 @@ namespace Supernova.Voxels
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Escape))
+            if (GameInput.Pressed(GameInputActionId.Cancel))
             {
                 SetCursorLocked(!cursorLocked);
                 return;
             }
 
+            if (GameInput.Pressed(GameInputActionId.StructureToggleFillMode))
+            {
+                ToggleFillMode();
+            }
+
             if (!cursorLocked)
             {
-                if (Input.GetMouseButtonDown(0)) SetCursorLocked(true);
+                if (GameInput.Pressed(GameInputActionId.StructureErase))
+                    SetCursorLocked(true);
                 return;
             }
 
             UpdateLook();
             UpdateMovement();
 
-            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.S))
+            if (GameInput.Pressed(GameInputActionId.StructureSave))
             {
                 SaveNow();
             }
-            else if (Input.GetMouseButtonDown(0))
+            else if (fillModeEnabled
+                     && GameInput.Pressed(GameInputActionId.StructureFill))
             {
-                RemoveTargetedCell();
+                FillSelectedBox();
             }
-            else if (Input.GetMouseButtonDown(1))
+            else if (fillModeEnabled
+                     && GameInput.Pressed(
+                         GameInputActionId.StructureClearFillBox))
             {
-                PlaceAdjacentCell();
+                ClearSelectedBox();
+            }
+            else if (GameInput.Pressed(GameInputActionId.StructureErase))
+            {
+                if (fillModeEnabled) SelectFillPoint(true);
+                else RemoveTargetedCell();
+            }
+            else if (GameInput.Pressed(GameInputActionId.StructurePaint))
+            {
+                if (fillModeEnabled) SelectFillPoint(false);
+                else PlaceAdjacentCell();
             }
 
             if (savePending && Time.unscaledTime >= saveAtTime)
@@ -88,21 +118,31 @@ namespace Supernova.Voxels
 
         private void UpdateLook()
         {
-            yaw += Input.GetAxisRaw("Mouse X") * lookSensitivity;
-            pitch -= Input.GetAxisRaw("Mouse Y") * lookSensitivity;
+            Vector2 look = GameInput.ReadVector2(GameInputActionId.Look);
+            yaw += look.x * lookSensitivity;
+            pitch -= look.y * lookSensitivity;
             pitch = Mathf.Clamp(pitch, -88f, 88f);
             transform.rotation = Quaternion.Euler(pitch, yaw, 0f);
         }
 
         private void UpdateMovement()
         {
-            Vector3 movement = transform.right * Input.GetAxisRaw("Horizontal")
-                + transform.forward * Input.GetAxisRaw("Vertical");
-            if (Input.GetKey(KeyCode.E)) movement += Vector3.up;
-            if (Input.GetKey(KeyCode.Q)) movement += Vector3.down;
+            Vector2 move = GameInput.ReadVector2(GameInputActionId.Move);
+            if (fillModeEnabled
+                && move.x > 0f
+                && GameInput.Held(GameInputActionId.StructureClearFillBox))
+            {
+                move.x = 0f;
+            }
+            Vector3 movement = transform.right * move.x
+                + transform.forward * move.y;
+            if (GameInput.Held(GameInputActionId.SpectatorUp))
+                movement += Vector3.up;
+            if (GameInput.Held(GameInputActionId.SpectatorDown))
+                movement += Vector3.down;
             if (movement.sqrMagnitude > 1f) movement.Normalize();
 
-            float speed = Input.GetKey(KeyCode.LeftShift)
+            float speed = GameInput.Held(GameInputActionId.SpectatorFast)
                 ? moveSpeed * fastMultiplier
                 : moveSpeed;
             transform.position += movement * (speed * Time.unscaledDeltaTime);
@@ -132,6 +172,72 @@ namespace Supernova.Voxels
                 Mathf.RoundToInt(local.y),
                 Mathf.RoundToInt(local.z));
             if (authoring.TryCreatePaintCell(coordinate, out _)) ScheduleSave();
+        }
+
+        private void ToggleFillMode()
+        {
+            fillModeEnabled = !fillModeEnabled;
+            hasFirstFillPoint = false;
+            hasSecondFillPoint = false;
+        }
+
+        private void SelectFillPoint(bool firstPoint)
+        {
+            if (!TryRaycastCell(out _, out VoxelStructureCellAuthoring cell))
+            {
+                return;
+            }
+
+            Vector3Int coordinate = Vector3Int.RoundToInt(
+                cell.transform.localPosition);
+            if (firstPoint)
+            {
+                firstFillPoint = coordinate;
+                hasFirstFillPoint = true;
+            }
+            else
+            {
+                secondFillPoint = coordinate;
+                hasSecondFillPoint = true;
+            }
+        }
+
+        private void FillSelectedBox()
+        {
+            if (authoring == null
+                || !hasFirstFillPoint
+                || !hasSecondFillPoint)
+            {
+                return;
+            }
+
+            if (authoring.TryFillPaintBox(
+                    firstFillPoint,
+                    secondFillPoint,
+                    out int changedCellCount)
+                && changedCellCount > 0)
+            {
+                ScheduleSave();
+            }
+        }
+
+        private void ClearSelectedBox()
+        {
+            if (authoring == null
+                || !hasFirstFillPoint
+                || !hasSecondFillPoint)
+            {
+                return;
+            }
+
+            if (authoring.TryClearBox(
+                    firstFillPoint,
+                    secondFillPoint,
+                    out int removedCellCount)
+                && removedCellCount > 0)
+            {
+                ScheduleSave();
+            }
         }
 
         private bool TryRaycastCell(
@@ -177,6 +283,29 @@ namespace Supernova.Voxels
         {
             if (savePending) SaveNow();
             SetCursorLocked(false);
+        }
+
+        private void OnGUI()
+        {
+            const float width = 390f;
+            float height = fillModeEnabled ? 92f : 44f;
+            GUILayout.BeginArea(new Rect(16f, 16f, width, height), GUI.skin.box);
+            GUILayout.Label(fillModeEnabled
+                ? "Voxel Edit Mode: FILL (F5 to switch)"
+                : "Voxel Edit Mode: PAINT (F5 to switch)");
+            if (fillModeEnabled)
+            {
+                string first = hasFirstFillPoint
+                    ? firstFillPoint.ToString()
+                    : "not selected";
+                string second = hasSecondFillPoint
+                    ? secondFillPoint.ToString()
+                    : "not selected";
+                GUILayout.Label($"LMB first: {first}    RMB second: {second}");
+                GUILayout.Label(
+                    "Ctrl+G fills with Paint Voxel Type; Ctrl+D clears the box.");
+            }
+            GUILayout.EndArea();
         }
 
         private void SetCursorLocked(bool value)

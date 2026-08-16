@@ -19,7 +19,7 @@ MonoBehaviour:
   placementStrategy: 0
   seedSalt: 141421
   regionSizeInChunks: 5
-  placementChance: 0.28
+  placementChance: 0.3
   minFloorHeight: 20
   maxFloorHeight: 190
   ringStructureCount: 128
@@ -133,18 +133,7 @@ MonoBehaviour:
       inset: 0
       chance: 1
       perimeterOnly: 1
-    spawnMarkers:
-    - stableId: gate_watch
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.7
-      count: 2
-      scatterRadiusInVoxels: 3
-      snapToFloor: 1
-      floorSearchDistance: 6
+    spawnMarkers: []
   - stableId: prison_corridor
     displayName: Cell Corridor
     poolId: gaol
@@ -306,21 +295,10 @@ MonoBehaviour:
       openingHeight: 5
     processors: []
     spawnMarkers:
-    - stableId: cell_inmates
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: 9844870c603935c4984369b76799b69f, type: 2}
-      localOffset: {x: 0, y: 1, z: 0}
-      yaw: 0
-      spawnChance: 0.85
-      count: 3
-      scatterRadiusInVoxels: 4
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: cell_remains
       kind: 0
       treasure: {fileID: 11400000, guid: 86bc5a1b3903dc34b9209aa73de5539b, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: -3, y: 1, z: 2}
       yaw: 0
       spawnChance: 0.6
@@ -447,21 +425,10 @@ MonoBehaviour:
       chance: 1
       perimeterOnly: 0
     spawnMarkers:
-    - stableId: warden_boss
-      kind: 1
-      treasure: {fileID: 0}
-      monster: {fileID: 11400000, guid: a809e0bb103d3bd4883635ac814bffb3, type: 2}
-      localOffset: {x: 0, y: 1, z: 3}
-      yaw: 0
-      spawnChance: 1
-      count: 1
-      scatterRadiusInVoxels: 3
-      snapToFloor: 1
-      floorSearchDistance: 6
     - stableId: warden_ledger
       kind: 0
       treasure: {fileID: 11400000, guid: 23a537e8756b2d642a751e58fd714561, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 0, y: 1, z: -3}
       yaw: 0
       spawnChance: 1
@@ -472,7 +439,7 @@ MonoBehaviour:
     - stableId: warden_strongbox
       kind: 0
       treasure: {fileID: 11400000, guid: 92d8f1330a298fa40ad8384d996f34fd, type: 2}
-      monster: {fileID: 0}
+      checkpointPrefab: {fileID: 0}
       localOffset: {x: 3, y: 1, z: -3}
       yaw: 0
       spawnChance: 0.8

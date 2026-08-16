@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: StructureBrick
   m_EditorClassIdentifier: 
   type: 5
-  displayName: Structure Brick
+  displayName: "\u786C\u8D28\u5CA9\u77F3"
   group: 0
-  durability: 3
+  durability: 5
+  structuralSupport: 0
   material: {fileID: 2100000, guid: 2eee6220a97ded74489f8e9560ddb183, type: 2}
