@@ -1,9 +1,11 @@
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.Gameplay;
+using Supernova.Inputs;
 using Supernova.MinecraftCaves;
 using Supernova.UI;
 using TMPro;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -134,9 +136,16 @@ namespace Supernova.Tests
             Assert.That(
                 hudObject.transform.Find(UiHierarchyPaths.Mission.Objective),
                 Is.Not.Null);
+            Transform sceneFade =
+                hudObject.transform.Find(UiHierarchyPaths.Mission.SceneFade);
+            Assert.That(sceneFade, Is.Not.Null);
+            Canvas sceneTransitionCanvas = sceneFade.GetComponent<Canvas>();
+            Assert.That(sceneTransitionCanvas, Is.Not.Null);
+            Assert.That(sceneTransitionCanvas.overrideSorting, Is.True);
+            Assert.That(sceneFade.GetComponent<GraphicRaycaster>(), Is.Not.Null);
             Assert.That(
-                hudObject.transform.Find(UiHierarchyPaths.Mission.SceneFade),
-                Is.Not.Null);
+                sceneTransitionCanvas.sortingOrder,
+                Is.GreaterThan(controller.PauseCanvas.sortingOrder));
             Assert.That(
                 hudObject.transform.Find(UiHierarchyPaths.Mission.TimerValue)
                     ?.GetComponent<TMP_Text>(),
@@ -180,6 +189,7 @@ namespace Supernova.Tests
             Assert.That(healthPanel.anchorMax, Is.EqualTo(Vector2.zero));
             Assert.That(healthPanel.pivot, Is.EqualTo(Vector2.zero));
             Assert.That(healthPanel.anchoredPosition, Is.EqualTo(new Vector2(48f, 42f)));
+            Assert.That(healthPanel.localScale, Is.EqualTo(Vector3.one * 1.15f));
             Assert.That(healthPanel.localEulerAngles.z, Is.EqualTo(3.5f).Within(0.01f));
             bool healthReverse = hudObject.transform.Find(
                 UiHierarchyPaths.Hud.HealthSegment(1))
@@ -195,11 +205,33 @@ namespace Supernova.Tests
             }
             Transform hotbar = hudObject.transform.Find(UiHierarchyPaths.Hud.Hotbar);
             Assert.That(hotbar, Is.Not.Null);
-            Assert.That(hotbar.childCount, Is.EqualTo(PlayerInventory.SlotCount));
+            Assert.That(
+                hotbar.childCount,
+                Is.EqualTo(PlayerInventory.SlotCount));
+            TMP_Text actionHints = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HotbarActionHintsLabel)
+                ?.GetComponent<TMP_Text>();
+            Assert.That(actionHints, Is.Not.Null);
+            Assert.That(actionHints.text, Does.Contain("牵引"));
+            Assert.That(actionHints.text, Does.Contain("蹲下"));
+            Assert.That(actionHints.text, Does.Not.Contain("LMB"));
+            Assert.That(actionHints.text, Does.Not.Contain("RMB"));
+            Assert.That(actionHints.transform.parent, Is.Not.SameAs(hotbar));
+            Assert.That(
+                actionHints.transform.parent.localEulerAngles.z,
+                Is.EqualTo(0f).Within(0.01f));
+            Assert.That(actionHints.fontSize, Is.EqualTo(21f));
+            Assert.That(
+                actionHints.alignment,
+                Is.EqualTo(TextAlignmentOptions.BottomRight));
+            Assert.That(
+                actionHints.transform.parent.localScale,
+                Is.EqualTo(Vector3.one * 1.15f));
             RectTransform hotbarRect = (RectTransform)hotbar;
             Assert.That(hotbarRect.anchorMin, Is.EqualTo(new Vector2(1f, 0f)));
             Assert.That(hotbarRect.anchorMax, Is.EqualTo(new Vector2(1f, 0f)));
             Assert.That(hotbarRect.pivot, Is.EqualTo(new Vector2(1f, 0f)));
+            Assert.That(hotbarRect.localScale, Is.EqualTo(Vector3.one * 1.15f));
             for (int i = 1; i <= PlayerInventory.SlotCount; i++)
             {
                 Assert.That(
@@ -209,7 +241,13 @@ namespace Supernova.Tests
                 Assert.That(
                     hotbar.Find(UiHierarchyPaths.Hud.SlotKey(i))
                         ?.GetComponent<TMP_Text>().text,
-                    Is.EqualTo(i.ToString()));
+                    Is.EqualTo(InputPromptResolver.Token(
+                        (GameInputActionId)(
+                            (int)GameInputActionId.Hotbar1 + i - 1))));
+                Assert.That(
+                    hotbar.Find(UiHierarchyPaths.Hud.SlotKey(i))
+                        ?.GetComponent<TMP_Text>().fontSize,
+                    Is.EqualTo(14f));
             }
             Assert.That(
                 hotbar.Find(UiHierarchyPaths.Hud.SlotAngledSurface(1))
@@ -411,7 +449,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void EquipmentMenu_UsesFiveSlotsAndTwelveOpaqueOwnedCells()
+        public void EquipmentMenu_UsesFullWidthWithoutPortraitAndKeepsItemCells()
         {
             hudObject = new GameObject("Game HUD");
             GameHudController controller =
@@ -421,8 +459,8 @@ namespace Supernova.Tests
             EquipmentLoadoutMenu menu = controller.EquipmentMenu;
             Transform panel = hudObject.transform.Find(
                 UiHierarchyPaths.Equipment.Panel);
-            RectTransform portraitRegion = (RectTransform)panel.Find(
-                UiHierarchyPaths.Equipment.PortraitRegion);
+            RectTransform configuration = (RectTransform)panel.Find(
+                UiHierarchyPaths.Equipment.Configuration);
             Transform slots = hudObject.transform.Find(
                 UiHierarchyPaths.Equipment.FullSlots);
             Transform ownedGrid = hudObject.transform.Find(
@@ -431,15 +469,9 @@ namespace Supernova.Tests
             Assert.That(menu, Is.Not.Null);
             Assert.That(panel.gameObject.activeSelf, Is.False);
             Assert.That(panel.GetComponent<Image>().color.a, Is.LessThan(1f));
-            Assert.That(portraitRegion.anchorMax.x, Is.EqualTo(0.38f)
-                .Within(0.001f));
-            Transform portrait = panel.Find(
-                UiHierarchyPaths.Equipment.Portrait);
-            EquipmentMenuInteraction portraitInteraction =
-                portrait.GetComponent<EquipmentMenuInteraction>();
-            Assert.That(portrait.GetComponent<RawImage>().raycastTarget, Is.True);
-            Assert.That(portraitInteraction, Is.Not.Null);
-            Assert.That(portraitInteraction.IsPortraitRotationArea, Is.True);
+            Assert.That(panel.Find(UiHierarchyPaths.Equipment.PortraitRegion), Is.Null);
+            Assert.That(configuration.anchorMin, Is.EqualTo(Vector2.zero));
+            Assert.That(configuration.anchorMax, Is.EqualTo(Vector2.one));
 
             for (int i = 1; i <= PlayerInventory.SlotCount; i++)
             {
@@ -493,50 +525,6 @@ namespace Supernova.Tests
             menu.Close();
             Assert.That(menu.IsOpen, Is.False);
             Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.True);
-        }
-
-        [Test]
-        public void EquipmentPortrait_HidesOnlyTheRuntimeHeldToolClone()
-        {
-            sourceObject = new GameObject("Player");
-            PlayerToolController inventory =
-                sourceObject.AddComponent<PlayerToolController>();
-            GameObject character = new GameObject("Character");
-            character.transform.SetParent(sourceObject.transform);
-            GameObject hand = new GameObject("Hand");
-            hand.transform.SetParent(character.transform);
-            GameObject heldTool = new GameObject("Runtime Held Tool");
-            heldTool.transform.SetParent(hand.transform);
-            GameObject clothing = new GameObject("Clothing");
-            clothing.transform.SetParent(character.transform);
-
-            menuObject = Object.Instantiate(character);
-            hudObject = new GameObject("Equipment Menu Host");
-            EquipmentLoadoutMenu menu =
-                hudObject.AddComponent<EquipmentLoadoutMenu>();
-            typeof(PlayerToolController).GetField(
-                "equippedToolModel",
-                BindingFlags.Instance | BindingFlags.NonPublic)
-                .SetValue(inventory, heldTool);
-            typeof(EquipmentLoadoutMenu).GetField(
-                "inventorySource",
-                BindingFlags.Instance | BindingFlags.NonPublic)
-                .SetValue(menu, inventory);
-            typeof(EquipmentLoadoutMenu).GetField(
-                "portraitInstance",
-                BindingFlags.Instance | BindingFlags.NonPublic)
-                .SetValue(menu, menuObject);
-
-            MethodInfo hideTool = typeof(EquipmentLoadoutMenu).GetMethod(
-                "HideEquippedToolInPortrait",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(hideTool, Is.Not.Null);
-            hideTool.Invoke(menu, new object[] { character.transform });
-
-            Transform clonedHand = menuObject.transform.GetChild(0);
-            Assert.That(clonedHand.GetChild(0).gameObject.activeSelf, Is.False);
-            Assert.That(menuObject.transform.GetChild(1).gameObject.activeSelf, Is.True);
-            Assert.That(heldTool.activeSelf, Is.True);
         }
 
         [Test]
@@ -653,18 +641,18 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void GameplayVisibility_KeepsTransitionOverlayAlive()
+        public void MainMenuPresentation_KeepsTransitionOverlayAlive()
         {
             hudObject = new GameObject("Game HUD");
             GameHudController controller =
                 hudObject.AddComponent<GameHudController>();
             controller.RebuildDefaultView();
-            MethodInfo setVisible = typeof(GameHudController).GetMethod(
-                "SetGameplayViewVisible",
+            MethodInfo setMainMenuPresentation = typeof(GameHudController).GetMethod(
+                "SetMainMenuPresentationActive",
                 BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(setVisible, Is.Not.Null);
+            Assert.That(setMainMenuPresentation, Is.Not.Null);
 
-            setVisible.Invoke(controller, new object[] { false });
+            setMainMenuPresentation.Invoke(controller, new object[] { true });
 
             Assert.That(hudObject.activeSelf, Is.True);
             Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.False);
@@ -673,7 +661,7 @@ namespace Supernova.Tests
                 Is.True,
                 "The persistent overlay must remain renderable during scene fades.");
 
-            setVisible.Invoke(controller, new object[] { true });
+            setMainMenuPresentation.Invoke(controller, new object[] { false });
 
             Assert.That(controller.RootCanvas.gameObject.activeSelf, Is.True);
             Assert.That(controller.PauseCanvas.gameObject.activeSelf, Is.True);
@@ -757,6 +745,161 @@ namespace Supernova.Tests
             Assert.That(second.color, Is.EqualTo(Color.clear));
             Assert.That(secondSurface.color, Is.Not.EqualTo(firstSurface.color));
             Assert.That(controller.InventorySource, Is.SameAs(inventory));
+        }
+
+        [Test]
+        public void HotbarItemIcons_StayCenteredBelowSlotKeys()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+
+            for (int i = 1; i <= PlayerInventory.SlotCount; i++)
+            {
+                RectTransform icon = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HotbarSlotIcon(i))
+                    as RectTransform;
+                Assert.That(icon, Is.Not.Null);
+                Assert.That(
+                    icon.anchoredPosition,
+                    Is.EqualTo(new Vector2(14f, 0f)));
+                Assert.That(
+                    icon.sizeDelta,
+                    Is.EqualTo(new Vector2(24f, 24f)));
+            }
+        }
+
+        [Test]
+        public void HotbarPresenter_InitializesEmptySlotsInsteadOfKeepingAuthoredGray()
+        {
+            hudObject = new GameObject("Hotbar");
+            var backgrounds = new Image[PlayerInventory.SlotCount];
+            var outlines = new Outline[PlayerInventory.SlotCount];
+            var itemLabels = new TMP_Text[PlayerInventory.SlotCount];
+            Color authoredGray = new Color(0.5f, 0.5f, 0.5f, 1f);
+
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                var slot = new GameObject(
+                    $"Slot {i + 1}",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(Image),
+                    typeof(Outline));
+                slot.transform.SetParent(hudObject.transform, false);
+                backgrounds[i] = slot.GetComponent<Image>();
+                backgrounds[i].color = authoredGray;
+                outlines[i] = slot.GetComponent<Outline>();
+                outlines[i].effectColor = authoredGray;
+
+                var label = new GameObject(
+                    "Item",
+                    typeof(RectTransform),
+                    typeof(CanvasRenderer),
+                    typeof(TextMeshProUGUI));
+                label.transform.SetParent(slot.transform, false);
+                itemLabels[i] = label.GetComponent<TMP_Text>();
+                itemLabels[i].text = "STALE";
+                itemLabels[i].color = authoredGray;
+            }
+
+            new HotbarPresenter(backgrounds, outlines, itemLabels);
+
+            Color expectedLabelColor = new Color(0.96f, 0.98f, 1f, 1f);
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                Assert.That(backgrounds[i].color, Is.EqualTo(Color.clear));
+                Assert.That(outlines[i].effectColor, Is.EqualTo(Color.clear));
+                Assert.That(itemLabels[i].text, Is.Empty);
+                Assert.That(itemLabels[i].color, Is.EqualTo(expectedLabelColor));
+            }
+        }
+
+        [Test]
+        public void HotbarRefresh_RestoresVisualsAndShowsSuspendedPickaxe()
+        {
+            sourceObject = new GameObject("Player");
+            sourceObject.AddComponent<PlayerInventorySessionSettings>()
+                .ConfigurePickaxeOnly();
+            PlayerToolController inventory =
+                sourceObject.AddComponent<PlayerToolController>();
+            FieldInfo definitions = typeof(PlayerToolController).GetField(
+                "toolDefinitions",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(definitions, Is.Not.Null);
+            definitions.SetValue(
+                inventory,
+                new[]
+                {
+                    AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(
+                        ProjectAssetPaths.Config.PickaxeTool),
+                });
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+            controller.BindInventorySource(inventory);
+
+            TMP_Text label = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HotbarSlot(1)
+                    + "/" + UiHierarchyPaths.Hud.Item)
+                .GetComponent<TMP_Text>();
+            Image icon = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HotbarSlotIcon(1))
+                .GetComponent<Image>();
+            AngledPanelGraphic surface = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.HotbarSlotAngledSurface(1))
+                .GetComponent<AngledPanelGraphic>();
+            Color expectedLabelColor = label.color;
+            Color expectedIconColor = icon.color;
+            Color expectedSurfaceColor = surface.color;
+
+            label.text = string.Empty;
+            label.color = Color.magenta;
+            label.gameObject.SetActive(false);
+            icon.color = Color.magenta;
+            surface.SetFrontColor(Color.magenta);
+            controller.RefreshNow();
+
+            Assert.That(label.gameObject.activeSelf, Is.True);
+            Assert.That(label.text, Is.EqualTo("探险镐"));
+            Assert.That(
+                hudObject.transform.Find(
+                        UiHierarchyPaths.Hud.HotbarActionHintsLabel)
+                    .GetComponent<TMP_Text>().text,
+                Does.Contain("挥镐"));
+            Assert.That(label.color, Is.EqualTo(expectedLabelColor));
+            Assert.That(icon.color, Is.EqualTo(expectedIconColor));
+            Assert.That(surface.color, Is.EqualTo(expectedSurfaceColor));
+
+            Assert.That(
+                inventory.SuspendItem(PlayerInventoryItem.Pickaxe),
+                Is.True);
+            controller.RefreshNow();
+
+            Assert.That(
+                inventory.GetItemAtSlot(0),
+                Is.EqualTo(PlayerInventoryItem.Empty));
+            Assert.That(
+                inventory.GetDisplayItemAtSlot(0),
+                Is.EqualTo(PlayerInventoryItem.Pickaxe));
+            Assert.That(inventory.IsItemSuspendedAtSlot(0), Is.True);
+            Assert.That(label.text, Is.EqualTo("探险镐\n已投掷"));
+            Assert.That(icon.color, Is.Not.EqualTo(expectedIconColor));
+            Assert.That(icon.color.r, Is.EqualTo(icon.color.g).Within(0.03f));
+            Assert.That(icon.color.g, Is.EqualTo(icon.color.b).Within(0.03f));
+            Assert.That(surface.color, Is.EqualTo(expectedSurfaceColor));
+
+            Assert.That(
+                inventory.RestoreSuspendedItem(PlayerInventoryItem.Pickaxe),
+                Is.True);
+            controller.RefreshNow();
+
+            Assert.That(label.text, Is.EqualTo("探险镐"));
+            Assert.That(label.color, Is.EqualTo(expectedLabelColor));
+            Assert.That(icon.color, Is.EqualTo(expectedIconColor));
+            Assert.That(surface.color, Is.EqualTo(expectedSurfaceColor));
         }
 
         [Test]

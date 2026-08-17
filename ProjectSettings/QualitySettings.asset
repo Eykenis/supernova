@@ -59,7 +59,11 @@ QualitySettings:
     vgStreamingBufferSize: 512
     vgPageUploadBufferSize: 64
     vgPixelsPerEdge: 1
-    excludedTargetPlatforms: []
+    excludedTargetPlatforms:
+    - Android
+    - WebGL
+    - WeixinMiniGame
+    - Standalone
   - serializedVersion: 3
     name: Balanced
     pixelLightCount: 1
@@ -113,7 +117,9 @@ QualitySettings:
     vgStreamingBufferSize: 512
     vgPageUploadBufferSize: 64
     vgPixelsPerEdge: 1
-    excludedTargetPlatforms: []
+    excludedTargetPlatforms:
+    - Server
+    - Standalone
   - serializedVersion: 3
     name: High Fidelity
     pixelLightCount: 2
@@ -167,6 +173,12 @@ QualitySettings:
     vgStreamingBufferSize: 512
     vgPageUploadBufferSize: 64
     vgPixelsPerEdge: 1
-    excludedTargetPlatforms: []
+    excludedTargetPlatforms:
+    - Server
   m_TextureMipmapLimitGroupNames: []
-  m_PerPlatformDefaultQuality: {}
+  m_PerPlatformDefaultQuality:
+    Android: 1
+    Server: 0
+    Standalone: 2
+    WebGL: 0
+    WeixinMiniGame: 1

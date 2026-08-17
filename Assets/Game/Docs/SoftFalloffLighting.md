@@ -8,16 +8,21 @@
 光照贴图、雾和后处理兼容性，只修改逐像素附加光中的 Point / Spot 衰减。
 方向光保持 URP 标准行为。
 
-## InfiniteCaves 默认值
+## 当前世界默认值
 
-`MinecraftCaveInfiniteWorld` 的 `Punctual Lighting` 参数控制所有使用该 Shader 的洞穴材质：
+`MinecraftWorldGenerationConfiguration` 提供 `Punctual Lighting` 参数，
+`MinecraftCaveInfiniteWorld` 在应用当前关卡后把它们写入全局 Shader 参数。
+`DefaultWorldGeneration.asset`、`CombatTestWorldGeneration.asset` 当前使用：
 
 - `Punctual Light Falloff Power = 0.55`：`1` 等于标准曲线；数值越低，
   中远距离越亮，同时近距离峰值越平缓。
 - `Punctual Light Attenuation Limit = 1.5`：限制近场衰减项，防止贴脸过曝。
 - `Punctual Light Multiplier = 1`：最终统一倍率，通常保持为 `1`。
 
-石壁运行时材质、`Ore.mat` 和 `Bedrock.mat` 已接入这个 Shader。
+`Bedrock.mat` 已接入这个 Shader，并由 `SoftFalloffLightingTests` 校验。
+其他地形/结构材质是否使用该曲线取决于各自 Shader。五类矿物与
+`RecoveredOre.mat` 当前改用独立的 `Supernova/Lighting/Crystal Ore Lit`，
+不属于本文件描述的 Soft Falloff Lit 路径。
 
 ## 推荐调参顺序
 

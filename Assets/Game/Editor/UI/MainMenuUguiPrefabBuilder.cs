@@ -267,6 +267,8 @@ namespace Supernova.Editor.UI
                 viewReferences.MainPanel,
                 viewReferences.SettingsPanel,
                 viewReferences.PlayButton,
+                viewReferences.ContinueButton,
+                viewReferences.ContinueSaveSummary,
                 viewReferences.TutorialButton,
                 viewReferences.SettingsButton,
                 viewReferences.QuitButton,
@@ -275,6 +277,9 @@ namespace Supernova.Editor.UI
                 viewReferences.VolumeSlider,
                 viewReferences.VolumeValue,
                 viewReferences.Status,
+                viewReferences.OverwriteConfirmation,
+                viewReferences.OverwriteConfirmButton,
+                viewReferences.OverwriteCancelButton,
                 characterPresentation);
             view.ShowMainPanel();
             SciFiUiSkin.ApplyMainMenuAuthoringDefaults(root.transform);
@@ -458,15 +463,40 @@ namespace Supernova.Editor.UI
                 new Vector2(0.93f, 0.84f),
                 Vector2.zero,
                 Vector2.zero);
-            Button playButton = CreateButton(
-                "Begin Descent",
+            Button continueButton = CreateButton(
+                "Continue Game",
                 mainPanel,
-                "    开始游戏",
+                "    继续游戏",
                 tokens,
                 false,
                 new Vector2(0f, 0.75f),
+                new Vector2(
+                    MainMenuView.ContinueGameWidthFraction,
+                    0.94f));
+            ConfigureMainMenuButton(continueButton, 46f, 26f);
+            Color saveSummaryColor = tokens.OverlaySecondary;
+            saveSummaryColor.a *= 0.7f;
+            TMP_Text continueSaveSummary = CreateText(
+                "Save Summary",
+                continueButton.transform as RectTransform,
+                "存款：$0\n第1关",
+                16f,
+                saveSummaryColor,
+                TextAlignmentOptions.MidlineRight,
+                new Vector2(0.58f, 0.12f),
+                new Vector2(0.92f, 0.88f));
+            continueSaveSummary.raycastTarget = false;
+            continueSaveSummary.lineSpacing = 2f;
+            continueButton.gameObject.SetActive(false);
+            Button playButton = CreateButton(
+                "New Game",
+                mainPanel,
+                "    新游戏",
+                tokens,
+                true,
+                new Vector2(0f, 0.75f),
                 new Vector2(1f, 0.94f));
-            ConfigureMainMenuButton(playButton, 46f);
+            ConfigureMainMenuButton(playButton, 46f, 26f);
             Button tutorialButton = CreateButton(
                 "Tutorial",
                 mainPanel,
@@ -579,11 +609,78 @@ namespace Supernova.Editor.UI
                 new Vector2(1f, 0.17f));
             settingsPanel.gameObject.SetActive(false);
 
+            RectTransform overwriteConfirmation = CreateRect(
+                "Overwrite Confirmation",
+                card,
+                Vector2.zero,
+                Vector2.one,
+                Vector2.zero,
+                Vector2.zero);
+            Image confirmationBackdrop =
+                overwriteConfirmation.gameObject.AddComponent<Image>();
+            confirmationBackdrop.color = new Color(0f, 0f, 0f, 0.72f);
+            confirmationBackdrop.raycastTarget = true;
+
+            RectTransform dialog = CreateRect(
+                "Dialog",
+                overwriteConfirmation,
+                new Vector2(0.07f, 0.22f),
+                new Vector2(0.93f, 0.72f),
+                Vector2.zero,
+                Vector2.zero);
+            Image dialogImage = dialog.gameObject.AddComponent<Image>();
+            dialogImage.color = new Color(0.025f, 0.028f, 0.034f, 0.98f);
+            dialogImage.raycastTarget = true;
+            Outline dialogOutline = dialog.gameObject.AddComponent<Outline>();
+            dialogOutline.effectColor = tokens.OverlayDivider;
+            dialogOutline.effectDistance = new Vector2(1f, -1f);
+
+            CreateText(
+                "Title",
+                dialog,
+                "覆盖已有存档？",
+                24f,
+                tokens.OverlayPrimary,
+                TextAlignmentOptions.MidlineLeft,
+                new Vector2(0.08f, 0.72f),
+                new Vector2(0.92f, 0.94f));
+            TMP_Text warning = CreateText(
+                "Warning",
+                dialog,
+                "现有关卡、存款、物品和升级将被清除。\n此操作无法撤销。",
+                15f,
+                tokens.OverlaySecondary,
+                TextAlignmentOptions.TopLeft,
+                new Vector2(0.08f, 0.39f),
+                new Vector2(0.92f, 0.72f));
+            warning.enableWordWrapping = true;
+            warning.lineSpacing = 3f;
+
+            Button overwriteCancelButton = CreateButton(
+                "Cancel",
+                dialog,
+                "取消",
+                tokens,
+                false,
+                new Vector2(0.08f, 0.08f),
+                new Vector2(0.46f, 0.32f));
+            Button overwriteConfirmButton = CreateButton(
+                "Confirm",
+                dialog,
+                "确认覆盖",
+                tokens,
+                true,
+                new Vector2(0.54f, 0.08f),
+                new Vector2(0.92f, 0.32f));
+            overwriteConfirmation.gameObject.SetActive(false);
+
             return new MainMenuViewReferences
             {
                 MainPanel = mainPanel.gameObject,
                 SettingsPanel = settingsPanel.gameObject,
                 PlayButton = playButton,
+                ContinueButton = continueButton,
+                ContinueSaveSummary = continueSaveSummary,
                 TutorialButton = tutorialButton,
                 SettingsButton = settingsButton,
                 QuitButton = quitButton,
@@ -592,6 +689,9 @@ namespace Supernova.Editor.UI
                 VolumeSlider = volume,
                 VolumeValue = volumeValue,
                 Status = status,
+                OverwriteConfirmation = overwriteConfirmation.gameObject,
+                OverwriteConfirmButton = overwriteConfirmButton,
+                OverwriteCancelButton = overwriteCancelButton,
             };
         }
 
@@ -699,7 +799,10 @@ namespace Supernova.Editor.UI
             return button;
         }
 
-        private static void ConfigureMainMenuButton(Button button, float anchoredY)
+        private static void ConfigureMainMenuButton(
+            Button button,
+            float anchoredY,
+            float fontSize = 30f)
         {
             if (button == null)
                 return;
@@ -710,7 +813,7 @@ namespace Supernova.Editor.UI
 
             TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
             if (label != null)
-                label.fontSize = 30f;
+                label.fontSize = fontSize;
         }
 
         private static Toggle CreateToggle(
@@ -929,6 +1032,8 @@ namespace Supernova.Editor.UI
             public GameObject MainPanel;
             public GameObject SettingsPanel;
             public Button PlayButton;
+            public Button ContinueButton;
+            public TMP_Text ContinueSaveSummary;
             public Button TutorialButton;
             public Button SettingsButton;
             public Button QuitButton;
@@ -937,6 +1042,9 @@ namespace Supernova.Editor.UI
             public Slider VolumeSlider;
             public TMP_Text VolumeValue;
             public TMP_Text Status;
+            public GameObject OverwriteConfirmation;
+            public Button OverwriteConfirmButton;
+            public Button OverwriteCancelButton;
         }
     }
 }

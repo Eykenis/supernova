@@ -89,4 +89,7 @@ player spawn offset. It is placed there once more and released only when the
 collision meshes are ready.
 
 Use Tools/Supernova/Voxels/Build Fixed Structure Workflow to recreate missing
-default assets, rebuild the authoring scene, and reconnect InfiniteCaves.scene.
+default assets, rebuild the authoring scene, and reconnect the reference
+InfiniteCaves.scene. The current product build starts from Home.scene and uses
+DenseJigsawRegion.scene; use the dedicated scene builders when those scenes need
+to be regenerated.

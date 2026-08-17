@@ -328,6 +328,83 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void BombProjectile_DamagesAndLaunchesNearbyPlayer()
+        {
+            Vector3 explosionCenter =
+                new Vector3(1250f, 1000f, 1000f);
+            BombProjectile bomb = CreateBomb(explosionCenter);
+            VoxelPlayerController player =
+                CreatePlayer(explosionCenter);
+            float initialHealth = player.CurrentHealth;
+            Physics.SyncTransforms();
+
+            bomb.Launch(Vector3.zero, Vector3.zero, null, 600f);
+            Assert.That(bomb.Detonate(), Is.True);
+
+            Assert.That(player.CurrentHealth, Is.LessThan(initialHealth));
+            Assert.That(player.CombinedVelocity.magnitude, Is.GreaterThan(0f));
+            Assert.That(player.CombinedVelocity.magnitude, Is.LessThanOrEqualTo(
+                VoxelPlayerController.DefaultMaximumExplosionVelocity));
+            Assert.That(bomb.LastDamagedEntityCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void MysticCore_ReachingZeroValueEmitsBombExplosion()
+        {
+            TreasureDefinition definition =
+                AssetDatabase.LoadAssetAtPath<TreasureDefinition>(
+                    ProjectAssetPaths.Config.MysticCoreTreasure);
+            Assert.That(definition, Is.Not.Null);
+            Assert.That(definition.Prefab, Is.Not.Null);
+
+            GameObject core = Object.Instantiate(definition.Prefab);
+            objects.Add(core);
+            core.transform.position =
+                new Vector3(1275f, 1000f, 1000f);
+            MeshCollider[] meshColliders =
+                core.GetComponentsInChildren<MeshCollider>(true);
+            for (int i = 0; i < meshColliders.Length; i++)
+            {
+                meshColliders[i].convex = true;
+            }
+            if (core.GetComponent<Rigidbody>() == null)
+            {
+                core.AddComponent<Rigidbody>();
+            }
+            if (core.GetComponentInChildren<Collider>() == null)
+            {
+                core.AddComponent<BoxCollider>();
+            }
+            TreasurePickup pickup = core.GetComponent<TreasurePickup>();
+            if (pickup == null)
+            {
+                pickup = core.AddComponent<TreasurePickup>();
+            }
+            pickup.Configure(definition);
+            TreasureDestructionExplosion explosion =
+                core.GetComponent<TreasureDestructionExplosion>();
+            Assert.That(explosion, Is.Not.Null);
+
+            VoxelPlayerController player =
+                CreatePlayer(core.transform.position);
+            float initialHealth = player.CurrentHealth;
+            Physics.SyncTransforms();
+
+            pickup.Valuable.ApplyCollisionImpulse(
+                definition.Weight * 100f,
+                core.transform.position);
+
+            Assert.That(pickup.Valuable.CurrentValue, Is.Zero);
+            Assert.That(explosion.HasExploded, Is.True);
+            Assert.That(player.CurrentHealth, Is.LessThan(initialHealth));
+            Assert.That(player.CombinedVelocity.magnitude, Is.GreaterThan(0f));
+            if (explosion.LastExplosionResult.Effect != null)
+            {
+                objects.Add(explosion.LastExplosionResult.Effect);
+            }
+        }
+
+        [Test]
         public void BombProjectile_SpawnsConfiguredExplosionEffect()
         {
             Vector3 explosionCenter = new Vector3(1300f, 1000f, 1000f);
@@ -359,6 +436,15 @@ namespace Supernova.Tests
             body.useGravity = false;
             bombObject.AddComponent<SphereCollider>();
             return bombObject.AddComponent<BombProjectile>();
+        }
+
+        private VoxelPlayerController CreatePlayer(Vector3 position)
+        {
+            var playerObject = new GameObject("Explosion Player");
+            objects.Add(playerObject);
+            playerObject.transform.position = position;
+            playerObject.AddComponent<CharacterController>();
+            return playerObject.AddComponent<VoxelPlayerController>();
         }
 
         private VoxelTypeDefinition CreateDefinition(

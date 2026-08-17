@@ -164,6 +164,7 @@ namespace Supernova.Editor.Gameplay
                 serialized,
                 "item",
                 (int)PlayerInventoryItem.SolidGun);
+            serialized.FindProperty("primaryActionHint").stringValue = "射击方块";
             SetInteger(
                 serialized,
                 "primaryAction",

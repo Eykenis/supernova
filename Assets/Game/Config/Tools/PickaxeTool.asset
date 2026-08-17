@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 1
   primaryAction: 1
+  primaryActionHint: "\u6325\u9550"
   primaryActionSound: {fileID: 11400000, guid: 19ec82b1a0f157e4ca208863cbb6344e, type: 2}
   throwSound: {fileID: 11400000, guid: d4f4c8e6b02582d46a3829384a89b9df, type: 2}
   miningHitSound: {fileID: 11400000, guid: bc66f66cbc779874eb226dea45bcee89, type: 2}

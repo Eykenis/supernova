@@ -399,6 +399,7 @@ namespace Supernova.MinecraftCaves
                         piece.SpawnMarkers[markerIndex];
                     AddHash(ref hash, marker.StableId);
                     AddHash(ref hash, (int)marker.Kind);
+                    AddHash(ref hash, (int)marker.TreasureSelection);
                     AddHash(ref hash, marker.LocalOffset.x);
                     AddHash(ref hash, marker.LocalOffset.y);
                     AddHash(ref hash, marker.LocalOffset.z);

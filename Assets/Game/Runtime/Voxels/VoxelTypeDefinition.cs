@@ -20,6 +20,16 @@ namespace Supernova.Voxels
         [SerializeField] private bool structuralSupport;
         [SerializeField] private Material material;
 
+        [Header("Crystal Ore Rendering")]
+        [Tooltip("Fraction of this ore's triangles eligible to emit "
+            + "independently timed cross sparkles. Only used by crystal "
+            + "ore materials.")]
+        [SerializeField, Range(0f, 1f)]
+        private float sparkleDensity = 0.56f;
+
+        private const string SparkleDensityProperty =
+            "_DetailAlbedoMapScale";
+
         public VoxelTypeId TypeId => new VoxelTypeId(Math.Max((ushort)1, type));
         public string DisplayName => string.IsNullOrWhiteSpace(displayName)
             ? name
@@ -28,6 +38,7 @@ namespace Supernova.Voxels
         public int Durability => Mathf.Max(1, durability);
         public bool IsStructuralSupport => structuralSupport;
         public Material Material => material;
+        public float SparkleDensity => Mathf.Clamp01(sparkleDensity);
 
         public void Configure(
             ushort type,
@@ -51,6 +62,28 @@ namespace Supernova.Voxels
             structuralSupport = value;
         }
 
+        public void ConfigureSparkleDensity(float value)
+        {
+            sparkleDensity = Mathf.Clamp01(value);
+            VoxelTypeUtility.RefreshRuntimeMaterial(this);
+        }
+
+        internal bool HasRenderingOverrides(Material target)
+        {
+            return group == VoxelGroup.Ore
+                && target != null
+                && target.HasProperty(SparkleDensityProperty);
+        }
+
+        internal void ApplyRenderingOverrides(Material target)
+        {
+            if (!HasRenderingOverrides(target))
+            {
+                return;
+            }
+            target.SetFloat(SparkleDensityProperty, SparkleDensity);
+        }
+
         private void OnValidate()
         {
 #if UNITY_EDITOR
@@ -58,6 +91,8 @@ namespace Supernova.Voxels
 #endif
             type = Math.Max((ushort)1, type);
             durability = Mathf.Max(1, durability);
+            sparkleDensity = Mathf.Clamp01(sparkleDensity);
+            VoxelTypeUtility.RefreshRuntimeMaterial(this);
             if (displayName == null) displayName = string.Empty;
         }
 

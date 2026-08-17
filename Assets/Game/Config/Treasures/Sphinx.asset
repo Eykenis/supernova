@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55c4c72518c3412459e3a631737b16ad, type: 3}
+  m_Name: Sphinx
+  m_EditorClassIdentifier: 
+  displayName: "\u4EBA\u9762\u50CF"
+  prefab: {fileID: 7984579260126268687, guid: 35c2cd2c95c43a94fbc776ae93a7afbe, type: 3}
+  value: 1800
+  weight: 30
+  fragility: 0.25
+  spawnChance: 0.15
+  attemptsPerChunk: 1
+  maximumSurfaceSlope: 12
+  requiredHeadroom: 1.5
+  destructionExplosionTool: {fileID: 0}
+  fractureVariants:
+  - {fileID: 489636063472270184, guid: 86424415007d8804c8c70f460bfaa139, type: 3}
+  - {fileID: 7936233648425046974, guid: a31ad3371d6e13a4f882b243d4675cce, type: 3}
+  - {fileID: 4931773542135182714, guid: f98190121c555ad4aab82b8c1f520e6c, type: 3}

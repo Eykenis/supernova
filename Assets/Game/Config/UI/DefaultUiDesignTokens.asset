@@ -36,6 +36,7 @@ MonoBehaviour:
   missionOverlaySortingOrder: 900
   loadingSortingOrder: 1000
   pauseSortingOrder: 1100
+  sceneTransitionSortingOrder: 2000
   showHealth: 1
   showHotbar: 1
   showCrosshair: 1
@@ -50,6 +51,10 @@ MonoBehaviour:
   hudHealthSize: {x: 372, y: 104}
   hudHotbarPosition: {x: -46, y: 42}
   hudHotbarSize: {x: 320, y: 78}
+  hudVisualScale: 1.15
+  hudHotbarHintsOffset: {x: 0, y: 14}
+  hudHotbarHintsSize: {x: 360, y: 112}
+  hudHotbarHintsFontSize: 21
   hudHealthSegmentCount: 8
   hudHealthTiltDegrees: 3.5
   hudHotbarTiltDegrees: -3.5

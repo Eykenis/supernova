@@ -22,5 +22,48 @@ namespace Supernova.Gameplay
                 : new List<TreasureDefinition>();
             spawnExclusionRadius = Mathf.Max(0f, exclusionRadius);
         }
+
+        /// <summary>
+        /// Selects one configured treasure using its natural-world spawn chance
+        /// as the relative weight. The caller supplies a deterministic [0, 1]
+        /// roll so this method is safe to use for streamed structure markers.
+        /// </summary>
+        public TreasureDefinition SelectWeighted(float normalizedRoll)
+        {
+            float totalWeight = 0f;
+            for (int i = 0; i < treasures.Count; i++)
+            {
+                TreasureDefinition treasure = treasures[i];
+                if (treasure != null && treasure.Prefab != null)
+                {
+                    totalWeight += treasure.SpawnChance;
+                }
+            }
+            if (totalWeight <= 0f)
+            {
+                return null;
+            }
+
+            float target = Mathf.Clamp01(normalizedRoll) * totalWeight;
+            TreasureDefinition fallback = null;
+            for (int i = 0; i < treasures.Count; i++)
+            {
+                TreasureDefinition treasure = treasures[i];
+                if (treasure == null
+                    || treasure.Prefab == null
+                    || treasure.SpawnChance <= 0f)
+                {
+                    continue;
+                }
+
+                fallback = treasure;
+                target -= treasure.SpawnChance;
+                if (target <= 0f)
+                {
+                    return treasure;
+                }
+            }
+            return fallback;
+        }
     }
 }

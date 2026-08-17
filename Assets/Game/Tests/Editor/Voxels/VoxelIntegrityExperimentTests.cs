@@ -461,9 +461,12 @@ namespace Supernova.Voxels.Tests
                 Assert.That(bridge.SourceTerrain, Is.SameAs(world));
 
                 var serializedWorld = new SerializedObject(world);
+                SerializedProperty levels =
+                    serializedWorld.FindProperty("levelConfigurations");
+                Assert.That(levels, Is.Not.Null);
+                Assert.That(levels.arraySize, Is.EqualTo(1));
                 Assert.That(
-                    serializedWorld.FindProperty("levelConfigurationOverride")
-                        .objectReferenceValue,
+                    levels.GetArrayElementAtIndex(0).objectReferenceValue,
                     Is.SameAs(AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(
                         ProjectAssetPaths.Config.FirstLevel)));
 

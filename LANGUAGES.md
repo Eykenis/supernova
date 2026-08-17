@@ -585,6 +585,7 @@
   - `Amethyst` → `紫水晶原石`
   - `Copper` → `铜矿`
   - `YellowIron` → `黄铁矿`
+  - `Diamond` → `钻石`
   - `Obsidian` → `黑曜石`
 
 ### I3. 结构方块类型名（准星信息）

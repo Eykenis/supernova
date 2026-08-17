@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 10
   primaryAction: 4
+  primaryActionHint: "\u53D1\u5C04\u4F20\u9001\u95E8"
   primaryActionSound: {fileID: 11400000, guid: 766213b9bab698349a37e0064ba358ad, type: 2}
   throwSound: {fileID: 0}
   miningHitSound: {fileID: 0}
@@ -32,7 +33,7 @@ MonoBehaviour:
   heldModelMountStrategy: 1
   allowMovementWhileUsing: 1
   actionTriggerDelay: 0
-  actionCyclePeriod: 0.6666667
+  actionCyclePeriod: 45
   actionIsPeriodic: 1
   projectilePrefab: {fileID: 0}
   throwSpeed: 8

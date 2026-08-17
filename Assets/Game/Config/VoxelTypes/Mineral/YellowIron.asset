@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: YellowIron
   m_EditorClassIdentifier: 
   type: 3
-  displayName: 黄铁矿
+  displayName: "\u9EC4\u94C1\u77FF"
   group: 2
   durability: 5
-  material: {fileID: 2100000, guid: bacb4a0d1f00adb4cb01f351f4ca302e, type: 2}
+  structuralSupport: 0
+  material: {fileID: 2100000, guid: a9b54c57ecfe4f4a82fa2a49688de653, type: 2}
+  sparkleDensity: 0.16

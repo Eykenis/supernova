@@ -19,6 +19,19 @@ public sealed class GameAssetCatalogTests
 
         Assert.That(catalog, Is.Not.Null);
         Assert.That(catalog.IsComplete, Is.True);
+        Assert.That(catalog.UI.InputGlyphs, Is.Not.Null);
+        Assert.That(
+            catalog.UI.InputGlyphs.GetSpriteIndexFromName("MouseLeft"),
+            Is.GreaterThanOrEqualTo(0));
+        Assert.That(
+            catalog.UI.InputGlyphs.GetSpriteIndexFromName("Key_CTRL"),
+            Is.GreaterThanOrEqualTo(0));
+        Assert.That(
+            catalog.UI.InputGlyphs.spriteGlyphTable,
+            Is.All.Matches<TMPro.TMP_SpriteGlyph>(glyph =>
+                Mathf.Approximately(glyph.metrics.horizontalBearingX, 0f)),
+            "Input glyphs must advance from the current pen position instead "
+            + "of extending left over the preceding prompt text.");
         Assert.That(catalog.Effects, Is.Not.Null);
         Assert.That(catalog.Effects.CollisionSmokeMaterial, Is.Not.Null);
         Assert.That(
@@ -28,6 +41,22 @@ public sealed class GameAssetCatalogTests
             PlayerSettings.GetPreloadedAssets().Contains(catalog),
             Is.True,
             "The runtime catalog must be loaded before scene bootstrap code runs.");
+    }
+
+    [TestCase(ProjectAssetPaths.Config.PickaxeTool, "挥镐")]
+    [TestCase(ProjectAssetPaths.Config.FlashlightTool, "投掷照明棒")]
+    [TestCase(ProjectAssetPaths.Config.BombTool, "投掷炸弹")]
+    [TestCase(ProjectAssetPaths.Config.SolidGunTool, "射击方块")]
+    [TestCase(ProjectAssetPaths.Config.PortalGunTool, "发射传送门")]
+    public void ToolDefinition_ConfiguresPrimaryActionHint(
+        string assetPath,
+        string expected)
+    {
+        PlayerToolDefinition definition =
+            AssetDatabase.LoadAssetAtPath<PlayerToolDefinition>(assetPath);
+
+        Assert.That(definition, Is.Not.Null);
+        Assert.That(definition.PrimaryActionHint, Is.EqualTo(expected));
     }
 
     [Test]
@@ -164,6 +193,7 @@ public sealed class GameAssetCatalogTests
         ProjectAssetPaths.Config.MissionStartSound,
         ProjectAssetPaths.Config.MissionReadySound,
         ProjectAssetPaths.Config.UiDesignTokens,
+        ProjectAssetPaths.Config.InputGlyphSpriteAsset,
         ProjectAssetPaths.Config.EquipmentIconCatalog,
         ProjectAssetPaths.Config.EquipmentPortraitSettings,
         ProjectAssetPaths.Config.FirstLevel,
@@ -198,6 +228,7 @@ public sealed class GameAssetCatalogTests
         ProjectAssetPaths.Ui.PauseSettings,
         ProjectAssetPaths.Ui.PrimaryFrame,
         ProjectAssetPaths.Ui.TelemetryBackdrop,
+        ProjectAssetPaths.Ui.InputGlyphAtlas,
         ProjectAssetPaths.Scenes.Home,
         ProjectAssetPaths.Scenes.InfiniteCaves,
     };

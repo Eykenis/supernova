@@ -66,11 +66,7 @@ namespace Supernova.Effects
         [SerializeField, ColorUsage(true, true)]
         private Color targetColor = new Color(0.62f, 1.65f, 0.72f, 0.96f);
 
-        [Header("Weight Feedback")]
-        [Tooltip("Targets at or below this mass remain fully green.")]
-        [SerializeField, Min(0f)] private float easyMass = 5f;
-        [Tooltip("Targets at or above this mass reach the fully strained red palette.")]
-        [SerializeField, Min(0.01f)] private float difficultMass = 45f;
+        [Header("Load Feedback")]
         [SerializeField, Min(0.01f)] private float weightColorResponse = 9f;
         [SerializeField, ColorUsage(true, true)]
         private Color difficultEnergyColor =
@@ -143,7 +139,7 @@ namespace Supernova.Effects
             }
 
             SetVisualsActive(true);
-            UpdateWeightPalette(Time.deltaTime);
+            UpdateLoadPalette(Time.deltaTime);
             AdvanceAnimation(Time.deltaTime);
 
             Vector3 start = ResolveBeamStart();
@@ -154,9 +150,9 @@ namespace Supernova.Effects
             UpdateShaderProperties();
         }
 
-        private void UpdateWeightPalette(float deltaTime)
+        private void UpdateLoadPalette(float deltaTime)
         {
-            float difficulty = ResolveWeightDifficulty();
+            float difficulty = ResolveLoadDifficulty();
             Color wantedEnergy = Color.Lerp(
                 energyColor,
                 difficultEnergyColor,
@@ -196,7 +192,7 @@ namespace Supernova.Effects
             }
         }
 
-        private float ResolveWeightDifficulty()
+        private float ResolveLoadDifficulty()
         {
             if (attractor == null) return 0f;
 
@@ -206,21 +202,8 @@ namespace Supernova.Effects
                 targetBody = attractor.TowedPickaxe.Body;
             }
             return targetBody != null
-                ? CalculateMassDifficulty(targetBody.mass)
+                ? Mathf.Clamp01(attractor.GetAttractionLoadRatio(targetBody))
                 : 0f;
-        }
-
-        private float CalculateMassDifficulty(float mass)
-        {
-            float lightThreshold = Mathf.Max(0f, easyMass);
-            float heavyThreshold = Mathf.Max(
-                lightThreshold + 0.01f,
-                difficultMass);
-            float normalized = Mathf.InverseLerp(
-                lightThreshold,
-                heavyThreshold,
-                Mathf.Max(0f, mass));
-            return Mathf.SmoothStep(0f, 1f, normalized);
         }
 
         private void AdvanceAnimation(float deltaTime)
@@ -843,8 +826,6 @@ namespace Supernova.Effects
             helixWidth = Mathf.Max(0f, helixWidth);
             targetRingRadius = Mathf.Max(0.05f, targetRingRadius);
             targetRingWidth = Mathf.Max(0.001f, targetRingWidth);
-            easyMass = Mathf.Max(0f, easyMass);
-            difficultMass = Mathf.Max(easyMass + 0.01f, difficultMass);
             weightColorResponse = Mathf.Max(0.01f, weightColorResponse);
         }
 

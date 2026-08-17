@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using Supernova.Audio;
 using Supernova.Gameplay;
 using Supernova.Infrastructure;
@@ -107,6 +108,13 @@ namespace Supernova.MinecraftCaves.Creatures
         private int stuckJumpCount;
         private int movementSoundLoopId;
         private bool movementSoundPlaying;
+        private Action<CreatureBehaviorAgent> poolReleaseHandler;
+        private Collider[] reusableColliders = new Collider[0];
+        private bool[] reusableColliderEnabled = new bool[0];
+        private RigidbodyReuseState[] reusableBodies =
+            new RigidbodyReuseState[0];
+        private bool reusablePhysicsCached;
+        private bool authoredMotorEnabled = true;
 
         public event Action<float, float> HealthChanged;
         public event Action<float, Vector3> Damaged;
@@ -152,11 +160,65 @@ namespace Supernova.MinecraftCaves.Creatures
             playerFoot = targetPlayerFoot;
         }
 
+        public void SetPoolReleaseHandler(
+            Action<CreatureBehaviorAgent> handler)
+        {
+            poolReleaseHandler = handler;
+        }
+
+        public void PrepareForReuse(
+            IVoxelTerrain world,
+            Transform targetPlayerFoot)
+        {
+            StopAllCoroutines();
+            StopMovementSound();
+            ResolveReferences();
+            CacheReusablePhysicsState();
+            BindWorldContext(world, targetPlayerFoot);
+            deathCleanupScheduled = false;
+            isCaught = false;
+            isPursuitEngaged = false;
+            stateSeconds = 0f;
+            nextAttackTime = 0f;
+            attackApplied = false;
+            attackSwingCount = 0;
+            lastVisitedNodeCount = 0;
+            currentState = CreatureBehaviorState.Idle;
+            stateMachine?.Stop();
+            navigator?.Clear();
+            ResetStuckWatch();
+            EnsureVitals(true);
+            RestoreReusablePhysicsState();
+            motor?.Stop();
+            HealthChanged?.Invoke(
+                vitals.CurrentHealth,
+                vitals.MaximumHealth);
+        }
+
+        public void PrepareForPool()
+        {
+            StopAllCoroutines();
+            StopMovementSound();
+            stateMachine?.Stop();
+            navigator?.Clear();
+            ResetStuckWatch();
+            isCaught = false;
+            isPursuitEngaged = false;
+            attackApplied = false;
+            motor?.Stop();
+            DisableDeadBodyPhysics();
+            voxelTerrain = null;
+            caveWorld = null;
+            playerFoot = null;
+            poolReleaseHandler = null;
+        }
+
 
         private void Awake()
         {
             movementSoundLoopId = SoundEffectEvents.CreateLoopId();
             ResolveReferences();
+            CacheReusablePhysicsState();
             EnsureVitals(true);
             EnsureHealthBar();
             BuildStateMachine();
@@ -924,10 +986,10 @@ namespace Supernova.MinecraftCaves.Creatures
             }
 
             deathCleanupScheduled = true;
-            RemoveDeadBodyPhysics();
+            DisableDeadBodyPhysics();
             if (Application.isPlaying)
             {
-                Destroy(gameObject, DeadDespawnDelay);
+                StartCoroutine(DespawnDeadBodyAfterDelay());
             }
         }
 
@@ -936,26 +998,82 @@ namespace Supernova.MinecraftCaves.Creatures
             motor?.Stop();
         }
 
-        private void RemoveDeadBodyPhysics()
+        private IEnumerator DespawnDeadBodyAfterDelay()
         {
-            Collider[] colliders = GetComponentsInChildren<Collider>(true);
-            for (int i = 0; i < colliders.Length; i++)
+            yield return new WaitForSeconds(DeadDespawnDelay);
+            Action<CreatureBehaviorAgent> handler = poolReleaseHandler;
+            if (handler != null)
             {
-                Collider deadCollider = colliders[i];
-                deadCollider.enabled = false;
-                DestroyPhysicsComponent(deadCollider);
+                handler(this);
+                yield break;
             }
 
-            Rigidbody[] bodies = GetComponentsInChildren<Rigidbody>(true);
+            Destroy(gameObject);
+        }
+
+        private void CacheReusablePhysicsState()
+        {
+            if (reusablePhysicsCached)
+            {
+                return;
+            }
+
+            reusableColliders =
+                GetComponentsInChildren<Collider>(true);
+            reusableColliderEnabled =
+                new bool[reusableColliders.Length];
+            for (int i = 0; i < reusableColliders.Length; i++)
+            {
+                reusableColliderEnabled[i] =
+                    reusableColliders[i] != null
+                    && reusableColliders[i].enabled;
+            }
+
+            Rigidbody[] bodies =
+                GetComponentsInChildren<Rigidbody>(true);
+            reusableBodies = new RigidbodyReuseState[bodies.Length];
             for (int i = 0; i < bodies.Length; i++)
             {
-                Rigidbody deadBody = bodies[i];
-                deadBody.detectCollisions = false;
-                deadBody.useGravity = false;
-                deadBody.velocity = Vector3.zero;
-                deadBody.angularVelocity = Vector3.zero;
-                deadBody.isKinematic = true;
-                DestroyPhysicsComponent(deadBody);
+                Rigidbody body = bodies[i];
+                reusableBodies[i] = new RigidbodyReuseState(
+                    body,
+                    body != null && body.detectCollisions,
+                    body != null && body.useGravity,
+                    body != null && body.isKinematic);
+            }
+
+            authoredMotorEnabled = motor == null || motor.enabled;
+            reusablePhysicsCached = true;
+        }
+
+        private void DisableDeadBodyPhysics()
+        {
+            CacheReusablePhysicsState();
+            for (int i = 0; i < reusableColliders.Length; i++)
+            {
+                Collider collider = reusableColliders[i];
+                if (collider != null)
+                {
+                    collider.enabled = false;
+                }
+            }
+
+            for (int i = 0; i < reusableBodies.Length; i++)
+            {
+                Rigidbody body = reusableBodies[i].Body;
+                if (body == null)
+                {
+                    continue;
+                }
+                body.detectCollisions = false;
+                body.useGravity = false;
+                if (!body.isKinematic)
+                {
+                    body.velocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                }
+                body.isKinematic = true;
+                body.Sleep();
             }
 
             if (motor != null)
@@ -964,15 +1082,39 @@ namespace Supernova.MinecraftCaves.Creatures
             }
         }
 
-        private static void DestroyPhysicsComponent(Component component)
+        private void RestoreReusablePhysicsState()
         {
-            if (Application.isPlaying)
+            for (int i = 0; i < reusableColliders.Length; i++)
             {
-                Destroy(component);
+                Collider collider = reusableColliders[i];
+                if (collider != null)
+                {
+                    collider.enabled = reusableColliderEnabled[i];
+                }
             }
-            else
+
+            for (int i = 0; i < reusableBodies.Length; i++)
             {
-                DestroyImmediate(component);
+                RigidbodyReuseState state = reusableBodies[i];
+                Rigidbody body = state.Body;
+                if (body == null)
+                {
+                    continue;
+                }
+                body.detectCollisions = state.DetectCollisions;
+                body.useGravity = state.UseGravity;
+                body.isKinematic = state.IsKinematic;
+                if (!body.isKinematic)
+                {
+                    body.velocity = Vector3.zero;
+                    body.angularVelocity = Vector3.zero;
+                    body.WakeUp();
+                }
+            }
+
+            if (motor != null)
+            {
+                motor.enabled = authoredMotorEnabled;
             }
         }
 
@@ -1159,6 +1301,26 @@ namespace Supernova.MinecraftCaves.Creatures
             minimumDamageImpulse = Mathf.Max(0f, minimumDamageImpulse);
             damagePercentagePerSquaredImpulse =
                 Mathf.Max(0f, damagePercentagePerSquaredImpulse);
+        }
+
+        private readonly struct RigidbodyReuseState
+        {
+            public RigidbodyReuseState(
+                Rigidbody body,
+                bool detectCollisions,
+                bool useGravity,
+                bool isKinematic)
+            {
+                Body = body;
+                DetectCollisions = detectCollisions;
+                UseGravity = useGravity;
+                IsKinematic = isKinematic;
+            }
+
+            public Rigidbody Body { get; }
+            public bool DetectCollisions { get; }
+            public bool UseGravity { get; }
+            public bool IsKinematic { get; }
         }
 
         private sealed class CreatureState : ICharacterState<CreatureBehaviorState>

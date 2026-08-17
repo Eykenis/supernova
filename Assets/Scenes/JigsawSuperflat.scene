@@ -362,7 +362,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   viewer: {fileID: 0}
-  levelConfigurationOverride: {fileID: 0}
+  levelConfigurations: []
   worldGenerationConfigurationOverride: {fileID: 11400000, guid: 3ee677c9382ca744f85bc25982a524f8,
     type: 2}
   fixedPreviewArea: 0

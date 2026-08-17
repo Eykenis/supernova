@@ -8,7 +8,8 @@ namespace Supernova.Inputs
             string mapName,
             string actionName,
             string bindingName,
-            string displayString)
+            string displayString,
+            string controlPath = null)
         {
             ActionId = actionId;
             BindingIndex = bindingIndex;
@@ -16,6 +17,7 @@ namespace Supernova.Inputs
             ActionName = actionName;
             BindingName = bindingName;
             DisplayString = displayString;
+            ControlPath = controlPath;
         }
 
         public GameInputActionId ActionId { get; }
@@ -24,6 +26,7 @@ namespace Supernova.Inputs
         public string ActionName { get; }
         public string BindingName { get; }
         public string DisplayString { get; }
+        public string ControlPath { get; }
 
         public string Label => string.IsNullOrEmpty(BindingName)
             ? ActionName

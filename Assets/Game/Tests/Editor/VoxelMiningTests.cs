@@ -312,6 +312,10 @@ namespace Supernova.Tests
                     terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
                 SetPrivateField(terrain, "voxelTypeCatalog", catalog);
                 terrain.InitializeWorld();
+                SetPrivateField(
+                    terrain,
+                    "usesExternalWorldRendering",
+                    true);
                 InfiniteVoxelChunk chunk =
                     terrain.World.EnsureChunk(Vector3Int.zero);
                 chunk.Data.Fill(-1f, VoxelTypeId.Air);
@@ -344,10 +348,100 @@ namespace Supernova.Tests
                 Assert.That(priorityQueue.Count, Is.EqualTo(1));
                 Assert.That(priorityQueue.Peek(), Is.EqualTo(Vector3Int.zero));
                 Assert.That(priorityDirtyMeshes, Does.Contain(Vector3Int.zero));
+                var externalDirtyMeshes = new HashSet<Vector3Int>();
+                Assert.That(
+                    terrain.CollectAdoptedWorldDirtyMeshes(
+                        externalDirtyMeshes),
+                    Is.EqualTo(1));
+                Assert.That(
+                    externalDirtyMeshes,
+                    Is.EquivalentTo(new[] { Vector3Int.zero }));
+
+                terrain.CompleteAdoptedWorldMeshRebuild();
+                externalDirtyMeshes.Clear();
+                Assert.That(
+                    terrain.CollectAdoptedWorldDirtyMeshes(
+                        externalDirtyMeshes),
+                    Is.Zero);
+                Assert.That(externalDirtyMeshes, Is.Empty);
                 Assert.That(
                     chunkObjects,
                     Is.Empty,
                     "Mining must not build or apply a mesh in the interaction call.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(catalog);
+            }
+        }
+
+        [Test]
+        public void MiningAtChunkAndSectionBoundary_ReportsAffectedAdoptedSections()
+        {
+            VoxelTypeCatalog catalog =
+                ScriptableObject.CreateInstance<VoxelTypeCatalog>();
+            try
+            {
+                var stone = new VoxelTypeId(2);
+                catalog.SetDefinitions(
+                    new[] { CreateDefinition(stone.Value, 1, "Stone") });
+
+                GameObject terrainObject = Create("Boundary Mining Terrain");
+                MinecraftCaveInfiniteWorld terrain =
+                    terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+                SetPrivateField(terrain, "voxelTypeCatalog", catalog);
+                terrain.InitializeWorld();
+                SetPrivateField(
+                    terrain,
+                    "usesExternalWorldRendering",
+                    true);
+
+                Vector2Int[] columns =
+                {
+                    new Vector2Int(-1, -1),
+                    new Vector2Int(0, -1),
+                    new Vector2Int(-1, 0),
+                    Vector2Int.zero,
+                };
+                for (int i = 0; i < columns.Length; i++)
+                {
+                    terrain.World.EnsureChunk(columns[i]).Data.Fill(
+                        -1f,
+                        VoxelTypeId.Air);
+                }
+
+                var minedVoxel = new Vector3Int(0, 32, 0);
+                terrain.World.SetVoxel(
+                    minedVoxel.x,
+                    minedVoxel.y,
+                    minedVoxel.z,
+                    1f,
+                    stone);
+
+                Assert.That(
+                    terrain.TryMineVoxel(
+                        minedVoxel,
+                        out VoxelMiningResult result),
+                    Is.True);
+                Assert.That(result.Destroyed, Is.True);
+
+                var affected = new HashSet<Vector3Int>();
+                Assert.That(
+                    terrain.CollectAdoptedWorldDirtyMeshes(affected),
+                    Is.EqualTo(8));
+                Assert.That(
+                    affected,
+                    Is.EquivalentTo(new[]
+                    {
+                        new Vector3Int(-1, 0, -1),
+                        new Vector3Int(0, 0, -1),
+                        new Vector3Int(-1, 0, 0),
+                        new Vector3Int(0, 0, 0),
+                        new Vector3Int(-1, 1, -1),
+                        new Vector3Int(0, 1, -1),
+                        new Vector3Int(-1, 1, 0),
+                        new Vector3Int(0, 1, 0),
+                    }));
             }
             finally
             {
@@ -421,7 +515,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void RebuildingNonEmptySection_ReusesChunkObjectMeshAndComponents()
+        public void RebuildingNonEmptySection_DoubleBuffersMeshAndReusesComponents()
         {
             GameObject terrainObject = Create("Reusable Chunk Terrain");
             MinecraftCaveInfiniteWorld terrain =
@@ -433,6 +527,11 @@ namespace Supernova.Tests
             chunk.Data.SetSample(8, 8, 8, 1f, VoxelTypeId.Default);
 
             InvokePrivate(terrain, "RebuildChunk", Vector3Int.zero);
+            InvokePrivate(
+                terrain,
+                "ProcessPendingMeshPostProcesses",
+                1,
+                1000f);
             Dictionary<Vector3Int, GameObject> chunkObjects =
                 GetPrivateField<Dictionary<Vector3Int, GameObject>>(
                     terrain,
@@ -446,12 +545,15 @@ namespace Supernova.Tests
             MeshFilter firstFilter = firstObject.GetComponent<MeshFilter>();
             MeshRenderer firstRenderer = firstObject.GetComponent<MeshRenderer>();
             MeshCollider firstCollider = firstObject.GetComponent<MeshCollider>();
+            Assert.That(firstCollider, Is.Not.Null);
+            Assert.That(firstCollider.sharedMesh, Is.SameAs(firstMesh));
 
             chunk.Data.SetSample(9, 8, 8, 1f, VoxelTypeId.Default);
             InvokePrivate(terrain, "RebuildChunk", Vector3Int.zero);
+            Mesh secondMesh = chunkMeshes[Vector3Int.zero];
 
             Assert.That(chunkObjects[Vector3Int.zero], Is.SameAs(firstObject));
-            Assert.That(chunkMeshes[Vector3Int.zero], Is.SameAs(firstMesh));
+            Assert.That(secondMesh, Is.Not.SameAs(firstMesh));
             Assert.That(
                 firstObject.GetComponent<MeshFilter>(),
                 Is.SameAs(firstFilter));
@@ -461,8 +563,21 @@ namespace Supernova.Tests
             Assert.That(
                 firstObject.GetComponent<MeshCollider>(),
                 Is.SameAs(firstCollider));
-            Assert.That(firstFilter.sharedMesh, Is.SameAs(firstMesh));
-            Assert.That(firstCollider.sharedMesh, Is.SameAs(firstMesh));
+            Assert.That(firstFilter.sharedMesh, Is.SameAs(secondMesh));
+            Assert.That(
+                firstCollider.sharedMesh,
+                Is.SameAs(firstMesh),
+                "The old collider mesh must remain attached while the new mesh "
+                + "waits for deferred PhysX cooking.");
+
+            InvokePrivate(
+                terrain,
+                "ProcessPendingMeshPostProcesses",
+                1,
+                1000f);
+
+            Assert.That(firstCollider.sharedMesh, Is.SameAs(secondMesh));
+            Assert.That(terrain.PooledChunkMeshCount, Is.EqualTo(1));
         }
 
         [Test]
@@ -511,6 +626,16 @@ namespace Supernova.Tests
                 terrain,
                 "NotifyOreTerrainMeshRebuilt",
                 Vector3Int.right);
+
+            Assert.That(
+                drop.IsWaitingForTerrainColliderRebuild,
+                Is.True,
+                "Collider assignment alone must not release collision protection.");
+            Assert.That(
+                drop.Valuable.IsCollisionValueLossProtected,
+                Is.True);
+
+            InvokePrivate(terrain, "ProcessPendingColumnPhysics");
 
             Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.False);
             Assert.That(body.isKinematic, Is.False);
@@ -701,6 +826,12 @@ namespace Supernova.Tests
 
                 MinedOreDrop drop = terrain.ActiveOreDrops[0];
                 Assert.That(drop, Is.Not.Null);
+                Assert.That(
+                    drop.transform.lossyScale,
+                    Is.EqualTo(terrain.transform.lossyScale));
+                Assert.That(
+                    drop.transform.rotation,
+                    Is.EqualTo(terrain.transform.rotation));
                 Assert.That(drop.VoxelType, Is.EqualTo(ore.TypeId));
                 Assert.That(drop.VoxelCount, Is.EqualTo(component.Count));
                 Assert.That(

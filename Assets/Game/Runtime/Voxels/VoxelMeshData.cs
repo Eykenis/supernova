@@ -6,7 +6,7 @@ using UnityEngine.Rendering;
 
 namespace Supernova.Voxels
 {
-    public sealed class VoxelMeshData
+    public sealed class VoxelMeshData : IDisposable
     {
         private static readonly ProfilerMarker SetVerticesMarker =
             new ProfilerMarker("Voxel.Mesh.UploadVertices");
@@ -26,18 +26,28 @@ namespace Supernova.Voxels
         private const float WorldUvScale = 0.25f;
         private const int MarchingCubesEdgeCount = 12;
         private const int ProjectionAxisCount = 3;
+        private const int MaximumPooledInstances = 3;
+        private const long MaximumRetainedBytes = 32L * 1024L * 1024L;
+
+        private static readonly object PoolLock = new object();
+        private static readonly Stack<VoxelMeshData> Pool =
+            new Stack<VoxelMeshData>(MaximumPooledInstances);
 
         internal const int ProjectedEdgeCacheSize =
             MarchingCubesEdgeCount * ProjectionAxisCount;
 
         private readonly SortedDictionary<VoxelTypeId, List<int>> trianglesByType =
             new SortedDictionary<VoxelTypeId, List<int>>();
+        private readonly Stack<List<int>> availableTriangleLists =
+            new Stack<List<int>>();
         private readonly List<VoxelTypeId> submeshTypes = new List<VoxelTypeId>();
         private readonly List<int> smoothingGroupByVertex = new List<int>();
         private readonly List<ProjectionAxis> projectionAxisByVertex =
             new List<ProjectionAxis>();
         private readonly List<Vector3> accumulatedNormalsBySmoothingGroup =
             new List<Vector3>();
+        private readonly bool poolOwned;
+        private int referenceCount;
         private bool normalsFinalized;
 
         public readonly List<Vector3> Vertices = new List<Vector3>();
@@ -45,6 +55,16 @@ namespace Supernova.Voxels
         public readonly List<Vector3> Normals = new List<Vector3>();
         public readonly List<Vector4> Tangents = new List<Vector4>();
         public readonly List<int> Triangles = new List<int>();
+
+        public VoxelMeshData()
+        {
+        }
+
+        private VoxelMeshData(bool poolOwned)
+        {
+            this.poolOwned = poolOwned;
+        }
+
 
         public int TriangleCount => Triangles.Count / 3;
         public int SubmeshCount => trianglesByType.Count;
@@ -111,7 +131,9 @@ namespace Supernova.Voxels
 
             if (!trianglesByType.TryGetValue(type, out List<int> typeTriangles))
             {
-                typeTriangles = new List<int>();
+                typeTriangles = availableTriangleLists.Count > 0
+                    ? availableTriangleLists.Pop()
+                    : new List<int>();
                 trianglesByType.Add(type, typeTriangles);
             }
 
@@ -279,6 +301,110 @@ namespace Supernova.Voxels
             }
             normalsFinalized = true;
         }
+
+        internal static VoxelMeshData RentPooled()
+        {
+            VoxelMeshData data;
+            lock (PoolLock)
+            {
+                data = Pool.Count > 0
+                    ? Pool.Pop()
+                    : new VoxelMeshData(true);
+            }
+
+            System.Threading.Volatile.Write(ref data.referenceCount, 1);
+            return data;
+        }
+
+        internal void Retain()
+        {
+            if (!poolOwned)
+            {
+                return;
+            }
+
+            int count = System.Threading.Interlocked.Increment(
+                ref referenceCount);
+            if (count <= 1)
+            {
+                System.Threading.Interlocked.Decrement(ref referenceCount);
+                throw new ObjectDisposedException(nameof(VoxelMeshData));
+            }
+        }
+
+        public void Dispose()
+        {
+            if (!poolOwned)
+            {
+                return;
+            }
+
+            int remaining = System.Threading.Interlocked.Decrement(
+                ref referenceCount);
+            if (remaining > 0)
+            {
+                return;
+            }
+            if (remaining < 0)
+            {
+                System.Threading.Interlocked.Increment(ref referenceCount);
+                throw new ObjectDisposedException(nameof(VoxelMeshData));
+            }
+
+            ResetForPool();
+            if (CalculateRetainedBytes() > MaximumRetainedBytes)
+            {
+                return;
+            }
+
+            lock (PoolLock)
+            {
+                if (Pool.Count < MaximumPooledInstances)
+                {
+                    Pool.Push(this);
+                }
+            }
+        }
+
+        private void ResetForPool()
+        {
+            foreach (KeyValuePair<VoxelTypeId, List<int>> pair
+                in trianglesByType)
+            {
+                pair.Value.Clear();
+                availableTriangleLists.Push(pair.Value);
+            }
+            trianglesByType.Clear();
+            submeshTypes.Clear();
+            smoothingGroupByVertex.Clear();
+            projectionAxisByVertex.Clear();
+            accumulatedNormalsBySmoothingGroup.Clear();
+            Vertices.Clear();
+            Uvs.Clear();
+            Normals.Clear();
+            Tangents.Clear();
+            Triangles.Clear();
+            normalsFinalized = false;
+        }
+
+        private long CalculateRetainedBytes()
+        {
+            long bytes = Vertices.Capacity * 12L
+                + Uvs.Capacity * 8L
+                + Normals.Capacity * 12L
+                + Tangents.Capacity * 16L
+                + Triangles.Capacity * 4L
+                + submeshTypes.Capacity * 2L
+                + smoothingGroupByVertex.Capacity * 4L
+                + projectionAxisByVertex.Capacity * 4L
+                + accumulatedNormalsBySmoothingGroup.Capacity * 12L;
+            foreach (List<int> triangles in availableTriangleLists)
+            {
+                bytes += triangles.Capacity * 4L;
+            }
+            return bytes;
+        }
+
 
         private static Vector4 CalculateTangent(
             Vector3 normal,

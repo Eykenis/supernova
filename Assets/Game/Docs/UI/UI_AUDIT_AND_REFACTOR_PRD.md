@@ -1,10 +1,26 @@
 # Supernova UI/GUI 统一与重构需求文档
 
-- 文档状态：已评审基线，第一阶段执行中
+- 文档状态：保留 2026-07-26 评审基线；下方另列当前实现同步
 - 基线日期：2026-07-26
+- 最近同步：2026-08-17
 - 项目版本：Unity 2022.3.62t11 / Tuanjie 1.9.3
 - 目标平台：Standalone Windows 64-bit
 - 决策：运行时统一采用 UGUI + TextMeshPro；UI Toolkit 仅保留为迁移回退和编辑器工具方案；IMGUI 退出发布版运行时 UI
+
+## 0. 2026-08-17 当前实现同步
+
+- 产品流程不再使用独立 MainMenu 场景：`Home.scene` 内含可编辑的
+  `Assets/UI/UI/MainMenuCanvas.prefab`、角色展示和进入第一人称的镜头过渡。
+- `MainMenuController` 已优先使用 UGUI `MainMenuView`；`Assets/UI/MainMenu/` 的
+  UI Toolkit 资产和 Controller 回退分支仍保留，因此 Phase 4 尚未完成。
+- `UiDesignTokens`、`UiCanvasPolicy`、`UiSafeArea`、Sci-Fi 皮肤、统一 EventSystem、
+  输入重绑、装备菜单和暂停肖像均已落地，并有 EditMode 覆盖。
+- HUD、任务、加载、暂停和部分装备视图仍由 `GameHudController` 运行时构建；
+  Phase 2 的“Prefab 成为唯一真源”和职责拆分尚未完成。
+- 运行时仍存在受调试/示例用途驱动的 `OnGUI()`（例如 Gallery、Portal Example、
+  体素完整性实验与结构编辑器）；Phase 3 不能标记为完成。
+- 当前 Build Settings 顺序为 `Home` → `DenseJigsawRegion` →
+  `SpawnShelterStoneTest`，其中最后一项是教程入口。
 
 ## 1. 背景与目标
 
@@ -17,7 +33,9 @@
 3. 通过逐屏迁移统一主菜单、HUD、暂停、加载和诊断界面。
 4. 保证迁移期间可回退，不中断玩法开发。
 
-## 2. 当前使用基线
+## 2. 2026-07-26 使用基线（历史快照）
+
+本节保留立项时的证据和问题编号，不能再当作当前资产清单；当前状态以第 0 节为准。
 
 ### 2.1 技术分布
 
@@ -61,7 +79,7 @@
 - UGUI、TextMeshPro 和 EventSystem 已安装且已有测试覆盖。
 - HUD 已有 Presenter 雏形，数据源和视图可以继续拆分。
 - 主菜单已经形成明确的“深空洞穴 + 工业橙色”视觉方向，可迁移而无需推翻品牌。
-- Build Settings 已按 MainMenu → InfiniteCaves 顺序启用，可作为 UI 流程测试入口。
+- 当时计划使用 MainMenu → InfiniteCaves；当前实际入口已改为第 0 节所列的 Home → DenseJigsawRegion → Tutorial。
 
 ## 3. 技术调研与选型
 
@@ -239,7 +257,7 @@ Unity 2022.3 官方 UI 对比文档给出的运行时首选仍是 Unity UI（UGU
 
 ### Phase 2：HUD、暂停、加载迁移
 
-- 将 `InfiniteCaves.scene` 中 HUD 层级提取为 Prefab。
+- 以 `Assets/UI/UI/Game HUD.prefab` 和 `DenseJigsawRegion.scene` 为当前正式链路，继续减少场景与运行时代码的重复 UI 层级。
 - 以 `UiDesignTokens` 替换脚本硬编码颜色和字号。
 - Root HUD Canvas 改为统一 Policy；Crosshair 保留 Constant Pixel Size 例外。
 - Loading/Pause 从代码生成改为 Prefab。
@@ -281,7 +299,7 @@ Unity 2022.3 官方 UI 对比文档给出的运行时首选仍是 Unity UI（UGU
 | 已完成 | `Assets/Game/Runtime/UI/MainMenuController.cs` 双栈迁移控制器 |
 | 已完成 | `Assets/Game/Editor/UI/MainMenuUguiPrefabBuilder.cs` |
 | 已生成 | `Assets/Game/Config/UI/DefaultUiDesignTokens.asset` |
-| 已生成 | `Assets/Game/Resources/UI/MainMenuCanvas.prefab` |
+| 已生成 | `Assets/UI/UI/MainMenuCanvas.prefab` |
 | 已完成 | `Assets/Game/Tests/Editor/UiFoundationTests.cs` |
 | 已修复 | `Assets/UI/MainMenu/MainMenu.uxml` |
 
@@ -300,4 +318,3 @@ Unity 2022.3 官方 UI 对比文档给出的运行时首选仍是 Unity UI（UGU
 - NoesisGUI Unity 集成与兼容性：<https://www.noesisengine.com/docs/Gui.Core.Unity3DTutorial.html>
 - FairyGUI 官方下载与 Unity Runtime：<https://www.fairygui.com/download>
 - Coherent Gameface Unity 概览：<https://docs.coherent-labs.com/unity-gameface/what_is_gfp/overview/>
-

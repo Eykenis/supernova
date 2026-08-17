@@ -3,17 +3,14 @@ using Supernova.Gameplay;
 using Supernova.Infrastructure;
 using TMPro;
 using UnityEngine;
-using UnityEngine.Animations;
 using UnityEngine.EventSystems;
-using UnityEngine.Playables;
 using UnityEngine.UI;
 
 namespace Supernova.UI
 {
     /// <summary>
     /// TAB-only loadout workspace. It owns a modal UGUI canvas, five quick-slot
-    /// selectors, a twelve-cell owned-item grid, and a real-material animated
-    /// preview cloned from the current player model.
+    /// selectors, and a twelve-cell owned-item grid.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class EquipmentLoadoutMenu : MonoBehaviour
@@ -48,22 +45,12 @@ namespace Supernova.UI
         private PlayerToolController inventorySource;
         private Canvas canvas;
         private GameObject panel;
-        private RawImage portraitImage;
         private int configuringSlotIndex;
         private bool isOpen;
         private float timeScaleBeforeOpen = 1f;
         private CursorLockMode cursorLockBeforeOpen;
         private bool cursorVisibleBeforeOpen;
 
-        private GameObject renderStage;
-        private GameObject portraitInstance;
-        private Animator portraitAnimator;
-        private PlayableGraph portraitAnimationGraph;
-        private Camera portraitCamera;
-        private RenderTexture portraitTexture;
-        private int portraitLayer = -1;
-        private int portraitLayerMask;
-        private float portraitYaw = -8f;
         private int draggedOwnedCellIndex = -1;
         private RectTransform dragVisual;
 
@@ -157,7 +144,6 @@ namespace Supernova.UI
                 Time.timeScale = 0f;
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
-                BuildPortraitFromCurrentPlayer();
             }
 
             if (EventSystem.current != null && slotButtons[configuringSlotIndex] != null)
@@ -170,7 +156,6 @@ namespace Supernova.UI
         public void Close()
         {
             EndOwnedItemDrag();
-            StopPortrait();
             if (panel != null)
                 panel.SetActive(false);
             if (!isOpen)
@@ -211,7 +196,6 @@ namespace Supernova.UI
                 inventorySource.LoadoutChanged -= HandleInventoryChanged;
                 inventorySource.OwnedItemsChanged -= HandleInventoryChanged;
             }
-            ReleasePortrait();
             if (IsAnyOpen && isOpen)
                 IsAnyOpen = false;
         }
@@ -250,7 +234,6 @@ namespace Supernova.UI
             backdrop.raycastTarget = true;
             panel = panelRect.gameObject;
 
-            BuildPortraitRegion(panelRect);
             BuildConfigurationRegion(panelRect);
             GameHudController.EnsureSingleEventSystem(transform);
             SciFiUiSkin.ApplyPauseMenu(panelRect);
@@ -258,43 +241,12 @@ namespace Supernova.UI
             RefreshView();
         }
 
-        private void BuildPortraitRegion(RectTransform parent)
-        {
-            RectTransform portraitRegion = CreateRect(
-                UiHierarchyPaths.Equipment.PortraitRegion,
-                parent);
-            portraitRegion.anchorMin = Vector2.zero;
-            portraitRegion.anchorMax = new Vector2(0.38f, 1f);
-            portraitRegion.offsetMin = Vector2.zero;
-            portraitRegion.offsetMax = Vector2.zero;
-
-            RectTransform portrait = CreateRect("Character Portrait", portraitRegion);
-            portrait.anchorMin = new Vector2(0.04f, 0.04f);
-            portrait.anchorMax = new Vector2(0.98f, 0.91f);
-            portrait.offsetMin = Vector2.zero;
-            portrait.offsetMax = Vector2.zero;
-            portraitImage = portrait.gameObject.AddComponent<RawImage>();
-            portraitImage.color = Color.white;
-            portraitImage.raycastTarget = true;
-            portrait.gameObject.AddComponent<EquipmentMenuInteraction>()
-                .ConfigurePortrait(this);
-
-            RectTransform divider = CreateRect("Portrait Divider", parent);
-            divider.anchorMin = new Vector2(0.38f, 0f);
-            divider.anchorMax = new Vector2(0.38f, 1f);
-            divider.pivot = new Vector2(0.5f, 0.5f);
-            divider.sizeDelta = new Vector2(2f, 0f);
-            Image dividerImage = divider.gameObject.AddComponent<Image>();
-            dividerImage.color = Primary;
-            dividerImage.raycastTarget = false;
-        }
-
         private void BuildConfigurationRegion(RectTransform parent)
         {
             RectTransform configuration = CreateRect(
                 UiHierarchyPaths.Equipment.Configuration,
                 parent);
-            configuration.anchorMin = new Vector2(0.38f, 0f);
+            configuration.anchorMin = Vector2.zero;
             configuration.anchorMax = Vector2.one;
             configuration.offsetMin = Vector2.zero;
             configuration.offsetMax = Vector2.zero;
@@ -624,23 +576,6 @@ namespace Supernova.UI
             dragVisual = null;
         }
 
-        internal bool BeginPortraitRotation()
-        {
-            return portraitInstance != null;
-        }
-
-        internal void RotatePortrait(float pointerDeltaX)
-        {
-            if (portraitInstance == null)
-                return;
-
-            portraitYaw = Mathf.Repeat(
-                portraitYaw - pointerDeltaX * 0.35f,
-                360f);
-            portraitInstance.transform.localRotation =
-                Quaternion.Euler(0f, portraitYaw, 0f);
-        }
-
         private void RefreshView()
         {
             if (panel == null)
@@ -806,385 +741,8 @@ namespace Supernova.UI
             return result;
         }
 
-        private void BuildPortraitFromCurrentPlayer()
-        {
-            ReleasePortrait();
-            Animator sourceAnimator = inventorySource != null
-                ? inventorySource.GetComponentInChildren<Animator>(true)
-                : null;
-            if (sourceAnimator == null)
-            {
-                return;
-            }
-
-            portraitLayer = LayerMask.NameToLayer(UiLayerNames.PausePortrait);
-            if (portraitLayer < 0)
-            {
-                Debug.LogError(
-                    "Equipment preview requires the configured portrait layer: "
-                    + UiLayerNames.PausePortrait);
-                return;
-            }
-            portraitLayerMask = 1 << portraitLayer;
-
-            renderStage = new GameObject("Equipment Character Render Stage");
-            renderStage.hideFlags = HideFlags.DontSave;
-            DontDestroyOnLoad(renderStage);
-            renderStage.transform.position = new Vector3(7000f, -7000f, 7000f);
-            renderStage.layer = portraitLayer;
-
-            portraitInstance = Instantiate(sourceAnimator.gameObject, renderStage.transform);
-            portraitInstance.name = "Current Character Equipment Preview";
-            portraitInstance.transform.localPosition = Vector3.zero;
-            portraitYaw = -8f;
-            portraitInstance.transform.localRotation =
-                Quaternion.Euler(0f, portraitYaw, 0f);
-            portraitInstance.transform.localScale = Vector3.one;
-            HideEquippedToolInPortrait(sourceAnimator.transform);
-            DisablePreviewBehaviours(portraitInstance);
-            SetLayerRecursively(portraitInstance, portraitLayer);
-
-            portraitAnimator = portraitInstance.GetComponent<Animator>();
-            if (portraitAnimator == null)
-                portraitAnimator = portraitInstance.GetComponentInChildren<Animator>(true);
-            if (portraitAnimator != null)
-            {
-                portraitAnimator.enabled = true;
-                portraitAnimator.runtimeAnimatorController = null;
-                portraitAnimator.applyRootMotion = false;
-                portraitAnimator.updateMode = AnimatorUpdateMode.UnscaledTime;
-                portraitAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                portraitAnimator.Rebind();
-                PlayPortraitAnimation();
-
-                PerspectiveCameraController perspective = inventorySource != null
-                    ? inventorySource.GetComponentInChildren<
-                        PerspectiveCameraController>(true)
-                    : null;
-                perspective?.RestoreCharacterPreviewVisibility(
-                    sourceAnimator,
-                    portraitAnimator);
-            }
-
-            ConfigurePortraitCloth();
-
-            CreatePortraitLighting();
-            CreatePortraitCamera();
-            if (portraitImage != null)
-                portraitImage.texture = portraitTexture;
-        }
-
-        private void DisablePreviewBehaviours(GameObject root)
-        {
-            Behaviour[] behaviours = root.GetComponentsInChildren<Behaviour>(true);
-            for (int i = 0; i < behaviours.Length; i++)
-            {
-                Behaviour behaviour = behaviours[i];
-                if (behaviour != null
-                    && !(behaviour is Animator)
-                    && !(behaviour is MagicaCloth2.ClothBehaviour))
-                    behaviour.enabled = false;
-            }
-
-            Collider[] colliders = root.GetComponentsInChildren<Collider>(true);
-            for (int i = 0; i < colliders.Length; i++)
-                colliders[i].enabled = false;
-            Rigidbody[] rigidbodies = root.GetComponentsInChildren<Rigidbody>(true);
-            for (int i = 0; i < rigidbodies.Length; i++)
-            {
-                rigidbodies[i].isKinematic = true;
-                rigidbodies[i].detectCollisions = false;
-            }
-        }
-
-        private void HideEquippedToolInPortrait(Transform sourceCharacterRoot)
-        {
-            GameObject equippedTool = inventorySource != null
-                ? inventorySource.EquippedToolModel
-                : null;
-            if (equippedTool == null
-                || sourceCharacterRoot == null
-                || portraitInstance == null)
-            {
-                return;
-            }
-
-            Transform portraitTool = FindCorrespondingCloneTransform(
-                sourceCharacterRoot,
-                equippedTool.transform,
-                portraitInstance.transform);
-            if (portraitTool != null)
-                portraitTool.gameObject.SetActive(false);
-        }
-
-        private static Transform FindCorrespondingCloneTransform(
-            Transform sourceRoot,
-            Transform sourceTarget,
-            Transform cloneRoot)
-        {
-            if (sourceRoot == null || sourceTarget == null || cloneRoot == null)
-                return null;
-            if (sourceTarget == sourceRoot)
-                return cloneRoot;
-
-            var siblingPath = new List<int>();
-            Transform current = sourceTarget;
-            while (current != null && current != sourceRoot)
-            {
-                siblingPath.Add(current.GetSiblingIndex());
-                current = current.parent;
-            }
-            if (current != sourceRoot)
-                return null;
-
-            Transform clone = cloneRoot;
-            for (int i = siblingPath.Count - 1; i >= 0; i--)
-            {
-                int childIndex = siblingPath[i];
-                if (childIndex < 0 || childIndex >= clone.childCount)
-                    return null;
-                clone = clone.GetChild(childIndex);
-            }
-            return clone;
-        }
-
-        private void PlayPortraitAnimation()
-        {
-            EquipmentPortraitSettings settings = GameAssetCatalog.Current != null
-                && GameAssetCatalog.Current.UI != null
-                ? GameAssetCatalog.Current.UI.EquipmentPortraitSettings
-                : null;
-            AnimationClip clip = settings != null ? settings.AnimationClips[Random.Range(0, settings.AnimationClips.Length)] : null;
-            if (portraitAnimator == null || clip == null)
-            {
-                Debug.LogWarning(
-                    "The TAB equipment portrait has no configured animation clip.");
-                return;
-            }
-
-            if (portraitAnimationGraph.IsValid())
-                portraitAnimationGraph.Destroy();
-            portraitAnimationGraph = PlayableGraph.Create(
-                "TAB Equipment Portrait Animation");
-            portraitAnimationGraph.SetTimeUpdateMode(
-                DirectorUpdateMode.UnscaledGameTime);
-            AnimationPlayableOutput output = AnimationPlayableOutput.Create(
-                portraitAnimationGraph,
-                "Portrait Animation",
-                portraitAnimator);
-            AnimationClipPlayable playable = AnimationClipPlayable.Create(
-                portraitAnimationGraph,
-                clip);
-            playable.SetApplyFootIK(false);
-            playable.SetApplyPlayableIK(false);
-            playable.SetOverrideLoopTime(true);
-            playable.SetLoopTime(true);
-            output.SetSourcePlayable(playable);
-            portraitAnimationGraph.Play();
-            portraitAnimationGraph.Evaluate(0f);
-        }
-
-        private void ConfigurePortraitCloth()
-        {
-            if (portraitInstance == null)
-                return;
-
-            MagicaCloth2.ClothBehaviour[] clothBehaviours =
-                portraitInstance.GetComponentsInChildren<
-                    MagicaCloth2.ClothBehaviour>(true);
-            for (int i = 0; i < clothBehaviours.Length; i++)
-            {
-                if (clothBehaviours[i] != null)
-                    clothBehaviours[i].enabled = true;
-            }
-
-            MagicaCloth2.MagicaCloth[] clothComponents =
-                portraitInstance.GetComponentsInChildren<
-                    MagicaCloth2.MagicaCloth>(true);
-            for (int i = 0; i < clothComponents.Length; i++)
-            {
-                if (clothComponents[i] != null)
-                {
-                    clothComponents[i].SerializeData.updateMode =
-                        MagicaCloth2.ClothUpdateMode.Unscaled;
-                }
-            }
-        }
-
-        private void CreatePortraitLighting()
-        {
-            CreatePortraitLight(
-                "Equipment Preview Key",
-                new Vector3(28f, -32f, 0f),
-                1.15f);
-            CreatePortraitLight(
-                "Equipment Preview Fill",
-                new Vector3(18f, 148f, 0f),
-                0.62f);
-        }
-
-        private void CreatePortraitLight(
-            string objectName,
-            Vector3 localEulerAngles,
-            float intensity)
-        {
-            GameObject lightObject = new GameObject(objectName);
-            lightObject.transform.SetParent(renderStage.transform, false);
-            lightObject.transform.localRotation = Quaternion.Euler(localEulerAngles);
-            lightObject.layer = portraitLayer;
-            Light light = lightObject.AddComponent<Light>();
-            light.type = LightType.Directional;
-            light.color = Color.white;
-            light.intensity = intensity;
-            light.cullingMask = portraitLayerMask;
-            light.shadows = LightShadows.None;
-        }
-
-        private void CreatePortraitCamera()
-        {
-            portraitTexture = new RenderTexture(
-                768,
-                1024,
-                24,
-                RenderTextureFormat.ARGB32)
-            {
-                name = "Equipment Character Portrait",
-                antiAliasing = 4,
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-                useMipMap = false
-            };
-            portraitTexture.Create();
-
-            GameObject cameraObject = new GameObject("Equipment Portrait Camera");
-            cameraObject.transform.SetParent(renderStage.transform, false);
-            cameraObject.layer = portraitLayer;
-            portraitCamera = cameraObject.AddComponent<Camera>();
-            portraitCamera.clearFlags = CameraClearFlags.SolidColor;
-            portraitCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
-            portraitCamera.fieldOfView = 29f;
-            portraitCamera.nearClipPlane = 0.05f;
-            portraitCamera.farClipPlane = 40f;
-            portraitCamera.allowHDR = false;
-            portraitCamera.allowMSAA = true;
-            portraitCamera.targetTexture = portraitTexture;
-            portraitCamera.cullingMask = portraitLayerMask;
-
-            Bounds bounds = GetPortraitBounds();
-            float distance = Mathf.Max(
-                3.5f,
-                bounds.size.y * 0.58f
-                / Mathf.Tan(portraitCamera.fieldOfView * 0.5f * Mathf.Deg2Rad));
-            Vector3 focus = bounds.center + Vector3.up * bounds.extents.y * 0.02f;
-            portraitCamera.transform.position = focus
-                + new Vector3(bounds.extents.x * 0.14f, 0f, distance);
-            portraitCamera.transform.LookAt(focus);
-            ExcludePortraitLayerFromOtherCameras();
-            portraitCamera.enabled = true;
-        }
-
-        private Bounds GetPortraitBounds()
-        {
-            Renderer[] renderers = portraitInstance != null
-                ? portraitInstance.GetComponentsInChildren<Renderer>(true)
-                : new Renderer[0];
-            Bounds bounds = default(Bounds);
-            bool foundBounds = false;
-            for (int i = 0; i < renderers.Length; i++)
-            {
-                Renderer renderer = renderers[i];
-                if (renderer == null
-                    || !renderer.enabled
-                    || (!(renderer is SkinnedMeshRenderer)
-                        && !(renderer is MeshRenderer))
-                    || Vector3.Distance(
-                        renderer.bounds.center,
-                        portraitInstance.transform.position) > 10f)
-                {
-                    continue;
-                }
-
-                if (!foundBounds)
-                {
-                    bounds = renderer.bounds;
-                    foundBounds = true;
-                }
-                else
-                {
-                    bounds.Encapsulate(renderer.bounds);
-                }
-            }
-
-            if (!foundBounds)
-            {
-                return new Bounds(
-                    renderStage.transform.position + Vector3.up,
-                    new Vector3(1f, 2f, 1f));
-            }
-            return bounds;
-        }
-
-        private void ExcludePortraitLayerFromOtherCameras()
-        {
-            Camera[] cameras = FindObjectsOfType<Camera>(true);
-            for (int i = 0; i < cameras.Length; i++)
-            {
-                if (cameras[i] != null
-                    && cameras[i] != portraitCamera
-                    && cameras[i].targetTexture == null)
-                {
-                    cameras[i].cullingMask &= ~portraitLayerMask;
-                }
-            }
-        }
-
-        private void StopPortrait()
-        {
-            if (portraitCamera != null)
-                portraitCamera.enabled = false;
-            if (portraitAnimationGraph.IsValid())
-                portraitAnimationGraph.Stop();
-            if (portraitAnimator != null)
-                portraitAnimator.enabled = false;
-            if (portraitInstance != null)
-            {
-                MagicaCloth2.ClothBehaviour[] clothBehaviours =
-                    portraitInstance.GetComponentsInChildren<
-                        MagicaCloth2.ClothBehaviour>(true);
-                for (int i = 0; i < clothBehaviours.Length; i++)
-                {
-                    if (clothBehaviours[i] != null)
-                        clothBehaviours[i].enabled = false;
-                }
-            }
-        }
-
-        private void ReleasePortrait()
-        {
-            EndOwnedItemDrag();
-            if (portraitAnimationGraph.IsValid())
-                portraitAnimationGraph.Destroy();
-            if (portraitImage != null)
-                portraitImage.texture = null;
-            if (portraitCamera != null)
-                portraitCamera.targetTexture = null;
-            if (portraitTexture != null)
-            {
-                portraitTexture.Release();
-                Destroy(portraitTexture);
-            }
-            if (renderStage != null)
-                Destroy(renderStage);
-            portraitTexture = null;
-            portraitCamera = null;
-            portraitAnimator = null;
-            portraitInstance = null;
-            renderStage = null;
-        }
-
         private void DestroyView()
         {
-            ReleasePortrait();
             if (canvas != null)
             {
                 if (Application.isPlaying)
@@ -1194,7 +752,6 @@ namespace Supernova.UI
             }
             canvas = null;
             panel = null;
-            portraitImage = null;
         }
 
         private static void ConfigureVerticalNavigation(Button[] buttons)
@@ -1260,13 +817,6 @@ namespace Supernova.UI
             rect.pivot = pivot;
             rect.anchoredPosition = anchoredPosition;
             rect.sizeDelta = sizeDelta;
-        }
-
-        private static void SetLayerRecursively(GameObject root, int layer)
-        {
-            root.layer = layer;
-            for (int i = 0; i < root.transform.childCount; i++)
-                SetLayerRecursively(root.transform.GetChild(i).gameObject, layer);
         }
 
         private static Color Opaque(Color color)

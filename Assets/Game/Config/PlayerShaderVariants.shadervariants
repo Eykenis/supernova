@@ -62,6 +62,15 @@ ShaderVariantCollection:
         passType: 13
       - keywords: _EMISSION _GLOSSINESS_FROM_BASE_ALPHA _SPECULAR_COLOR
         passType: 13
+  - first: {fileID: 4800000, guid: 650dd9526735d5b46b79224bc6e94025, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: 
+        passType: 11
+      - keywords: 
+        passType: 13
   - first: {fileID: 4800000, guid: df12117ecd77c31469c224178886498e, type: 3}
     second:
       variants:
@@ -82,15 +91,6 @@ ShaderVariantCollection:
       variants:
       - keywords: 
         passType: 0
-  - first: {fileID: 4800000, guid: 650dd9526735d5b46b79224bc6e94025, type: 3}
-    second:
-      variants:
-      - keywords: 
-        passType: 0
-      - keywords: 
-        passType: 11
-      - keywords: 
-        passType: 13
   - first: {fileID: 4800000, guid: b023a450bbf3471448461568ddcc53e5, type: 3}
     second:
       variants:
@@ -104,16 +104,6 @@ ShaderVariantCollection:
       - keywords: 
         passType: 13
   - first: {fileID: 4800000, guid: 408ed896120de624ea54df63e593d013, type: 3}
-    second:
-      variants:
-      - keywords: 
-        passType: 13
-  - first: {fileID: 4800000, guid: 46781f3b879c40c9850a412a9f262756, type: 3}
-    second:
-      variants:
-      - keywords: 
-        passType: 0
-  - first: {fileID: 4800000, guid: e876c74eb0b04bae9e0df26e84fb970d, type: 3}
     second:
       variants:
       - keywords: 
@@ -137,21 +127,16 @@ ShaderVariantCollection:
         passType: 11
       - keywords: 
         passType: 13
-  - first: {fileID: 4800000, guid: 54204aa8abe97584c9ea0635dd7578cb, type: 3}
+  - first: {fileID: 4800000, guid: 46781f3b879c40c9850a412a9f262756, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+  - first: {fileID: 4800000, guid: e876c74eb0b04bae9e0df26e84fb970d, type: 3}
     second:
       variants:
       - keywords: 
         passType: 13
-  - first: {fileID: 4800000, guid: a748ae8744e14aa4b0f5b180ae9b176f, type: 3}
-    second:
-      variants:
-      - keywords: 
-        passType: 0
-  - first: {fileID: 4800000, guid: 4f77b79db393483c8cfce2e2a4045fe7, type: 3}
-    second:
-      variants:
-      - keywords: 
-        passType: 0
   - first: {fileID: 4800000, guid: e9db52c73da1333468563c20816c9763, type: 3}
     second:
       variants:
@@ -851,6 +836,21 @@ ShaderVariantCollection:
       - keywords: _ADDITIONAL_LIGHTS _REFLECTION_PROBE_BLENDING _REFLECTION_PROBE_BOX_PROJECTION
           _SCREEN_SPACE_OCCLUSION
         passType: 13
+  - first: {fileID: 4800000, guid: 54204aa8abe97584c9ea0635dd7578cb, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 13
+  - first: {fileID: 4800000, guid: a748ae8744e14aa4b0f5b180ae9b176f, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+  - first: {fileID: 4800000, guid: 4f77b79db393483c8cfce2e2a4045fe7, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
   - first: {fileID: 4800000, guid: f7443325f3164cc99eca10bd1a521ba8, type: 3}
     second:
       variants:
@@ -885,4 +885,23 @@ ShaderVariantCollection:
     second:
       variants:
       - keywords: 
+        passType: 13
+  - first: {fileID: 4800000, guid: df5c4c1a4ee84e299177354476e7082f, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: 
+        passType: 8
+      - keywords: 
+        passType: 11
+      - keywords: 
+        passType: 13
+      - keywords: _METALLICSPECGLOSSMAP _NORMALMAP _OCCLUSIONMAP _PARALLAXMAP
+        passType: 13
+      - keywords: _METALLICSPECGLOSSMAP _NORMALMAP _OCCLUSIONMAP _SPECULAR_SETUP
+        passType: 13
+      - keywords: _METALLICSPECGLOSSMAP _NORMALMAP _PARALLAXMAP
+        passType: 13
+      - keywords: _NORMALMAP
         passType: 13

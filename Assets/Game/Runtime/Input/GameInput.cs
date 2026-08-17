@@ -202,7 +202,8 @@ namespace Supernova.Inputs
                         action.actionMap.name,
                         LocalizeActionName(action.name),
                         SplitDisplayName(binding.name),
-                        action.GetBindingDisplayString(i)));
+                        action.GetBindingDisplayString(i),
+                        GetEffectiveControlPath(binding)));
                 }
             }
 
@@ -244,6 +245,44 @@ namespace Supernova.Inputs
 
             InputBinding mask = InputBinding.MaskByGroup(activeBindingGroup);
             return action.GetBindingDisplayString(mask);
+        }
+
+        public static IReadOnlyList<string> GetBindingControlPaths(
+            string actionPath,
+            string partName = null)
+        {
+            InputAction action = FindAction(actionPath);
+            if (action == null)
+                return Array.Empty<string>();
+
+            if (!string.IsNullOrWhiteSpace(partName))
+            {
+                int partIndex = FindBindingIndex(action, partName);
+                return partIndex >= 0
+                    ? new[] { GetEffectiveControlPath(action.bindings[partIndex]) }
+                    : Array.Empty<string>();
+            }
+
+            if (actionPath == GameInputDefinitions.GetActionPath(
+                    GameInputActionId.Move))
+            {
+                string[] order = { "up", "left", "down", "right" };
+                var paths = new string[order.Length];
+                for (int i = 0; i < order.Length; i++)
+                {
+                    int partIndex = FindBindingIndex(action, order[i]);
+                    if (partIndex < 0)
+                        return Array.Empty<string>();
+                    paths[i] = GetEffectiveControlPath(
+                        action.bindings[partIndex]);
+                }
+                return paths;
+            }
+
+            int primary = FindPrimaryBindingIndex(action);
+            return primary >= 0
+                ? new[] { GetEffectiveControlPath(action.bindings[primary]) }
+                : Array.Empty<string>();
         }
 
         public static void SetActiveBindingGroup(string bindingGroup)
@@ -455,6 +494,13 @@ namespace Supernova.Inputs
                 }
             }
             return false;
+        }
+
+        private static string GetEffectiveControlPath(InputBinding binding)
+        {
+            return string.IsNullOrEmpty(binding.effectivePath)
+                ? binding.path
+                : binding.effectivePath;
         }
 
         private static void NotifyBindingsChanged()

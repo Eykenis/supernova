@@ -371,18 +371,8 @@ namespace Supernova.Voxels
 
         private void RebuildAfterSharedMutation()
         {
-            Vector3Int grid = MinimumChunkGrid;
-            for (int sectionY = 0; sectionY < grid.y; sectionY++)
-            {
-                for (int chunkZ = 0; chunkZ < grid.z; chunkZ++)
-                {
-                    for (int chunkX = 0; chunkX < grid.x; chunkX++)
-                    {
-                        dirtySections.Add(
-                            new Vector3Int(chunkX, sectionY, chunkZ));
-                    }
-                }
-            }
+            dirtySections.Clear();
+            sharedRuntime.CollectAdoptedWorldDirtyMeshes(dirtySections);
             RebuildDirtySections();
             sharedRuntime.CompleteAdoptedWorldMeshRebuild();
         }

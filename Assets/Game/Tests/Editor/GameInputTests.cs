@@ -253,6 +253,64 @@ public sealed class GameInputTests
     }
 
     [Test]
+    public void PromptResolverWithGlyphs_UsesKeyboardAndMouseSprites()
+    {
+        GameInput.SetActiveBindingGroup(
+            GameInputDefinitions.KeyboardMouseScheme);
+
+        string actions = InputPromptResolver.ResolveWithGlyphs(
+            "{{input:Gameplay/PrimaryAction}} "
+            + "{{input:Gameplay/SecondaryAction}} "
+            + "{{input:Gameplay/Crouch}}");
+        string movement = InputPromptResolver.ResolveWithGlyphs(
+            "{{input:Gameplay/Move|compact}}");
+
+        Assert.That(actions, Does.Contain("name=\"MouseLeft\""));
+        Assert.That(actions, Does.Contain("name=\"MouseRight\""));
+        Assert.That(actions, Does.Contain("name=\"Key_CTRL\""));
+        Assert.That(movement, Does.Contain("name=\"Key_W\""));
+        Assert.That(movement, Does.Contain("name=\"Key_A\""));
+        Assert.That(movement, Does.Contain("name=\"Key_S\""));
+        Assert.That(movement, Does.Contain("name=\"Key_D\""));
+        Assert.That(actions, Does.Not.Contain("LMB"));
+        Assert.That(actions, Does.Not.Contain("RMB"));
+    }
+
+    [Test]
+    public void GlyphMap_CoversEveryKeyboardAndMouseBinding()
+    {
+        InputActionAsset asset = GameInputDefinitions.CreateAsset();
+        try
+        {
+            foreach (InputActionMap map in asset.actionMaps)
+            {
+                foreach (InputBinding binding in map.bindings)
+                {
+                    if (binding.isComposite
+                        || string.IsNullOrEmpty(binding.path)
+                        || !TargetsKeyboardOrMouse(binding.path))
+                    {
+                        continue;
+                    }
+
+                    Assert.That(
+                        InputPromptGlyphs.TryGetSpriteName(
+                            binding.effectivePath,
+                            out string spriteName),
+                        Is.True,
+                        map.name + "/" + binding.action
+                            + " -> " + binding.effectivePath);
+                    Assert.That(spriteName, Is.Not.Empty);
+                }
+            }
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(asset);
+        }
+    }
+
+    [Test]
     public void PromptResolver_PreservesUnknownAndEscapedTokens()
     {
         Assert.That(

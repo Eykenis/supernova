@@ -15,6 +15,12 @@ namespace Supernova.Effects
         public const int MaximumParticlesPerBurst = 14;
         public const int MaximumActiveParticles = 384;
 
+        public const float ParticleSpeedMultiplier = 2f;
+        public const float ParticleLifetimeMultiplier = 0.45f;
+        public const float ParticleDrag = 2.4f;
+        public const float MinimumParticleSizeScale = 0.45f;
+        public const float MaximumParticleSizeScale = 1.75f;
+
         private static RigidbodyImpactSmokeEmitter instance;
 
         private ParticleSystem smokeParticles;
@@ -143,11 +149,16 @@ namespace Supernova.Effects
                         + normal * 0.02f,
                     velocity = direction
                         * baseSpeed
-                        * Mathf.Lerp(0.65f, 1.25f, Next01(random)),
+                        * Mathf.Lerp(0.65f, 1.25f, Next01(random))
+                        * ParticleSpeedMultiplier,
                     startLifetime = baseLifetime
-                        * Mathf.Lerp(0.8f, 1.2f, Next01(random)),
+                        * Mathf.Lerp(0.8f, 1.2f, Next01(random))
+                        * ParticleLifetimeMultiplier,
                     startSize = baseSize
-                        * Mathf.Lerp(0.7f, 1.45f, Next01(random)),
+                        * Mathf.Lerp(
+                            MinimumParticleSizeScale,
+                            MaximumParticleSizeScale,
+                            Next01(random)),
                     startColor = new Color(
                         0.62f * brightness,
                         0.59f * brightness,
@@ -200,6 +211,14 @@ namespace Supernova.Effects
             textureSheet.frameOverTime = new ParticleSystem.MinMaxCurve(
                 1f,
                 AnimationCurve.Linear(0f, 0f, 1f, 1f));
+
+            ParticleSystem.LimitVelocityOverLifetimeModule limitVelocity =
+                smokeParticles.limitVelocityOverLifetime;
+            limitVelocity.enabled = true;
+            limitVelocity.dampen = 0f;
+            limitVelocity.drag = ParticleDrag;
+            limitVelocity.multiplyDragByParticleSize = false;
+            limitVelocity.multiplyDragByParticleVelocity = true;
 
             ParticleSystem.NoiseModule noise = smokeParticles.noise;
             noise.enabled = true;

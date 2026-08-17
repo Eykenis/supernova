@@ -74,19 +74,43 @@ namespace Supernova.WorldGeneration
             out DenseJigsawFeature mixedFeature,
             out string error)
         {
+            return TryBuild(
+                configuration,
+                configuration != null
+                    ? configuration.InfiniteCavesGenerationSource
+                    : null,
+                additionalFamily,
+                out mixedFeature,
+                out error);
+        }
+
+        public static bool TryBuild(
+            DenseJigsawWorldConfiguration configuration,
+            MinecraftWorldGenerationConfiguration generationConfiguration,
+            JigsawStructureFeatureDefinition additionalFamily,
+            out DenseJigsawFeature mixedFeature,
+            out string error)
+        {
             mixedFeature = default;
             if (configuration == null)
             {
                 error = "Dense jigsaw world configuration is missing.";
                 return false;
             }
-            if (configuration.StoneType == null)
+            VoxelTypeDefinition stoneType = generationConfiguration != null
+                ? generationConfiguration.BaseSolidVoxelType
+                : configuration.StoneType;
+            if (stoneType == null)
             {
                 error = "Dense jigsaw world requires a Stone voxel type.";
                 return false;
             }
 
-            VoxelTypeId primaryId = configuration.StoneType.TypeId;
+            IReadOnlyList<JigsawStructureFeatureDefinition> structureFamilies =
+                generationConfiguration != null
+                    ? generationConfiguration.JigsawStructures
+                    : configuration.StructureFamilies;
+            VoxelTypeId primaryId = stoneType.TypeId;
             VoxelTypeId accentId = primaryId;
             bool assignedPalette = false;
             var modules = new List<JigsawPieceSettings>();
@@ -95,10 +119,10 @@ namespace Supernova.WorldGeneration
             bool assignedStart = false;
 
             var sources = new List<JigsawStructureFeatureDefinition>(
-                configuration.StructureFamilies.Count + 1);
-            for (int i = 0; i < configuration.StructureFamilies.Count; i++)
+                structureFamilies.Count + 1);
+            for (int i = 0; i < structureFamilies.Count; i++)
             {
-                sources.Add(configuration.StructureFamilies[i]);
+                sources.Add(structureFamilies[i]);
             }
             if (additionalFamily != null && !sources.Contains(additionalFamily))
             {

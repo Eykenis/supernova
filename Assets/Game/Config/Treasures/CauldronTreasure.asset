@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55c4c72518c3412459e3a631737b16ad, type: 3}
   m_Name: CauldronTreasure
   m_EditorClassIdentifier: 
-  displayName: 炼药锅
+  displayName: "\u70BC\u836F\u9505"
   prefab: {fileID: 4302944737786620945, guid: 51a94baa14be45249bc06cfa0b2d7f1a, type: 3}
-  value: 75
+  value: 750
   weight: 18
   fragility: 0.25
   spawnChance: 1

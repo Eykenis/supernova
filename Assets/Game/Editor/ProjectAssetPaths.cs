@@ -20,9 +20,11 @@ public static class ProjectAssetPaths
         public const string Equipment = Config + "/Equipment";
         public const string Tools = Config + "/Tools";
         public const string Shop = Config + "/Shop";
+        public const string Treasures = Config + "/Treasures";
         public const string VoxelTypes = Config + "/VoxelTypes";
         public const string TerrainVoxelTypes = VoxelTypes + "/Terrain";
         public const string StructuralVoxelTypes = VoxelTypes + "/Structural";
+        public const string MineralVoxelTypes = VoxelTypes + "/Mineral";
         public const string OreFeatures = Config + "/OreFeatures";
         public const string Biomes = Config + "/Biomes";
         public const string SurfaceBrushes = Config + "/SurfaceBrushes";
@@ -63,6 +65,9 @@ public static class ProjectAssetPaths
             Prefabs + "/Mobs/ExampleCreature";
         public const string Structures = Game + "/Structures";
         public const string Materials = Game + "/Materials";
+        public const string VoxelMaterials = Materials + "/Voxels";
+        public const string DiamondVoxelMaterials =
+            VoxelMaterials + "/Diamond";
         public const string ToolMaterials = Materials + "/Tools";
         public const string LightingMaterials = Materials + "/Lighting";
         public const string VegetationMaterials = Materials + "/Vegetation";
@@ -180,6 +185,12 @@ public static class ProjectAssetPaths
             Folders.Config + "/MonsterSpawnTable.asset";
         public const string TreasureSpawnTable =
             Folders.Config + "/TreasureSpawnTable.asset";
+        public const string StatueTreasure =
+            Folders.Treasures + "/Statue.asset";
+        public const string SphinxTreasure =
+            Folders.Treasures + "/Sphinx.asset";
+        public const string MysticCoreTreasure =
+            Folders.Treasures + "/MysticCore.asset";
         public const string VoxelCatalog =
             Folders.Config + "/MinecraftVoxelTypes.asset";
         public const string OreFeature = Folders.OreFeatures + "/Ore.asset";
@@ -197,6 +208,16 @@ public static class ProjectAssetPaths
             Folders.TerrainVoxelTypes + "/Stone.asset";
         public const string SolidStoneVoxel =
             Folders.TerrainVoxelTypes + "/Solid Stone.asset";
+        public const string YellowIronVoxel =
+            Folders.MineralVoxelTypes + "/YellowIron.asset";
+        public const string DiamondVoxel =
+            Folders.MineralVoxelTypes + "/Diamond.asset";
+        public const string AmethystVoxel =
+            Folders.MineralVoxelTypes + "/Amethyst.asset";
+        public const string CopperVoxel =
+            Folders.MineralVoxelTypes + "/Copper.asset";
+        public const string ObsidianVoxel =
+            Folders.MineralVoxelTypes + "/Obsidian.asset";
         public const string StructureBrickVoxel =
             Folders.StructuralVoxelTypes + "/StructureBrick.asset";
         public const string FortressBrickVoxel =
@@ -233,6 +254,8 @@ public static class ProjectAssetPaths
             Folders.Shop + "/SolidGunProduct.asset";
         public const string PortalGunProduct =
             Folders.Shop + "/PortalGunProduct.asset";
+        public const string MagnetUpgradeProduct =
+            Folders.Shop + "/MagnetUpgradeProduct.asset";
         public const string Jetpack = Folders.Equipment + "/Jetpack.asset";
         public const string JetpackInteraction =
             Folders.Equipment + "/JetpackInteraction.asset";
@@ -242,6 +265,8 @@ public static class ProjectAssetPaths
             Folders.UiConfig + "/EquipmentIconCatalog.asset";
         public const string EquipmentPortraitSettings =
             Folders.UiConfig + "/EquipmentPortraitSettings.asset";
+        public const string InputGlyphSpriteAsset =
+            Folders.UiConfig + "/InputGlyphs.asset";
     }
 
     public static class Audio
@@ -354,6 +379,12 @@ public static class ProjectAssetPaths
             Folders.BombPrefabs + "/BombProjectile.prefab";
         public const string BombExplosionEffect =
             Folders.ExplosionEffectPrefabs + "/BombExplosion.prefab";
+        public const string StatueTreasure =
+            Folders.TreasurePrefabs + "/statue.prefab";
+        public const string SphinxTreasure =
+            Folders.TreasurePrefabs + "/Sphinx.prefab";
+        public const string MysticCoreTreasure =
+            Folders.TreasurePrefabs + "/MysticCore.prefab";
         public const string ThrownPickaxe =
             Folders.PickaxePrefabs + "/ThrownPickaxe.prefab";
         public const string SolidGun =
@@ -399,6 +430,8 @@ public static class ProjectAssetPaths
         public const string LoadingDial = Folders.SciFiUi + "/LoadingDial.png";
         public const string TelemetryBackdrop =
             Folders.SciFiUi + "/TelemetryBackdrop.jpg";
+        public const string InputGlyphAtlas =
+            Folders.UiTextures + "/InputGlyphAtlas.png";
         public const string AstrocraftTitle =
             Folders.SciFiUi + "/AstrocraftTitle.png";
         public const string RuntimeFont =
@@ -414,6 +447,12 @@ public static class ProjectAssetPaths
             + "/PortalExampleClippedLit.shader";
         public const string SoftFalloffLit =
             Folders.LightingMaterials + "/SoftFalloffLit.shader";
+        public const string CrystalOreLit =
+            Folders.LightingMaterials + "/CrystalOreLit.shader";
+        public const string CrystalOreLitForwardPass =
+            Folders.LightingMaterials + "/CrystalOreLitForwardPass.hlsl";
+        public const string DiamondCrystal =
+            Folders.DiamondVoxelMaterials + "/DiamondCrystal.shadergraph";
         public const string SoftFalloffAttenuation =
             Folders.LightingMaterials + "/SoftFalloffAttenuation.hlsl";
         public const string SoftFalloffLitForwardPass =
@@ -452,9 +491,21 @@ public static class ProjectAssetPaths
         public const string CaveTerrainPhysics =
             Folders.PhysicsMaterials + "/CaveTerrain.physicMaterial";
         // Voxel materials each live in their own folder alongside their textures.
-        public const string Ore = Folders.Materials + "/Voxels/Ore/Ore.mat";
+        public const string Ore = Folders.VoxelMaterials + "/Ore/Ore.mat";
+        public const string YellowIron =
+            Folders.VoxelMaterials + "/Ore/YellowIron.mat";
+        public const string DiamondOre =
+            Folders.VoxelMaterials + "/Ore/Diamond.mat";
+        public const string Diamond =
+            Folders.DiamondVoxelMaterials + "/diamond.mat";
+        public const string Amethyst =
+            Folders.VoxelMaterials + "/Amethyst/Amethyst.mat";
+        public const string Copper =
+            Folders.VoxelMaterials + "/Copper/Copper.mat";
+        public const string Obsidian =
+            Folders.VoxelMaterials + "/Obsidian/Obsidian.mat";
         public const string RecoveredOre =
-            Folders.Materials + "/Voxels/Ore/RecoveredOre.mat";
+            Folders.VoxelMaterials + "/Ore/RecoveredOre.mat";
         public const string Bedrock =
             Folders.Materials + "/Voxels/Bedrock/Bedrock.mat";
         public const string Marble =
@@ -649,6 +700,8 @@ public static class ProjectAssetPaths
             StylizedToolsFolder + "/Prefabs/pickaxe01.anim";
         public const string StylizedPickaxeController =
             StylizedToolsFolder + "/Prefabs/pickaxe01.controller";
+        public const string MagnetUpgradeModel =
+            "Assets/3rd/magnet/magnet.obj";
     }
 
     public static class LookupNames

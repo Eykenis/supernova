@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Supernova.MinecraftCaves;
 using UnityEngine;
@@ -12,6 +13,9 @@ namespace Supernova.PortalExample
     [DisallowMultipleComponent]
     public sealed class DenseJigsawPortalBridge : MonoBehaviour
     {
+        public static event Action<DenseJigsawPortalBridge> InstanceEnabled;
+        public static event Action<DenseJigsawPortalBridge> InstanceDisabled;
+
         public const string SpawnCheckpointPortalName =
             "Spawn Checkpoint Portal / 出生检查点传送门";
 
@@ -32,6 +36,8 @@ namespace Supernova.PortalExample
         private PortalExampleTraveller playerTraveller;
         private readonly List<PortalExampleGate> spawnedCheckpointGates =
             new List<PortalExampleGate>();
+
+        public event Action<PortalExampleGate> PortalAdded;
 
         public MinecraftCaveInfiniteWorld World => world;
         public SpawnPointSceneStructure LandingCell => landingCell;
@@ -84,6 +90,14 @@ namespace Supernova.PortalExample
             }
             SubscribeToLandingCellPlacement();
             EnsurePlayerTraveller();
+            InstanceEnabled?.Invoke(this);
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetRuntimeEvents()
+        {
+            InstanceEnabled = null;
+            InstanceDisabled = null;
         }
 
         private void Start()
@@ -98,6 +112,7 @@ namespace Supernova.PortalExample
 
         private void OnDisable()
         {
+            InstanceDisabled?.Invoke(this);
             if (world != null)
             {
                 world.PrimarySpawnCheckpointCreated -=
@@ -157,6 +172,7 @@ namespace Supernova.PortalExample
             PlaceCheckpointGate();
             landingCellGate.gameObject.SetActive(true);
             checkpointGate.gameObject.SetActive(true);
+            PortalAdded?.Invoke(checkpointGate);
             return true;
         }
 
@@ -237,6 +253,7 @@ namespace Supernova.PortalExample
             }
             portalObject.SetActive(true);
             spawnedCheckpointGates.Add(gate);
+            PortalAdded?.Invoke(gate);
             createdGate = gate;
             return true;
         }

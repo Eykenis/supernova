@@ -1,9 +1,74 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Supernova.Missions
 {
     public enum MissionOutcome { None, Success, LostInCaves, Fired }
+
+    /// <summary>
+    /// Persists only the stable level number. Level content remains owned by
+    /// the configured LevelConfiguration list.
+    /// </summary>
+    public static class MissionProgressPersistence
+    {
+        public const string CurrentLevelPreferenceKey =
+            "Supernova.Missions.CurrentLevel";
+
+        public static bool HasSavedProgress =>
+            PlayerPrefs.HasKey(CurrentLevelPreferenceKey);
+
+        public static int CurrentLevelNumber => Mathf.Max(
+            1,
+            PlayerPrefs.GetInt(CurrentLevelPreferenceKey, 1));
+
+        public static bool TryLoadLevel(
+            IReadOnlyList<LevelConfiguration> levels,
+            out LevelConfiguration level)
+        {
+            level = null;
+            if (!HasSavedProgress || levels == null)
+                return false;
+
+            int savedLevelNumber = CurrentLevelNumber;
+            for (int i = 0; i < levels.Count; i++)
+            {
+                LevelConfiguration candidate = levels[i];
+                if (candidate != null
+                    && candidate.LevelNumber == savedLevelNumber)
+                {
+                    level = candidate;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public static LevelConfiguration ResolveSavedOrDefault(
+            IReadOnlyList<LevelConfiguration> levels,
+            LevelConfiguration defaultLevel)
+        {
+            return TryLoadLevel(levels, out LevelConfiguration savedLevel)
+                ? savedLevel
+                : defaultLevel;
+        }
+
+        public static bool SaveCurrentLevel(LevelConfiguration level)
+        {
+            if (level == null)
+                return false;
+
+            PlayerPrefs.SetInt(CurrentLevelPreferenceKey, level.LevelNumber);
+            PlayerPrefs.Save();
+            return true;
+        }
+
+        public static void ClearSavedProgress()
+        {
+            PlayerPrefs.DeleteKey(CurrentLevelPreferenceKey);
+            PlayerPrefs.Save();
+        }
+    }
 
     public sealed class MissionCampaignProgress
     {

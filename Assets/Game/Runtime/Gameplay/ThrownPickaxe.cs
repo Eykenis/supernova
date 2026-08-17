@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Supernova.Audio;
 using Supernova.Effects;
 using UnityEngine;
@@ -14,6 +15,9 @@ namespace Supernova.Gameplay
     [RequireComponent(typeof(RigidbodyImpactFeedback))]
     public sealed class ThrownPickaxe : MonoBehaviour
     {
+        private static readonly HashSet<ThrownPickaxe> Active =
+            new HashSet<ThrownPickaxe>();
+
         public enum ThrownPickaxeState
         {
             Idle = 0,
@@ -101,6 +105,7 @@ namespace Supernova.Gameplay
         public PlayerInventoryItem SuspendedItem => suspendedItem;
         public Rigidbody Body => ResolveBody();
         public Vector3 Position => transform.position;
+        public static IEnumerable<ThrownPickaxe> ActiveInstances => Active;
         /// <summary>
         /// A point on the exposed handle rather than the root, which sits near the
         /// buried head. Sightline checks must aim here or the terrain the pickaxe is
@@ -114,6 +119,22 @@ namespace Supernova.Gameplay
         {
             ResolveReferences();
             RigidbodyImpactFeedback.Ensure(Body);
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetRuntimeState()
+        {
+            Active.Clear();
+        }
+
+        private void OnEnable()
+        {
+            Active.Add(this);
+        }
+
+        private void OnDisable()
+        {
+            Active.Remove(this);
         }
 
         /// <summary>

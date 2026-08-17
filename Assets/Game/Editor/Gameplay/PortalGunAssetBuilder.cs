@@ -179,6 +179,7 @@ namespace Supernova.Editor.Gameplay
             definition.name = "PortalGunTool";
             SerializedObject serialized = new SerializedObject(definition);
             SetInteger(serialized, "item", (int)PlayerInventoryItem.PortalGun);
+            serialized.FindProperty("primaryActionHint").stringValue = "发射传送门";
             SetReference(
                 serialized,
                 "primaryActionSound",

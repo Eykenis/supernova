@@ -98,7 +98,6 @@ namespace Supernova.Gameplay
         private int suppressLookInputThroughFrame = -1;
         private bool hasApplicationFocus = true;
         private bool menuPresentationActive;
-        private bool menuFirstPersonVisibilityActive;
         private readonly List<ShadowBoneProxy> shadowBoneProxies =
             new List<ShadowBoneProxy>();
         private readonly List<ShadowRendererProxy> shadowRendererProxies =
@@ -243,8 +242,7 @@ namespace Supernova.Gameplay
 
             SetFirstPersonRendererState(
                 currentMode == PlayerViewMode.FirstPerson
-                && (!menuPresentationActive
-                    || menuFirstPersonVisibilityActive));
+                && !menuPresentationActive);
             UpdateUpperBodyPose();
             UpdateCrouchArmPose();
             SyncFirstPersonShadowProxies();
@@ -347,8 +345,7 @@ namespace Supernova.Gameplay
             bool firstPerson = currentMode == PlayerViewMode.FirstPerson;
             SetFirstPersonRendererState(
                 firstPerson
-                && (!menuPresentationActive
-                    || menuFirstPersonVisibilityActive));
+                && !menuPresentationActive);
 
             if (!firstPerson && previousMode != PlayerViewMode.ThirdPerson)
             {
@@ -367,21 +364,10 @@ namespace Supernova.Gameplay
 
         public void SetMenuPresentationActive(bool active)
         {
-            if (menuPresentationActive != active)
-                menuFirstPersonVisibilityActive = false;
             menuPresentationActive = active;
             SetFirstPersonRendererState(
                 currentMode == PlayerViewMode.FirstPerson
-                && (!active || menuFirstPersonVisibilityActive));
-        }
-
-        public void SetMenuFirstPersonVisibilityActive(bool active)
-        {
-            menuFirstPersonVisibilityActive = menuPresentationActive && active;
-            SetFirstPersonRendererState(
-                currentMode == PlayerViewMode.FirstPerson
-                && (!menuPresentationActive
-                    || menuFirstPersonVisibilityActive));
+                && !active);
         }
 
         public void Bind(
@@ -543,11 +529,16 @@ namespace Supernova.Gameplay
 
         private void SetFirstPersonRendererState(bool firstPerson)
         {
-            if (firstPerson && collapseHeadBoneInFirstPerson)
+            bool useShadowProxy = firstPerson
+                && collapseHeadBoneInFirstPerson
+                && animatedHead != null;
+            if (useShadowProxy)
             {
                 EnsureFirstPersonShadowProxies();
             }
 
+            // Only explicitly configured head accessories are hidden. The body
+            // remains rendered while the head bone is collapsed around the camera.
             if (firstPersonHiddenRenderers != null)
             {
                 for (int i = 0; i < firstPersonHiddenRenderers.Length; i++)
@@ -561,9 +552,6 @@ namespace Supernova.Gameplay
                 }
             }
 
-            bool useShadowProxy = firstPerson
-                && collapseHeadBoneInFirstPerson
-                && animatedHead != null;
             SetFirstPersonShadowProxyState(useShadowProxy);
             if (animatedHead == null) return;
             CacheAnimatedHeadScale();
@@ -728,7 +716,7 @@ namespace Supernova.Gameplay
             {
                 ShadowRendererProxy entry = shadowRendererProxies[i];
                 if (entry.Source == null || entry.Proxy == null) continue;
-                entry.Proxy.enabled = firstPerson;
+                entry.Proxy.enabled = firstPerson && entry.OriginalEnabled;
                 if (firstPerson)
                 {
                     if (entry.HiddenInFirstPerson)
@@ -737,6 +725,7 @@ namespace Supernova.Gameplay
                     }
                     else
                     {
+                        entry.Source.enabled = entry.OriginalEnabled;
                         entry.Source.shadowCastingMode = ShadowCastingMode.Off;
                     }
                 }

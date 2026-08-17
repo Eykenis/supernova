@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Unity/Tuanjie 2022.3 project. Keep first-party work under `Assets/Game`: runtime C# is organized by feature in `Runtime/`, editor tooling belongs in `Editor/`, and EditMode tests live in `Tests/Editor/`. Game-owned prefabs, configuration, animations, structures, scenes, and design notes sit in their matching `Assets/Game/` folders. The product entry scene is `Assets/Scenes/InfiniteCaves.scene`; shared materials, prefabs, URP settings, and UI assets are in the top-level `Assets/` folders. Treat `Assets/3rd/` and vendored `Packages/` content as external code.
+This is a Unity/Tuanjie 2022.3 project. Keep first-party work under `Assets/Game`: runtime C# is organized by feature in `Runtime/`, editor tooling belongs in `Editor/`, and EditMode tests live in `Tests/Editor/`. Game-owned prefabs, configuration, animations, structures, scenes, and design notes sit in their matching `Assets/Game/` folders. The player-facing flow starts in `Assets/Scenes/Home.scene`, loads missions through `Assets/Scenes/DenseJigsawRegion.scene`, and exposes `Assets/Scenes/SpawnShelterStoneTest.scene` as the tutorial; `InfiniteCaves.scene` is a disabled reference scene. Shared materials, prefabs, URP settings, and UI assets are in the top-level `Assets/` folders. Treat `Assets/3rd/` and vendored `Packages/` content as external code.
 
 ## Build, Test, and Development Commands
 
@@ -12,7 +12,7 @@ Use editor version `2022.3.62t11` (Tuanjie `1.9.3`) from `ProjectSettings/Projec
 - `"<Editor>" -batchmode -quit -projectPath . -runTests -testPlatform EditMode -testResults Logs/EditMode.xml` runs the automated suite.
 - `"<Editor>" -batchmode -quit -projectPath . -buildWindows64Player Builds/Windows/Supernova.exe` creates a Windows build.
 
-Before building, confirm Build Settings enables `Assets/Scenes/InfiniteCaves.scene`; the checked-in settings may still reference `SampleScene`. Do not commit generated `Library/`, `Temp/`, `Logs/`, or `UserSettings/` content.
+Before building, confirm Build Settings enables `Home.scene`, `DenseJigsawRegion.scene`, and `SpawnShelterStoneTest.scene` in the intended order. Do not commit generated `Library/`, `Temp/`, `Logs/`, or `UserSettings/` content.
 
 ## Coding Style & Naming Conventions
 

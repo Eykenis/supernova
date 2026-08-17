@@ -22,6 +22,8 @@ namespace Supernova.Shop
         [SerializeField] private PlayerInventoryItem grantedItem;
         [SerializeField] private PlayerUpgrade grantedUpgrade;
         [SerializeField, Min(0f)] private float upgradeValue;
+        [SerializeField] private bool repeatable;
+        [SerializeField, Min(0)] private int priceIncreasePerPurchase;
         [SerializeField] private GameObject displayPrefab;
         [SerializeField] private Material wireframeMaterial;
         [SerializeField] private Vector3 displayLocalPosition = Vector3.zero;
@@ -41,6 +43,10 @@ namespace Supernova.Shop
         public PlayerInventoryItem GrantedItem => grantedItem;
         public PlayerUpgrade GrantedUpgrade => grantedUpgrade;
         public float UpgradeValue => Mathf.Max(0f, upgradeValue);
+        public bool IsRepeatable =>
+            grantType == ShopProductGrantType.Upgrade && repeatable;
+        public int PriceIncreasePerPurchase =>
+            Mathf.Max(0, priceIncreasePerPurchase);
         public GameObject DisplayPrefab => displayPrefab;
         public Material WireframeMaterial => wireframeMaterial;
         public Vector3 DisplayLocalPosition => displayLocalPosition;
@@ -53,8 +59,19 @@ namespace Supernova.Shop
                 || (grantType == ShopProductGrantType.Upgrade
                     && grantedUpgrade != PlayerUpgrade.None
                     && UpgradeValue > 0f))
-            && displayPrefab != null
-            && wireframeMaterial != null;
+            && (displayPrefab != null
+                || grantType == ShopProductGrantType.Upgrade)
+            && (displayPrefab == null || wireframeMaterial != null);
+
+        public int GetPriceAfterPurchases(int purchaseCount)
+        {
+            long calculatedPrice = (long)Price
+                + (long)Mathf.Max(0, purchaseCount)
+                    * PriceIncreasePerPurchase;
+            return calculatedPrice >= int.MaxValue
+                ? int.MaxValue
+                : (int)calculatedPrice;
+        }
 
         public void Configure(
             string id,
@@ -71,6 +88,8 @@ namespace Supernova.Shop
             grantedItem = item;
             grantedUpgrade = PlayerUpgrade.None;
             upgradeValue = 0f;
+            repeatable = false;
+            priceIncreasePerPurchase = 0;
             displayPrefab = prefab;
             wireframeMaterial = outlineMaterial;
         }
@@ -81,6 +100,8 @@ namespace Supernova.Shop
             int productPrice,
             PlayerUpgrade upgrade,
             float value,
+            bool canRepeat,
+            int repeatPriceIncrease,
             GameObject prefab,
             Material outlineMaterial)
         {
@@ -91,6 +112,10 @@ namespace Supernova.Shop
             grantedItem = PlayerInventoryItem.Empty;
             grantedUpgrade = upgrade;
             upgradeValue = Mathf.Max(0f, value);
+            repeatable = canRepeat;
+            priceIncreasePerPurchase = canRepeat
+                ? Mathf.Max(0, repeatPriceIncrease)
+                : 0;
             displayPrefab = prefab;
             wireframeMaterial = outlineMaterial;
         }

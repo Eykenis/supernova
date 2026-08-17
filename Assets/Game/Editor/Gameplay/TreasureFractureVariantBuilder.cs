@@ -27,10 +27,21 @@ namespace Supernova.Editor
                 return;
             }
 
+            BuildDefinitions(table.Treasures);
+            Debug.Log("Rebuilt treasure fracture variants.");
+        }
+
+        public static void BuildDefinitions(
+            IEnumerable<TreasureDefinition> definitions)
+        {
             EnsureFolder(ProjectAssetPaths.Folders.TreasurePrefabs);
             EnsureFolder(OutputRoot);
+            if (definitions == null)
+            {
+                return;
+            }
 
-            foreach (TreasureDefinition definition in table.Treasures)
+            foreach (TreasureDefinition definition in definitions)
             {
                 if (definition == null || definition.Prefab == null)
                 {
@@ -44,20 +55,14 @@ namespace Supernova.Editor
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            Debug.Log("Rebuilt treasure fracture variants.");
         }
 
         private static List<GameObject> BuildDefinition(
             TreasureDefinition definition)
         {
-            MeshFilter sourceFilter =
-                definition.Prefab.GetComponentInChildren<MeshFilter>(true);
-            MeshRenderer sourceRenderer =
-                definition.Prefab.GetComponentInChildren<MeshRenderer>(true);
             var variants = new List<GameObject>();
-            if (sourceFilter == null
-                || sourceFilter.sharedMesh == null
-                || sourceRenderer == null)
+            List<SourceMesh> sources = CollectSources(definition.Prefab);
+            if (sources.Count == 0)
             {
                 Debug.LogWarning(
                     $"{definition.name} has no mesh available for fracture.");
@@ -74,16 +79,26 @@ namespace Supernova.Editor
                 int seed = unchecked(
                     StableHash(definition.name)
                     + variantIndex * 104729);
-                IReadOnlyList<MeshFragmentBuilder.Fragment> fragments =
-                    MeshFragmentBuilder.Build(
-                        sourceFilter.sharedMesh,
-                        fragmentCount,
-                        seed);
+                var sourceFragments = new List<SourceFragments>();
+                for (int sourceIndex = 0;
+                    sourceIndex < sources.Count;
+                    sourceIndex++)
+                {
+                    SourceMesh source = sources[sourceIndex];
+                    IReadOnlyList<MeshFragmentBuilder.Fragment> fragments =
+                        MeshFragmentBuilder.Build(
+                            source.Mesh,
+                            fragmentCount,
+                            unchecked(seed + sourceIndex * 130363));
+                    if (fragments.Count > 0)
+                    {
+                        sourceFragments.Add(
+                            new SourceFragments(source, fragments));
+                    }
+                }
                 GameObject variant = BuildVariantPrefab(
                     definition,
-                    sourceFilter,
-                    sourceRenderer,
-                    fragments,
+                    sourceFragments,
                     definitionFolder,
                     variantIndex);
                 if (variant != null)
@@ -97,13 +112,11 @@ namespace Supernova.Editor
 
         private static GameObject BuildVariantPrefab(
             TreasureDefinition definition,
-            MeshFilter sourceFilter,
-            MeshRenderer sourceRenderer,
-            IReadOnlyList<MeshFragmentBuilder.Fragment> fragments,
+            IReadOnlyList<SourceFragments> sources,
             string definitionFolder,
             int variantIndex)
         {
-            if (fragments.Count == 0)
+            if (sources.Count == 0)
             {
                 return null;
             }
@@ -117,54 +130,65 @@ namespace Supernova.Editor
             var root = new GameObject(variantName);
             try
             {
-                for (int i = 0; i < fragments.Count; i++)
+                int pieceIndex = 0;
+                for (int sourceIndex = 0;
+                    sourceIndex < sources.Count;
+                    sourceIndex++)
                 {
-                    MeshFragmentBuilder.Fragment fragment = fragments[i];
-                    fragment.Mesh.name =
-                        $"{variantName}_Piece_{i + 1:00}";
-                    string meshPath =
-                        $"{variantFolder}/{fragment.Mesh.name}.asset";
-                    Mesh storedMesh =
-                        AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
-                    if (storedMesh == null)
+                    SourceFragments source = sources[sourceIndex];
+                    for (int i = 0; i < source.Fragments.Count; i++)
                     {
-                        storedMesh = fragment.Mesh;
-                        AssetDatabase.CreateAsset(storedMesh, meshPath);
+                        MeshFragmentBuilder.Fragment fragment =
+                            source.Fragments[i];
+                        pieceIndex++;
+                        fragment.Mesh.name =
+                            $"{variantName}_Piece_{pieceIndex:00}";
+                        string meshPath =
+                            $"{variantFolder}/{fragment.Mesh.name}.asset";
+                        Mesh storedMesh =
+                            AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
+                        if (storedMesh == null)
+                        {
+                            storedMesh = fragment.Mesh;
+                            AssetDatabase.CreateAsset(storedMesh, meshPath);
+                        }
+                        else
+                        {
+                            EditorUtility.CopySerialized(
+                                fragment.Mesh,
+                                storedMesh);
+                            Object.DestroyImmediate(fragment.Mesh);
+                        }
+
+                        var piece = new GameObject(
+                            $"Piece_{pieceIndex:00}");
+                        piece.transform.SetParent(root.transform, false);
+                        piece.transform.localPosition =
+                            source.Source.LocalPosition
+                            + source.Source.LocalRotation
+                            * Vector3.Scale(
+                                fragment.LocalPosition,
+                                source.Source.LocalScale);
+                        piece.transform.localRotation =
+                            source.Source.LocalRotation;
+                        piece.transform.localScale =
+                            source.Source.LocalScale;
+
+                        MeshFilter filter =
+                            piece.AddComponent<MeshFilter>();
+                        filter.sharedMesh = storedMesh;
+                        MeshRenderer renderer =
+                            piece.AddComponent<MeshRenderer>();
+                        renderer.sharedMaterials =
+                            source.Source.Materials;
+
+                        BoxCollider collider =
+                            piece.AddComponent<BoxCollider>();
+                        collider.center = storedMesh.bounds.center;
+                        collider.size = Vector3.Max(
+                            storedMesh.bounds.size,
+                            Vector3.one * 0.04f);
                     }
-                    else
-                    {
-                        EditorUtility.CopySerialized(
-                            fragment.Mesh,
-                            storedMesh);
-                        Object.DestroyImmediate(fragment.Mesh);
-                    }
-
-                    var piece = new GameObject($"Piece_{i + 1:00}");
-                    piece.transform.SetParent(root.transform, false);
-                    piece.transform.localPosition =
-                        sourceFilter.transform.localPosition
-                        + sourceFilter.transform.localRotation
-                        * Vector3.Scale(
-                            fragment.LocalPosition,
-                            sourceFilter.transform.localScale);
-                    piece.transform.localRotation =
-                        sourceFilter.transform.localRotation;
-                    piece.transform.localScale =
-                        sourceFilter.transform.localScale;
-
-                    MeshFilter filter = piece.AddComponent<MeshFilter>();
-                    filter.sharedMesh = storedMesh;
-                    MeshRenderer renderer =
-                        piece.AddComponent<MeshRenderer>();
-                    renderer.sharedMaterials =
-                        sourceRenderer.sharedMaterials;
-
-                    BoxCollider collider =
-                        piece.AddComponent<BoxCollider>();
-                    collider.center = storedMesh.bounds.center;
-                    collider.size = Vector3.Max(
-                        storedMesh.bounds.size,
-                        Vector3.one * 0.04f);
                 }
 
                 string prefabPath =
@@ -174,6 +198,90 @@ namespace Supernova.Editor
             finally
             {
                 Object.DestroyImmediate(root);
+            }
+        }
+
+        private static List<SourceMesh> CollectSources(GameObject prefab)
+        {
+            var result = new List<SourceMesh>();
+            MeshFilter[] filters =
+                prefab.GetComponentsInChildren<MeshFilter>(true);
+            for (int i = 0; i < filters.Length; i++)
+            {
+                MeshFilter filter = filters[i];
+                MeshRenderer renderer =
+                    filter != null
+                        ? filter.GetComponent<MeshRenderer>()
+                        : null;
+                if (filter == null
+                    || filter.sharedMesh == null
+                    || renderer == null)
+                {
+                    continue;
+                }
+
+                Matrix4x4 relative = prefab.transform.worldToLocalMatrix
+                    * filter.transform.localToWorldMatrix;
+                Vector3 right = relative.GetColumn(0);
+                Vector3 up = relative.GetColumn(1);
+                Vector3 forward = relative.GetColumn(2);
+                Vector3 scale = new Vector3(
+                    right.magnitude,
+                    up.magnitude,
+                    forward.magnitude);
+                Quaternion rotation = forward.sqrMagnitude > 0f
+                    && up.sqrMagnitude > 0f
+                        ? Quaternion.LookRotation(
+                            forward.normalized,
+                            up.normalized)
+                        : Quaternion.identity;
+                result.Add(new SourceMesh(
+                    filter.sharedMesh,
+                    renderer.sharedMaterials,
+                    relative.GetColumn(3),
+                    rotation,
+                    scale));
+            }
+            return result;
+        }
+
+        private readonly struct SourceMesh
+        {
+            public SourceMesh(
+                Mesh mesh,
+                Material[] materials,
+                Vector3 localPosition,
+                Quaternion localRotation,
+                Vector3 localScale)
+            {
+                Mesh = mesh;
+                Materials = materials;
+                LocalPosition = localPosition;
+                LocalRotation = localRotation;
+                LocalScale = localScale;
+            }
+
+            public Mesh Mesh { get; }
+            public Material[] Materials { get; }
+            public Vector3 LocalPosition { get; }
+            public Quaternion LocalRotation { get; }
+            public Vector3 LocalScale { get; }
+        }
+
+        private readonly struct SourceFragments
+        {
+            public SourceFragments(
+                SourceMesh source,
+                IReadOnlyList<MeshFragmentBuilder.Fragment> fragments)
+            {
+                Source = source;
+                Fragments = fragments;
+            }
+
+            public SourceMesh Source { get; }
+            public IReadOnlyList<MeshFragmentBuilder.Fragment> Fragments
+            {
+                get;
             }
         }
 

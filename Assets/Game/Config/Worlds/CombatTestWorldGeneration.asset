@@ -37,8 +37,13 @@ MonoBehaviour:
     containerHalfExtent: 0.91
     cutawayPlane: -0.24
   placeViewerInCave: 1
-  maxConcurrentGenerationJobs: 4
-  meshesBuiltPerFrame: 1
+  maxConcurrentGenerationJobs: 2
+  maxConcurrentMeshJobs: 1
+  meshesBuiltPerFrame: 2
+  meshSnapshotsCapturedPerFrame: 2
+  meshCommitBudgetMilliseconds: 4
+  meshSnapshotBudgetMilliseconds: 2
+  voxelDataRetentionRadiusInChunks: 3
   oreDepthProbability:
     shallowMultiplier: 0.25
     deepMultiplier: 1
@@ -51,7 +56,8 @@ MonoBehaviour:
   isoLevel: 0
   vertexPlacement: 1
   generateColliders: 1
-  terrainPhysicsMaterial: {fileID: 13400000, guid: 1ebb110c1601c1344b39f1140bac3c92, type: 2}
+  terrainPhysicsMaterial: {fileID: 13400000, guid: 1ebb110c1601c1344b39f1140bac3c92,
+    type: 2}
   voxelTypeCatalog: {fileID: 11400000, guid: 2edfe535d7218ed4795d6c3a36fedea1, type: 2}
   punctualLightFalloffPower: 0.55
   punctualLightAttenuationLimit: 1.5
@@ -60,7 +66,10 @@ MonoBehaviour:
   bedrockVoxelType: {fileID: 11400000, guid: 2c50f434192e90a4fbd10cd5d9a7b8fb, type: 2}
   oreFeatures:
   - {fileID: 11400000, guid: c9849f1b483ab07428f176c33113c20f, type: 2}
+  caveBiomeCatalog: {fileID: 0}
   spawnPointStructureRule:
     enabled: 1
     structure: {fileID: 11400000, guid: 2dd6e02553075e844a374e1bb4c19dff, type: 2}
     offset: {x: 0, y: 0, z: 0}
+  structureFeatures: []
+  jigsawStructures: []

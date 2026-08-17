@@ -726,6 +726,8 @@ namespace Supernova.MinecraftCaves
                             anchor.y,
                             anchor.z + (int)Math.Round(Math.Sin(angle) * distance));
                     }
+                    float treasureSelectionRoll =
+                        (float)random.NextDouble();
                     // A scattered instance can land in a neighbouring column; that
                     // column will resolve it itself, so drop it here to avoid
                     // spawning the same instance twice.
@@ -739,6 +741,8 @@ namespace Supernova.MinecraftCaves
                     results.Add(new StructureSpawnRequest(
                         marker.Kind,
                         marker.Treasure,
+                        marker.TreasureSelection,
+                        treasureSelectionRoll,
                         position,
                         Mathf.Repeat(pieceYaw + marker.Yaw, 360f),
                         marker.SnapToFloor,

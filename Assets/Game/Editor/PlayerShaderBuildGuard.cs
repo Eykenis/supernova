@@ -9,13 +9,22 @@ using UnityEngine.Rendering;
 
 namespace Supernova.Editor
 {
+    [InitializeOnLoad]
     internal sealed class PlayerShaderBuildGuard : IPreprocessBuildWithReport
     {
+        static PlayerShaderBuildGuard()
+        {
+            EditorApplication.delayCall +=
+                EnsureEditorShaderConfiguration;
+        }
+
         private const string LilToonOptimizationDisableDefine =
             "LILTOON_DISABLE_OPTIMIZATION";
         private const string LilToonShaderName = "lilToon";
         private const string SoftFalloffLitShaderName =
             "Supernova/Lighting/Soft Falloff Lit";
+        private const string CrystalOreLitShaderName =
+            "Supernova/Lighting/Crystal Ore Lit";
         private const string PortalClippedLitShaderName =
             "Supernova/PortalExample/Clipped Lit";
         private const string PortalSurfaceShaderName =
@@ -37,6 +46,7 @@ namespace Supernova.Editor
         private static readonly string[] CriticalRuntimeShaderNames =
         {
             SoftFalloffLitShaderName,
+            CrystalOreLitShaderName,
             LilToonShaderName,
             StencilGeometryShaderName,
             PortalClippedLitShaderName,
@@ -45,12 +55,38 @@ namespace Supernova.Editor
         };
         private static readonly string[] RuntimeVariantShaderNames =
         {
+            CrystalOreLitShaderName,
             GrassTurfLayerShaderName,
             "Supernova/Vegetation/Cave Grass Blade",
         };
         private static readonly string[][] RuntimeLightingKeywordSets =
             BuildRuntimeLightingKeywordSets();
-        public int callbackOrder => 1000;
+        public int callbackOrder => -10000;
+
+        private static void EnsureEditorShaderConfiguration()
+        {
+            if (EditorApplication.isCompiling
+                || EditorApplication.isUpdating)
+            {
+                EditorApplication.delayCall +=
+                    EnsureEditorShaderConfiguration;
+                return;
+            }
+
+            try
+            {
+                Material[] materials = FindBuildMaterials().ToArray();
+                EnsureCrystalOrePreloadedAssets(materials);
+                EnsureShaderVariantsArePreloaded(materials);
+                EnsureCriticalShadersAreAlwaysIncluded(materials);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError(
+                    "Failed to persist runtime shader build state: "
+                    + exception);
+            }
+        }
 
         public void OnPreprocessBuild(BuildReport report)
         {
@@ -58,10 +94,12 @@ namespace Supernova.Editor
             ValidateShader(LilToonShaderName);
             ValidateShader(StencilGeometryShaderName);
             ValidateShader(SoftFalloffLitShaderName);
+            ValidateShader(CrystalOreLitShaderName);
             ValidateShader(PortalClippedLitShaderName);
             ValidateShader(PortalSurfaceShaderName);
 
             Material[] materials = FindBuildMaterials().ToArray();
+            EnsureCrystalOrePreloadedAssets(materials);
             EnsureShaderVariantsArePreloaded(materials);
             EnsureCriticalShadersAreAlwaysIncluded(materials);
             foreach (Material material in materials)
@@ -141,6 +179,10 @@ namespace Supernova.Editor
                     shaderName,
                     SoftFalloffLitShaderName,
                     StringComparison.Ordinal)
+                    || string.Equals(
+                        shaderName,
+                        CrystalOreLitShaderName,
+                        StringComparison.Ordinal)
                     || shaderName.IndexOf(
                         "lilToon",
                         StringComparison.OrdinalIgnoreCase) >= 0;
@@ -173,9 +215,12 @@ namespace Supernova.Editor
                     continue;
                 }
 
-                // These shaders are packed whole through Always Included.
-                // URP/Lit is kept dependency-driven because including it whole
-                // expands millions of built-in variants in Tuanjie.
+                // Soft Falloff and lilToon are packed whole through Always
+                // Included. Crystal Ore is also always included, but its
+                // exact material variants are retained here because Tuanjie
+                // can collect shaders before pre-build settings mutations.
+                // URP/Lit remains dependency-driven because including it
+                // whole expands millions of built-in variants.
                 if (material.shader.name == MaterialDependencyOnlyShaderName
                     || material.shader.name == SoftFalloffLitShaderName
                     || material.shader.name.IndexOf(
@@ -449,6 +494,46 @@ namespace Supernova.Editor
 
             return results.ToArray();
         }
+        private static void EnsureCrystalOrePreloadedAssets(
+            IEnumerable<Material> materials)
+        {
+            Shader crystalShader = Shader.Find(CrystalOreLitShaderName);
+            if (crystalShader == null)
+            {
+                throw new BuildFailedException(
+                    $"Critical runtime shader '{CrystalOreLitShaderName}' "
+                    + "was not found.");
+            }
+
+            var preloaded = new List<UnityEngine.Object>(
+                PlayerSettings.GetPreloadedAssets());
+            bool changed = false;
+            if (!preloaded.Contains(crystalShader))
+            {
+                preloaded.Add(crystalShader);
+                changed = true;
+            }
+
+            foreach (Material material in materials)
+            {
+                if (material == null
+                    || material.shader == null
+                    || material.shader.name != CrystalOreLitShaderName
+                    || preloaded.Contains(material))
+                {
+                    continue;
+                }
+                preloaded.Add(material);
+                changed = true;
+            }
+
+            if (changed)
+            {
+                PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
+                AssetDatabase.SaveAssets();
+            }
+        }
+
         private static void EnsureCriticalShadersAreAlwaysIncluded(
             IEnumerable<Material> materials)
         {

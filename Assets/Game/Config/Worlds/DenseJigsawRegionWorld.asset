@@ -19,8 +19,8 @@ MonoBehaviour:
   regionColumnsPerSide: 6
   useExternalLandingCell: 1
   externalLandingCellDistanceInColumns: 2
-  preventStructureIntersections: 1
-  structureDensity: 2.5
+  preventStructureIntersections: 0
+  structureDensity: 2
   structureRegionSizeInColumns: 6
   floorHeight: 32
   maxPiecesPerLayout: 256

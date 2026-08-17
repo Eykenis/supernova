@@ -37,8 +37,13 @@ MonoBehaviour:
     containerHalfExtent: 0.91
     cutawayPlane: -0.24
   placeViewerInCave: 0
-  maxConcurrentGenerationJobs: 1
-  meshesBuiltPerFrame: 1
+  maxConcurrentGenerationJobs: 2
+  maxConcurrentMeshJobs: 1
+  meshesBuiltPerFrame: 2
+  meshSnapshotsCapturedPerFrame: 2
+  meshCommitBudgetMilliseconds: 4
+  meshSnapshotBudgetMilliseconds: 2
+  voxelDataRetentionRadiusInChunks: 3
   oreDepthProbability:
     shallowMultiplier: 0.25
     deepMultiplier: 1

@@ -95,6 +95,26 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void SmokeParticles_UseVariedSizesDeceleratingFlightAndShortLifetime()
+        {
+            Assert.That(
+                RigidbodyImpactSmokeEmitter.MinimumParticleSizeScale,
+                Is.EqualTo(0.45f).Within(0.0001f));
+            Assert.That(
+                RigidbodyImpactSmokeEmitter.MaximumParticleSizeScale,
+                Is.EqualTo(1.75f).Within(0.0001f));
+            Assert.That(
+                RigidbodyImpactSmokeEmitter.ParticleSpeedMultiplier,
+                Is.EqualTo(2f).Within(0.0001f));
+            Assert.That(
+                RigidbodyImpactSmokeEmitter.ParticleLifetimeMultiplier,
+                Is.EqualTo(0.45f).Within(0.0001f));
+            Assert.That(
+                RigidbodyImpactSmokeEmitter.ParticleDrag,
+                Is.EqualTo(2.4f).Within(0.0001f));
+        }
+
+        [Test]
         public void FeedbackChannel_PublishesOneValidImpactRequest()
         {
             root = new GameObject("Published Impact Body");

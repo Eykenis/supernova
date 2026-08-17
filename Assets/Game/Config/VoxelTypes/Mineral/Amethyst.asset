@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: Amethyst
   m_EditorClassIdentifier: 
   type: 14
-  displayName: 紫水晶原石
+  displayName: "\u7D2B\u6C34\u6676\u539F\u77F3"
   group: 2
   durability: 30
+  structuralSupport: 0
   material: {fileID: 2100000, guid: 022ab0efec6d9404fa05144232327527, type: 2}
+  sparkleDensity: 0.28

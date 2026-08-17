@@ -25,7 +25,6 @@ namespace Supernova.UI
         [Header("Data Source")]
         [SerializeField] private MonoBehaviour healthSourceOverride;
         [SerializeField] private PlayerToolController inventorySourceOverride;
-        [SerializeField, Min(0.05f)] private float sourceSearchInterval = 0.5f;
 
         [Header("Configuration")]
         [SerializeField] private UiDesignTokens designTokens;
@@ -42,6 +41,7 @@ namespace Supernova.UI
         [SerializeField] private Image healthFillImage;
         [SerializeField] private TMP_Text healthValueLabel;
         [SerializeField] private GameObject hotbarRoot;
+        [SerializeField] private TMP_Text hotbarActionHintsLabel;
         [SerializeField] private HeadingCompass headingCompass;
 
         [Header("Mission View")]
@@ -93,17 +93,15 @@ namespace Supernova.UI
         [SerializeField, Min(0.05f)] private float fpsRefreshInterval = 0.25f;
 
         private IDamageable healthSource;
+        private VoxelPlayerController healthEventSource;
         private PlayerToolController inventorySource;
         private VoxelPlayerController toolCooldownSource;
         private GameHudPresenter presenter;
         private HotbarPresenter hotbarPresenter;
-        private float nextSourceSearchTime;
-        private float nextInventorySourceSearchTime;
-        private float nextWorldSourceSearchTime;
         private MinecraftCaveInfiniteWorld loadingSource;
         private FirstPersonMagnetInteractor magnetAttractor;
-        private PlayerToolController magnetToolController;
         private float magnetCrosshairBlend;
+        private bool magnetCrosshairTargetAvailable;
         private bool loadingRequestedVisible;
         private float displayedCurrentHealth = float.NaN;
         private float displayedMaximumHealth = float.NaN;
@@ -122,11 +120,20 @@ namespace Supernova.UI
         private AngledPanelGraphic[] healthSegments = new AngledPanelGraphic[0];
         private readonly Image[] hotbarSlotBackgrounds = new Image[PlayerInventory.SlotCount];
         private readonly Outline[] hotbarSlotOutlines = new Outline[PlayerInventory.SlotCount];
+        private readonly Image[] hotbarItemIcons = new Image[PlayerInventory.SlotCount];
         private readonly TMP_Text[] hotbarItemLabels = new TMP_Text[PlayerInventory.SlotCount];
         private readonly HotbarCooldownOverlayGraphic[] hotbarCooldownOverlays =
             new HotbarCooldownOverlayGraphic[PlayerInventory.SlotCount];
         private readonly TMP_Text[] hotbarCooldownLabels =
             new TMP_Text[PlayerInventory.SlotCount];
+        private static readonly GameInputActionId[] HotbarActionIds =
+        {
+            GameInputActionId.Hotbar1,
+            GameInputActionId.Hotbar2,
+            GameInputActionId.Hotbar3,
+            GameInputActionId.Hotbar4,
+            GameInputActionId.Hotbar5,
+        };
         private float fpsAccumulatedTime;
         private int fpsAccumulatedFrames;
         private const string FullscreenPreferenceKey = "ui.fullscreen";
@@ -298,32 +305,59 @@ namespace Supernova.UI
         private void Awake()
         {
             ResolveConfiguration();
-            loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
             EnsureView();
-            BindHealthSource(healthSourceOverride as IDamageable);
-            BindInventorySource(inventorySourceOverride);
         }
 
         private void OnEnable()
         {
-            nextSourceSearchTime = 0f;
-            nextInventorySourceSearchTime = 0f;
-            nextWorldSourceSearchTime = 0f;
+            PlayerToolController.InstanceEnabled -=
+                HandlePlayerToolControllerEnabled;
+            PlayerToolController.InstanceEnabled +=
+                HandlePlayerToolControllerEnabled;
+            PlayerToolController.InstanceDisabled -=
+                HandlePlayerToolControllerDisabled;
+            PlayerToolController.InstanceDisabled +=
+                HandlePlayerToolControllerDisabled;
+            MinecraftCaveInfiniteWorld.InstanceEnabled -=
+                HandleLoadingSourceEnabled;
+            MinecraftCaveInfiniteWorld.InstanceEnabled +=
+                HandleLoadingSourceEnabled;
+            MinecraftCaveInfiniteWorld.InstanceDisabled -=
+                HandleLoadingSourceDisabled;
+            MinecraftCaveInfiniteWorld.InstanceDisabled +=
+                HandleLoadingSourceDisabled;
+            FirstPersonMagnetInteractor.InstanceEnabled -=
+                HandleMagnetAttractorEnabled;
+            FirstPersonMagnetInteractor.InstanceEnabled +=
+                HandleMagnetAttractorEnabled;
+            FirstPersonMagnetInteractor.InstanceDisabled -=
+                HandleMagnetAttractorDisabled;
+            FirstPersonMagnetInteractor.InstanceDisabled +=
+                HandleMagnetAttractorDisabled;
             ResetFpsDebugCounter();
-            if (inventorySource != null)
-                BindInventorySource(inventorySource);
-            RefreshNow();
+            RebindSceneSources();
         }
 
         private void OnDisable()
         {
+            PlayerToolController.InstanceEnabled -=
+                HandlePlayerToolControllerEnabled;
+            PlayerToolController.InstanceDisabled -=
+                HandlePlayerToolControllerDisabled;
+            MinecraftCaveInfiniteWorld.InstanceEnabled -=
+                HandleLoadingSourceEnabled;
+            MinecraftCaveInfiniteWorld.InstanceDisabled -=
+                HandleLoadingSourceDisabled;
+            FirstPersonMagnetInteractor.InstanceEnabled -=
+                HandleMagnetAttractorEnabled;
+            FirstPersonMagnetInteractor.InstanceDisabled -=
+                HandleMagnetAttractorDisabled;
             ResumeGame();
             equipmentMenu?.Close();
-            if (inventorySource != null)
-            {
-                inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
-                inventorySource.LoadoutChanged -= HandleLoadoutChanged;
-            }
+            BindMagnetAttractor(null);
+            BindLoadingSource(null);
+            BindHealthSource(null);
+            BindInventorySource(null);
         }
 
         private void OnDestroy()
@@ -358,30 +392,14 @@ namespace Supernova.UI
                 ToggleEquipmentMenu();
             }
 
-            if (!IsHealthSourceValid(healthSource)
-                && Time.unscaledTime >= nextSourceSearchTime)
-            {
-                healthSource = null;
-                nextSourceSearchTime = Time.unscaledTime + sourceSearchInterval;
-                BindHealthSource(FindPlayerHealthSource());
-            }
-
-            if (inventorySource == null && Time.unscaledTime >= nextInventorySourceSearchTime)
-            {
-                nextInventorySourceSearchTime = Time.unscaledTime + sourceSearchInterval;
-                BindInventorySource(FindPlayerInventorySource());
-            }
-
-            if (loadingSource == null && Time.unscaledTime >= nextWorldSourceSearchTime)
-            {
-                nextWorldSourceSearchTime = Time.unscaledTime + sourceSearchInterval;
-                loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
-            }
-
-            RefreshNow();
             AnimateLoading();
-            crosshairInfoDisplay?.Refresh();
-            RefreshMagnetCrosshairTint();
+            if (crosshairInfoDisplay != null
+                && crosshairInfoCanvas != null
+                && crosshairInfoCanvas.isActiveAndEnabled)
+            {
+                crosshairInfoDisplay.Refresh();
+            }
+            AnimateMagnetCrosshairTint();
         }
 
         /// <summary>
@@ -389,36 +407,33 @@ namespace Supernova.UI
         /// something. The crosshair is a thin two-pixel cross, so colour alone is hard
         /// to read: it also scales up and brightens its outline into a glow.
         /// </summary>
-        private void RefreshMagnetCrosshairTint()
+        private void AnimateMagnetCrosshairTint()
         {
-            if (!ResolveCrosshairArms()) return;
-
-            bool available = false;
-            if (magnetAttractor == null)
+            if (crosshairCanvas == null
+                || !crosshairCanvas.isActiveAndEnabled
+                || !ResolveCrosshairArms())
             {
-                magnetAttractor = FindObjectOfType<FirstPersonMagnetInteractor>();
-            }
-            if (magnetAttractor != null)
-            {
-                if (magnetToolController == null)
-                {
-                    magnetToolController =
-                        magnetAttractor.GetComponent<PlayerToolController>();
-                }
-                PlayerToolDefinition pickaxe = magnetToolController != null
-                    ? magnetToolController.GetDefinition(
-                        PlayerInventoryItem.Pickaxe)
-                    : null;
-                available = magnetAttractor.HasAvailableMagnetTarget(pickaxe);
+                return;
             }
 
-            // Ease the change so it reads as a deliberate state, not a flicker when
-            // the target briefly leaves the sightline.
+            float targetBlend =
+                magnetCrosshairTargetAvailable ? 1f : 0f;
+            if (Mathf.Approximately(
+                    magnetCrosshairBlend,
+                    targetBlend))
+            {
+                return;
+            }
+
             magnetCrosshairBlend = Mathf.MoveTowards(
                 magnetCrosshairBlend,
-                available ? 1f : 0f,
+                targetBlend,
                 CrosshairStateBlendSpeed * Time.unscaledDeltaTime);
+            ApplyMagnetCrosshairVisual();
+        }
 
+        private void ApplyMagnetCrosshairVisual()
+        {
             Color tint = Color.Lerp(
                 Color.white,
                 MagnetTargetCrosshairColor,
@@ -432,6 +447,12 @@ namespace Supernova.UI
             ApplyCrosshairArmState(crosshairVertical, tint);
             if (crosshairCenter != null)
                 crosshairCenter.color = tint;
+        }
+
+        private void HandleMagnetTargetAvailabilityChanged(
+            bool available)
+        {
+            magnetCrosshairTargetAvailable = available;
         }
 
         private static void ApplyCrosshairArmState(Image arm, Color tint)
@@ -602,8 +623,6 @@ namespace Supernova.UI
         internal void SetMainMenuPresentationActive(bool active)
         {
             SetGameplayViewVisible(!active);
-            if (missionOverlayCanvas != null)
-                missionOverlayCanvas.gameObject.SetActive(!active);
         }
 
         private void SetGameplayViewVisible(bool visible)
@@ -634,24 +653,62 @@ namespace Supernova.UI
                 debugCanvas.gameObject.SetActive(visible);
 
             if (!visible)
+            {
+                crosshairInfoDisplay?.HideImmediate();
+                BindMagnetAttractor(null);
+                BindLoadingSource(null);
+                BindHealthSource(null);
+                BindInventorySource(null);
                 return;
+            }
 
-            loadingSource = FindObjectOfType<MinecraftCaveInfiniteWorld>();
-            nextSourceSearchTime = 0f;
-            nextInventorySourceSearchTime = 0f;
-            nextWorldSourceSearchTime = 0f;
+            RebindSceneSources();
+        }
+
+        private void RebindSceneSources()
+        {
+            MinecraftCaveInfiniteWorld world =
+                FindObjectOfType<MinecraftCaveInfiniteWorld>();
+            BindLoadingSource(world);
+
             IDamageable configuredHealthSource =
                 healthSourceOverride as IDamageable;
             BindHealthSource(IsHealthSourceValid(configuredHealthSource)
                 ? configuredHealthSource
                 : FindPlayerHealthSource());
-            RefreshNow();
+            BindInventorySource(inventorySourceOverride != null
+                ? inventorySourceOverride
+                : FindPlayerInventorySource());
+            FirstPersonMagnetInteractor playerMagnet =
+                inventorySource != null
+                    ? inventorySource.GetComponent<
+                        FirstPersonMagnetInteractor>()
+                    : null;
+            BindMagnetAttractor(
+                playerMagnet != null
+                    ? playerMagnet
+                    : FindObjectOfType<FirstPersonMagnetInteractor>());
+            if (crosshairInfoDisplay != null)
+            {
+                crosshairInfoDisplay.BindTerrainSource(
+                    world != null ? world : FindVoxelTerrainSource());
+            }
         }
 
         public void BindLoadingSource(MinecraftCaveInfiniteWorld source)
         {
+            if (loadingSource != null)
+            {
+                loadingSource.InitialLoadProgressChanged -=
+                    HandleInitialLoadProgressChanged;
+            }
+
             loadingSource = source;
-            nextWorldSourceSearchTime = 0f;
+            if (loadingSource != null)
+            {
+                loadingSource.InitialLoadProgressChanged +=
+                    HandleInitialLoadProgressChanged;
+            }
             displayedLoadingStage = (MinecraftCaveGenerationStage)(-1);
             displayedLoadingPercent = -1;
             RefreshLoadingView();
@@ -659,10 +716,16 @@ namespace Supernova.UI
 
         public void BindHealthSource(IDamageable source)
         {
+            if (healthEventSource != null)
+                healthEventSource.HealthChanged -= HandleHealthChanged;
+
             healthSource = source;
+            healthEventSource = source as VoxelPlayerController;
+            if (healthEventSource != null)
+                healthEventSource.HealthChanged += HandleHealthChanged;
             displayedCurrentHealth = float.NaN;
             displayedMaximumHealth = float.NaN;
-            RefreshNow();
+            RefreshHealthView();
         }
 
         public void BindInventorySource(PlayerToolController source)
@@ -671,6 +734,13 @@ namespace Supernova.UI
             {
                 inventorySource.SelectionChanged -= HandleInventorySelectionChanged;
                 inventorySource.LoadoutChanged -= HandleLoadoutChanged;
+            }
+            if (toolCooldownSource != null)
+            {
+                toolCooldownSource.ToolActionCooldownChanged -=
+                    HandleToolActionCooldownChanged;
+                toolCooldownSource.ToolActionCooldownsCleared -=
+                    HandleToolActionCooldownsCleared;
             }
 
             inventorySource = source;
@@ -682,12 +752,45 @@ namespace Supernova.UI
                 inventorySource.SelectionChanged += HandleInventorySelectionChanged;
                 inventorySource.LoadoutChanged += HandleLoadoutChanged;
             }
+            if (toolCooldownSource != null)
+            {
+                toolCooldownSource.ToolActionCooldownChanged +=
+                    HandleToolActionCooldownChanged;
+                toolCooldownSource.ToolActionCooldownsCleared +=
+                    HandleToolActionCooldownsCleared;
+            }
             equipmentMenu?.BindInventory(inventorySource);
             displayedSlotIndex = -1;
-            RefreshNow();
+            RefreshHotbar();
+        }
+
+        private void BindMagnetAttractor(
+            FirstPersonMagnetInteractor source)
+        {
+            if (magnetAttractor != null)
+            {
+                magnetAttractor.TargetAvailabilityChanged -=
+                    HandleMagnetTargetAvailabilityChanged;
+            }
+
+            magnetAttractor = source;
+            magnetCrosshairTargetAvailable = false;
+            if (magnetAttractor != null)
+            {
+                magnetAttractor.TargetAvailabilityChanged +=
+                    HandleMagnetTargetAvailabilityChanged;
+                magnetAttractor.RefreshTargetAvailability();
+            }
         }
 
         public void RefreshNow()
+        {
+            RefreshHealthView();
+            RefreshHotbar();
+            RefreshLoadingView();
+        }
+
+        private void RefreshHealthView()
         {
             if (!IsHealthSourceValid(healthSource))
                 healthSource = null;
@@ -709,27 +812,52 @@ namespace Supernova.UI
                     presenter.SetHealth(current, maximum);
                 }
             }
-
-            RefreshHotbar();
-            RefreshLoadingView();
         }
 
         private void RefreshHotbar()
         {
+            RefreshHotbarActionHints();
             if (hotbarPresenter == null) return;
             int slotIndex = inventorySource != null ? inventorySource.SelectedSlotIndex : 0;
             hotbarPresenter.SetInventory(inventorySource);
             RefreshHotbarCooldowns();
-            if (slotIndex == displayedSlotIndex) return;
-
             displayedSlotIndex = slotIndex;
             hotbarPresenter.SetSelectedSlot(slotIndex);
         }
 
-        private void RefreshHotbarCooldowns()
+        private void RefreshHotbarActionHints()
+        {
+            if (hotbarActionHintsLabel == null)
+                return;
+
+            PlayerToolDefinition selected = inventorySource != null
+                ? inventorySource.SelectedDefinition
+                : null;
+            string primaryHint = selected != null
+                ? selected.PrimaryActionHint
+                : string.Empty;
+            string value = string.Empty;
+            if (!string.IsNullOrWhiteSpace(primaryHint))
+            {
+                value = InputPromptResolver.Token(
+                        GameInputActionId.PrimaryAction)
+                    + "  "
+                    + primaryHint
+                    + "\n";
+            }
+
+            value += InputPromptResolver.Token(
+                    GameInputActionId.SecondaryAction)
+                + "  牵引\n"
+                + InputPromptResolver.Token(GameInputActionId.Crouch)
+                + "  蹲下";
+            InputPromptTextRuntime.SetText(hotbarActionHintsLabel, value);
+        }
+
+        private bool RefreshHotbarCooldowns()
         {
             if (hotbarPresenter == null)
-                return;
+                return false;
 
             if (toolCooldownSource == null && inventorySource != null)
             {
@@ -737,6 +865,7 @@ namespace Supernova.UI
                     inventorySource.GetComponent<VoxelPlayerController>();
             }
 
+            bool hasActiveCooldown = false;
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
                 float remainingSeconds = 0f;
@@ -746,10 +875,11 @@ namespace Supernova.UI
                     : PlayerInventoryItem.Empty;
                 if (toolCooldownSource != null)
                 {
-                    toolCooldownSource.TryGetToolActionCooldown(
+                    bool active = toolCooldownSource.TryGetToolActionCooldown(
                         item,
                         out remainingSeconds,
                         out durationSeconds);
+                    hasActiveCooldown |= active;
                 }
 
                 hotbarPresenter.SetCooldown(
@@ -757,6 +887,7 @@ namespace Supernova.UI
                     remainingSeconds,
                     durationSeconds);
             }
+            return hasActiveCooldown;
         }
 
         private void RefreshLoadingView()
@@ -910,14 +1041,119 @@ namespace Supernova.UI
 
         private void HandleInventorySelectionChanged(int slotIndex, PlayerInventoryItem item)
         {
-            displayedSlotIndex = -1;
-            RefreshHotbar();
+            displayedSlotIndex = slotIndex;
+            hotbarPresenter?.SetSelectedSlot(slotIndex);
+            RefreshHotbarActionHints();
         }
 
         private void HandleLoadoutChanged()
         {
             RefreshHotbar();
         }
+
+        private void HandleHealthChanged(float current, float maximum)
+        {
+            if (presenter == null)
+                return;
+            displayedCurrentHealth = Mathf.Max(0f, current);
+            displayedMaximumHealth = Mathf.Max(0.01f, maximum);
+            presenter.SetHealthVisible(true);
+            presenter.SetHealth(
+                displayedCurrentHealth,
+                displayedMaximumHealth);
+        }
+
+        private void HandleToolActionCooldownChanged(
+            PlayerInventoryItem item,
+            float remainingSeconds,
+            float durationSeconds)
+        {
+            if (hotbarPresenter == null || inventorySource == null)
+                return;
+
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                if (inventorySource.GetItemAtSlot(i) != item)
+                    continue;
+                hotbarPresenter.SetCooldown(
+                    i,
+                    remainingSeconds,
+                    durationSeconds);
+                return;
+            }
+        }
+
+        private void HandleToolActionCooldownsCleared()
+        {
+            RefreshHotbarCooldowns();
+        }
+
+        private void HandleInitialLoadProgressChanged(
+            MinecraftCaveGenerationStage stage,
+            float progress,
+            bool complete)
+        {
+            RefreshLoadingView();
+        }
+
+        private void HandlePlayerToolControllerEnabled(
+            PlayerToolController source)
+        {
+            if (IsGameplayViewActive)
+                RebindSceneSources();
+        }
+
+        private void HandlePlayerToolControllerDisabled(
+            PlayerToolController source)
+        {
+            if (source != inventorySource)
+                return;
+            BindInventorySource(null);
+            BindHealthSource(null);
+            BindMagnetAttractor(null);
+        }
+
+        private void HandleLoadingSourceEnabled(
+            MinecraftCaveInfiniteWorld source)
+        {
+            if (!IsGameplayViewActive)
+                return;
+            BindLoadingSource(source);
+            crosshairInfoDisplay?.BindTerrainSource(source);
+        }
+
+        private void HandleLoadingSourceDisabled(
+            MinecraftCaveInfiniteWorld source)
+        {
+            if (source != loadingSource)
+                return;
+            BindLoadingSource(null);
+            crosshairInfoDisplay?.BindTerrainSource(null);
+        }
+
+        private void HandleMagnetAttractorEnabled(
+            FirstPersonMagnetInteractor source)
+        {
+            PlayerToolController owner = source != null
+                ? source.GetComponent<PlayerToolController>()
+                : null;
+            if (IsGameplayViewActive
+                && (inventorySource == null || owner == inventorySource))
+            {
+                BindMagnetAttractor(source);
+            }
+        }
+
+        private void HandleMagnetAttractorDisabled(
+            FirstPersonMagnetInteractor source)
+        {
+            if (source == magnetAttractor)
+                BindMagnetAttractor(null);
+        }
+
+        private bool IsGameplayViewActive =>
+            rootCanvas != null
+            && rootCanvas.gameObject.activeInHierarchy;
 
         [ContextMenu("Rebuild Default UGUI View")]
         public void RebuildDefaultView()
@@ -952,9 +1188,7 @@ namespace Supernova.UI
             {
                 BuildDefaultView();
             }
-            else if (hotbarRoot == null
-                || hotbarRoot.transform.childCount
-                    != PlayerInventory.SlotCount)
+            else if (HotbarViewNeedsUpgrade())
             {
                 BuildHotbarView((RectTransform)rootCanvas.transform);
             }
@@ -1087,6 +1321,13 @@ namespace Supernova.UI
 
             Transform hotbar = transform.Find(UiHierarchyPaths.Hud.Hotbar);
             if (hotbarRoot == null && hotbar != null) hotbarRoot = hotbar.gameObject;
+            Transform hotbarActionHints = transform.Find(
+                UiHierarchyPaths.Hud.HotbarActionHintsLabel);
+            if (hotbarActionHintsLabel == null && hotbarActionHints != null)
+            {
+                hotbarActionHintsLabel =
+                    hotbarActionHints.GetComponent<TMP_Text>();
+            }
 
             Transform compass = transform.Find(UiHierarchyPaths.Hud.Compass);
             if (headingCompass == null && compass != null)
@@ -1136,6 +1377,9 @@ namespace Supernova.UI
                 if (slot == null) continue;
                 hotbarSlotBackgrounds[i] = slot.GetComponent<Image>();
                 hotbarSlotOutlines[i] = slot.GetComponent<Outline>();
+                Transform itemIcon = slot.Find(UiHierarchyPaths.Hud.Icon);
+                if (itemIcon != null)
+                    hotbarItemIcons[i] = itemIcon.GetComponent<Image>();
                 Transform itemLabel = slot.Find(UiHierarchyPaths.Hud.Item);
                 if (itemLabel != null) hotbarItemLabels[i] = itemLabel.GetComponent<TMP_Text>();
                 Transform cooldownOverlay = slot.Find(
@@ -1176,6 +1420,7 @@ namespace Supernova.UI
             hotbarPresenter = new HotbarPresenter(
                 hotbarSlotBackgrounds,
                 hotbarSlotOutlines,
+                hotbarItemIcons,
                 hotbarItemLabels,
                 hotbarCooldownOverlays,
                 hotbarCooldownLabels,
@@ -1606,6 +1851,12 @@ namespace Supernova.UI
             fadeRect.anchorMax = Vector2.one;
             fadeRect.offsetMin = Vector2.zero;
             fadeRect.offsetMax = Vector2.zero;
+            Canvas sceneTransitionCanvas = fadeRect.gameObject.AddComponent<Canvas>();
+            sceneTransitionCanvas.overrideSorting = true;
+            sceneTransitionCanvas.sortingOrder = designTokens != null
+                ? designTokens.SceneTransitionSortingOrder
+                : 2000;
+            fadeRect.gameObject.AddComponent<GraphicRaycaster>();
             Image fadeImage = fadeRect.gameObject.AddComponent<Image>();
             fadeImage.color = designTokens != null
                 ? designTokens.SceneFadeColor
@@ -2614,8 +2865,15 @@ if (pauseSettingsBackButton != null)
                 return;
             }
 
-            ResumeGame();
             Time.timeScale = 1f;
+            MissionGameLoop gameLoop = MissionGameLoop.Instance;
+            if (gameLoop != null
+                && gameLoop.BeginSceneLoadWithFade(mainMenuSceneName))
+            {
+                return;
+            }
+
+            ResumeGame();
             SceneManager.LoadSceneAsync(
                 mainMenuSceneName,
                 LoadSceneMode.Single);
@@ -2991,25 +3249,59 @@ if (pauseSettingsBackButton != null)
 
         private void BuildHotbarView(RectTransform rootRect)
         {
-            Transform existing = rootRect.Find("Hotbar");
+            Transform existing = rootRect.Find(
+                UiHierarchyPaths.Hud.HotbarName);
             if (existing != null)
             {
                 if (Application.isPlaying) Destroy(existing.gameObject);
                 else DestroyImmediate(existing.gameObject);
             }
+            Transform existingHints = rootRect.Find(
+                UiHierarchyPaths.Hud.HotbarActionHintsName);
+            if (existingHints != null)
+            {
+                if (Application.isPlaying) Destroy(existingHints.gameObject);
+                else DestroyImmediate(existingHints.gameObject);
+            }
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
                 hotbarSlotBackgrounds[i] = null;
                 hotbarSlotOutlines[i] = null;
+                hotbarItemIcons[i] = null;
                 hotbarItemLabels[i] = null;
                 hotbarCooldownOverlays[i] = null;
                 hotbarCooldownLabels[i] = null;
             }
+            hotbarActionHintsLabel = null;
 
-            RectTransform hotbar = CreateRect("Hotbar", rootRect);
+            RectTransform hotbar = CreateRect(
+                UiHierarchyPaths.Hud.HotbarName,
+                rootRect);
             SetAnchoredRect(hotbar, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
                 new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(272f, 56f));
             hotbarRoot = hotbar.gameObject;
+
+            RectTransform hints = CreateRect(
+                UiHierarchyPaths.Hud.HotbarActionHintsName,
+                rootRect);
+            hotbarActionHintsLabel = CreateText(
+                UiHierarchyPaths.Hud.HotbarActionHintsLabelName,
+                hints,
+                string.Empty,
+                TextAlignmentOptions.BottomRight);
+            SetAnchoredRect(
+                (RectTransform)hotbarActionHintsLabel.transform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0.5f, 0.5f),
+                Vector2.zero,
+                Vector2.zero);
+            hotbarActionHintsLabel.enableWordWrapping = false;
+            Outline hintsOutline =
+                hotbarActionHintsLabel.gameObject.AddComponent<Outline>();
+            hintsOutline.effectColor = new Color(0f, 0f, 0f, 0.82f);
+            hintsOutline.effectDistance = new Vector2(1f, -1f);
+            hintsOutline.useGraphicAlpha = true;
 
             for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
@@ -3030,8 +3322,19 @@ if (pauseSettingsBackButton != null)
                 outline.useGraphicAlpha = false;
                 hotbarSlotOutlines[i] = outline;
 
-                string keyText = (i + 1).ToString();
+                RectTransform iconRect = CreateRect(
+                    UiHierarchyPaths.Hud.Icon,
+                    slot);
+                Image icon = iconRect.gameObject.AddComponent<Image>();
+                icon.preserveAspect = true;
+                icon.raycastTarget = false;
+                icon.enabled = false;
+                hotbarItemIcons[i] = icon;
+
+                string keyText = InputPromptResolver.Token(
+                    HotbarActionIds[i]);
                 TMP_Text key = CreateText("Key", slot, keyText, TextAlignmentOptions.TopLeft);
+                InputPromptTextRuntime.SetText(key, keyText);
                 SetAnchoredRect((RectTransform)key.transform, Vector2.zero, Vector2.one,
                     new Vector2(0.5f, 0.5f), new Vector2(5f, -3f), new Vector2(-10f, -6f));
                 key.fontSize = 11f;
@@ -3048,6 +3351,22 @@ if (pauseSettingsBackButton != null)
                 item.color = new Color(0.92f, 0.94f, 0.96f, 1f);
                 hotbarItemLabels[i] = item;
             }
+        }
+
+        private bool HotbarViewNeedsUpgrade()
+        {
+            if (hotbarRoot == null || hotbarActionHintsLabel == null)
+                return true;
+
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            {
+                if (hotbarRoot.transform.Find(
+                        UiHierarchyPaths.Hud.SlotName(i + 1)) == null)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void ApplyReferenceHudLayout()
@@ -3076,6 +3395,18 @@ if (pauseSettingsBackButton != null)
             Vector2 hotbarSize = designTokens != null
                 ? designTokens.HudHotbarSize
                 : new Vector2(320f, 78f);
+            float hudVisualScale = designTokens != null
+                ? designTokens.HudVisualScale
+                : 1.15f;
+            Vector2 hotbarHintsOffset = designTokens != null
+                ? designTokens.HudHotbarHintsOffset
+                : new Vector2(0f, 14f);
+            Vector2 hotbarHintsSize = designTokens != null
+                ? designTokens.HudHotbarHintsSize
+                : new Vector2(360f, 112f);
+            float hotbarHintsFontSize = designTokens != null
+                ? designTokens.HudHotbarHintsFontSize
+                : 21f;
             float healthTilt = designTokens != null
                 ? designTokens.HudHealthTiltDegrees
                 : 3.5f;
@@ -3106,6 +3437,7 @@ if (pauseSettingsBackButton != null)
                     healthPosition,
                     healthSize);
                 panel.localRotation = Quaternion.Euler(0f, 0f, healthTilt);
+                panel.localScale = Vector3.one * hudVisualScale;
                 ClearLegacyPlate(panel);
 
                 TMP_Text title = panel.Find(
@@ -3186,6 +3518,42 @@ if (pauseSettingsBackButton != null)
                     hotbarPosition,
                     hotbarSize);
                 hotbar.localRotation = Quaternion.Euler(0f, 0f, hotbarTilt);
+                hotbar.localScale = Vector3.one * hudVisualScale;
+
+                RectTransform hints = transform.Find(
+                    UiHierarchyPaths.Hud.HotbarActionHints)
+                    as RectTransform;
+                if (hints != null)
+                {
+                    SetAnchoredRect(
+                        hints,
+                        new Vector2(1f, 0f),
+                        new Vector2(1f, 0f),
+                        new Vector2(1f, 0f),
+                        hotbarPosition
+                            + new Vector2(
+                                hotbarHintsOffset.x,
+                                hotbarSize.y + hotbarHintsOffset.y),
+                        hotbarHintsSize);
+                    hints.localRotation = Quaternion.identity;
+                    hints.localScale = Vector3.one * hudVisualScale;
+                }
+                if (hotbarActionHintsLabel != null)
+                {
+                    hotbarActionHintsLabel.fontSize =
+                        hotbarHintsFontSize;
+                    hotbarActionHintsLabel.fontStyle =
+                        FontStyles.Bold;
+                    hotbarActionHintsLabel.characterSpacing = 1.2f;
+                    hotbarActionHintsLabel.lineSpacing = 4f;
+                    hotbarActionHintsLabel.color = new Color(
+                        primary.r,
+                        primary.g,
+                        primary.b,
+                        0.82f);
+                    hotbarActionHintsLabel.alignment =
+                        TextAlignmentOptions.BottomRight;
+                }
 
                 const float slotGap = 6f;
                 float slotWidth = Mathf.Max(
@@ -3221,6 +3589,18 @@ if (pauseSettingsBackButton != null)
                             hotbarReverseSlant);
                     }
 
+                    Image icon = EnsureHotbarItemIcon(slot, i);
+                    if (icon != null)
+                    {
+                        SetAnchoredRect(
+                            (RectTransform)icon.transform,
+                            new Vector2(0.5f, 0.5f),
+                            new Vector2(0.5f, 0.5f),
+                            new Vector2(0.5f, 0.5f),
+                            new Vector2(14f, 0f),
+                            new Vector2(24f, 24f));
+                    }
+
                     TMP_Text key = slot.Find(
                         UiHierarchyPaths.Hud.Key)?.GetComponent<TMP_Text>();
                     if (key != null)
@@ -3233,13 +3613,12 @@ if (pauseSettingsBackButton != null)
                             new Vector2(0.5f, 0.5f),
                             new Vector2(7f, -3f),
                             new Vector2(-14f, -8f));
-                        key.fontSize = 10f;
-                        key.color = new Color(primary.r, primary.g, primary.b, 0.62f);
+                        key.fontSize = 14f;
+                        key.color = new Color(primary.r, primary.g, primary.b, 0.86f);
                         key.alignment = TextAlignmentOptions.TopLeft;
                     }
 
-                    TMP_Text item = slot.Find(
-                        UiHierarchyPaths.Hud.Item)?.GetComponent<TMP_Text>();
+                    TMP_Text item = EnsureHotbarItemLabel(slot, i);
                     if (item != null)
                     {
                         RectTransform itemRect = (RectTransform)item.transform;
@@ -3248,9 +3627,9 @@ if (pauseSettingsBackButton != null)
                             Vector2.zero,
                             Vector2.one,
                             new Vector2(0.5f, 0.5f),
-                            new Vector2(4f, -9f),
-                            new Vector2(-8f, -18f));
-                        item.fontSize = 8f;
+                            new Vector2(4f, -19f),
+                            new Vector2(-8f, -36f));
+                        item.fontSize = 10f;
                         item.characterSpacing = 1f;
                         item.color = primary;
                         item.alignment = TextAlignmentOptions.Center;
@@ -3268,10 +3647,16 @@ if (pauseSettingsBackButton != null)
                 }
             }
 
+            RectTransform compass = transform.Find(
+                UiHierarchyPaths.Hud.Compass) as RectTransform;
+            if (compass != null)
+                compass.localScale = Vector3.one * hudVisualScale;
+
             RectTransform crosshair = transform.Find(
                 UiHierarchyPaths.Hud.Crosshair) as RectTransform;
             if (crosshair != null)
             {
+                crosshair.localScale = Vector3.one * hudVisualScale;
                 crosshair.sizeDelta = new Vector2(12f, 12f);
                 StyleCrosshairBar(crosshair, UiHierarchyPaths.Hud.Horizontal,
                     new Vector2(12f, 2f), primary);
@@ -3372,6 +3757,45 @@ if (pauseSettingsBackButton != null)
             return graphic;
         }
 
+        private Image EnsureHotbarItemIcon(
+            RectTransform slot,
+            int slotIndex)
+        {
+            RectTransform iconRect = slot.Find(
+                UiHierarchyPaths.Hud.Icon) as RectTransform;
+            if (iconRect == null)
+                iconRect = CreateRect(UiHierarchyPaths.Hud.Icon, slot);
+
+            Image icon = iconRect.GetComponent<Image>();
+            if (icon == null)
+                icon = iconRect.gameObject.AddComponent<Image>();
+            icon.preserveAspect = true;
+            icon.raycastTarget = false;
+            hotbarItemIcons[slotIndex] = icon;
+            return icon;
+        }
+
+        private TMP_Text EnsureHotbarItemLabel(
+            RectTransform slot,
+            int slotIndex)
+        {
+            RectTransform itemRect = slot.Find(
+                UiHierarchyPaths.Hud.Item) as RectTransform;
+            TMP_Text item = itemRect != null
+                ? itemRect.GetComponent<TMP_Text>()
+                : null;
+            if (item == null)
+            {
+                item = CreateText(
+                    UiHierarchyPaths.Hud.Item,
+                    slot,
+                    string.Empty,
+                    TextAlignmentOptions.Center);
+            }
+            hotbarItemLabels[slotIndex] = item;
+            return item;
+        }
+
         private void EnsureHotbarCooldownView(
             RectTransform slot,
             int slotIndex,
@@ -3440,7 +3864,7 @@ if (pauseSettingsBackButton != null)
                     new Vector2(0.5f, 0f),
                     new Vector2(0f, 4f),
                     new Vector2(-4f, 17f));
-                label.fontSize = 10f;
+                label.fontSize = 12f;
                 label.fontStyle = FontStyles.Bold;
                 label.characterSpacing = 0.5f;
                 label.color = primary;
@@ -3640,6 +4064,18 @@ if (pauseSettingsBackButton != null)
             return FindObjectOfType<PlayerToolController>();
         }
 
+        private static MonoBehaviour FindVoxelTerrainSource()
+        {
+            MonoBehaviour[] behaviours =
+                FindObjectsOfType<MonoBehaviour>();
+            for (int i = 0; i < behaviours.Length; i++)
+            {
+                if (behaviours[i] is IVoxelTerrain)
+                    return behaviours[i];
+            }
+            return null;
+        }
+
         private static IDamageable FindDamageable(MonoBehaviour[] behaviours)
         {
             for (int i = 0; i < behaviours.Length; i++)
@@ -3657,6 +4093,7 @@ if (pauseSettingsBackButton != null)
         private readonly Outline[] outlines;
         private readonly Image[] frames;
         private readonly AngledPanelGraphic[] angledSurfaces;
+        private readonly Image[] itemIcons;
         private readonly TMP_Text[] itemLabels;
         private readonly TMP_Text[] keyLabels;
         private readonly HotbarCooldownOverlayGraphic[] cooldownOverlays;
@@ -3666,16 +4103,19 @@ if (pauseSettingsBackButton != null)
         private readonly Color shadow;
         private readonly PlayerInventoryItem[] displayedItems =
             new PlayerInventoryItem[PlayerInventory.SlotCount];
+        private readonly bool[] displayedItemsSuspended =
+            new bool[PlayerInventory.SlotCount];
         private int selectedSlotIndex = -1;
 
         public HotbarPresenter(Image[] backgrounds, Outline[] outlines, TMP_Text[] itemLabels)
-            : this(backgrounds, outlines, itemLabels, null, null, null)
+            : this(backgrounds, outlines, null, itemLabels, null, null, null)
         {
         }
 
         public HotbarPresenter(
             Image[] backgrounds,
             Outline[] outlines,
+            Image[] itemIcons,
             TMP_Text[] itemLabels,
             HotbarCooldownOverlayGraphic[] cooldownOverlays,
             TMP_Text[] cooldownLabels,
@@ -3683,6 +4123,7 @@ if (pauseSettingsBackButton != null)
         {
             this.backgrounds = backgrounds;
             this.outlines = outlines;
+            this.itemIcons = itemIcons;
             this.itemLabels = itemLabels;
             this.cooldownOverlays = cooldownOverlays;
             this.cooldownLabels = cooldownLabels;
@@ -3716,6 +4157,7 @@ if (pauseSettingsBackButton != null)
                 if (key != null)
                     keyLabels[i] = key.GetComponent<TMP_Text>();
             }
+            SetSelectedSlot(-1);
             SetItemLabels();
             ClearCooldowns();
         }
@@ -3728,6 +4170,7 @@ if (pauseSettingsBackButton != null)
             : this(
                 backgrounds,
                 outlines,
+                null,
                 itemLabels,
                 null,
                 null,
@@ -3751,38 +4194,49 @@ if (pauseSettingsBackButton != null)
                     frames[i].gameObject.SetActive(false);
                 if (angledSurfaces[i] != null)
                 {
+                    angledSurfaces[i].gameObject.SetActive(true);
                     angledSurfaces[i].SetFrontColor(selected ? primary : surface);
                     angledSurfaces[i].SetDepthColor(shadow);
                 }
-                ApplyLabelColor(i, selected);
+                ApplyItemIcon(
+                    i,
+                    displayedItems[i],
+                    selected,
+                    displayedItemsSuspended[i]);
+                ApplyLabelColor(i, selected, displayedItemsSuspended[i]);
             }
         }
 
         public void SetInventory(PlayerToolController source)
         {
-            if (itemLabels == null)
-                return;
-
-            for (int i = 0; i < itemLabels.Length; i++)
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
             {
-                if (itemLabels[i] == null)
-                    continue;
-
                 PlayerInventoryItem item = source != null
-                    ? source.GetItemAtSlot(i)
+                    ? source.GetDisplayItemAtSlot(i)
                     : PlayerInventory.GetDefaultItemAtSlot(i);
-                if (displayedItems[i] == item)
-                    continue;
-
+                bool suspended = source != null
+                    && source.IsItemSuspendedAtSlot(i);
                 displayedItems[i] = item;
-                itemLabels[i].text = GetItemLabel(item);
-                itemLabels[i].fontSize =
-                    item == PlayerInventoryItem.Flashlight
+                displayedItemsSuspended[i] = suspended;
+
+                if (itemLabels != null
+                    && i < itemLabels.Length
+                    && itemLabels[i] != null)
+                {
+                    itemLabels[i].gameObject.SetActive(true);
+                    itemLabels[i].text = GetDisplayLabel(item, suspended);
+                    itemLabels[i].fontSize = suspended
+                        || item == PlayerInventoryItem.Flashlight
                         || item == PlayerInventoryItem.SolidGun
                         || item == PlayerInventoryItem.PortalGun
-                            ? 7f
-                            : 9f;
-                ApplyLabelColor(i, i == selectedSlotIndex);
+                            ? 9f
+                            : 11f;
+                    itemLabels[i].lineSpacing = suspended ? -8f : 0f;
+                }
+
+                bool selected = i == selectedSlotIndex;
+                ApplyItemIcon(i, item, selected, suspended);
+                ApplyLabelColor(i, selected, suspended);
             }
         }
 
@@ -3836,19 +4290,68 @@ if (pauseSettingsBackButton != null)
                 SetCooldown(i, 0f, 0f);
         }
 
-        private void ApplyLabelColor(int index, bool selected)
+        private void ApplyItemIcon(
+            int index,
+            PlayerInventoryItem item,
+            bool selected,
+            bool suspended)
         {
-            Color labelColor = selected
-                ? new Color(0.025f, 0.03f, 0.035f, 1f)
-                : primary;
+            if (itemIcons == null
+                || index >= itemIcons.Length
+                || itemIcons[index] == null)
+            {
+                return;
+            }
+
+            EquipmentIconCatalog catalog = GameAssetCatalog.Current != null
+                && GameAssetCatalog.Current.UI != null
+                    ? GameAssetCatalog.Current.UI.EquipmentIcons
+                    : null;
+            Sprite sprite = catalog != null ? catalog.GetIcon(item) : null;
+            itemIcons[index].sprite = sprite;
+            itemIcons[index].color = ResolveItemColor(selected, suspended);
+            itemIcons[index].enabled =
+                item != PlayerInventoryItem.Empty && sprite != null;
+        }
+
+        private void ApplyLabelColor(
+            int index,
+            bool selected,
+            bool suspended)
+        {
+            Color labelColor = ResolveItemColor(selected, suspended);
             if (itemLabels != null && index < itemLabels.Length && itemLabels[index] != null)
                 itemLabels[index].color = labelColor;
             if (keyLabels != null && index < keyLabels.Length && keyLabels[index] != null)
             {
+                keyLabels[index].gameObject.SetActive(true);
                 keyLabels[index].color = selected
-                    ? new Color(0.025f, 0.03f, 0.035f, 0.68f)
-                    : new Color(primary.r, primary.g, primary.b, 0.62f);
+                    ? new Color(0.025f, 0.03f, 0.035f, 0.92f)
+                    : new Color(primary.r, primary.g, primary.b, 0.86f);
             }
+        }
+
+        private Color ResolveItemColor(bool selected, bool suspended)
+        {
+            if (suspended)
+            {
+                return selected
+                    ? new Color(0.32f, 0.34f, 0.36f, 1f)
+                    : new Color(0.55f, 0.57f, 0.59f, 1f);
+            }
+            return selected
+                ? new Color(0.025f, 0.03f, 0.035f, 1f)
+                : primary;
+        }
+
+        public static string GetDisplayLabel(
+            PlayerInventoryItem item,
+            bool suspended)
+        {
+            string label = GetItemLabel(item);
+            return suspended && !string.IsNullOrEmpty(label)
+                ? label + "\n已投掷"
+                : label;
         }
 
         public static string GetItemLabel(PlayerInventoryItem item)

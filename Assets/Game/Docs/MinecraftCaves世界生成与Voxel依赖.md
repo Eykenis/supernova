@@ -1,6 +1,6 @@
 # MinecraftCaves 地形生成运行时说明
 
-本文以 `InfiniteCaves.scene` 当前实际使用的运行时链路为准，说明关卡配置如何进入地形系统、洞穴密度和矿物如何写入柱数据、出生结构何时覆盖地形，以及柱数据如何流送并生成网格。文中只覆盖正式运行路径。
+本文以当前正式任务场景 `Assets/Scenes/DenseJigsawRegion.scene` 的运行时链路为准，说明关卡配置如何进入地形系统、Dense Jigsaw 覆盖如何叠加、洞穴密度和矿物如何写入柱数据、出生结构何时覆盖地形，以及柱数据如何流送并生成网格。`InfiniteCaves.scene` 仍是基础洞穴参考场景，但当前未启用构建。
 
 ## 1. 运行时入口与配置来源
 
@@ -21,23 +21,26 @@ GameAssetCatalog
                 └─ MinecraftWorldGenerationConfiguration
 ```
 
-当前主要资产：
+当前正式任务的主要资产：
 
 - `Assets/Game/Config/GameAssetCatalog.asset`
 - `Assets/Game/Config/Levels/FirstLevel.asset`
+- `Assets/Game/Config/Levels/SecondLevel.asset`
+- `Assets/Game/Config/Levels/ThirdLevel.asset`
 - `Assets/Game/Config/Worlds/DefaultWorldGeneration.asset`
+- `Assets/Game/Config/Worlds/DenseJigsawRegionWorld.asset`
 - `Assets/Game/Config/Levels/CombatTestLevel.asset`
 - `Assets/Game/Config/Worlds/CombatTestWorldGeneration.asset`
 
-`InfiniteCaves.scene` 当前还序列化了一个关卡覆盖引用，并且它与目录中的默认关卡引用指向同一关卡。独立测试场景可以改用其他 `LevelConfiguration`，但世界参数仍必须通过关卡资产注入，不能直接序列化在 `MinecraftCaveInfiniteWorld` 上。
+`DenseJigsawRegion.scene` 为世界配置了 First/Second/Third 三个关卡候选，并同时引用 `DenseJigsawRegionWorld.asset`。世界优先采用 `MissionGameLoop.CurrentLevelConfiguration`，否则读取持久化进度，再回退到候选列表中的第一项。三个正式关卡当前共享 `DefaultWorldGeneration.asset` 与 `DenseJigsawRegion` 场景，但各自提供世界种子、目标金额和关卡进度。独立预览场景可以通过 `worldGenerationConfigurationOverride` 只注入世界配置；正式任务仍应通过 `LevelConfiguration` 注入完整的世界、怪物与宝藏配置。
 
 ## 2. 两种实际生成模式
 
 `MinecraftWorldGenerationMode` 当前有两个有效分支。
 
-### 2.1 InfiniteCaves
+### 2.1 InfiniteCaves 基础模式
 
-正式洞穴关卡使用该模式。每根柱依次执行：
+`DefaultWorldGeneration.asset` 使用该模式。每根柱依次执行：
 
 ```text
 绝对体素坐标 + worldSeed
@@ -61,6 +64,10 @@ y >= H  → density = -1，类型为 Air
 ```
 
 Superflat 不执行洞穴噪声、边界基岩、矿物或出生体素结构写入。它仍复用相同的柱流送、分段网格、材质和碰撞体路径。
+
+### 2.3 Dense Jigsaw 覆盖
+
+Dense Jigsaw 不是第三个 `MinecraftWorldGenerationMode`，而是叠加在基础洞穴模式上的 `DenseJigsawWorldConfiguration`。`DenseJigsawRegionWorld.asset` 当前启用无限水平流送，把有效世界高度限制为 2 个 32 体素 Section，并将结构族混合为高密度 Jigsaw 快照；地形、矿物、采掘、掉落、生物和任务规则仍来自当前 `LevelConfiguration`。外置降落舱与检查点传送门负责把玩家送入生成区域，首次穿过传送门后才开启自然怪物生成。
 
 ## 3. 坐标、数据布局与密度约定
 
@@ -89,19 +96,18 @@ density >= isoLevel  且 type != Air  → 实体
 density <  isoLevel                  → 空气
 ```
 
-当前正式配置的 `isoLevel = 0`。写入负密度时，容器会把类型归一化为 `Air`；写入非负密度却传入 `Air` 时，会归一化为实体默认类型。地形生成本身明确写入 Stone、Ore 或 Bedrock，不依赖这一回退行为。
+当前正式配置的 `isoLevel = 0`。写入负密度时，容器会把类型归一化为 `Air`；写入非负密度却传入 `Air` 时，会归一化为实体默认类型。地形生成本身明确写入 Stone、各 Feature 配置的矿物结果类型或 Bedrock，不依赖这一回退行为。
 
-当前目录中的类型配置为：
+当前体素类型不再是早期的单一 `Ore` 模型。`Assets/Game/Config/VoxelTypes/` 下按用途分为：
 
-| ID | 类型 | 地形用途 |
-| ---: | --- | --- |
-| 0 | Air | 洞穴空间 |
-| 1 | Default | 容器和缺失材质定义时的实体回退类型 |
-| 2 | Stone | 基础实体 |
-| 3 | Ore | 默认矿团结果 |
-| 4 | Bedrock | InfiniteCaves 的 Y=0 和 Y=255 边界 |
+| 分类 | 当前类型 | 用途 |
+| --- | --- | --- |
+| 内建/回退 | Air（ID 0）、Default（ID 1） | 空间与缺失定义时的实体回退 |
+| 地形 | Stone、Dirt、Solid Stone、Bedrock | 基础实体、结构填充和边界 |
+| 矿物 | YellowIron、Diamond、Amethyst、Copper、Obsidian | 独立矿团、材质、耐久度、价值和质量 |
+| 结构 | StructureBrick、FortressBrick、RustyMetal、TigerRock、WornBrick、WoodPlank | Jigsaw 与固定结构调色板 |
 
-类型定义资产同时提供材质和耐久度。网格按 `VoxelTypeId` 生成 submesh，`VoxelTypeCatalog` 再按 submesh 类型解析对应材质。
+具体 ID、分组、显示名、材质和耐久度以 `VoxelTypeDefinition` 资产及 `Assets/Game/Config/MinecraftVoxelTypes.asset` 为准。网格按 `VoxelTypeId` 生成 submesh，`VoxelTypeCatalog` 再按 submesh 类型解析对应材质。
 
 ## 4. 洞穴密度场
 
@@ -182,7 +188,7 @@ Y 步长   = 4
 密度数组生成后：
 
 1. `density >= 0` 的样本先标记为基础 Stone，其他样本标记为 Air；
-2. Y=0 与 Y=255 的整层密度强制写为 `1`，类型写为 Bedrock；
+2. Y=0 与 `EffectiveWorldHeight - 1` 的整层密度强制写为 `1`，类型写为 Bedrock；基础世界顶层是 Y=255，当前 Dense 世界顶层是 Y=63；
 3. 矿物生成器只替换允许的实心类型，不改变密度；
 4. 完成的密度和类型数组由主线程通过 `AddChunkTakingOwnership` 直接交给 `InfiniteVoxelWorld`，不逐样本复制。
 
@@ -190,22 +196,15 @@ Y 步长   = 4
 
 ### 5.3 当前矿团规则
 
-当前 `Ore.asset` 的有效设置是：
-
-| 参数 | 当前值 |
-| --- | ---: |
-| 放置区域 | 每个 `16 × 16` XZ 区域 |
-| 每区域尝试次数 | 32 |
-| 基础放置概率 | 1 |
-| 高度分布 | Trapezoid，Y=`1..254`，plateau=`0` |
-| 矿团 size | 8 |
-| 暴露空气时的丢弃概率 | 0.05 |
-| 可替换类型 | Stone（ID 2） |
-| 结果类型 | Ore（ID 3） |
+`DefaultWorldGeneration.asset` 当前按顺序启用 YellowIron、Obsidian、Diamond、
+Copper 和 Amethyst 五个 `VoxelOreFeatureDefinition`。所有 Feature 都以 16×16 XZ
+区域为确定性放置单元，并各自配置尝试次数、发生概率、高度分布、Size、空气暴露
+丢弃率、可替换类型与结果类型。当前参数表见
+[Minecraft矿物生成与项目体素链路.md](Minecraft矿物生成与项目体素链路.md#7-配置资产)。
 
 基础概率还会乘深度曲线：浅层倍率 `0.25`、深层倍率 `1`、指数 `1.35`。Y=0 被视为最深处，Y=255 被视为最浅处，因此矿物越深越容易通过放置概率检查。
 
-每次尝试由 `worldSeed + feature seedSalt + regionX/Z + attempt` 派生确定性随机序列。算法沿一条短轴建立若干相互重叠的球，删除被其他球完全包含的球，再把球内、密度为实体且类型可替换的样本改为 Ore。若样本与六邻域空气相邻，则按坐标哈希和丢弃概率独立决定是否跳过。
+每次尝试由 `worldSeed + feature seedSalt + regionX/Z + attempt` 派生确定性随机序列。算法沿一条短轴建立若干相互重叠的球，删除被其他球完全包含的球，再把球内、密度为实体且类型可替换的样本改为该 Feature 的结果类型。若样本与六邻域空气相邻，则按坐标哈希和丢弃概率独立决定是否跳过。
 
 目标柱会重放可能影响自己的相邻 16×16 区域，只写自己的类型数组；因此跨柱矿团不依赖哪一根柱先生成，也不会因并发顺序产生接缝。
 
@@ -213,7 +212,7 @@ Y 步长   = 4
 
 ### 6.1 洞穴出生候选
 
-InfiniteCaves 用 `worldSeed ^ 0x51F15EED` 初始化确定性随机数：
+基础 InfiniteCaves 出生搜索用 `worldSeed ^ 0x51F15EED` 初始化确定性随机数；Dense Jigsaw 的外置降落舱改用结构标记与传送门流程：
 
 1. 首次检查 `(0, 159, 0)`；
 2. 之后最多尝试 2,399 个点，X/Z 范围为 `[-72, 72]`，Y 范围为 `95..223`；
@@ -243,7 +242,7 @@ InfiniteCaves 用 `worldSeed ^ 0x51F15EED` 初始化确定性随机数：
 2. 在出生柱四个正交相邻柱中寻找最近的可站立洞穴点；
 3. 让出生舱朝向目标，并把目标交给出口通道；
 4. 把固定结构资产的密度和类型覆盖到世界柱数据；
-5. 恢复 Y=0/Y=255 的 Bedrock；
+5. 恢复 Y=0 与有效世界顶层的 Bedrock；
 6. 根据出生舱实际 Renderer 范围雕刻舱体净空、出口通道和向世界顶部的落地竖井；
 7. 稳定出生舱周围的落脚地面，并清理对应头顶空间；
 8. 最后才把所有受影响网格分段加入构网队列。
@@ -260,7 +259,7 @@ InfiniteCaves 用 `worldSeed ^ 0x51F15EED` 初始化确定性随机数：
 dx² + dz² <= 4²
 ```
 
-共有 49 个偏移，并按距离平方从近到远排序。Y 不参与流送寻址，每个偏移都代表完整的 256 高柱。
+共有 49 个偏移，并按距离平方从近到远排序。Y 不参与流送寻址，每个偏移都代表一个 256 高数据容器；实际生成/渲染高度由 `EffectiveWorldHeight` 决定。
 
 玩家进入新柱时会重建 required set：
 
@@ -282,7 +281,7 @@ dx² + dz² <= 4²
 
 ### 8.1 分段和邻域
 
-每根 256 高数据柱拆成 8 个网格分段，每段高 32。一个分段处理 `32 × 32 × 32` 个 cell，需要捕获 `33 × 33 × 33` 个 `VoxelSample`，包括当前柱以及 +X、+Z、+X+Z 邻柱的边界样本。
+基础世界把每根 256 高数据柱拆成 8 个网格分段，每段高 32；当前 Dense 配置只处理 2 个有效分段。一个分段处理 `32 × 32 × 32` 个 cell，需要捕获 `33 × 33 × 33` 个 `VoxelSample`，包括当前柱以及 +X、+Z、+X+Z 邻柱的边界样本。
 
 流送范围内需要采样的邻柱尚未生成时，该分段暂不派发。required set 之外或世界 Y 范围之外的缺失样本按实体处理：水平缺失类型使用基础实体类型，垂直越界类型使用 Bedrock。这样可视范围边缘和有限世界上下边界保持封闭。
 
@@ -329,30 +328,31 @@ None
 | 参数 | 值 |
 | --- | ---: |
 | generationMode | InfiniteCaves |
-| worldSeed | 6667 |
+| worldSeed | 1146（正式关卡运行时由 `LevelConfiguration.WorldSeed` 覆盖） |
 | placeViewerInCave | true |
-| maxConcurrentGenerationJobs | 1 |
-| meshesBuiltPerFrame | 1 |
+| maxConcurrentGenerationJobs | 2 |
+| maxConcurrentMeshJobs | 1 |
+| meshesBuiltPerFrame | 2 |
 | voxelSize | 0.42 |
 | isoLevel | 0 |
 | vertexPlacement | DensityInterpolated |
 | generateColliders | true |
 | baseSolidVoxelType | Stone（ID 2） |
 | bedrockVoxelType | Bedrock（ID 4） |
-| oreFeatures | `Ore.asset` |
+| oreFeatures | Amethyst、Copper、Diamond、Obsidian、YellowIron |
 | spawnPointStructureRule | 启用，`SpawnShelter.asset`，offset `(0,0,0)` |
 
-`CombatTestWorldGeneration.asset` 当前使用 Superflat、seed `114514`、石层高度 10、最大并发地形任务 4；其他渲染和类型配置与默认世界相同，但不会进入洞穴、矿物和结构分支。
+`DenseJigsawRegionWorld.asset` 当前启用无限水平流送、2 个垂直 Section、6×6 的区域参数和外置降落舱；无限模式下 `regionColumnsPerSide` 仍参与 Dense 特征配置，但不作为水平边界。`CombatTestWorldGeneration.asset` 使用 Superflat、seed `114514` 和石层高度 10；它复用渲染与类型链路，但不会进入洞穴、矿物和出生结构分支。
 
 ## 11. 修改参数时必须保持的约束
 
 - 洞穴连续性依赖绝对世界坐标和全局对齐粗格；不要用柱内局部坐标重新起噪声。
 - 后台地形任务只能使用值快照和纯数据，不能访问 `GameObject`、`Mesh`、`ScriptableObject` 或世界字典。
-- Bedrock 必须在矿物和首次结构覆盖之后仍封住 Y=0/Y=255。
+- Bedrock 必须在矿物和首次结构覆盖之后仍封住 Y=0 与 `EffectiveWorldHeight - 1`；不要把 Dense 世界顶层写死为 Y=255。
 - 新增矿物只能替换显式配置的实体类型；跨柱形状必须由区域坐标和 attempt seed 重放，而不是依赖生成顺序。
 - 分段网格读取 +X/+Z 邻域；修改边界样本时必须把反方向相邻分段一并标脏。
 - Unity Mesh、Renderer、Collider 的创建、替换和销毁必须留在主线程。
-- 若调整柱尺寸、世界高度或网格分段高度，必须同步检查粗格整除关系、8 段覆盖、出生高度范围、边界基岩和测试断言。
+- 若调整柱尺寸、有效世界高度或网格分段高度，必须同步检查粗格整除关系、有效分段数、出生高度范围、边界基岩和测试断言。
 
 ## 12. 代码与验证位置
 
@@ -366,6 +366,8 @@ None
 - `Assets/Game/Runtime/MinecraftOreFeatureGenerator.cs`
 - `Assets/Game/Runtime/MinecraftOreFeatureSettings.cs`
 - `Assets/Game/Runtime/VoxelOreFeatureDefinition.cs`
+- `Assets/Game/Runtime/WorldGeneration/DenseJigsawWorldConfiguration.cs`
+- `Assets/Game/Runtime/WorldGeneration/DenseJigsawFeatureMixer.cs`
 - `Assets/Game/Runtime/MinecraftCaves/CardinalCaveConnectionSearch.cs`
 - `Assets/Game/Runtime/MinecraftCaves/SpawnPointSceneStructure.cs`
 

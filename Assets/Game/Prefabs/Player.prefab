@@ -523,6 +523,10 @@ MonoBehaviour:
     type: 2}
   magnetSound: {fileID: 11400000, guid: 8cea7ebe1ce417840babc311188d0cd4, type: 2}
   currentState: 0
+  explosionMass: 60
+  explosionFragility: 0.5
+  minimumExplosionDamageImpulse: 3
+  maximumExplosionVelocity: 15
 --- !u!114 &7446013692719600695
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -601,7 +605,7 @@ MonoBehaviour:
   holdDistance: 2
   maximumHoldDistance: 6
   scrollDistancePerStep: 0.35
-  attractionForce: 800
+  attractionForce: 100
   maximumAttractionAcceleration: 40
   positionSpring: 300
   forceDamping: 90
@@ -668,8 +672,6 @@ MonoBehaviour:
   startFadeLength: 0.12
   energyColor: {r: 0.035, g: 1.25, b: 0.42, a: 0.72}
   targetColor: {r: 0.62, g: 1.65, b: 0.72, a: 0.96}
-  easyMass: 5
-  difficultMass: 45
   weightColorResponse: 9
   difficultEnergyColor: {r: 1.55, g: 0.055, b: 0.018, a: 0.78}
   difficultTargetColor: {r: 2, g: 0.32, b: 0.045, a: 0.98}

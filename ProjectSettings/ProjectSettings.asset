@@ -178,6 +178,14 @@ PlayerSettings:
   tvOSBundleVersion: 1.0
   bundleVersion: 0.1.0
   preloadedAssets:
+  - {fileID: 4800000, guid: df5c4c1a4ee84e299177354476e7082f, type: 3}
+  - {fileID: 2100000, guid: 47a2b427c2f34be9a8f4fb63f229cc83, type: 2}
+  - {fileID: 2100000, guid: 245862d287dbc454fbdb4d077f07e214, type: 2}
+  - {fileID: 2100000, guid: 022ab0efec6d9404fa05144232327527, type: 2}
+  - {fileID: 2100000, guid: a9b54c57ecfe4f4a82fa2a49688de653, type: 2}
+  - {fileID: 2100000, guid: b483799776d34b345b5a3ec14cb58c30, type: 2}
+  - {fileID: 2100000, guid: 70b97c9f65324bc8960d0d6f2836016d, type: 2}
+  - {fileID: 2100000, guid: bacb4a0d1f00adb4cb01f351f4ca302e, type: 2}
   - {fileID: 11400000, guid: bbd651cebe9f155499b1f69062074a19, type: 2}
   metroInputSource: 0
   wsaTransparentSwapchain: 0
@@ -918,7 +926,7 @@ PlayerSettings:
   additionalIl2CppArgs: 
   scriptingRuntimeVersion: 1
   monoAOTCompilation: 0
-  gcIncremental: 0
+  gcIncremental: 1
   gcWBarrierValidation: 0
   gcAlgorithm: {}
   apiCompatibilityLevelPerPlatform: {}

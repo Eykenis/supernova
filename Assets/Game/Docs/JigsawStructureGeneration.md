@@ -29,7 +29,7 @@ MinecraftWorldGenerationConfiguration.jigsawStructures
 默认资产：
 
 - `Assets/Game/Config/StructureFeatures/Jigsaw/AbandonedMineshaft.asset`
-- `Assets/Game/Config/StructureFeatures/Jigsaw/Fortress.asset`
+- `Assets/Game/Config/StructureFeatures/Jigsaw/NetherFortress.asset`
 
 新建入口：`Create > Supernova > World Generation > Jigsaw Structure`。
 

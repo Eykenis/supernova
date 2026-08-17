@@ -13,17 +13,34 @@ namespace Supernova.Inputs
 
         public static string Resolve(string source)
         {
+            return ResolveInternal(source, false);
+        }
+
+        public static string ResolveWithGlyphs(string source)
+        {
+            return ResolveInternal(source, true);
+        }
+
+        public static string Token(GameInputActionId actionId)
+        {
+            return Marker + GameInputDefinitions.GetActionPath(actionId) + "}}";
+        }
+
+        private static string ResolveInternal(string source, bool useGlyphs)
+        {
             if (string.IsNullOrEmpty(source)
                 || source.IndexOf(Marker, StringComparison.Ordinal) < 0)
             {
                 return source ?? string.Empty;
             }
 
-            string resolved = TokenPattern.Replace(source, ResolveMatch);
+            string resolved = TokenPattern.Replace(
+                source,
+                match => ResolveMatch(match, useGlyphs));
             return resolved.Replace("\\{{input:", "{{input:");
         }
 
-        private static string ResolveMatch(Match match)
+        private static string ResolveMatch(Match match, bool useGlyphs)
         {
             string target = match.Groups[1].Value.Trim();
             bool compact = string.Equals(
@@ -43,7 +60,14 @@ namespace Supernova.Inputs
                 target,
                 partName,
                 compact);
-            return string.IsNullOrEmpty(display) ? match.Value : display;
+            if (string.IsNullOrEmpty(display))
+                return match.Value;
+            if (!useGlyphs)
+                return display;
+
+            return InputPromptGlyphs.ToRichText(
+                GameInput.GetBindingControlPaths(target, partName),
+                display);
         }
     }
 }

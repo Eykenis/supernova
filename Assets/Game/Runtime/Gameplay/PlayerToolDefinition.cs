@@ -42,6 +42,9 @@ namespace Supernova.Gameplay
         [SerializeField] private PlayerInventoryItem item;
         [SerializeField] private PlayerToolPrimaryAction primaryAction;
 
+        [Header("HUD Prompt")]
+        [SerializeField] private string primaryActionHint;
+
         [Header("Sound")]
         [Tooltip("Sound broadcast when this tool successfully starts its primary action.")]
         [SerializeField] private SoundEffectCue primaryActionSound;
@@ -167,6 +170,7 @@ namespace Supernova.Gameplay
 
         public PlayerInventoryItem Item => item;
         public PlayerToolPrimaryAction PrimaryAction => primaryAction;
+        public string PrimaryActionHint => primaryActionHint ?? string.Empty;
         public SoundEffectCue PrimaryActionSound => primaryActionSound;
         public SoundEffectCue ThrowSound => throwSound;
         public SoundEffectCue MiningHitSound => miningHitSound;

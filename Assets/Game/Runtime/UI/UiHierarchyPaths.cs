@@ -13,8 +13,13 @@ namespace Supernova.UI
             public const string Hero = "Safe Area/Hero";
             public const string ExpeditionControl = "Safe Area/Expedition Control";
             public const string Overline = ExpeditionControl + "/Overline";
-            public const string BeginDescent =
-                "Safe Area/Expedition Control/Main Panel/Begin Descent";
+            public const string ContinueGame =
+                "Safe Area/Expedition Control/Main Panel/Continue Game";
+            public const string ContinueGameSaveSummary =
+                ContinueGame + "/Save Summary";
+            public const string NewGame =
+                "Safe Area/Expedition Control/Main Panel/New Game";
+            public const string BeginDescent = NewGame;
             public const string BeginDescentLabel = BeginDescent + "/Label";
             public const string Tutorial =
                 "Safe Area/Expedition Control/Main Panel/Tutorial";
@@ -27,6 +32,12 @@ namespace Supernova.UI
             public const string LeaveExpeditionLabel = LeaveExpedition + "/Label";
             public const string Return =
                 "Safe Area/Expedition Control/Settings Panel/Return";
+            public const string OverwriteConfirmation =
+                ExpeditionControl + "/Overwrite Confirmation";
+            public const string OverwriteConfirm =
+                OverwriteConfirmation + "/Dialog/Confirm";
+            public const string OverwriteCancel =
+                OverwriteConfirmation + "/Dialog/Cancel";
             public const string FullscreenBackground =
                 "Safe Area/Expedition Control/Settings Panel/Fullscreen/Background";
             public const string FullscreenCheckmark =
@@ -75,12 +86,20 @@ namespace Supernova.UI
             public const string HealthSegments =
                 HealthPanel + "/" + HealthTrack + "/" + HealthSegmentsName;
             public const string HealthSegmentPrefix = "Segment ";
-            public const string Hotbar = "HUD Canvas/Hotbar";
+            public const string HotbarName = "Hotbar";
+            public const string Hotbar = RootCanvas + "/" + HotbarName;
+            public const string HotbarActionHintsName = "Hotbar Action Hints";
+            public const string HotbarActionHintsLabelName = "Label";
+            public const string HotbarActionHints =
+                RootCanvas + "/" + HotbarActionHintsName;
+            public const string HotbarActionHintsLabel =
+                HotbarActionHints + "/" + HotbarActionHintsLabelName;
             public const string CrosshairCanvas = "Crosshair Canvas";
             public const string Crosshair = "Crosshair Canvas/Crosshair";
             public const string Horizontal = "Horizontal";
             public const string Vertical = "Vertical";
             public const string Item = "Item";
+            public const string Icon = "Icon";
             public const string Key = "Key";
             public const string AngledSurface = "Angled Surface";
             public const string CooldownOverlay = "Cooldown Overlay";
@@ -134,6 +153,11 @@ namespace Supernova.UI
             public static string HotbarSlotAngledSurface(int oneBasedIndex)
             {
                 return HotbarSlot(oneBasedIndex) + "/" + AngledSurface;
+            }
+
+            public static string HotbarSlotIcon(int oneBasedIndex)
+            {
+                return HotbarSlot(oneBasedIndex) + "/" + Icon;
             }
 
             public static string HotbarSlotCooldownOverlay(int oneBasedIndex)
@@ -273,11 +297,12 @@ public const string FullSettingsPanel = FullMenu + "/" + SettingsPanel;
             public const string RuntimeRoot = "Spawn Point Indicator UI";
             public const string CanvasName = "Spawn Indicator Canvas";
             public const string MarkerName = "Marker";
-            public const string ArrowName = "Arrow";
+            public const string RuntimeMarkerName = "Portal Marker";
+            public const string ChevronName = "Chevron";
             public const string DistanceName = "Distance";
             public const string Canvas = CanvasName;
             public const string Marker = Canvas + "/" + MarkerName;
-            public const string Arrow = Marker + "/" + ArrowName;
+            public const string Chevron = Marker + "/" + ChevronName;
             public const string Distance = Marker + "/" + DistanceName;
         }
 

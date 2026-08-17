@@ -2,6 +2,10 @@
 
 日期：2026-07-22
 
+> 当前状态（2026-08-17）：本文记录的是可重复生成的历史实验。生成器仍在，
+> 但 `SparseRun.anim`、`SparseMine.anim`、`SparseKnockdown.anim` 和输出目录没有签入
+> 当前仓库，也没有接入现行 `P05Player.controller`。运行下述菜单后才会创建输出资产。
+
 ## 结论
 
 针对本项目的 `MinecraftCaves/Prefabs/Player.prefab`，最合适的短期方案是：
@@ -67,7 +71,7 @@ Player 使用有效的 Humanoid Avatar。虽然模型有约 70 个骨骼/节点�
 
 - 生成工具：`Assets/Game/Editor/Animation/SparsePlayerAnimationGenerator.cs`
 - 运行时动画输入与状态触发：`Assets/Game/Runtime/Voxels/VoxelPlayerController.cs`
-- 动画：`Assets/Game/Animations/Generated/`
+- 生成动画输出：`ProjectAssetPaths.Folders.GeneratedPlayerAnimations` 指定的目录（运行菜单前可不存在）
 - 相关动画契约测试：`Assets/Game/Tests/Editor/FirstPersonAnimationControllerTests.cs`
 - 菜单：`Tools/Supernova/Animation/Generate Sparse Player Animations`
 

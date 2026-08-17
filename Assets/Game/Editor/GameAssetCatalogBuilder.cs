@@ -5,6 +5,7 @@ using Supernova.Audio;
 using Supernova.Infrastructure;
 using Supernova.Missions;
 using Supernova.UI;
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -29,6 +30,7 @@ public static class GameAssetCatalogBuilder
     public static GameAssetCatalog EnsureCatalog()
     {
         GameInputAssetBuilder.EnsureInputActionsAsset();
+        InputGlyphAssetBuilder.EnsureInputGlyphAssets();
         GameAssetCatalog catalog =
             AssetDatabase.LoadAssetAtPath<GameAssetCatalog>(
                 ProjectAssetPaths.Config.GameAssetCatalog);
@@ -189,6 +191,10 @@ public static class GameAssetCatalogBuilder
             serialized,
             "ui.telemetryBackdrop",
             ProjectAssetPaths.Ui.TelemetryBackdrop);
+        SetReference<TMP_SpriteAsset>(
+            serialized,
+            "ui.inputGlyphs",
+            ProjectAssetPaths.Config.InputGlyphSpriteAsset);
         SetString(
             serialized,
             "sceneLookups.mainMenuSceneName",

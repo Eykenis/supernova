@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Buffers;
 using System.Threading;
 using Supernova.Voxels;
 using UnityEngine;
@@ -115,114 +116,122 @@ namespace Supernova.MinecraftCaves
             int targetMaxX = targetOrigin.x + sizeX - 1;
             int targetMaxY = targetOrigin.y + sizeY - 1;
             int targetMaxZ = targetOrigin.z + sizeZ - 1;
-            var visited = new int[sampleCount];
-            int visitStamp = 0;
-            int changed = 0;
-
-            for (int featureIndex = 0; featureIndex < features.Count; featureIndex++)
+            int[] visited = ArrayPool<int>.Shared.Rent(sampleCount);
+            Array.Clear(visited, 0, sampleCount);
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                MinecraftOreFeatureSettings feature = features[featureIndex];
-                if (feature.AttemptsPerRegion <= 0
-                    || feature.PlacementChance <= 0f)
-                {
-                    continue;
-                }
+                int visitStamp = 0;
+                int changed = 0;
 
-                int influenceRadius = GetInfluenceRadius(feature.Size);
-                int minRegionX = CeilDiv(
-                    targetOrigin.x - influenceRadius - (PlacementRegionSize - 1),
-                    PlacementRegionSize);
-                int maxRegionX = FloorDiv(
-                    targetMaxX + influenceRadius,
-                    PlacementRegionSize);
-                int minRegionZ = CeilDiv(
-                    targetOrigin.z - influenceRadius - (PlacementRegionSize - 1),
-                    PlacementRegionSize);
-                int maxRegionZ = FloorDiv(
-                    targetMaxZ + influenceRadius,
-                    PlacementRegionSize);
-
-                for (int regionZ = minRegionZ; regionZ <= maxRegionZ; regionZ++)
+                for (int featureIndex = 0; featureIndex < features.Count; featureIndex++)
                 {
-                    for (int regionX = minRegionX; regionX <= maxRegionX; regionX++)
+                    cancellationToken.ThrowIfCancellationRequested();
+                    MinecraftOreFeatureSettings feature = features[featureIndex];
+                    if (feature.AttemptsPerRegion <= 0
+                        || feature.PlacementChance <= 0f)
                     {
-                        for (int attempt = 0;
-                            attempt < feature.AttemptsPerRegion;
-                            attempt++)
+                        continue;
+                    }
+
+                    int influenceRadius = GetInfluenceRadius(feature.Size);
+                    int minRegionX = CeilDiv(
+                        targetOrigin.x - influenceRadius - (PlacementRegionSize - 1),
+                        PlacementRegionSize);
+                    int maxRegionX = FloorDiv(
+                        targetMaxX + influenceRadius,
+                        PlacementRegionSize);
+                    int minRegionZ = CeilDiv(
+                        targetOrigin.z - influenceRadius - (PlacementRegionSize - 1),
+                        PlacementRegionSize);
+                    int maxRegionZ = FloorDiv(
+                        targetMaxZ + influenceRadius,
+                        PlacementRegionSize);
+
+                    for (int regionZ = minRegionZ; regionZ <= maxRegionZ; regionZ++)
+                    {
+                        for (int regionX = minRegionX; regionX <= maxRegionX; regionX++)
                         {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            ulong attemptSeed = BuildAttemptSeed(
-                                worldSeed,
-                                feature.SeedSalt,
-                                regionX,
-                                regionZ,
-                                attempt);
-                            var random = new DeterministicRandom(attemptSeed);
-                            double placementRoll = random.NextDouble();
-                            if (depthProbability == null
-                                && placementRoll >= feature.PlacementChance)
+                            for (int attempt = 0;
+                                attempt < feature.AttemptsPerRegion;
+                                attempt++)
                             {
-                                continue;
-                            }
+                                cancellationToken.ThrowIfCancellationRequested();
+                                ulong attemptSeed = BuildAttemptSeed(
+                                    worldSeed,
+                                    feature.SeedSalt,
+                                    regionX,
+                                    regionZ,
+                                    attempt);
+                                var random = new DeterministicRandom(attemptSeed);
+                                double placementRoll = random.NextDouble();
+                                if (depthProbability == null
+                                    && placementRoll >= feature.PlacementChance)
+                                {
+                                    continue;
+                                }
 
-                            int originX = regionX * PlacementRegionSize
-                                + random.NextInt(PlacementRegionSize);
-                            int originZ = regionZ * PlacementRegionSize
-                                + random.NextInt(PlacementRegionSize);
-                            int originY = SampleHeight(feature, ref random);
-                            if (depthProbability != null
-                                && placementRoll
-                                    >= depthProbability.EvaluateProbability(
-                                        feature.PlacementChance,
-                                        originY,
-                                        VoxelColumnChunkData.Height))
-                            {
-                                continue;
-                            }
-                            Sphere[] spheres = BuildSpheres(
-                                originX,
-                                originY,
-                                originZ,
-                                feature.Size,
-                                ref random);
+                                int originX = regionX * PlacementRegionSize
+                                    + random.NextInt(PlacementRegionSize);
+                                int originZ = regionZ * PlacementRegionSize
+                                    + random.NextInt(PlacementRegionSize);
+                                int originY = SampleHeight(feature, ref random);
+                                if (depthProbability != null
+                                    && placementRoll
+                                        >= depthProbability.EvaluateProbability(
+                                            feature.PlacementChance,
+                                            originY,
+                                            VoxelColumnChunkData.Height))
+                                {
+                                    continue;
+                                }
+                                Sphere[] spheres = BuildSpheres(
+                                    originX,
+                                    originY,
+                                    originZ,
+                                    feature.Size,
+                                    ref random);
 
-                            if (!IntersectsTargetY(
-                                spheres,
-                                targetOrigin.y,
-                                targetMaxY))
-                            {
-                                continue;
-                            }
+                                if (!IntersectsTargetY(
+                                    spheres,
+                                    targetOrigin.y,
+                                    targetMaxY))
+                                {
+                                    continue;
+                                }
 
-                            if (visitStamp == int.MaxValue)
-                            {
-                                Array.Clear(visited, 0, visited.Length);
-                                visitStamp = 0;
+                                if (visitStamp == int.MaxValue)
+                                {
+                                    Array.Clear(visited, 0, visited.Length);
+                                    visitStamp = 0;
+                                }
+                                visitStamp++;
+                                changed += ApplySpheres(
+                                    spheres,
+                                    attemptSeed,
+                                    feature,
+                                    targetOrigin,
+                                    targetMaxX,
+                                    targetMaxY,
+                                    targetMaxZ,
+                                    densities,
+                                    types,
+                                    visited,
+                                    visitStamp,
+                                    densitySampler,
+                                    sizeX,
+                                    sizeY,
+                                    sizeZ);
                             }
-                            visitStamp++;
-                            changed += ApplySpheres(
-                                spheres,
-                                attemptSeed,
-                                feature,
-                                targetOrigin,
-                                targetMaxX,
-                                targetMaxY,
-                                targetMaxZ,
-                                densities,
-                                types,
-                                visited,
-                                visitStamp,
-                                densitySampler,
-                                sizeX,
-                                sizeY,
-                                sizeZ);
                         }
                     }
                 }
-            }
 
-            return changed;
+                return changed;
+            }
+            finally
+            {
+                ArrayPool<int>.Shared.Return(visited);
+            }
         }
 
         private static Sphere[] BuildSpheres(

@@ -1,5 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
+using Supernova.Voxels;
+
 
 namespace Supernova.MinecraftCaves
 {
@@ -33,102 +37,139 @@ namespace Supernova.MinecraftCaves
             int minimumWorldX,
             int minimumWorldZ,
             int maximumWorldX,
-            int maximumWorldZ)
+            int maximumWorldZ,
+            CancellationToken cancellationToken = default)
         {
             if (features == null)
             {
                 throw new ArgumentNullException(nameof(features));
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
             int minX = Math.Min(minimumWorldX, maximumWorldX);
             int minZ = Math.Min(minimumWorldZ, maximumWorldZ);
             int maxX = Math.Max(minimumWorldX, maximumWorldX);
             int maxZ = Math.Max(minimumWorldZ, maximumWorldZ);
-            var candidates = new List<Candidate>();
-            var placements = new List<JigsawStructureGenerator.Placement>();
-
-            for (int featureIndex = 0;
-                featureIndex < features.Count;
-                featureIndex++)
+            List<Candidate> candidates = ListPool<Candidate>.Rent();
+            List<JigsawStructureGenerator.Placement> placements =
+                ListPool<JigsawStructureGenerator.Placement>.Rent();
+            try
             {
-                JigsawStructureFeatureSettings feature = features[featureIndex];
-                if (feature.PlacementChance <= 0f)
+                for (int featureIndex = 0;
+                    featureIndex < features.Count;
+                    featureIndex++)
                 {
-                    continue;
-                }
-
-                JigsawPlacementService.CollectPlacements(
-                    feature,
-                    worldSeed,
-                    minX,
-                    minZ,
-                    maxX,
-                    maxZ,
-                    placements);
-                for (int placementIndex = 0;
-                    placementIndex < placements.Count;
-                    placementIndex++)
-                {
-                    JigsawStructureGenerator.Placement placement =
-                        placements[placementIndex];
-                    if (!JigsawPlacementService.WinsStructureSet(
-                        features,
-                        featureIndex,
-                        worldSeed,
-                        placement.RegionX,
-                        placement.RegionZ))
+                    cancellationToken.ThrowIfCancellationRequested();
+                    JigsawStructureFeatureSettings feature =
+                        features[featureIndex];
+                    if (feature.PlacementChance <= 0f)
                     {
                         continue;
                     }
 
-                    IReadOnlyList<JigsawStructureGenerator.Piece> pieces =
-                        JigsawStructureGenerator.BuildLayout(
-                            feature,
-                            worldSeed,
-                            placement);
-                    if (HasInternalIntersections(pieces)
-                        || !IntersectsHorizontalWindow(
-                        pieces,
+                    JigsawPlacementService.CollectPlacements(
+                        feature,
+                        worldSeed,
                         minX,
                         minZ,
                         maxX,
-                        maxZ))
+                        maxZ,
+                        placements);
+                    for (int placementIndex = 0;
+                        placementIndex < placements.Count;
+                        placementIndex++)
                     {
-                        continue;
+                        if ((placementIndex & 15) == 0)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                        }
+
+                        JigsawStructureGenerator.Placement placement =
+                            placements[placementIndex];
+                        if (!JigsawPlacementService.WinsStructureSet(
+                            features,
+                            featureIndex,
+                            worldSeed,
+                            placement.RegionX,
+                            placement.RegionZ))
+                        {
+                            continue;
+                        }
+
+                        IReadOnlyList<JigsawStructureGenerator.Piece> pieces =
+                            JigsawStructureGenerator.BuildLayout(
+                                feature,
+                                worldSeed,
+                                placement);
+                        if (HasInternalIntersections(pieces)
+                            || !IntersectsHorizontalWindow(
+                                pieces,
+                                minX,
+                                minZ,
+                                maxX,
+                                maxZ))
+                        {
+                            continue;
+                        }
+                        candidates.Add(new Candidate(
+                            featureIndex,
+                            feature,
+                            placement,
+                            pieces));
                     }
-                    candidates.Add(new Candidate(
-                        featureIndex,
-                        feature,
-                        placement,
-                        pieces));
                 }
-            }
 
-            candidates.Sort(CompareCandidates);
-            var accepted = new HashSet<PlacementKey>();
-            var occupiedPieces = new List<JigsawStructureGenerator.Piece>();
-            for (int candidateIndex = 0;
-                candidateIndex < candidates.Count;
-                candidateIndex++)
+                cancellationToken.ThrowIfCancellationRequested();
+                candidates.Sort(CompareCandidates);
+                var accepted = new HashSet<PlacementKey>();
+                BoundsSpatialIndex occupiedPieces =
+                    BoundsSpatialIndex.Rent();
+                try
+                {
+                    for (int candidateIndex = 0;
+                        candidateIndex < candidates.Count;
+                        candidateIndex++)
+                    {
+                        if ((candidateIndex & 15) == 0)
+                        {
+                            cancellationToken
+                                .ThrowIfCancellationRequested();
+                        }
+
+                        Candidate candidate = candidates[candidateIndex];
+                        if (IntersectsAny(
+                            candidate.Pieces,
+                            occupiedPieces))
+                        {
+                            continue;
+                        }
+
+                        accepted.Add(new PlacementKey(
+                            candidate.Feature.ContentHash,
+                            candidate.Placement));
+                        for (int pieceIndex = 0;
+                            pieceIndex < candidate.Pieces.Count;
+                            pieceIndex++)
+                        {
+                            occupiedPieces.Add(
+                                candidate.Pieces[pieceIndex].Bounds);
+                        }
+                    }
+                }
+                finally
+                {
+                    BoundsSpatialIndex.Return(occupiedPieces);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                return new JigsawPlacementSelection(accepted);
+            }
+            finally
             {
-                Candidate candidate = candidates[candidateIndex];
-                if (IntersectsAny(candidate.Pieces, occupiedPieces))
-                {
-                    continue;
-                }
-
-                accepted.Add(new PlacementKey(
-                    candidate.Feature.ContentHash,
-                    candidate.Placement));
-                for (int pieceIndex = 0;
-                    pieceIndex < candidate.Pieces.Count;
-                    pieceIndex++)
-                {
-                    occupiedPieces.Add(candidate.Pieces[pieceIndex]);
-                }
+                ListPool<Candidate>.Return(candidates);
+                ListPool<JigsawStructureGenerator.Placement>.Return(
+                    placements);
             }
-
-            return new JigsawPlacementSelection(accepted);
         }
 
         private static int CompareCandidates(Candidate left, Candidate right)
@@ -191,44 +232,247 @@ namespace Supernova.MinecraftCaves
         private static bool HasInternalIntersections(
             IReadOnlyList<JigsawStructureGenerator.Piece> pieces)
         {
-            for (int leftIndex = 0; leftIndex < pieces.Count; leftIndex++)
+            BoundsSpatialIndex occupiedPieces =
+                BoundsSpatialIndex.Rent();
+            try
             {
-                for (int rightIndex = 0;
-                    rightIndex < leftIndex;
-                    rightIndex++)
+                for (int pieceIndex = 0;
+                    pieceIndex < pieces.Count;
+                    pieceIndex++)
                 {
-                    if (pieces[leftIndex].Bounds.Intersects(
-                        pieces[rightIndex].Bounds))
+                    JigsawStructureGenerator.IntBounds bounds =
+                        pieces[pieceIndex].Bounds;
+                    if (occupiedPieces.Intersects(bounds))
                     {
                         return true;
                     }
+
+                    occupiedPieces.Add(bounds);
                 }
+                return false;
             }
-            return false;
+            finally
+            {
+                BoundsSpatialIndex.Return(occupiedPieces);
+            }
         }
 
         private static bool IntersectsAny(
             IReadOnlyList<JigsawStructureGenerator.Piece> candidatePieces,
-            IReadOnlyList<JigsawStructureGenerator.Piece> occupiedPieces)
+            BoundsSpatialIndex occupiedPieces)
         {
             for (int candidateIndex = 0;
                 candidateIndex < candidatePieces.Count;
                 candidateIndex++)
             {
-                JigsawStructureGenerator.IntBounds candidateBounds =
-                    candidatePieces[candidateIndex].Bounds;
-                for (int occupiedIndex = 0;
-                    occupiedIndex < occupiedPieces.Count;
-                    occupiedIndex++)
+                if (occupiedPieces.Intersects(
+                    candidatePieces[candidateIndex].Bounds))
                 {
-                    if (candidateBounds.Intersects(
-                        occupiedPieces[occupiedIndex].Bounds))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
             return false;
+        }
+
+        private static class ListPool<T>
+        {
+            private static readonly ConcurrentBag<List<T>> Pool =
+                new ConcurrentBag<List<T>>();
+
+            public static List<T> Rent()
+            {
+                if (!Pool.TryTake(out List<T> list))
+                {
+                    return new List<T>();
+                }
+
+                list.Clear();
+                return list;
+            }
+
+            public static void Return(List<T> list)
+            {
+                if (list == null)
+                {
+                    return;
+                }
+
+                list.Clear();
+                Pool.Add(list);
+            }
+        }
+
+        private sealed class BoundsSpatialIndex
+        {
+            private const int BucketSize = VoxelColumnChunkData.Width;
+            private static readonly ConcurrentBag<BoundsSpatialIndex> Pool =
+                new ConcurrentBag<BoundsSpatialIndex>();
+            private static readonly ConcurrentBag<List<
+                JigsawStructureGenerator.IntBounds>> EntryPool =
+                    new ConcurrentBag<List<
+                        JigsawStructureGenerator.IntBounds>>();
+
+            private readonly Dictionary<SpatialBucketKey,
+                List<JigsawStructureGenerator.IntBounds>> buckets =
+                    new Dictionary<SpatialBucketKey,
+                        List<JigsawStructureGenerator.IntBounds>>();
+
+            public static BoundsSpatialIndex Rent()
+            {
+                return Pool.TryTake(out BoundsSpatialIndex index)
+                    ? index
+                    : new BoundsSpatialIndex();
+            }
+
+            public static void Return(BoundsSpatialIndex index)
+            {
+                if (index == null)
+                {
+                    return;
+                }
+
+                foreach (List<JigsawStructureGenerator.IntBounds> entries
+                    in index.buckets.Values)
+                {
+                    entries.Clear();
+                    EntryPool.Add(entries);
+                }
+                index.buckets.Clear();
+                Pool.Add(index);
+            }
+
+            public void Add(JigsawStructureGenerator.IntBounds bounds)
+            {
+                int minimumBucketX = FloorDivide(bounds.MinX, BucketSize);
+                int maximumBucketX = FloorDivide(bounds.MaxX, BucketSize);
+                int minimumBucketY = FloorDivide(bounds.MinY, BucketSize);
+                int maximumBucketY = FloorDivide(bounds.MaxY, BucketSize);
+                int minimumBucketZ = FloorDivide(bounds.MinZ, BucketSize);
+                int maximumBucketZ = FloorDivide(bounds.MaxZ, BucketSize);
+                for (int bucketX = minimumBucketX;
+                    bucketX <= maximumBucketX;
+                    bucketX++)
+                {
+                    for (int bucketY = minimumBucketY;
+                        bucketY <= maximumBucketY;
+                        bucketY++)
+                    {
+                        for (int bucketZ = minimumBucketZ;
+                            bucketZ <= maximumBucketZ;
+                            bucketZ++)
+                        {
+                            var key = new SpatialBucketKey(
+                                bucketX,
+                                bucketY,
+                                bucketZ);
+                            if (!buckets.TryGetValue(
+                                key,
+                                out List<JigsawStructureGenerator.IntBounds>
+                                    entries))
+                            {
+                                if (!EntryPool.TryTake(out entries))
+                                {
+                                    entries = new List<
+                                        JigsawStructureGenerator.IntBounds>();
+                                }
+                                buckets.Add(key, entries);
+                            }
+                            entries.Add(bounds);
+                        }
+                    }
+                }
+            }
+
+            public bool Intersects(
+                JigsawStructureGenerator.IntBounds bounds)
+            {
+                int minimumBucketX = FloorDivide(bounds.MinX, BucketSize);
+                int maximumBucketX = FloorDivide(bounds.MaxX, BucketSize);
+                int minimumBucketY = FloorDivide(bounds.MinY, BucketSize);
+                int maximumBucketY = FloorDivide(bounds.MaxY, BucketSize);
+                int minimumBucketZ = FloorDivide(bounds.MinZ, BucketSize);
+                int maximumBucketZ = FloorDivide(bounds.MaxZ, BucketSize);
+                for (int bucketX = minimumBucketX;
+                    bucketX <= maximumBucketX;
+                    bucketX++)
+                {
+                    for (int bucketY = minimumBucketY;
+                        bucketY <= maximumBucketY;
+                        bucketY++)
+                    {
+                        for (int bucketZ = minimumBucketZ;
+                            bucketZ <= maximumBucketZ;
+                            bucketZ++)
+                        {
+                            var key = new SpatialBucketKey(
+                                bucketX,
+                                bucketY,
+                                bucketZ);
+                            if (!buckets.TryGetValue(
+                                key,
+                                out List<JigsawStructureGenerator.IntBounds>
+                                    entries))
+                            {
+                                continue;
+                            }
+
+                            for (int entryIndex = 0;
+                                entryIndex < entries.Count;
+                                entryIndex++)
+                            {
+                                if (bounds.Intersects(entries[entryIndex]))
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            private static int FloorDivide(int value, int divisor)
+            {
+                int quotient = value / divisor;
+                return value < 0 && value % divisor != 0
+                    ? quotient - 1
+                    : quotient;
+            }
+        }
+
+        private readonly struct SpatialBucketKey :
+            IEquatable<SpatialBucketKey>
+        {
+            public SpatialBucketKey(int x, int y, int z)
+            {
+                X = x;
+                Y = y;
+                Z = z;
+            }
+
+            private int X { get; }
+            private int Y { get; }
+            private int Z { get; }
+
+            public bool Equals(SpatialBucketKey other)
+            {
+                return X == other.X && Y == other.Y && Z == other.Z;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is SpatialBucketKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = X;
+                    hash = hash * 397 ^ Y;
+                    return hash * 397 ^ Z;
+                }
+            }
         }
 
         private readonly struct Candidate

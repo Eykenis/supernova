@@ -104,11 +104,14 @@ namespace Supernova.UI
             if (card != null)
                 StylePanel(card, menuSurface);
 
-            StyleButton(root, UiHierarchyPaths.MainMenu.BeginDescent, false);
+            StyleButton(root, UiHierarchyPaths.MainMenu.ContinueGame, false);
+            StyleButton(root, UiHierarchyPaths.MainMenu.NewGame, true);
             StyleButton(root, UiHierarchyPaths.MainMenu.Tutorial, false);
             StyleButton(root, UiHierarchyPaths.MainMenu.SystemSettings, false);
             StyleButton(root, UiHierarchyPaths.MainMenu.LeaveExpedition, false);
             StyleButton(root, UiHierarchyPaths.MainMenu.Return, false);
+            StyleButton(root, UiHierarchyPaths.MainMenu.OverwriteConfirm, true);
+            StyleButton(root, UiHierarchyPaths.MainMenu.OverwriteCancel, false);
             SetImageColor(
                 root,
                 UiHierarchyPaths.MainMenu.HeaderDivider,
@@ -179,6 +182,13 @@ namespace Supernova.UI
                     gray,
                     source.a);
             }
+
+            SetTextColor(
+                root,
+                UiHierarchyPaths.MainMenu.BeginDescentLabel,
+                tokens != null
+                    ? tokens.OverlayInverse
+                    : new Color(0.018f, 0.02f, 0.025f, 1f));
         }
 
         public static void ApplyGameHud(Transform root)

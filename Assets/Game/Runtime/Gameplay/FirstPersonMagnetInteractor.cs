@@ -1,5 +1,8 @@
+using System;
+using System.Collections.Generic;
 using Supernova.Inputs;
 using Supernova.MinecraftCaves.Creatures;
+using Supernova.Shop;
 using Supernova.Voxels;
 using UnityEngine;
 
@@ -13,6 +16,9 @@ namespace Supernova.Gameplay
     [DisallowMultipleComponent]
     public sealed class FirstPersonMagnetInteractor : MonoBehaviour
     {
+        public static event Action<FirstPersonMagnetInteractor> InstanceEnabled;
+        public static event Action<FirstPersonMagnetInteractor> InstanceDisabled;
+
         private const float MagnetAimAssistRadius = 0.35f;
         private const float MagnetOcclusionTolerance = 0.05f;
         /// <summary>
@@ -36,7 +42,7 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0.2f)] private float maximumHoldDistance = 6f;
         [SerializeField, Min(0f)] private float scrollDistancePerStep = 0.35f;
         [Tooltip("Maximum attraction force in newtons. Rigidbody mass determines acceleration.")]
-        [SerializeField, Min(0f)] private float attractionForce = 800f;
+        [SerializeField, Min(0f)] private float attractionForce = 100f;
         [Tooltip("Prevents very light objects from being launched by the magnet.")]
         [SerializeField, Min(0f)] private float maximumAttractionAcceleration = 40f;
         [Tooltip("Position spring strength. Lower force is used as the object approaches the hold point.")]
@@ -55,6 +61,11 @@ namespace Supernova.Gameplay
         [SerializeField, Min(0.5f)] private float breakDistance = 8f;
 
         private readonly RaycastHit[] acquisitionHits = new RaycastHit[32];
+        private readonly Collider[] aimAssistColliders = new Collider[64];
+        private readonly HashSet<Rigidbody> aimAssistBodies =
+            new HashSet<Rigidbody>();
+        private readonly List<Collider> targetColliderBuffer =
+            new List<Collider>(16);
         private Rigidbody heldBody;
         private ValuableObject heldValuableObject;
         private CreatureBehaviorAgent heldCreature;
@@ -72,6 +83,11 @@ namespace Supernova.Gameplay
         private Quaternion heldTargetRotation;
         private bool hasHeldTargetRotation;
         private float magnetPickupHeight;
+        private PlayerToolController toolController;
+        private bool targetAvailabilityInitialized;
+        private bool targetAvailable;
+
+        public event Action<bool> TargetAvailabilityChanged;
 
         public bool DeviceEnabled => deviceEnabled;
         public bool IsHolding => heldBody != null;
@@ -115,7 +131,32 @@ namespace Supernova.Gameplay
         }
         public float HoldDistance => holdDistance;
         public float BaseAttractionForce => Mathf.Max(0f, attractionForce);
-        public float AttractionForce => BaseAttractionForce;
+        public float AttractionForce => BaseAttractionForce
+            + PlayerEconomy.GetUpgradeValue(
+                PlayerUpgrade.MagnetAttractionForce);
+
+        /// <summary>
+        /// Returns how much of the magnet's current upward capacity the body's
+        /// weight consumes. A value of one means the magnet can only just oppose
+        /// gravity; values above one mean the body cannot be lifted.
+        /// </summary>
+        public float GetAttractionLoadRatio(Rigidbody body)
+        {
+            if (body == null) return 0f;
+
+            float bodyMass = Mathf.Max(0f, body.mass);
+            float availableForce = Mathf.Min(
+                AttractionForce,
+                CalculateMaximumLiftForce(body.worldCenterOfMass.y));
+            availableForce = Mathf.Min(
+                availableForce,
+                bodyMass * Mathf.Max(0f, maximumAttractionAcceleration));
+            float requiredForce = bodyMass * Physics.gravity.magnitude;
+            if (requiredForce <= 0f) return 0f;
+            if (availableForce <= 0f) return float.PositiveInfinity;
+            return requiredForce / availableForce;
+        }
+
         public bool CanOperate => deviceEnabled && CanOperateInFirstPerson;
         public bool ConsumesPrimaryAction => isActiveAndEnabled
             && CanOperate;
@@ -125,11 +166,26 @@ namespace Supernova.Gameplay
             ResolveReferences();
         }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetRuntimeEvents()
+        {
+            InstanceEnabled = null;
+            InstanceDisabled = null;
+        }
+
+        private void OnEnable()
+        {
+            ResolveReferences();
+            targetAvailabilityInitialized = false;
+            InstanceEnabled?.Invoke(this);
+        }
+
         private void Update()
         {
             if (!Application.isPlaying
                 || Cursor.lockState != CursorLockMode.Locked)
             {
+                SetTargetAvailability(false);
                 return;
             }
 
@@ -139,6 +195,43 @@ namespace Supernova.Gameplay
                 UpdateHeldTargetRotation(look.x, look.y);
             }
 
+            EvaluateTargetAvailability(false);
+        }
+
+        /// <summary>
+        /// Publishes the current aim state to subscribers. The HUD calls this once
+        /// when it binds; subsequent changes are published from this component.
+        /// </summary>
+        public void RefreshTargetAvailability()
+        {
+            EvaluateTargetAvailability(true);
+        }
+
+        private void EvaluateTargetAvailability(bool force)
+        {
+            if (TargetAvailabilityChanged == null)
+                return;
+
+            PlayerToolDefinition pickaxe = toolController != null
+                ? toolController.GetDefinition(PlayerInventoryItem.Pickaxe)
+                : null;
+            bool available = HasAvailableMagnetTarget(pickaxe);
+            if (force)
+                targetAvailabilityInitialized = false;
+            SetTargetAvailability(available);
+        }
+
+        private void SetTargetAvailability(bool available)
+        {
+            if (targetAvailabilityInitialized
+                && targetAvailable == available)
+            {
+                return;
+            }
+
+            targetAvailabilityInitialized = true;
+            targetAvailable = available;
+            TargetAvailabilityChanged?.Invoke(available);
         }
 
         /// <summary>
@@ -438,11 +531,10 @@ namespace Supernova.Gameplay
             // pickaxe to pull or aim away to stop pulling.
             float minimumAlignment = Mathf.Cos(
                 pickaxeDefinition.PickaxeMagnetAimAngle * Mathf.Deg2Rad);
-            ThrownPickaxe[] candidates = FindObjectsOfType<ThrownPickaxe>();
             float bestScore = float.PositiveInfinity;
-            for (int i = 0; i < candidates.Length; i++)
+            foreach (ThrownPickaxe candidate
+                in ThrownPickaxe.ActiveInstances)
             {
-                ThrownPickaxe candidate = candidates[i];
                 if (candidate == null || !candidate.CanBeRecovered) continue;
 
                 Vector3 toPickaxe = candidate.Position - cameraTransform.position;
@@ -741,10 +833,29 @@ namespace Supernova.Gameplay
             focusedBody = null;
             float maximumDistance = Mathf.Max(0.1f, acquisitionDistance);
             float bestScore = float.PositiveInfinity;
-            Rigidbody[] bodies = FindObjectsOfType<Rigidbody>();
-            for (int bodyIndex = 0; bodyIndex < bodies.Length; bodyIndex++)
+            Vector3 searchCenter = cameraTransform.position
+                + cameraTransform.forward * (maximumDistance * 0.5f);
+            float searchRadius = maximumDistance * 0.5f
+                + MagnetAimAssistRadius;
+            int colliderCount = Physics.OverlapSphereNonAlloc(
+                searchCenter,
+                searchRadius,
+                aimAssistColliders,
+                targetLayers,
+                QueryTriggerInteraction.Ignore);
+
+            aimAssistBodies.Clear();
+            for (int colliderIndex = 0;
+                colliderIndex < colliderCount;
+                colliderIndex++)
             {
-                Rigidbody body = bodies[bodyIndex];
+                Collider collider = aimAssistColliders[colliderIndex];
+                if (collider != null && collider.attachedRigidbody != null)
+                    aimAssistBodies.Add(collider.attachedRigidbody);
+            }
+
+            foreach (Rigidbody body in aimAssistBodies)
+            {
                 if (!IsValidMagnetTarget(body)
                     || !TryGetMagnetTargetBounds(body, out Bounds bounds))
                 {
@@ -801,10 +912,11 @@ namespace Supernova.Gameplay
         {
             bounds = default;
             bool found = false;
-            Collider[] colliders = body.GetComponentsInChildren<Collider>(true);
-            for (int i = 0; i < colliders.Length; i++)
+            targetColliderBuffer.Clear();
+            body.GetComponentsInChildren(true, targetColliderBuffer);
+            for (int i = 0; i < targetColliderBuffer.Count; i++)
             {
-                Collider collider = colliders[i];
+                Collider collider = targetColliderBuffer[i];
                 if (collider == null
                     || !collider.enabled
                     || collider.isTrigger
@@ -1026,6 +1138,8 @@ namespace Supernova.Gameplay
                 playerController = playerRoot.GetComponent<CharacterController>();
             if (playerMotorOwner == null)
                 playerMotorOwner = playerRoot.GetComponent<VoxelPlayerController>();
+            if (toolController == null)
+                toolController = playerRoot.GetComponent<PlayerToolController>();
             if (perspectiveCamera == null)
                 perspectiveCamera = playerRoot.GetComponentInChildren<PerspectiveCameraController>(true);
             if (viewCamera == null && perspectiveCamera != null)
@@ -1036,6 +1150,8 @@ namespace Supernova.Gameplay
 
         private void OnDisable()
         {
+            SetTargetAvailability(false);
+            InstanceDisabled?.Invoke(this);
             EndAttraction();
         }
 

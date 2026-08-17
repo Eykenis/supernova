@@ -93,7 +93,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void FirstPerson_CollapsesVisibleHead_AndKeepsHiddenRendererInShadowPass()
+        public void FirstPerson_HidesConfiguredHeadAccessory_WithoutHidingBody()
         {
             player = new GameObject("Player");
             GameObject head = new GameObject("Head");
@@ -104,6 +104,7 @@ namespace Supernova.Tests
             GameObject hiddenPart = new GameObject("FirstPersonHiddenPart");
             hiddenPart.transform.SetParent(player.transform);
             MeshRenderer hiddenRenderer = hiddenPart.AddComponent<MeshRenderer>();
+            MeshRenderer bodyRenderer = player.AddComponent<MeshRenderer>();
 
             GameObject cameraObject = new GameObject("Camera");
             cameraObject.transform.SetParent(player.transform);
@@ -119,8 +120,11 @@ namespace Supernova.Tests
             controller.SetMode(PlayerViewMode.FirstPerson, true);
 
             Assert.That(head.transform.localScale, Is.EqualTo(expectedHeadScale * 0.001f));
+            Assert.That(hiddenRenderer.enabled, Is.True);
             Assert.That(hiddenRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.ShadowsOnly));
             Assert.That(hiddenRenderer.receiveShadows, Is.False);
+            Assert.That(bodyRenderer.enabled, Is.True);
+            Assert.That(bodyRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.On));
 
             controller.SetMode(PlayerViewMode.ThirdPerson, true);
 
@@ -161,7 +165,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MenuTransition_CanEnterFirstPersonVisibilityBeforeMenuEnds()
+        public void MenuTransition_LeavesBodyVisibleWhenGameplayPresentationStarts()
         {
             player = new GameObject("Player");
             GameObject head = new GameObject("Head");
@@ -171,24 +175,34 @@ namespace Supernova.Tests
             GameObject cameraObject = new GameObject("Camera");
             cameraObject.transform.SetParent(player.transform);
             Camera camera = cameraObject.AddComponent<Camera>();
+            MeshRenderer bodyRenderer = player.AddComponent<MeshRenderer>();
+            GameObject headPhone = new GameObject("HeadPhone");
+            headPhone.transform.SetParent(head.transform);
+            MeshRenderer headPhoneRenderer = headPhone.AddComponent<MeshRenderer>();
             PerspectiveCameraController controller =
                 player.AddComponent<PerspectiveCameraController>();
             controller.Bind(
                 player.transform,
                 head.transform,
                 camera,
-                new Renderer[0]);
+                new Renderer[] { headPhoneRenderer });
             controller.SetMode(PlayerViewMode.FirstPerson, true);
 
             controller.SetMenuPresentationActive(true);
             Assert.That(controller.IsMenuPresentationActive, Is.True);
             Assert.That(head.transform.localScale, Is.EqualTo(expectedHeadScale));
+            Assert.That(headPhoneRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.On));
 
-            controller.SetMenuFirstPersonVisibilityActive(true);
-            Assert.That(controller.IsMenuPresentationActive, Is.True);
+            controller.SetMenuPresentationActive(false);
+            Assert.That(controller.IsMenuPresentationActive, Is.False);
             Assert.That(
                 head.transform.localScale,
                 Is.EqualTo(expectedHeadScale * 0.001f));
+            Assert.That(bodyRenderer.enabled, Is.True);
+            Assert.That(bodyRenderer.shadowCastingMode, Is.EqualTo(ShadowCastingMode.On));
+            Assert.That(
+                headPhoneRenderer.shadowCastingMode,
+                Is.EqualTo(ShadowCastingMode.ShadowsOnly));
         }
 
         [Test]

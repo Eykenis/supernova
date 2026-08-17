@@ -60,6 +60,11 @@ namespace Supernova.Gameplay
             bool TrySpawnBreakEffect(BreakContext context);
         }
 
+        public interface IBreakDespawnHandler
+        {
+            bool TryDespawnBrokenValuable(ValuableObject source);
+        }
+
         // Collision impulse is divided by this object's mass before damage is
         // evaluated. The resulting specific impulse approximates the velocity
         // change caused by the collision.
@@ -299,7 +304,26 @@ namespace Supernova.Gameplay
                 renderers[i].enabled = false;
             }
 
+            if (TryDespawnBrokenValuable())
+            {
+                return;
+            }
+
             Destroy(gameObject);
+        }
+
+        private bool TryDespawnBrokenValuable()
+        {
+            MonoBehaviour[] behaviours = GetComponents<MonoBehaviour>();
+            for (int i = 0; i < behaviours.Length; i++)
+            {
+                if (behaviours[i] is IBreakDespawnHandler handler
+                    && handler.TryDespawnBrokenValuable(this))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void TrySpawnBreakEffect(BreakContext context)

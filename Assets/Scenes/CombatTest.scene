@@ -1297,8 +1297,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   viewer: {fileID: 729396773}
-  levelConfigurationOverride: {fileID: 11400000, guid: 62e2da0a21617d04b861570f49d191fc,
-    type: 2}
+  levelConfigurations:
+  - {fileID: 11400000, guid: 62e2da0a21617d04b861570f49d191fc, type: 2}
   showRuntimeDiagnostics: 0
   spawnPointSceneStructure: {fileID: 1913240833}
 --- !u!4 &1110579180

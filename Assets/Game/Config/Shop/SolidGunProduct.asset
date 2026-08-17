@@ -19,6 +19,8 @@ MonoBehaviour:
   grantedItem: 5
   grantedUpgrade: 0
   upgradeValue: 0
+  repeatable: 0
+  priceIncreasePerPurchase: 0
   displayPrefab: {fileID: 7990082711621402459, guid: 06417b45779231148832fd88bafe8484,
     type: 3}
   wireframeMaterial: {fileID: 2100000, guid: d4804bdf220d93d459c052ca0f2796c7, type: 2}

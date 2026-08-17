@@ -274,6 +274,13 @@ namespace Supernova.UI
                     ? "未绑定"
                     : binding.DisplayString.ToUpperInvariant(),
                 () => BeginRebind(binding));
+            if (!string.IsNullOrWhiteSpace(binding.DisplayString))
+            {
+                InputPromptTextRuntime.SetBindingDisplay(
+                    button.GetComponentInChildren<TMP_Text>(),
+                    binding.ControlPath,
+                    binding.DisplayString.ToUpperInvariant());
+            }
             RectTransform buttonRect = (RectTransform)button.transform;
             buttonRect.anchorMin = new Vector2(0.72f, 0f);
             buttonRect.anchorMax = new Vector2(1f, 1f);

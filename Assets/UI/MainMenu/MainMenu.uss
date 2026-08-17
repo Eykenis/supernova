@@ -263,6 +263,37 @@
     display: none;
 }
 
+.campaign-button-row {
+    height: 52px;
+    margin-bottom: 8px;
+    flex-direction: row;
+}
+
+.campaign-button-row .menu-button {
+    height: 52px;
+    margin-bottom: 0;
+    flex-basis: 0;
+}
+
+.campaign-continue-button {
+    flex-grow: 61.8;
+}
+
+.campaign-new-button {
+    flex-grow: 38.2;
+    background-color: white;
+    border-left-color: white;
+    border-right-color: white;
+    border-top-color: white;
+    border-bottom-color: white;
+    color: rgb(18, 20, 24);
+}
+
+.campaign-new-button:hover {
+    background-color: rgb(224, 224, 224);
+    color: rgb(18, 20, 24);
+}
+
 .menu-button {
     height: 52px;
     margin-bottom: 8px;

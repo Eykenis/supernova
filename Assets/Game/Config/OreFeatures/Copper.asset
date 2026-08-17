@@ -24,7 +24,7 @@ MonoBehaviour:
   plateau: 0
   size: 10
   discardChanceOnAirExposure: 0.1
-  oreUnitValue: 19
-  massDensity: 2
+  oreUnitValue: 190
+  massDensity: 2.5
   fragility: 0.15
   recoveredMaterial: {fileID: 2100000, guid: 47a2b427c2f34be9a8f4fb63f229cc83, type: 2}

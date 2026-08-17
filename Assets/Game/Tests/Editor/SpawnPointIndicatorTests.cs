@@ -89,5 +89,34 @@ namespace Supernova.Tests
                 placement.ScreenPosition.x,
                 Is.EqualTo(ScreenBounds.xMax - 56f).Within(0.001f));
         }
+
+        [Test]
+        public void CalculateDistanceAlpha_FadesFromThirtyFiveToOneHundredFiftyMetres()
+        {
+            Assert.That(
+                SpawnPointIndicator.Layout.CalculateDistanceAlpha(
+                    35f,
+                    35f,
+                    150f),
+                Is.EqualTo(1f));
+            Assert.That(
+                SpawnPointIndicator.Layout.CalculateDistanceAlpha(
+                    92.5f,
+                    35f,
+                    150f),
+                Is.EqualTo(0.5f).Within(0.001f));
+            Assert.That(
+                SpawnPointIndicator.Layout.CalculateDistanceAlpha(
+                    150f,
+                    35f,
+                    150f),
+                Is.EqualTo(0f));
+            Assert.That(
+                SpawnPointIndicator.Layout.CalculateDistanceAlpha(
+                    200f,
+                    35f,
+                    150f),
+                Is.EqualTo(0f));
+        }
     }
 }

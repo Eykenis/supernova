@@ -38,6 +38,7 @@ namespace Supernova.Missions
         private string displayedObjectiveMissionName;
         private int ambienceLoopId;
         private bool playReadyAfterCaveLoad;
+        private bool enterHomeGameplayDirectly;
 
         public MissionRun CurrentRun => run;
         public int Credits => PlayerEconomy.Credits;
@@ -54,6 +55,28 @@ namespace Supernova.Missions
         public static MissionGameLoop Instance => instance;
         public static bool IsSceneTransitioning =>
             instance != null && instance.transitioning;
+        public static bool ConsumeDirectHomeGameplayEntry()
+        {
+            if (instance == null || !instance.enterHomeGameplayDirectly)
+                return false;
+
+            instance.enterHomeGameplayDirectly = false;
+            return true;
+        }
+        public static bool HasSavedCampaignProgress
+        {
+            get
+            {
+                MissionAssetReferences missions =
+                    GameAssetCatalog.Current != null
+                        ? GameAssetCatalog.Current.Missions
+                        : null;
+                return missions != null
+                    && MissionProgressPersistence.TryLoadLevel(
+                        missions.Levels,
+                        out _);
+            }
+        }
         public static LevelConfiguration CurrentLevelConfiguration
         {
             get
@@ -91,7 +114,11 @@ namespace Supernova.Missions
             MissionAssetReferences missions = GameAssetCatalog.Current != null
                 ? GameAssetCatalog.Current.Missions
                 : null;
-            definition = missions != null ? missions.DefaultLevel : null;
+            definition = missions != null
+                ? MissionProgressPersistence.ResolveSavedOrDefault(
+                    missions.Levels,
+                    missions.DefaultLevel)
+                : null;
             campaign = new MissionCampaignProgress(
                 missions != null ? missions.Levels : null,
                 definition);
@@ -110,6 +137,7 @@ namespace Supernova.Missions
                     + "generation configurations.",
                     definition);
             }
+            PlayerEconomy.CreditsChanged += HandleCreditsChanged;
             SceneManager.sceneLoaded += HandleSceneLoaded;
             EnsureUi();
         }
@@ -118,6 +146,7 @@ namespace Supernova.Missions
         {
             if (instance != this) return;
             StopCaveAmbience();
+            PlayerEconomy.CreditsChanged -= HandleCreditsChanged;
             SceneManager.sceneLoaded -= HandleSceneLoaded;
             instance = null;
         }
@@ -164,6 +193,64 @@ namespace Supernova.Missions
             return BeginLevel(definition);
         }
 
+        public bool StartNewCampaign()
+        {
+            MissionAssetReferences missions = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.Missions
+                : null;
+            LevelConfiguration firstLevel =
+                missions != null ? missions.DefaultLevel : null;
+            if (firstLevel == null
+                || campaign == null
+                || !campaign.SelectLevel(firstLevel))
+            {
+                return false;
+            }
+
+            definition = firstLevel;
+            run = null;
+            MissionProgressPersistence.ClearSavedProgress();
+            PlayerEconomy.ClearSavedProgress();
+            return MissionProgressPersistence.SaveCurrentLevel(definition);
+        }
+
+        public bool ContinueCampaign()
+        {
+            MissionAssetReferences missions = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.Missions
+                : null;
+            if (missions == null
+                || campaign == null
+                || !MissionProgressPersistence.TryLoadLevel(
+                    missions.Levels,
+                    out LevelConfiguration savedLevel)
+                || !campaign.SelectLevel(savedLevel))
+            {
+                return false;
+            }
+
+            definition = savedLevel;
+            run = null;
+            return true;
+        }
+
+        /// <summary>
+        /// Fades the current scene to black, loads the configured destination,
+        /// then fades the destination scene back in.
+        /// </summary>
+        public bool BeginSceneLoadWithFade(string sceneName)
+        {
+            if (transitioning
+                || string.IsNullOrWhiteSpace(sceneName)
+                || !Application.CanStreamedLevelBeLoaded(sceneName))
+            {
+                return false;
+            }
+
+            StartCoroutine(LoadWithFadeInternal(sceneName, false));
+            return true;
+        }
+
         /// <summary>
         /// Loads a scene while the persistent mission overlay is already fully
         /// opaque, then fades the destination scene in after loading completes.
@@ -198,13 +285,7 @@ namespace Supernova.Missions
             if (fade == null)
                 return null;
 
-            Canvas overlayCanvas = fade.GetComponentInParent<Canvas>(true);
-            if (overlayCanvas != null)
-                overlayCanvas.gameObject.SetActive(true);
-            fade.alpha = 0f;
-            fade.blocksRaycasts = true;
-            fade.gameObject.SetActive(true);
-            Canvas.ForceUpdateCanvases();
+            PresentSceneFade(fade, 0f);
             return fade;
         }
 
@@ -217,7 +298,10 @@ namespace Supernova.Missions
             }
 
             definition = level;
-            campaign?.SelectLevel(level);
+            bool selectedCampaignLevel =
+                campaign != null && campaign.SelectLevel(level);
+            if (campaign == null || selectedCampaignLevel)
+                MissionProgressPersistence.SaveCurrentLevel(level);
             run = new MissionRun(
                 definition.MissionTimeLimitSeconds,
                 definition.RequiredFunds);
@@ -340,6 +424,8 @@ namespace Supernova.Missions
             InvalidateObjectiveCache();
             EnsureUi();
             missionUi.HideResult();
+            if (scene.name != HomeSceneName)
+                missionUi.SetObjective(string.Empty);
             caveSetup = false;
             extractionZone = null;
             cellZone = null;
@@ -378,10 +464,23 @@ namespace Supernova.Missions
         {
             CreateCellTrigger(FindCell(), true);
             gameUi?.HideMissionTimer();
-            if (campaign == null || !campaign.IsComplete)
-            {
-                missionUi.SetObjective("基地");
-            }
+            RefreshHomeObjective();
+        }
+
+        private void HandleCreditsChanged(int _)
+        {
+            if (SceneManager.GetActiveScene().name == HomeSceneName)
+                RefreshHomeObjective();
+        }
+
+        private void RefreshHomeObjective()
+        {
+            missionUi?.SetObjective(FormatHomeObjective(Credits));
+        }
+
+        private static string FormatHomeObjective(int credits)
+        {
+            return "基地\n当前存款  $" + Mathf.Max(0, credits);
         }
 
         private void TrySetupCave()
@@ -553,31 +652,70 @@ namespace Supernova.Missions
                     bool advanced = campaign != null
                         && campaign.RecordOutcome(run.Outcome);
                     if (advanced)
+                    {
                         definition = campaign.CurrentLevel;
-                    message = "任务完成"
-                        + "\n\nCOLLECTED $" + run.DeliveredValue
-                        + "\nBALANCE INCREASED $" + reward
-                        + (advanced
-                            ? "\nNEXT: LEVEL " + LevelNumberText
-                                + " · " + MissionName
-                            : "\nALL DESCENTS CLEARED")
-                        + "\n\nPRESS ENTER TO RETURN";
+                        MissionProgressPersistence.SaveCurrentLevel(definition);
+                    }
+                    message = FormatResultMessage(
+                        run.Outcome,
+                        run.DeliveredValue,
+                        run.RequiredValue,
+                        reward,
+                        advanced,
+                        LevelNumberText);
                     break;
                 case MissionOutcome.LostInCaves:
-                    message = "任务结束"
-                        + "\n\nEVACUATION WINDOW CLOSED."
-                        + "\nYOU ARE LOST IN THE CAVES."
-                        + "\n\nPRESS ENTER TO RETURN";
+                    message = FormatResultMessage(
+                        run.Outcome,
+                        run.DeliveredValue,
+                        run.RequiredValue,
+                        0,
+                        false,
+                        LevelNumberText);
                     break;
                 default:
-                    message = "任务结束"
-                        + "\n\nINSUFFICIENT RESOURCES COLLECTED"
-                        + "\nCOLLECTED $" + run.DeliveredValue
-                        + " / $" + run.RequiredValue
-                        + "\n\nPRESS {{input:UI/Submit}} TO RETURN";
+                    message = FormatResultMessage(
+                        run.Outcome,
+                        run.DeliveredValue,
+                        run.RequiredValue,
+                        0,
+                        false,
+                        LevelNumberText);
                     break;
             }
             ShowAnimatedResult(message);
+        }
+
+        private static string FormatResultMessage(
+            MissionOutcome outcome,
+            int deliveredValue,
+            int requiredValue,
+            int reward,
+            bool advanced,
+            string nextLevelNumber)
+        {
+            switch (outcome)
+            {
+                case MissionOutcome.Success:
+                    return "任务完成"
+                        + "\n\n已收集：$" + Mathf.Max(0, deliveredValue)
+                        + "\n存款增加：$" + Mathf.Max(0, reward)
+                        + (advanced
+                            ? "\n下一关：第" + nextLevelNumber + "关"
+                            : "\n所有关卡已完成")
+                        + "\n\n按 {{input:UI/Submit}} 返回基地";
+                case MissionOutcome.LostInCaves:
+                    return "任务失败"
+                        + "\n\n撤离窗口已关闭。"
+                        + "\n你被困在洞穴中。"
+                        + "\n\n按 {{input:UI/Submit}} 返回基地";
+                default:
+                    return "任务失败"
+                        + "\n\n收集的资源不足"
+                        + "\n已收集：$" + Mathf.Max(0, deliveredValue)
+                        + " / $" + Mathf.Max(1, requiredValue)
+                        + "\n\n按 {{input:UI/Submit}} 返回基地";
+            }
         }
 
         private void ShowAnimatedResult(string message)
@@ -613,6 +751,7 @@ namespace Supernova.Missions
         {
             if (transitioning) return;
             Time.timeScale = 1f;
+            enterHomeGameplayDirectly = true;
             StartCoroutine(LoadWithFade(HomeSceneName));
         }
 
@@ -636,9 +775,7 @@ namespace Supernova.Missions
                         fade.alpha = 1f;
                     else if (!fade.gameObject.activeSelf)
                         fade.alpha = 0f;
-                    fade.gameObject.SetActive(true);
-                    fade.blocksRaycasts = true;
-                    Canvas.ForceUpdateCanvases();
+                    PresentSceneFade(fade, fade.alpha);
                     yield return null;
                     if (!beginFullyBlack)
                     {
@@ -658,12 +795,9 @@ namespace Supernova.Missions
                 CanvasGroup activeFade = missionUi.SceneFade;
                 if (activeFade != null)
                 {
-                    if (activeFade != fade)
-                    {
-                        activeFade.alpha = 1f;
-                        activeFade.gameObject.SetActive(true);
-                    }
                     fade = activeFade;
+                    PresentSceneFade(fade, 1f);
+                    yield return null;
                     yield return FadeTo(
                         fade,
                         0f,
@@ -676,6 +810,23 @@ namespace Supernova.Missions
                     fade.gameObject.SetActive(false);
                 transitioning = false;
             }
+        }
+
+        private static void PresentSceneFade(CanvasGroup fade, float alpha)
+        {
+            if (fade == null)
+                return;
+
+            Canvas[] overlayCanvases = fade.GetComponentsInParent<Canvas>(true);
+            for (int i = 0; i < overlayCanvases.Length; i++)
+            {
+                if (overlayCanvases[i] != null)
+                    overlayCanvases[i].gameObject.SetActive(true);
+            }
+            fade.alpha = Mathf.Clamp01(alpha);
+            fade.gameObject.SetActive(true);
+            fade.blocksRaycasts = true;
+            Canvas.ForceUpdateCanvases();
         }
 
         private static IEnumerator FadeTo(

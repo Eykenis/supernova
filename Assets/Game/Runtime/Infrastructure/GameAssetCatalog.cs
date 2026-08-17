@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Supernova.Missions;
 using Supernova.UI;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -75,6 +76,7 @@ namespace Supernova.Infrastructure
         [SerializeField] private Sprite pauseCardFrame;
         [SerializeField] private Sprite loadingDial;
         [SerializeField] private Texture2D telemetryBackdrop;
+        [SerializeField] private TMP_SpriteAsset inputGlyphs;
 
         public GameObject MainMenuPrefab => mainMenuPrefab;
         public UiDesignTokens DesignTokens => designTokens;
@@ -96,6 +98,7 @@ namespace Supernova.Infrastructure
         public Sprite PauseCardFrame => pauseCardFrame;
         public Sprite LoadingDial => loadingDial;
         public Texture2D TelemetryBackdrop => telemetryBackdrop;
+        public TMP_SpriteAsset InputGlyphs => inputGlyphs;
 
         public bool IsComplete =>
             mainMenuPrefab != null
@@ -116,7 +119,8 @@ namespace Supernova.Infrastructure
             && progressCleanFrame != null
             && pauseCardFrame != null
             && loadingDial != null
-            && telemetryBackdrop != null;
+            && telemetryBackdrop != null
+            && inputGlyphs != null;
     }
 
     [Serializable]

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using NUnit.Framework;
 using Supernova.MinecraftCaves;
 using Supernova.Missions;
@@ -413,11 +414,13 @@ public sealed class DenseJigsawRegionWorldTests
                 Is.True);
 
             world.InitializeWorld();
-
+            Assert.That(world.IsDenseJigsawSelectionPending, Is.True);
             Assert.That(
                 world.RequiredChunkCount,
                 Is.EqualTo(9),
                 "Strict placement selection should still allow a local initial load.");
+            CompleteDenseJigsawSelection(world);
+
             Assert.That(
                 world.DenseAcceptedJigsawPlacementCount,
                 Is.GreaterThan(0));
@@ -607,11 +610,23 @@ public sealed class DenseJigsawRegionWorldTests
         try
         {
             configuration.ConfigureInfiniteWorld(true);
+            configuration.ConfigureStructureIntersections(true);
+            Assert.That(
+                DenseJigsawFeatureMixer.TryBuild(
+                    configuration,
+                    out DenseJigsawFeature denseFeature,
+                    out string featureError),
+                Is.True,
+                featureError);
             MinecraftCaveInfiniteWorld world =
                 target.AddComponent<MinecraftCaveInfiniteWorld>();
             Assert.That(world.ConfigureDenseRegion(configuration), Is.True);
             SetPrivateField(world, "world", new InfiniteVoxelWorld());
             SetPrivateField(world, "structurePassApplied", true);
+            SetPrivateField(
+                world,
+                "jigsawStructureSettings",
+                new[] { denseFeature.Settings });
 
             var firstCenter = new Vector3Int(99, 0, -47);
             SetPrivateField(world, "viewerChunk", firstCenter);
@@ -621,6 +636,9 @@ public sealed class DenseJigsawRegionWorldTests
 
             Assert.That(refresh, Is.Not.Null);
             refresh.Invoke(world, new object[] { false });
+            Assert.That(world.IsDenseJigsawSelectionPending, Is.True);
+            CompleteDenseJigsawSelection(world);
+
 
             Assert.That(world.IsFiniteDenseRegion, Is.False);
             Assert.That(world.IsInfiniteDenseWorld, Is.True);
@@ -630,6 +648,7 @@ public sealed class DenseJigsawRegionWorldTests
             Assert.That(
                 world.EffectiveWorldHeight,
                 Is.EqualTo(configuration.WorldHeight));
+            Assert.That(world.DenseJigsawSelectionRebuildCount, Is.EqualTo(1));
             HashSet<Vector3Int> requiredChunks =
                 (HashSet<Vector3Int>)GetPrivateField(world, "requiredChunks");
             Assert.That(
@@ -637,9 +656,27 @@ public sealed class DenseJigsawRegionWorldTests
                     .Select(offset => firstCenter + offset),
                 Is.EquivalentTo(requiredChunks));
 
+            Vector3Int nearbyCenter = firstCenter + Vector3Int.right;
+            SetPrivateField(world, "viewerChunk", nearbyCenter);
+            refresh.Invoke(world, new object[] { false });
+            requiredChunks =
+                (HashSet<Vector3Int>)GetPrivateField(world, "requiredChunks");
+
+            Assert.That(
+                MinecraftCaveInfiniteWorld.StreamingOffsets
+                    .Select(offset => nearbyCenter + offset),
+                Is.EquivalentTo(requiredChunks));
+            Assert.That(
+                world.DenseJigsawSelectionRebuildCount,
+                Is.EqualTo(1),
+                "A viewer step inside the padded selection window must reuse it.");
+
             var secondCenter = new Vector3Int(-128, 0, 203);
             SetPrivateField(world, "viewerChunk", secondCenter);
             refresh.Invoke(world, new object[] { false });
+            Assert.That(world.IsDenseJigsawSelectionPending, Is.True);
+            CompleteDenseJigsawSelection(world);
+
             requiredChunks =
                 (HashSet<Vector3Int>)GetPrivateField(world, "requiredChunks");
 
@@ -648,6 +685,7 @@ public sealed class DenseJigsawRegionWorldTests
                     .Select(offset => secondCenter + offset),
                 Is.EquivalentTo(requiredChunks));
             Assert.That(requiredChunks.Contains(firstCenter), Is.False);
+            Assert.That(world.DenseJigsawSelectionRebuildCount, Is.EqualTo(2));
         }
         finally
         {
@@ -875,6 +913,13 @@ public sealed class DenseJigsawRegionWorldTests
             Assert.That(world, Is.InstanceOf<IVoxelTerrain>());
             Assert.That(world.IsFiniteDenseRegion, Is.True);
             Assert.That(world.DenseRegionConfiguration, Is.SameAs(LoadConfiguration()));
+            Assert.That(world.ConfiguredLevels, Has.Count.EqualTo(3));
+            Assert.That(
+                world.ConfiguredLevels.Select(level => level.LevelNumber),
+                Is.EqualTo(new[] { 1, 2, 3 }));
+            Assert.That(
+                world.ConfiguredLevels.Select(level => level.CaveSceneName),
+                Has.All.EqualTo("DenseJigsawRegion"));
             Assert.That(player, Is.Not.Null);
             SpawnPointSceneStructure landingCell =
                 UnityEngine.Object.FindObjectOfType<SpawnPointSceneStructure>();
@@ -1280,6 +1325,32 @@ public sealed class DenseJigsawRegionWorldTests
                     + $"{layout[rightIndex].ModuleId}.");
             }
         }
+    }
+
+    private static void CompleteDenseJigsawSelection(
+        MinecraftCaveInfiniteWorld world)
+    {
+        object handle = GetPrivateField(
+            world,
+            "denseJigsawSelectionTask");
+        Assert.That(handle, Is.Not.Null);
+        PropertyInfo taskProperty = handle.GetType().GetProperty(
+            "Task",
+            BindingFlags.Instance | BindingFlags.Public);
+        Assert.That(taskProperty, Is.Not.Null);
+        var task = (Task)taskProperty.GetValue(handle);
+        Assert.That(
+            task.Wait(TimeSpan.FromSeconds(10)),
+            Is.True,
+            "Dense jigsaw selection worker did not finish in time.");
+
+        MethodInfo commit = typeof(MinecraftCaveInfiniteWorld).GetMethod(
+            "CommitDenseJigsawSelectionTask",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(commit, Is.Not.Null);
+        Assert.That(
+            (bool)commit.Invoke(world, null),
+            Is.True);
     }
 
     private static object GetPrivateField(object target, string fieldName)

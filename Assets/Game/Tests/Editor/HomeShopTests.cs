@@ -104,6 +104,147 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void RepeatableMagnetUpgrade_IncreasesForceAndNextPrice()
+        {
+            ShopProductProfile profile = LoadMagnetUpgradeProduct();
+            PlayerUpgrade upgrade = PlayerUpgrade.MagnetAttractionForce;
+            string creditsKey = PlayerEconomy.CreditsPreferenceKey;
+            string ownershipKey =
+                PlayerEconomy.GetUpgradeOwnershipPreferenceKey(upgrade);
+            string purchaseCountKey =
+                PlayerEconomy.GetUpgradePurchaseCountPreferenceKey(upgrade);
+            string upgradeValueKey =
+                PlayerEconomy.GetUpgradeValuePreferenceKey(upgrade);
+            bool hadCredits = PlayerPrefs.HasKey(creditsKey);
+            bool hadOwnership = PlayerPrefs.HasKey(ownershipKey);
+            bool hadPurchaseCount = PlayerPrefs.HasKey(purchaseCountKey);
+            bool hadUpgradeValue = PlayerPrefs.HasKey(upgradeValueKey);
+            int previousCredits = PlayerPrefs.GetInt(creditsKey, 0);
+            int previousOwnership = PlayerPrefs.GetInt(ownershipKey, 0);
+            int previousPurchaseCount =
+                PlayerPrefs.GetInt(purchaseCountKey, 0);
+            float previousUpgradeValue =
+                PlayerPrefs.GetFloat(upgradeValueKey, 0f);
+
+            try
+            {
+                PlayerPrefs.SetInt(creditsKey, 1000);
+                PlayerPrefs.DeleteKey(ownershipKey);
+                PlayerPrefs.DeleteKey(purchaseCountKey);
+                PlayerPrefs.DeleteKey(upgradeValueKey);
+
+                Assert.That(profile.IsConfigured, Is.True);
+                Assert.That(profile.IsRepeatable, Is.True);
+                Assert.That(
+                    AssetDatabase.GetAssetPath(profile.DisplayPrefab),
+                    Is.EqualTo(ProjectAssetPaths.ThirdParty.MagnetUpgradeModel));
+                Assert.That(PlayerEconomy.GetCurrentPrice(profile), Is.EqualTo(100));
+
+                Assert.That(
+                    PlayerEconomy.TryPurchase(profile),
+                    Is.EqualTo(ShopPurchaseResult.Purchased));
+                Assert.That(PlayerEconomy.Credits, Is.EqualTo(900));
+                Assert.That(PlayerEconomy.GetUpgradePurchaseCount(upgrade), Is.EqualTo(1));
+                Assert.That(PlayerEconomy.GetUpgradeValue(upgrade), Is.EqualTo(100f));
+                Assert.That(PlayerEconomy.GetCurrentPrice(profile), Is.EqualTo(200));
+
+                Assert.That(
+                    PlayerEconomy.TryPurchase(profile),
+                    Is.EqualTo(ShopPurchaseResult.Purchased));
+                Assert.That(PlayerEconomy.Credits, Is.EqualTo(700));
+                Assert.That(PlayerEconomy.GetUpgradePurchaseCount(upgrade), Is.EqualTo(2));
+                Assert.That(PlayerEconomy.GetUpgradeValue(upgrade), Is.EqualTo(200f));
+                Assert.That(PlayerEconomy.GetCurrentPrice(profile), Is.EqualTo(300));
+                Assert.That(PlayerEconomy.IsProductOwned(profile), Is.False);
+                Assert.That(PlayerEconomy.IsUpgradeOwned(upgrade), Is.True);
+
+                displayObject = new GameObject("Magnet Upgrade Test");
+                FirstPersonMagnetInteractor magnet =
+                    displayObject.AddComponent<FirstPersonMagnetInteractor>();
+                Assert.That(magnet.BaseAttractionForce, Is.EqualTo(100f));
+                Assert.That(magnet.AttractionForce, Is.EqualTo(300f));
+
+                ShopProductDisplay display =
+                    displayObject.AddComponent<ShopProductDisplay>();
+                display.Configure(profile);
+                display.SetTargeted(true);
+                Assert.That(display.TargetCollider, Is.Not.Null);
+                Assert.That(displayObject.transform.Find("Pickup Plate"), Is.Not.Null);
+                Assert.That(displayObject.transform.Find("Product Display"), Is.Not.Null);
+                Assert.That(display.WireframeRendererCount, Is.GreaterThan(0));
+                StringAssert.Contains("$300", display.Label.text);
+            }
+            finally
+            {
+                RestorePreference(creditsKey, hadCredits, previousCredits);
+                RestorePreference(
+                    ownershipKey,
+                    hadOwnership,
+                    previousOwnership);
+                RestorePreference(
+                    purchaseCountKey,
+                    hadPurchaseCount,
+                    previousPurchaseCount);
+                RestoreFloatPreference(
+                    upgradeValueKey,
+                    hadUpgradeValue,
+                    previousUpgradeValue);
+                PlayerPrefs.Save();
+            }
+        }
+
+        [Test]
+        public void ClearSavedProgress_RemovesGameplayDataButKeepsSystemSettings()
+        {
+            string creditsKey = PlayerEconomy.CreditsPreferenceKey;
+            string ownershipKey =
+                PlayerEconomy.GetItemOwnershipPreferenceKey(
+                    PlayerInventoryItem.Flashlight);
+            string slotKey = PlayerEconomy.GetQuickSlotPreferenceKey(0);
+            const string systemSettingKey = "ui.fullscreen";
+            string[] keys =
+            {
+                creditsKey,
+                ownershipKey,
+                slotKey,
+                systemSettingKey,
+            };
+            bool[] existed = keys.Select(PlayerPrefs.HasKey).ToArray();
+            int[] values = keys.Select(key =>
+                PlayerPrefs.GetInt(key, 0)).ToArray();
+
+            try
+            {
+                PlayerPrefs.SetInt(creditsKey, 480);
+                PlayerPrefs.SetInt(ownershipKey, 1);
+                PlayerPrefs.SetInt(
+                    slotKey,
+                    (int)PlayerInventoryItem.Flashlight);
+                PlayerPrefs.SetInt(systemSettingKey, 1);
+
+                PlayerEconomy.ClearSavedProgress();
+
+                Assert.That(PlayerEconomy.Credits, Is.Zero);
+                Assert.That(
+                    PlayerEconomy.IsItemOwned(
+                        PlayerInventoryItem.Flashlight),
+                    Is.False);
+                Assert.That(
+                    PlayerEconomy.HasQuickSlotConfiguration(0),
+                    Is.False);
+                Assert.That(
+                    PlayerPrefs.GetInt(systemSettingKey, 0),
+                    Is.EqualTo(1));
+            }
+            finally
+            {
+                for (int i = 0; i < keys.Length; i++)
+                    RestorePreference(keys[i], existed[i], values[i]);
+                PlayerPrefs.Save();
+            }
+        }
+
+        [Test]
         public void ProductDisplay_MatchesTreasureTextStyleAndOwnershipRenderMode()
         {
             ShopProductProfile profile =
@@ -231,7 +372,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void HomeScene_HasThreeProductAnchorsWithoutCustomShopModel()
+        public void HomeScene_HasFourProductAnchorsWithoutCustomShopModel()
         {
             Scene homeScene =
                 SceneManager.GetSceneByPath(ProjectAssetPaths.Scenes.Home);
@@ -253,7 +394,7 @@ namespace Supernova.Tests
                 Assert.That(shop, Is.Not.Null);
                 HomeShopController[] controllers =
                     shop.GetComponentsInChildren<HomeShopController>(true);
-                Assert.That(controllers, Has.Length.EqualTo(3));
+                Assert.That(controllers, Has.Length.EqualTo(4));
                 Assert.That(
                     controllers.Select(controller =>
                         controller.ProductProfile.ProductId),
@@ -280,6 +421,15 @@ namespace Supernova.Tests
             return profile;
         }
 
+        private static ShopProductProfile LoadMagnetUpgradeProduct()
+        {
+            ShopProductProfile profile =
+                AssetDatabase.LoadAssetAtPath<ShopProductProfile>(
+                    ProjectAssetPaths.Config.MagnetUpgradeProduct);
+            Assert.That(profile, Is.Not.Null);
+            return profile;
+        }
+
         private static ShopProductProfile[] LoadProducts()
         {
             string[] paths =
@@ -287,6 +437,7 @@ namespace Supernova.Tests
                 ProjectAssetPaths.Config.FlashlightProduct,
                 ProjectAssetPaths.Config.SolidGunProduct,
                 ProjectAssetPaths.Config.PortalGunProduct,
+                ProjectAssetPaths.Config.MagnetUpgradeProduct,
             };
             return paths.Select(path =>
             {
@@ -304,6 +455,17 @@ namespace Supernova.Tests
         {
             if (existed)
                 PlayerPrefs.SetInt(key, value);
+            else
+                PlayerPrefs.DeleteKey(key);
+        }
+
+        private static void RestoreFloatPreference(
+            string key,
+            bool existed,
+            float value)
+        {
+            if (existed)
+                PlayerPrefs.SetFloat(key, value);
             else
                 PlayerPrefs.DeleteKey(key);
         }

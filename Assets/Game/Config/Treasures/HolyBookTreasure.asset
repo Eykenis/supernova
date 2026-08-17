@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55c4c72518c3412459e3a631737b16ad, type: 3}
   m_Name: HolyBookTreasure
   m_EditorClassIdentifier: 
-  displayName: 圣书
+  displayName: "\u5723\u4E66"
   prefab: {fileID: 7212807089758395303, guid: 9b2c6fdf9ab72d54fa063f718b699d81, type: 3}
-  value: 140
+  value: 1450
   weight: 3
   fragility: 0.9
   spawnChance: 1

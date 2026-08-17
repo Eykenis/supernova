@@ -1,3 +1,4 @@
+using System.Reflection;
 using NUnit.Framework;
 using Supernova.UI;
 using TMPro;
@@ -79,12 +80,17 @@ namespace Supernova.Tests
 
             MainMenuView view = prefab.GetComponent<MainMenuView>();
             Assert.That(view.PlayButton, Is.Not.Null);
+            Assert.That(view.ContinueButton, Is.Not.Null);
+            Assert.That(view.ContinueSaveSummaryLabel, Is.Not.Null);
             Assert.That(view.TutorialButton, Is.Not.Null);
             Assert.That(view.SettingsButton, Is.Not.Null);
             Assert.That(view.QuitButton, Is.Not.Null);
             Assert.That(view.SettingsBackButton, Is.Not.Null);
             Assert.That(view.FullscreenToggle, Is.Not.Null);
             Assert.That(view.VolumeSlider, Is.Not.Null);
+            Assert.That(view.OverwriteConfirmationPanel, Is.Not.Null);
+            Assert.That(view.OverwriteConfirmButton, Is.Not.Null);
+            Assert.That(view.OverwriteCancelButton, Is.Not.Null);
             Assert.That(view.CharacterOverlay, Is.Not.Null);
 
             TMP_Text[] labels = prefab.GetComponentsInChildren<TMP_Text>(true);
@@ -97,6 +103,66 @@ namespace Supernova.Tests
             {
                 Assert.That(instance, Is.Not.Null);
                 MainMenuView runtimeView = instance.GetComponent<MainMenuView>();
+                runtimeView.SetContinueGameVisible(false);
+                Assert.That(runtimeView.ContinueButton, Is.Not.Null);
+                Assert.That(
+                    runtimeView.ContinueButton.gameObject.activeSelf,
+                    Is.False);
+                RectTransform newGameRect =
+                    runtimeView.PlayButton.transform as RectTransform;
+                Assert.That(
+                    newGameRect.anchorMin.x,
+                    Is.EqualTo(0f).Within(0.0001f));
+                Assert.That(
+                    newGameRect.anchorMax.x,
+                    Is.EqualTo(1f).Within(0.0001f));
+                AngledPanelGraphic newGameSurface =
+                    runtimeView.PlayButton.GetComponentInChildren<
+                        AngledPanelGraphic>(true);
+                Assert.That(newGameSurface, Is.Not.Null);
+                Assert.That(newGameSurface.color.r, Is.GreaterThan(0.8f));
+                Assert.That(newGameSurface.color.g, Is.GreaterThan(0.8f));
+                Assert.That(newGameSurface.color.b, Is.GreaterThan(0.8f));
+                runtimeView.SetContinueGameVisible(true);
+                Assert.That(
+                    runtimeView.ContinueButton.gameObject.activeSelf,
+                    Is.True);
+                RectTransform continueRect =
+                    runtimeView.ContinueButton.transform as RectTransform;
+                Assert.That(
+                    continueRect.anchorMin.x,
+                    Is.EqualTo(0f).Within(0.0001f));
+                Assert.That(
+                    continueRect.anchorMax.x,
+                    Is.EqualTo(MainMenuView.ContinueGameWidthFraction)
+                        .Within(0.0001f));
+                Assert.That(
+                    newGameRect.anchorMin.x,
+                    Is.EqualTo(MainMenuView.ContinueGameWidthFraction)
+                        .Within(0.0001f));
+                Assert.That(
+                    newGameRect.anchorMax.x,
+                    Is.EqualTo(1f).Within(0.0001f));
+                Assert.That(
+                    continueRect.anchorMin.y,
+                    Is.EqualTo(newGameRect.anchorMin.y).Within(0.0001f));
+                Assert.That(
+                    continueRect.anchorMax.y,
+                    Is.EqualTo(newGameRect.anchorMax.y).Within(0.0001f));
+                runtimeView.SetContinueGameSummary(275, 3);
+                Assert.That(
+                    runtimeView.ContinueSaveSummaryLabel.text,
+                    Is.EqualTo("存款：$275\n第3关"));
+                Assert.That(
+                    runtimeView.ShowOverwriteConfirmation(),
+                    Is.True);
+                Assert.That(
+                    runtimeView.OverwriteConfirmationPanel.activeSelf,
+                    Is.True);
+                runtimeView.HideOverwriteConfirmation();
+                Assert.That(
+                    runtimeView.OverwriteConfirmationPanel.activeSelf,
+                    Is.False);
                 Image backdrop = instance.transform.Find(
                     UiHierarchyPaths.MainMenu.Backdrop)?.GetComponent<Image>();
                 Assert.That(backdrop, Is.Not.Null);
@@ -184,9 +250,16 @@ namespace Supernova.Tests
                     "The player composite must render after and obscure the title.");
                 AssertMenuButtonPresentation(
                     instance.transform,
-                    UiHierarchyPaths.MainMenu.BeginDescent,
-                    "    开始游戏",
-                    46f);
+                    UiHierarchyPaths.MainMenu.ContinueGame,
+                    "    继续游戏",
+                    46f,
+                    26f);
+                AssertMenuButtonPresentation(
+                    instance.transform,
+                    UiHierarchyPaths.MainMenu.NewGame,
+                    "    新游戏",
+                    46f,
+                    26f);
                 AssertMenuButtonPresentation(
                     instance.transform,
                     UiHierarchyPaths.MainMenu.Tutorial,
@@ -328,6 +401,48 @@ namespace Supernova.Tests
             Assert.That(ShaderUtil.GetShaderMessages(bodyMaterial.shader), Is.Empty);
         }
 
+        [TestCase(0.54f, 0.55f, 1.65f, 0.2f, false, false)]
+        [TestCase(0.55f, 0.55f, 1.65f, 0.2f, true, false)]
+        [TestCase(1.44f, 0.55f, 1.65f, 0.2f, true, false)]
+        [TestCase(1.46f, 0.55f, 1.65f, 0.2f, true, true)]
+        [TestCase(1.5f, 1.6f, 1.65f, 0.2f, false, false)]
+        public void MainMenuTransition_ReleasesCharacterAfterUiAndEntersFirstPersonNearEnd(
+            float elapsed,
+            float fadeDuration,
+            float cameraDuration,
+            float firstPersonLeadDuration,
+            bool expectedUiHidden,
+            bool expectedFirstPerson)
+        {
+            MethodInfo hasMenuUiFinishedFading =
+                typeof(MainMenuController).GetMethod(
+                    "HasMenuUiFinishedFading",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+            MethodInfo shouldActivateFirstPerson =
+                typeof(MainMenuController).GetMethod(
+                    "ShouldActivateFirstPerson",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.That(hasMenuUiFinishedFading, Is.Not.Null);
+            Assert.That(shouldActivateFirstPerson, Is.Not.Null);
+            Assert.That(
+                hasMenuUiFinishedFading.Invoke(
+                    null,
+                    new object[] { elapsed, fadeDuration }),
+                Is.EqualTo(expectedUiHidden));
+            Assert.That(
+                shouldActivateFirstPerson.Invoke(
+                    null,
+                    new object[]
+                    {
+                        elapsed,
+                        cameraDuration,
+                        fadeDuration,
+                        firstPersonLeadDuration,
+                    }),
+                Is.EqualTo(expectedFirstPerson));
+        }
+
         private static void AssertColorBlock(
             ColorBlock actual,
             ColorBlock expected,
@@ -353,7 +468,8 @@ namespace Supernova.Tests
             Transform root,
             string path,
             string expectedText,
-            float expectedY)
+            float expectedY,
+            float expectedFontSize = 30f)
         {
             RectTransform button = root.Find(path) as RectTransform;
             TMP_Text label = button != null
@@ -363,7 +479,10 @@ namespace Supernova.Tests
             Assert.That(button, Is.Not.Null, path);
             Assert.That(label, Is.Not.Null, path + " label");
             Assert.That(label.text, Is.EqualTo(expectedText), path);
-            Assert.That(label.fontSize, Is.EqualTo(30f), path);
+            Assert.That(
+                label.fontSize,
+                Is.EqualTo(expectedFontSize),
+                path);
             Assert.That(button.anchoredPosition.y, Is.EqualTo(expectedY), path);
         }
     }

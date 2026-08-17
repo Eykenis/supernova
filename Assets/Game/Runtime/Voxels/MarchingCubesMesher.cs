@@ -321,6 +321,10 @@ namespace Supernova.Voxels
         [ThreadStatic] private static HashSet<int> activeSurfaceKeySet;
         [ThreadStatic] private static List<VoxelTypeId> cellMemberTypes;
         [ThreadStatic] private static List<int> cellMemberCounts;
+        [ThreadStatic] private static Vector3[] edgePositionCache;
+        [ThreadStatic] private static int[] edgeSmoothingGroupCache;
+        [ThreadStatic] private static int[] projectedEdgeVertexIndexCache;
+
 
         public static VoxelMeshData Build(
             VoxelVolume volume,
@@ -641,6 +645,52 @@ namespace Supernova.Voxels
             MarchingCubesVertexPlacement vertexPlacement,
             VoxelGroupMap groupMap = default)
         {
+            return BuildCapturedColumnSectionInto(
+                samples,
+                height,
+                isoLevel,
+                voxelSize,
+                vertexPlacement,
+                groupMap,
+                null);
+        }
+
+        internal static VoxelMeshData BuildCapturedColumnSectionPooled(
+            VoxelSample[] samples,
+            int height,
+            float isoLevel,
+            float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement,
+            VoxelGroupMap groupMap = default)
+        {
+            VoxelMeshData output = VoxelMeshData.RentPooled();
+            try
+            {
+                return BuildCapturedColumnSectionInto(
+                    samples,
+                    height,
+                    isoLevel,
+                    voxelSize,
+                    vertexPlacement,
+                    groupMap,
+                    output);
+            }
+            catch
+            {
+                output.Dispose();
+                throw;
+            }
+        }
+
+        private static VoxelMeshData BuildCapturedColumnSectionInto(
+            VoxelSample[] samples,
+            int height,
+            float isoLevel,
+            float voxelSize,
+            MarchingCubesVertexPlacement vertexPlacement,
+            VoxelGroupMap groupMap,
+            VoxelMeshData output)
+        {
             if (samples == null)
             {
                 throw new ArgumentNullException(nameof(samples));
@@ -670,8 +720,10 @@ namespace Supernova.Voxels
                 vertexPlacement,
                 null,
                 default,
-                groupMap);
+                groupMap,
+                output);
         }
+
 
         private static void ValidateColumnSection(int startY, int height)
         {
@@ -1073,13 +1125,26 @@ namespace Supernova.Voxels
             MarchingCubesVertexPlacement vertexPlacement,
             VoxelTypeId? requestedType = null,
             Vector3 vertexOffset = default,
-            VoxelGroupMap groupMap = default)
+            VoxelGroupMap groupMap = default,
+            VoxelMeshData output = null)
         {
-            var meshData = new VoxelMeshData();
-            var edgePositions = new Vector3[12];
-            var edgeSmoothingGroups = new int[12];
-            var projectedEdgeVertexIndices =
-                new int[VoxelMeshData.ProjectedEdgeCacheSize];
+            VoxelMeshData meshData = output ?? new VoxelMeshData();
+            if (edgePositionCache == null)
+            {
+                edgePositionCache = new Vector3[12];
+            }
+            if (edgeSmoothingGroupCache == null)
+            {
+                edgeSmoothingGroupCache = new int[12];
+            }
+            if (projectedEdgeVertexIndexCache == null)
+            {
+                projectedEdgeVertexIndexCache =
+                    new int[VoxelMeshData.ProjectedEdgeCacheSize];
+            }
+            Vector3[] edgePositions = edgePositionCache;
+            int[] edgeSmoothingGroups = edgeSmoothingGroupCache;
+            int[] projectedEdgeVertexIndices = projectedEdgeVertexIndexCache;
             int sampleCountX = cellCountX + 1;
             int sampleCountY = cellCountY + 1;
             int sampleCountZ = cellCountZ + 1;

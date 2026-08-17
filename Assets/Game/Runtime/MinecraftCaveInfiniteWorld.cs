@@ -36,6 +36,9 @@ namespace Supernova.MinecraftCaves
     [DisallowMultipleComponent]
     public sealed class MinecraftCaveInfiniteWorld : MonoBehaviour, IVoxelTerrain
     {
+        public static event Action<MinecraftCaveInfiniteWorld> InstanceEnabled;
+        public static event Action<MinecraftCaveInfiniteWorld> InstanceDisabled;
+
         public const int GenerationRadiusInChunks = 4;
         public const int RequiredChunkCountAtRadius = 49;
         public const int MeshSectionHeight = 32;
@@ -49,6 +52,7 @@ namespace Supernova.MinecraftCaves
             VoxelColumnChunkData.Height - 1 - MaximumSpawnDepthBelowTop;
         private const int InitialSpawnRadiusInChunks = 1;
         private const int PreviewRadiusInChunks = 8;
+        private const int DenseJigsawSelectionPaddingInChunks = 2;
         private const int MonsterSpawnSeedSalt = unchecked((int)0xA511E9B3);
         private const int MonsterSpawnRoundSeedStep = unchecked((int)0x9E3779B9);
         private const int NaturalMonsterSpawnGroupSize = 1;
@@ -59,8 +63,13 @@ namespace Supernova.MinecraftCaves
 
         private const int MinimumExitClearanceRadiusInSamples = 1;
         private const float InitialLoadPresentationFadeSeconds = 0.5f;
-        private const int ChunkObjectsDestroyedPerFrame = 2;
-        private const int MeshSnapshotsCapturedPerFrame = 1;
+        private const int MinimumChunkObjectsDestroyedPerFrame = 2;
+        private const int MaximumChunkObjectsDestroyedPerFrame = 8;
+        private const float ChunkDestructionBudgetMilliseconds = 1f;
+        private const int MaximumPooledChunkObjects = 32;
+        private const int MaximumPooledChunkMeshes = 2;
+        private const int MaximumPooledTreasureInstances = 64;
+        private const int DefaultMaximumPooledMonsterInstances = 32;
         private const string TerrainSurfaceLayerObjectName =
             "TerrainSurfaceLayer";
         private const string SurfaceContentObjectName = "SurfaceContent";
@@ -83,10 +92,25 @@ namespace Supernova.MinecraftCaves
             new ProfilerMarker("MinecraftWorld.Update.MeshCommit");
         private static readonly ProfilerMarker UpdateMeshSnapshotMarker =
             new ProfilerMarker("MinecraftWorld.Update.MeshSnapshot");
+        private static readonly ProfilerMarker UpdateMeshPostProcessMarker =
+            new ProfilerMarker("MinecraftWorld.Update.MeshPostProcess");
         private static readonly ProfilerMarker UpdateDestructionMarker =
             new ProfilerMarker("MinecraftWorld.Update.Destruction");
         private static readonly ProfilerMarker UpdateReadyMarker =
             new ProfilerMarker("MinecraftWorld.Update.Ready");
+        private static readonly ProfilerMarker UpdatePhysicsFinalizeMarker =
+            new ProfilerMarker("MinecraftWorld.Update.PhysicsFinalize");
+        private static readonly ProfilerMarker DenseJigsawSelectionMarker =
+            new ProfilerMarker("MinecraftWorld.Streaming.DenseJigsawSelection");
+        private static readonly ProfilerMarker DenseJigsawCommitMarker =
+            new ProfilerMarker(
+                "MinecraftWorld.Streaming.DenseJigsawSelection.Commit");
+        private static readonly ProfilerMarker MeshColliderPostProcessMarker =
+            new ProfilerMarker("MinecraftWorld.MeshPostProcess.Collider");
+        private static readonly ProfilerMarker MeshSurfaceUploadMarker =
+            new ProfilerMarker("MinecraftWorld.MeshPostProcess.SurfaceUpload");
+        private static readonly ProfilerMarker MeshSurfaceObjectsMarker =
+            new ProfilerMarker("MinecraftWorld.MeshPostProcess.SurfaceObjects");
 
         private static readonly ReadOnlyCollection<Vector3Int> RequiredOffsets =
             Array.AsReadOnly(BuildRequiredOffsets());
@@ -103,9 +127,11 @@ namespace Supernova.MinecraftCaves
 
         [Header("Level")]
         [Tooltip(
-            "Optional level used by isolated test/demo scenes. Product scenes "
-            + "use the level selected by MissionGameLoop.")]
-        [SerializeField] private LevelConfiguration levelConfigurationOverride;
+            "Ordered levels supported by this scene. The active mission or "
+            + "persisted level number selects one entry from this list.")]
+        [SerializeField]
+        private List<LevelConfiguration> levelConfigurations =
+            new List<LevelConfiguration>();
         [Tooltip(
             "Optional direct world-generation configuration for isolated preview "
             + "scenes that do not need mission, treasure, or monster settings.")]
@@ -132,8 +158,21 @@ namespace Supernova.MinecraftCaves
         private LevelConfiguration levelConfiguration;
         private MinecraftWorldGenerationConfiguration worldGenerationConfiguration;
         private bool placeViewerInCave = true;
-        private int maxConcurrentGenerationJobs = 4;
-        private int meshesBuiltPerFrame = 1;
+        private int maxConcurrentGenerationJobs = 2;
+        private int maxConcurrentMeshJobs = 1;
+        private int meshesBuiltPerFrame = 2;
+        private int meshSnapshotsCapturedPerFrame = 2;
+        private float meshCommitBudgetMilliseconds = 4f;
+        private float meshSnapshotBudgetMilliseconds = 2f;
+        private int voxelDataRetentionRadiusInChunks = 3;
+
+        private readonly System.Diagnostics.Stopwatch meshCommitStopwatch =
+            new System.Diagnostics.Stopwatch();
+        private readonly System.Diagnostics.Stopwatch meshSnapshotStopwatch =
+            new System.Diagnostics.Stopwatch();
+        private readonly System.Diagnostics.Stopwatch
+            chunkDestructionStopwatch =
+                new System.Diagnostics.Stopwatch();
         private DepthProbabilityProfile oreDepthProbability =
             new DepthProbabilityProfile();
         private DepthProbabilityProfile treasureDepthProbability =
@@ -166,6 +205,8 @@ namespace Supernova.MinecraftCaves
         private List<JigsawStructureFeatureDefinition> jigsawStructures =
             new List<JigsawStructureFeatureDefinition>();
         private CaveBiomeCatalog caveBiomeCatalog;
+        private CaveSurfaceGenerationSnapshot caveSurfaceGenerationSnapshot;
+        private CaveSurfaceBuildResult applyingSurfaceBuildResult;
         private TreasureSpawnTable treasureSpawnTable;
         private MonsterSpawnTable monsterSpawnTable;
         private SpawnPointStructureRule spawnPointStructureRule =
@@ -183,6 +224,11 @@ namespace Supernova.MinecraftCaves
         private readonly HashSet<Vector3Int> builtMeshes = new HashSet<Vector3Int>();
         private readonly Dictionary<Vector3Int, Task<MeshGenerationResult>> meshTasks =
             new Dictionary<Vector3Int, Task<MeshGenerationResult>>();
+        private readonly Queue<MeshPostProcessRequest>
+            meshPostProcessQueue = new Queue<MeshPostProcessRequest>();
+        private readonly Dictionary<Vector3Int, MeshPostProcessRequest>
+            pendingMeshPostProcesses =
+                new Dictionary<Vector3Int, MeshPostProcessRequest>();
         private readonly Dictionary<Vector3Int, int> meshBuildVersions =
             new Dictionary<Vector3Int, int>();
         private readonly List<Vector3Int> completedMeshCoordinates =
@@ -200,12 +246,23 @@ namespace Supernova.MinecraftCaves
 
         private readonly Dictionary<Vector3Int, GameObject> chunkObjects =
             new Dictionary<Vector3Int, GameObject>();
+        private readonly Stack<GameObject> pooledChunkObjects =
+            new Stack<GameObject>();
+        private readonly Stack<Mesh> pooledChunkMeshes =
+            new Stack<Mesh>();
         private readonly Dictionary<Vector3Int, Mesh> chunkMeshes =
             new Dictionary<Vector3Int, Mesh>();
         private readonly Dictionary<Vector3Int, Mesh> terrainSurfaceMeshes =
             new Dictionary<Vector3Int, Mesh>();
         private readonly HashSet<Vector3Int> gameplayCarvedVoxels =
             new HashSet<Vector3Int>();
+        private readonly Dictionary<
+            Vector3Int,
+            Dictionary<Vector3Int, VoxelSample>> gameplayVoxelOverridesByColumn =
+                new Dictionary<Vector3Int, Dictionary<Vector3Int, VoxelSample>>();
+        private readonly List<Vector2Int> voxelColumnsToEvict =
+            new List<Vector2Int>();
+        private int gameplayVoxelOverrideCount;
         private readonly Queue<Vector3Int> chunkDestructionQueue =
             new Queue<Vector3Int>();
         private readonly HashSet<Vector3Int> queuedChunkDestructions =
@@ -218,14 +275,35 @@ namespace Supernova.MinecraftCaves
         private readonly List<PendingOreTerrainRelease>
             pendingOreTerrainReleases =
                 new List<PendingOreTerrainRelease>();
+        private readonly HashSet<MinedOreDrop>
+            oreDropsAwaitingPhysicsSync =
+                new HashSet<MinedOreDrop>();
         private readonly List<TreasurePickup> activeTreasures =
             new List<TreasurePickup>();
+        private readonly Dictionary<GameObject, Stack<TreasurePickup>>
+            pooledTreasuresByPrefab =
+                new Dictionary<GameObject, Stack<TreasurePickup>>();
+        private readonly Dictionary<TreasurePickup, GameObject>
+            activeTreasurePrefabs =
+                new Dictionary<TreasurePickup, GameObject>();
+        private int pooledTreasureInstanceCount;
         private readonly HashSet<Vector3Int> treasureSpawnedColumns =
             new HashSet<Vector3Int>();
         private readonly HashSet<Vector3Int> pendingTreasureColumns =
             new HashSet<Vector3Int>();
+        private readonly HashSet<Vector3Int> pendingPhysicsColumns =
+            new HashSet<Vector3Int>();
+        private readonly List<Vector3Int> pendingPhysicsColumnBuffer =
+            new List<Vector3Int>();
         private readonly List<CreatureBehaviorAgent> activeMonsters =
             new List<CreatureBehaviorAgent>();
+        private readonly Dictionary<GameObject, Stack<CreatureBehaviorAgent>>
+            pooledMonstersByPrefab =
+                new Dictionary<GameObject, Stack<CreatureBehaviorAgent>>();
+        private readonly Dictionary<CreatureBehaviorAgent, GameObject>
+            activeMonsterPrefabs =
+                new Dictionary<CreatureBehaviorAgent, GameObject>();
+        private int pooledMonsterInstanceCount;
         private readonly Queue<PendingMonsterGroupSpawn> pendingMonsterSpawnGroups =
             new Queue<PendingMonsterGroupSpawn>();
         private readonly List<Vector3Int> monsterSpawnCandidateColumns =
@@ -241,6 +319,9 @@ namespace Supernova.MinecraftCaves
             new HashSet<Vector3Int>();
         private readonly List<StructureSpawnRequest> markerSpawnBuffer =
             new List<StructureSpawnRequest>();
+        private readonly List<CaveSurfacePlacement>
+            instancedSurfacePlacementBuffer =
+                new List<CaveSurfacePlacement>();
         private readonly HashSet<Vector3Int> checkpointSpawnedColumns =
             new HashSet<Vector3Int>();
         private readonly HashSet<Vector3Int> placedCheckpointVoxels =
@@ -272,6 +353,14 @@ namespace Supernova.MinecraftCaves
             Array.Empty<JigsawStructureFeatureSettings>();
         private DenseJigsawFeature denseJigsawFeature;
         private JigsawPlacementSelection denseJigsawPlacementSelection;
+        private DenseJigsawSelectionTaskHandle denseJigsawSelectionTask;
+        private bool denseJigsawSelectionPending;
+        private bool hasDenseJigsawSelectionWindow;
+        private int denseJigsawSelectionMinimumChunkX;
+        private int denseJigsawSelectionMaximumChunkX;
+        private int denseJigsawSelectionMinimumChunkZ;
+        private int denseJigsawSelectionMaximumChunkZ;
+        private int denseJigsawSelectionRebuildCount;
         private CancellationTokenSource generationCancellation;
         private Material runtimeMaterial;
         private Material runtimeTerrainSurfaceMaterial;
@@ -296,6 +385,10 @@ namespace Supernova.MinecraftCaves
         private CharacterController frozenCharacterController;
         private bool frozenControllerWasEnabled;
         private MinecraftCaveGenerationStage generationStage;
+        private MinecraftCaveGenerationStage publishedInitialLoadStage =
+            (MinecraftCaveGenerationStage)(-1);
+        private int publishedInitialLoadPercent = -1;
+        private bool publishedInitialLoadComplete;
 
         public InfiniteVoxelWorld World => world;
         public int WorldSeed => worldSeed;
@@ -313,6 +406,20 @@ namespace Supernova.MinecraftCaves
         public int InFlightChunkCount => generationTasks.Count;
         public int QueuedChunkCount => generationQueue.Count;
         public int RenderedChunkCount => chunkObjects.Count;
+        public int CachedVoxelColumnCount => world != null ? world.ChunkCount : 0;
+        public int GameplayVoxelOverrideCount => gameplayVoxelOverrideCount;
+        public int DenseJigsawSelectionRebuildCount =>
+            denseJigsawSelectionRebuildCount;
+        public bool IsDenseJigsawSelectionPending =>
+            denseJigsawSelectionPending;
+        public int PendingMeshPostProcessCount =>
+            pendingMeshPostProcesses.Count;
+        public int PooledChunkObjectCount => pooledChunkObjects.Count;
+        public int PooledChunkMeshCount => pooledChunkMeshes.Count;
+        public int PooledTreasureInstanceCount =>
+            pooledTreasureInstanceCount;
+        public int PooledMonsterInstanceCount =>
+            pooledMonsterInstanceCount;
         public Vector3Int ViewerChunk => viewerChunk;
         public Vector3Int SpawnVoxel => spawnVoxel;
         public Vector3 SpawnWorldPosition => targetSpawnWorldPosition;
@@ -321,6 +428,8 @@ namespace Supernova.MinecraftCaves
             authoredSpawnWorldRotation;
         public GameObject PrimarySpawnCheckpoint => primarySpawnCheckpoint;
         public event Action<GameObject> PrimarySpawnCheckpointCreated;
+        public event Action<MinecraftCaveGenerationStage, float, bool>
+            InitialLoadProgressChanged;
         public MinecraftCaveGenerationStage GenerationStage => generationStage;
         public bool IsGlobalGravitySuspendedForInitialLoad => globalGravitySuspended;
         public bool IsInitialLoadComplete => initialLoadComplete;
@@ -358,6 +467,8 @@ namespace Supernova.MinecraftCaves
             structureFeatures;
         public CaveBiomeCatalog CaveBiomeCatalog => caveBiomeCatalog;
         public LevelConfiguration LevelConfiguration => levelConfiguration;
+        public IReadOnlyList<LevelConfiguration> ConfiguredLevels =>
+            levelConfigurations;
         public MinecraftWorldGenerationConfiguration WorldGenerationConfiguration =>
             worldGenerationConfiguration;
         public IReadOnlyList<MinedOreDrop> ActiveOreDrops => activeOreDrops;
@@ -425,6 +536,31 @@ namespace Supernova.MinecraftCaves
                 viewer = worldViewer;
             }
             return true;
+        }
+
+        public bool ConfigureLevels(
+            IReadOnlyList<LevelConfiguration> levels)
+        {
+            if (world != null)
+            {
+                Debug.LogError(
+                    "Level configurations cannot be changed after world "
+                    + "initialization has started.",
+                    this);
+                return false;
+            }
+
+            levelConfigurations.Clear();
+            if (levels != null)
+            {
+                for (int i = 0; i < levels.Count; i++)
+                {
+                    LevelConfiguration level = levels[i];
+                    if (level != null && !levelConfigurations.Contains(level))
+                        levelConfigurations.Add(level);
+                }
+            }
+            return levelConfigurations.Count > 0;
         }
 
         public bool BeginNaturalMonsterSpawningAfterPortalEntry()
@@ -506,7 +642,16 @@ namespace Supernova.MinecraftCaves
             settings = value.Settings;
             placeViewerInCave = value.PlaceViewerInCave;
             maxConcurrentGenerationJobs = value.MaxConcurrentGenerationJobs;
+            maxConcurrentMeshJobs = value.MaxConcurrentMeshJobs;
             meshesBuiltPerFrame = value.MeshesBuiltPerFrame;
+            meshSnapshotsCapturedPerFrame =
+                value.MeshSnapshotsCapturedPerFrame;
+            meshCommitBudgetMilliseconds =
+                value.MeshCommitBudgetMilliseconds;
+            meshSnapshotBudgetMilliseconds =
+                value.MeshSnapshotBudgetMilliseconds;
+            voxelDataRetentionRadiusInChunks =
+                value.VoxelDataRetentionRadiusInChunks;
             oreDepthProbability =
                 value.OreDepthProbability ?? new DepthProbabilityProfile();
             treasureDepthProbability =
@@ -526,6 +671,8 @@ namespace Supernova.MinecraftCaves
             bedrockVoxelType = value.BedrockVoxelType;
             oreFeatures = new List<VoxelOreFeatureDefinition>(value.OreFeatures);
             caveBiomeCatalog = value.CaveBiomeCatalog;
+            caveSurfaceGenerationSnapshot =
+                CaveSurfaceGenerationSnapshot.Capture(caveBiomeCatalog);
             structureFeatures =
                 new List<VoxelStructureFeatureDefinition>(value.StructureFeatures);
             jigsawStructures = new List<JigsawStructureFeatureDefinition>(
@@ -564,6 +711,28 @@ namespace Supernova.MinecraftCaves
         }
 
         /// <summary>
+        /// Copies mesh-section coordinates queued by mutations in an adopted
+        /// world so its external renderer can rebuild only the affected sections.
+        /// </summary>
+        public int CollectAdoptedWorldDirtyMeshes(
+            ISet<Vector3Int> destination)
+        {
+            if (destination == null)
+            {
+                throw new ArgumentNullException(nameof(destination));
+            }
+            if (!usesExternalWorldRendering)
+            {
+                return 0;
+            }
+
+            int previousCount = destination.Count;
+            destination.UnionWith(dirtyMeshes);
+            destination.UnionWith(priorityDirtyMeshes);
+            return destination.Count - previousCount;
+        }
+
+        /// <summary>
         /// Clears mesh rebuild requests after an external renderer has synchronously
         /// presented mutations made by the shared gameplay runtime.
         /// </summary>
@@ -585,41 +754,88 @@ namespace Supernova.MinecraftCaves
                     pendingOreTerrainReleases[i];
                 if (pending.Drop != null)
                 {
-                    pending.Drop.ReleaseAfterTerrainColliderRebuild();
+                    oreDropsAwaitingPhysicsSync.Add(pending.Drop);
                 }
             }
             pendingOreTerrainReleases.Clear();
+            if (oreDropsAwaitingPhysicsSync.Count > 0)
+            {
+                Physics.SyncTransforms();
+                ReleaseOreDropsAfterPhysicsSync();
+            }
         }
 
         private void OnEnable()
         {
             if (Application.isPlaying)
             {
+                LevelConfiguration selectedLevel =
+                    ResolveConfiguredLevelConfiguration();
                 bool configurationApplied =
-                    denseJigsawRegionConfigurationOverride != null
-                        ? ApplyLevelConfiguration(
-                            denseJigsawRegionConfigurationOverride
-                                .InfiniteCavesLevelSource)
-                        : worldGenerationConfigurationOverride != null
-                            ? ApplyWorldGenerationConfiguration(
-                                worldGenerationConfigurationOverride)
-                            : ApplyLevelConfiguration(
-                                levelConfigurationOverride != null
-                                    ? levelConfigurationOverride
-                                    : MissionGameLoop.CurrentLevelConfiguration);
+                    worldGenerationConfigurationOverride != null
+                        ? ApplyWorldGenerationConfiguration(
+                            worldGenerationConfigurationOverride)
+                        : ApplyLevelConfiguration(selectedLevel);
                 if (!configurationApplied)
                 {
                     Debug.LogError(
                         "MinecraftCaveInfiniteWorld requires either a direct "
-                        + "MinecraftWorldGenerationConfiguration or an active "
-                        + "LevelConfiguration before it can initialize.",
+                        + "MinecraftWorldGenerationConfiguration or a valid "
+                        + "LevelConfiguration from its configured level list "
+                        + "before it can initialize.",
                         this);
                     enabled = false;
                     return;
                 }
                 ApplyPunctualLightFalloffParameters();
                 InitializeWorld();
+                ResetPublishedInitialLoadProgress();
+                InstanceEnabled?.Invoke(this);
+                PublishInitialLoadProgress();
             }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetRuntimeEvents()
+        {
+            InstanceEnabled = null;
+            InstanceDisabled = null;
+        }
+
+        private LevelConfiguration ResolveConfiguredLevelConfiguration()
+        {
+            LevelConfiguration activeLevel =
+                MissionGameLoop.CurrentLevelConfiguration;
+            if (levelConfigurations == null || levelConfigurations.Count == 0)
+                return activeLevel;
+
+            if (activeLevel != null)
+            {
+                for (int i = 0; i < levelConfigurations.Count; i++)
+                {
+                    LevelConfiguration candidate = levelConfigurations[i];
+                    if (candidate == activeLevel
+                        || candidate != null
+                        && candidate.LevelNumber == activeLevel.LevelNumber)
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            if (MissionProgressPersistence.TryLoadLevel(
+                    levelConfigurations,
+                    out LevelConfiguration savedLevel))
+            {
+                return savedLevel;
+            }
+
+            for (int i = 0; i < levelConfigurations.Count; i++)
+            {
+                if (levelConfigurations[i] != null)
+                    return levelConfigurations[i];
+            }
+            return activeLevel;
         }
 
         private void Update()
@@ -645,6 +861,7 @@ namespace Supernova.MinecraftCaves
 
             using (UpdateStreamingMarker.Auto())
             {
+                CommitDenseJigsawSelectionTask();
                 RefreshStreamingForViewerMovement();
             }
 
@@ -666,12 +883,17 @@ namespace Supernova.MinecraftCaves
             ProcessPendingMonsterSpawns();
             using (UpdateDestructionMarker.Auto())
             {
-                ProcessChunkDestructions(ChunkObjectsDestroyedPerFrame);
+                ProcessChunkDestructions();
             }
             using (UpdateReadyMarker.Auto())
             {
                 ReportReadyState();
             }
+            using (UpdatePhysicsFinalizeMarker.Auto())
+            {
+                ProcessPendingColumnPhysics();
+            }
+            PublishInitialLoadProgress();
         }
 
         private void RefreshStreamingForViewerMovement()
@@ -939,11 +1161,8 @@ namespace Supernova.MinecraftCaves
                     }
                     else
                     {
-                        gameplayCarvedVoxels.Add(coordinate);
-                        world.SetVoxel(
-                            coordinate.x,
-                            coordinate.y,
-                            coordinate.z,
+                        SetGameplayVoxel(
+                            coordinate,
                             isoLevel - 1f,
                             VoxelTypeId.Air);
                         miningProgress.Reset(coordinate);
@@ -955,11 +1174,8 @@ namespace Supernova.MinecraftCaves
                 }
                 else
                 {
-                    gameplayCarvedVoxels.Add(coordinate);
-                    world.SetVoxel(
-                        coordinate.x,
-                        coordinate.y,
-                        coordinate.z,
+                    SetGameplayVoxel(
+                        coordinate,
                         isoLevel - 1f,
                         VoxelTypeId.Air);
                     miningProgress.Reset(coordinate);
@@ -1212,11 +1428,8 @@ namespace Supernova.MinecraftCaves
 
         private void RemoveExplosionVoxel(Vector3Int coordinate)
         {
-            gameplayCarvedVoxels.Add(coordinate);
-            world.SetVoxel(
-                coordinate.x,
-                coordinate.y,
-                coordinate.z,
+            SetGameplayVoxel(
+                coordinate,
                 isoLevel - 1f,
                 VoxelTypeId.Air);
             miningProgress.Reset(coordinate);
@@ -1269,11 +1482,8 @@ namespace Supernova.MinecraftCaves
             var oreAffectedMeshes = new HashSet<Vector3Int>();
             foreach (Vector3Int coordinate in component)
             {
-                gameplayCarvedVoxels.Add(coordinate);
-                world.SetVoxel(
-                    coordinate.x,
-                    coordinate.y,
-                    coordinate.z,
+                SetGameplayVoxel(
+                    coordinate,
                     isoLevel - 1f,
                     VoxelTypeId.Air);
                 miningProgress.Reset(coordinate);
@@ -1282,7 +1492,7 @@ namespace Supernova.MinecraftCaves
                     oreAffectedMeshes);
             }
             affectedMeshes.UnionWith(oreAffectedMeshes);
-            if (Application.isPlaying && !usesExternalWorldRendering)
+            if (Application.isPlaying)
             {
                 RegisterOreTerrainRelease(drop, oreAffectedMeshes);
             }
@@ -1321,10 +1531,25 @@ namespace Supernova.MinecraftCaves
                     continue;
                 }
 
-                pending.Drop.ReleaseAfterTerrainColliderRebuild();
+                // Keep collision damage protection active until every rebuilt
+                // terrain collider has also been synchronized into PhysX.
+                oreDropsAwaitingPhysicsSync.Add(pending.Drop);
                 pendingOreTerrainReleases.RemoveAt(i);
             }
         }
+
+        private void ReleaseOreDropsAfterPhysicsSync()
+        {
+            foreach (MinedOreDrop drop in oreDropsAwaitingPhysicsSync)
+            {
+                if (drop != null)
+                {
+                    drop.ReleaseAfterTerrainColliderRebuild();
+                }
+            }
+            oreDropsAwaitingPhysicsSync.Clear();
+        }
+
 
         private HashSet<Vector3Int> FindConnectedOreVein(
             Vector3Int start,
@@ -1417,18 +1642,16 @@ namespace Supernova.MinecraftCaves
             var dropObject = new GameObject($"Recovered {displayName} Chunk");
             dropObject.hideFlags = HideFlags.DontSave;
             Vector3 escapeDirection = ResolveOreEscapeDirection(component);
-            Vector3 recoveryOffset = (escapeDirection + Vector3.up * 0.35f)
-                .normalized * (voxelSize * 1.15f);
+            // Keep the recovered mesh in the exact cavity frame. Scaling or
+            // decorative rotation here would make the collider intersect the
+            // freshly rebuilt terrain before its first physics step.
             dropObject.transform.SetPositionAndRotation(
-                coordinateFrame.TransformPoint(meshCentre - gridPivot)
-                    + coordinateFrame.TransformVector(recoveryOffset),
-                coordinateFrame.rotation * Quaternion.Euler(12f, 24f, 8f));
-            // A recovered ore is a compact, readable loot chunk rather than an
-            // exact duplicate of the in-rock vein. The smaller collision envelope
-            // plus the cavity-facing offset prevents it being born wedged in stone.
+                coordinateFrame.TransformPoint(meshCentre - gridPivot),
+                coordinateFrame.rotation);
             dropObject.transform.localScale = Vector3.Scale(
                 coordinateFrame.lossyScale,
                 Vector3.one * MinedOreDrop.RecoveredLinearScale);
+
 
             MeshFilter filter = dropObject.AddComponent<MeshFilter>();
             Renderer renderer = dropObject.GetComponent<Renderer>();
@@ -1450,6 +1673,7 @@ namespace Supernova.MinecraftCaves
                     : CreateRecoveredOreMaterial(
                         sourceMaterial,
                         displayName);
+            DisableRecoveredOreSparkles(recoveredMaterial);
             renderer.sharedMaterial = recoveredMaterial;
             renderer.shadowCastingMode =
                 UnityEngine.Rendering.ShadowCastingMode.On;
@@ -1497,6 +1721,17 @@ namespace Supernova.MinecraftCaves
             return drop;
         }
 
+        private static void DisableRecoveredOreSparkles(Material material)
+        {
+            const string sparkleDensityProperty =
+                "_DetailAlbedoMapScale";
+            if (material != null
+                && material.HasProperty(sparkleDensityProperty))
+            {
+                material.SetFloat(sparkleDensityProperty, 0f);
+            }
+        }
+
         private static Material CloneRecoveredOreMaterial(
             Material template,
             Material source,
@@ -1508,7 +1743,42 @@ namespace Supernova.MinecraftCaves
                 hideFlags = HideFlags.DontSave,
             };
             OverrideRecoveredBaseMap(material, source);
+            OverrideRecoveredCrystalProperties(material, source);
             return material;
+        }
+
+        private static void OverrideRecoveredCrystalProperties(
+            Material recovered,
+            Material source)
+        {
+            CopyRecoveredColor(recovered, source, "_BaseColor");
+            CopyRecoveredColor(recovered, source, "_Color");
+            CopyRecoveredColor(recovered, source, "_EmissionColor");
+            CopyRecoveredFloat(recovered, source, "_ClearCoatMask");
+            CopyRecoveredFloat(recovered, source, "_Metallic");
+            CopyRecoveredFloat(recovered, source, "_Smoothness");
+        }
+
+        private static void CopyRecoveredColor(
+            Material recovered,
+            Material source,
+            string property)
+        {
+            if (recovered.HasProperty(property) && source.HasProperty(property))
+            {
+                recovered.SetColor(property, source.GetColor(property));
+            }
+        }
+
+        private static void CopyRecoveredFloat(
+            Material recovered,
+            Material source,
+            string property)
+        {
+            if (recovered.HasProperty(property) && source.HasProperty(property))
+            {
+                recovered.SetFloat(property, source.GetFloat(property));
+            }
         }
 
         private static void OverrideRecoveredBaseMap(
@@ -1617,7 +1887,7 @@ namespace Supernova.MinecraftCaves
             return material;
         }
 
-        private static Vector3 ResolveOreEscapeDirection(
+        private Vector3 ResolveOreEscapeDirection(
             HashSet<Vector3Int> component)
         {
             Vector3 direction = Vector3.zero;
@@ -1626,19 +1896,53 @@ namespace Supernova.MinecraftCaves
                 Vector3Int.right, Vector3Int.left, Vector3Int.up,
                 Vector3Int.down, Vector3Int.forward, Vector3Int.back,
             };
+            var openFaceCounts = new int[neighbours.Length];
             foreach (Vector3Int coordinate in component)
             {
                 for (int i = 0; i < neighbours.Length; i++)
                 {
-                    if (!component.Contains(coordinate + neighbours[i]))
+                    Vector3Int neighbour = coordinate + neighbours[i];
+                    if (component.Contains(neighbour))
                     {
-                        direction += (Vector3)neighbours[i];
+                        continue;
                     }
+
+                    bool isOpen = world == null
+                        || !world.TryGetSample(
+                            neighbour.x,
+                            neighbour.y,
+                            neighbour.z,
+                            out VoxelSample sample)
+                        || !sample.IsSolid(isoLevel);
+                    if (!isOpen)
+                    {
+                        continue;
+                    }
+
+                    openFaceCounts[i]++;
+                    direction += (Vector3)neighbours[i];
                 }
             }
-            if (direction.sqrMagnitude < 0.001f) direction = Vector3.up;
-            return direction.normalized;
+            if (direction.sqrMagnitude >= 0.001f)
+            {
+                return direction.normalized;
+            }
+
+            int mostOpenFaceIndex = -1;
+            for (int i = 0; i < openFaceCounts.Length; i++)
+            {
+                if (mostOpenFaceIndex < 0
+                    || openFaceCounts[i] > openFaceCounts[mostOpenFaceIndex])
+                {
+                    mostOpenFaceIndex = i;
+                }
+            }
+            return mostOpenFaceIndex >= 0
+                && openFaceCounts[mostOpenFaceIndex] > 0
+                    ? (Vector3)neighbours[mostOpenFaceIndex]
+                    : Vector3.up;
         }
+
 
         private VoxelOreFeatureDefinition FindOreFeature(VoxelTypeId type)
         {
@@ -1698,18 +2002,57 @@ namespace Supernova.MinecraftCaves
             if (!occupancyChanged && !typeChanged) return false;
 
             var coordinate = new Vector3Int(worldX, worldY, worldZ);
-            if (previous.IsSolid(isoLevel) && density < isoLevel)
-            {
-                gameplayCarvedVoxels.Add(coordinate);
-            }
-            else if (density >= isoLevel)
-            {
-                gameplayCarvedVoxels.Remove(coordinate);
-            }
-            world.SetVoxel(worldX, worldY, worldZ, density, normalizedType);
+            SetGameplayVoxel(coordinate, density, normalizedType);
             miningProgress.Reset(coordinate);
             QueueMeshesAffectedByVoxel(coordinate);
             return true;
+        }
+
+        private void SetGameplayVoxel(
+            Vector3Int coordinate,
+            float density,
+            VoxelTypeId type)
+        {
+            world.SetVoxel(
+                coordinate.x,
+                coordinate.y,
+                coordinate.z,
+                density,
+                type);
+            if (!world.TryGetSample(
+                    coordinate.x,
+                    coordinate.y,
+                    coordinate.z,
+                    out VoxelSample current))
+            {
+                return;
+            }
+
+            Vector3Int column = InfiniteVoxelWorld.WorldToChunk(
+                coordinate.x,
+                coordinate.y,
+                coordinate.z);
+            if (!gameplayVoxelOverridesByColumn.TryGetValue(
+                    column,
+                    out Dictionary<Vector3Int, VoxelSample> overrides))
+            {
+                overrides = new Dictionary<Vector3Int, VoxelSample>();
+                gameplayVoxelOverridesByColumn.Add(column, overrides);
+            }
+            if (!overrides.ContainsKey(coordinate))
+            {
+                gameplayVoxelOverrideCount++;
+            }
+            overrides[coordinate] = current;
+
+            if (current.IsSolid(isoLevel))
+            {
+                gameplayCarvedVoxels.Remove(coordinate);
+            }
+            else
+            {
+                gameplayCarvedVoxels.Add(coordinate);
+            }
         }
 
         private void QueueMeshesAffectedByVoxel(Vector3Int coordinate)
@@ -1821,6 +2164,7 @@ namespace Supernova.MinecraftCaves
             dirtyMeshes.Clear();
             priorityMeshQueue.Clear();
             priorityDirtyMeshes.Clear();
+            pendingPhysicsColumns.Clear();
             renderingReadyLogged = false;
             generationStage = MinecraftCaveGenerationStage.Terrain;
 
@@ -1878,11 +2222,11 @@ namespace Supernova.MinecraftCaves
 
             CancelGenerationTasksOutsideRequiredSet();
             CullMeshesOutsideRequiredSet();
+            CullVoxelDataOutsideRetentionRadius();
         }
 
         private void RefreshDenseJigsawPlacementSelection()
         {
-            denseJigsawPlacementSelection = null;
             if (!HasDenseJigsawConfiguration
                 || !denseJigsawRegionConfigurationOverride
                     .PreventStructureIntersections
@@ -1890,6 +2234,9 @@ namespace Supernova.MinecraftCaves
                 || jigsawStructureSettings.Length == 0
                 || requiredChunks.Count == 0)
             {
+                CancelDenseJigsawSelectionTask();
+                denseJigsawPlacementSelection = null;
+                hasDenseJigsawSelectionWindow = false;
                 return;
             }
 
@@ -1909,14 +2256,159 @@ namespace Supernova.MinecraftCaves
                 maximumChunkZ = Math.Max(maximumChunkZ, coordinate.z);
             }
 
-            denseJigsawPlacementSelection =
-                JigsawPlacementSelection.CreateNonIntersecting(
-                    jigsawStructureSettings,
-                    densityField != null ? densityField.Seed : worldSeed,
-                    minimumChunkX * VoxelColumnChunkData.Width,
-                    minimumChunkZ * VoxelColumnChunkData.Depth,
-                    (maximumChunkX + 1) * VoxelColumnChunkData.Width - 1,
-                    (maximumChunkZ + 1) * VoxelColumnChunkData.Depth - 1);
+            if (hasDenseJigsawSelectionWindow
+                && denseJigsawPlacementSelection != null
+                && minimumChunkX >= denseJigsawSelectionMinimumChunkX
+                && maximumChunkX <= denseJigsawSelectionMaximumChunkX
+                && minimumChunkZ >= denseJigsawSelectionMinimumChunkZ
+                && maximumChunkZ <= denseJigsawSelectionMaximumChunkZ)
+            {
+                CancelDenseJigsawSelectionTask();
+                return;
+            }
+
+            if (denseJigsawSelectionTask != null
+                && denseJigsawSelectionTask.Contains(
+                    minimumChunkX,
+                    maximumChunkX,
+                    minimumChunkZ,
+                    maximumChunkZ))
+            {
+                denseJigsawSelectionPending = true;
+                return;
+            }
+
+            CancelDenseJigsawSelectionTask();
+            int padding = IsFiniteDenseRegion
+                ? 0
+                : DenseJigsawSelectionPaddingInChunks;
+            int selectionMinimumChunkX = minimumChunkX - padding;
+            int selectionMaximumChunkX = maximumChunkX + padding;
+            int selectionMinimumChunkZ = minimumChunkZ - padding;
+            int selectionMaximumChunkZ = maximumChunkZ + padding;
+            CancellationTokenSource cancellation =
+                generationCancellation != null
+                    ? CancellationTokenSource.CreateLinkedTokenSource(
+                        generationCancellation.Token)
+                    : new CancellationTokenSource();
+            CancellationToken token = cancellation.Token;
+            JigsawStructureFeatureSettings[] capturedSettings =
+                jigsawStructureSettings;
+            int capturedSeed =
+                densityField != null ? densityField.Seed : worldSeed;
+            Task<JigsawPlacementSelection> task = Task.Run(
+                () =>
+                {
+                    using (DenseJigsawSelectionMarker.Auto())
+                    {
+                        return JigsawPlacementSelection
+                            .CreateNonIntersecting(
+                                capturedSettings,
+                                capturedSeed,
+                                selectionMinimumChunkX
+                                    * VoxelColumnChunkData.Width,
+                                selectionMinimumChunkZ
+                                    * VoxelColumnChunkData.Depth,
+                                (selectionMaximumChunkX + 1)
+                                    * VoxelColumnChunkData.Width - 1,
+                                (selectionMaximumChunkZ + 1)
+                                    * VoxelColumnChunkData.Depth - 1,
+                                token);
+                    }
+                },
+                token);
+            denseJigsawSelectionTask =
+                new DenseJigsawSelectionTaskHandle(
+                    task,
+                    cancellation,
+                    selectionMinimumChunkX,
+                    selectionMaximumChunkX,
+                    selectionMinimumChunkZ,
+                    selectionMaximumChunkZ);
+            denseJigsawSelectionPending = true;
+            CancelGenerationTasksForDenseJigsawSelection();
+        }
+
+        private bool CommitDenseJigsawSelectionTask()
+        {
+            DenseJigsawSelectionTaskHandle handle =
+                denseJigsawSelectionTask;
+            if (handle == null || !handle.Task.IsCompleted)
+            {
+                return false;
+            }
+
+            denseJigsawSelectionTask = null;
+            denseJigsawSelectionPending = false;
+            try
+            {
+                if (handle.Task.IsCanceled)
+                {
+                    denseJigsawSelectionPending =
+                        generationCancellation != null
+                        && !generationCancellation.IsCancellationRequested;
+                    return false;
+                }
+                if (handle.Task.IsFaulted)
+                {
+                    Debug.LogException(
+                        handle.Task.Exception?.GetBaseException()
+                            ?? new InvalidOperationException(
+                                "Dense jigsaw selection task failed."),
+                        this);
+                    denseJigsawSelectionPending =
+                        generationCancellation != null
+                        && !generationCancellation.IsCancellationRequested;
+                    return false;
+                }
+
+                using (DenseJigsawCommitMarker.Auto())
+                {
+                    denseJigsawPlacementSelection = handle.Task.Result;
+                    denseJigsawSelectionMinimumChunkX =
+                        handle.MinimumChunkX;
+                    denseJigsawSelectionMaximumChunkX =
+                        handle.MaximumChunkX;
+                    denseJigsawSelectionMinimumChunkZ =
+                        handle.MinimumChunkZ;
+                    denseJigsawSelectionMaximumChunkZ =
+                        handle.MaximumChunkZ;
+                    hasDenseJigsawSelectionWindow = true;
+                    denseJigsawSelectionRebuildCount++;
+                }
+                return true;
+            }
+            finally
+            {
+                handle.Dispose();
+            }
+        }
+
+
+        private void CancelDenseJigsawSelectionTask()
+        {
+            DenseJigsawSelectionTaskHandle handle =
+                denseJigsawSelectionTask;
+            denseJigsawSelectionTask = null;
+            denseJigsawSelectionPending = false;
+            if (handle == null)
+            {
+                return;
+            }
+
+            handle.Cancel();
+            handle.Dispose();
+        }
+
+        private void CancelGenerationTasksForDenseJigsawSelection()
+        {
+            foreach (GenerationTaskHandle handle in generationTasks.Values)
+            {
+                handle.Cancel();
+                handle.Dispose();
+            }
+            generationTasks.Clear();
+            completedGenerationCoordinates.Clear();
         }
 
         private void CancelGenerationTasksOutsideRequiredSet()
@@ -1933,6 +2425,11 @@ namespace Supernova.MinecraftCaves
 
         private void DispatchGenerationTasks()
         {
+            if (denseJigsawSelectionPending)
+            {
+                return;
+            }
+
             while (generationTasks.Count < maxConcurrentGenerationJobs
                 && generationQueue.Count > 0)
             {
@@ -2048,6 +2545,10 @@ namespace Supernova.MinecraftCaves
 
         private void CommitChunk(ChunkGenerationResult result)
         {
+            ApplyGameplayVoxelOverrides(
+                result.Coordinate,
+                result.Densities,
+                result.Types);
             world.AddChunkTakingOwnership(
                 result.Coordinate,
                 result.Densities,
@@ -2072,6 +2573,34 @@ namespace Supernova.MinecraftCaves
         }
 
 
+
+        private void ApplyGameplayVoxelOverrides(
+            Vector3Int column,
+            float[] densities,
+            VoxelTypeId[] types)
+        {
+            if (!gameplayVoxelOverridesByColumn.TryGetValue(
+                    column,
+                    out Dictionary<Vector3Int, VoxelSample> overrides))
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<Vector3Int, VoxelSample> pair in overrides)
+            {
+                Vector3Int local = InfiniteVoxelWorld.WorldToLocal(
+                    pair.Key.x,
+                    pair.Key.y,
+                    pair.Key.z,
+                    column);
+                int index = VoxelColumnChunkData.ToIndex(
+                    local.x,
+                    local.y,
+                    local.z);
+                densities[index] = pair.Value.Density;
+                types[index] = pair.Value.Type;
+            }
+        }
 
         private void QueueMesh(Vector3Int coordinate, bool forceRebuild = false)
         {
@@ -2199,23 +2728,41 @@ namespace Supernova.MinecraftCaves
                 || generationStage == MinecraftCaveGenerationStage.Ready
                 || structurePassApplied;
 
+            meshCommitStopwatch.Restart();
+            using (UpdateMeshPostProcessMarker.Auto())
+            {
+                ProcessPendingMeshPostProcesses(
+                    budget,
+                    meshCommitBudgetMilliseconds);
+            }
             using (UpdateMeshCommitMarker.Auto())
             {
-                CommitCompletedMeshTasks(budget, canProcessStreamingMeshes);
+                CommitCompletedMeshTasks(
+                    budget,
+                    canProcessStreamingMeshes,
+                    meshCommitBudgetMilliseconds);
             }
+            meshCommitStopwatch.Stop();
+
+            meshSnapshotStopwatch.Restart();
             using (UpdateMeshSnapshotMarker.Auto())
             {
                 DispatchMeshTasks(
-                    MeshSnapshotsCapturedPerFrame,
-                    canProcessStreamingMeshes);
+                    meshSnapshotsCapturedPerFrame,
+                    canProcessStreamingMeshes,
+                    meshSnapshotBudgetMilliseconds);
             }
+            meshSnapshotStopwatch.Stop();
         }
-
         private void CommitCompletedMeshTasks(
             int budget,
-            bool includeStreamingMeshes)
+            bool includeStreamingMeshes,
+            float timeBudgetMilliseconds)
         {
-            if (meshTasks.Count == 0 || budget <= 0)
+            if (meshTasks.Count == 0
+                || budget <= 0
+                || meshCommitStopwatch.Elapsed.TotalMilliseconds
+                    >= timeBudgetMilliseconds)
             {
                 return;
             }
@@ -2228,8 +2775,17 @@ namespace Supernova.MinecraftCaves
                 CollectCompletedMeshTasks(budget, false);
             }
 
+            int processed = 0;
             foreach (Vector3Int coordinate in completedMeshCoordinates)
             {
+                if (processed > 0
+                    && meshCommitStopwatch.Elapsed.TotalMilliseconds
+                        >= timeBudgetMilliseconds)
+                {
+                    break;
+                }
+                processed++;
+
                 Task<MeshGenerationResult> task = meshTasks[coordinate];
                 meshTasks.Remove(coordinate);
                 bool wasPriority = priorityMeshTasks.Remove(coordinate);
@@ -2241,7 +2797,8 @@ namespace Supernova.MinecraftCaves
                 {
                     Debug.LogException(
                         task.Exception?.GetBaseException()
-                            ?? new InvalidOperationException("Mesh generation task failed."),
+                            ?? new InvalidOperationException(
+                                "Mesh generation task failed."),
                         this);
                     Vector3Int columnCoordinate = ToColumnCoordinate(coordinate);
                     if (world.TryGetChunk(columnCoordinate, out _))
@@ -2267,10 +2824,22 @@ namespace Supernova.MinecraftCaves
                     || priorityDirtyMeshes.Contains(coordinate)
                     || GetMeshBuildVersion(coordinate) != result.Version)
                 {
+                    result.Dispose();
                     continue;
                 }
 
-                ApplyChunkMeshData(coordinate, result.Data);
+                applyingSurfaceBuildResult =
+                    result.TakeSurfaceBuildResult();
+                try
+                {
+                    ApplyChunkMeshData(coordinate, result.Data);
+                }
+                finally
+                {
+                    applyingSurfaceBuildResult?.Dispose();
+                    applyingSurfaceBuildResult = null;
+                    result.Dispose();
+                }
             }
         }
 
@@ -2295,19 +2864,26 @@ namespace Supernova.MinecraftCaves
 
         private void DispatchMeshTasks(
             int captureBudget,
-            bool includeStreamingMeshes)
+            bool includeStreamingMeshes,
+            float timeBudgetMilliseconds)
         {
-            int maximumConcurrentMeshTasks = Mathf.Max(
-                1,
-                maxConcurrentGenerationJobs / 2);
             int priorityCandidates = priorityMeshQueue.Count;
             int streamingCandidates = includeStreamingMeshes
                 ? meshQueue.Count
                 : 0;
+            int attempted = 0;
             int captured = 0;
             while (captured < captureBudget
-                && meshTasks.Count < maximumConcurrentMeshTasks)
+                && meshTasks.Count < maxConcurrentMeshJobs)
             {
+                if (attempted > 0
+                    && meshSnapshotStopwatch.Elapsed.TotalMilliseconds
+                        >= timeBudgetMilliseconds)
+                {
+                    break;
+                }
+                attempted++;
+
                 if (!TryDequeueMeshCandidate(
                         ref priorityCandidates,
                         ref streamingCandidates,
@@ -2358,12 +2934,38 @@ namespace Supernova.MinecraftCaves
                     ArrayPool<VoxelSample>.Shared.Return(samples);
                     throw;
                 }
+                CaveSurfaceGenerationSnapshot capturedSurfaceGeneration =
+                    caveSurfaceGenerationSnapshot;
+                CaveSurfaceSampleSnapshot surfaceSamples = null;
+                try
+                {
+                    if (capturedSurfaceGeneration != null
+                        && capturedSurfaceGeneration.HasBrushes)
+                    {
+                        surfaceSamples = CaveSurfaceSampleSnapshot.Capture(
+                            world,
+                            columnCoordinate,
+                            startY,
+                            MeshSectionHeight);
+                    }
+                }
+                catch
+                {
+                    ArrayPool<VoxelSample>.Shared.Return(samples);
+                    throw;
+                }
+
+                ISet<Vector3Int> capturedCarvedVoxels =
+                    CaptureCarvedVoxelsForMeshSection(
+                        columnCoordinate,
+                        startY);
                 int version = GetMeshBuildVersion(coordinate);
                 float capturedIsoLevel = isoLevel;
                 float capturedVoxelSize = voxelSize;
                 MarchingCubesVertexPlacement capturedVertexPlacement =
                     vertexPlacement;
                 VoxelGroupMap capturedGroupMap = voxelGroupMap;
+                int capturedWorldSeed = worldSeed;
                 if (isPriority)
                 {
                     priorityMeshTasks.Add(coordinate);
@@ -2375,24 +2977,91 @@ namespace Supernova.MinecraftCaves
                         {
                             try
                             {
-                                return new MeshGenerationResult(
-                                    coordinate,
-                                    version,
-                                    MarchingCubesMesher.BuildCapturedColumnSection(
+                                VoxelMeshData data = MarchingCubesMesher
+                                    .BuildCapturedColumnSectionPooled(
                                         samples,
                                         MeshSectionHeight,
                                         capturedIsoLevel,
                                         capturedVoxelSize,
                                         capturedVertexPlacement,
-                                        capturedGroupMap));
+                                        capturedGroupMap);
+                                CaveSurfaceBuildResult surfaceBuildResult = null;
+                                try
+                                {
+                                    surfaceBuildResult =
+                                        CaveSurfaceBuildResult.Build(
+                                            data,
+                                            coordinate,
+                                            startY,
+                                            capturedVoxelSize,
+                                            capturedIsoLevel,
+                                            capturedWorldSeed,
+                                            capturedGroupMap,
+                                            capturedSurfaceGeneration,
+                                            surfaceSamples,
+                                            capturedCarvedVoxels);
+                                    return new MeshGenerationResult(
+                                        coordinate,
+                                        version,
+                                        data,
+                                        surfaceBuildResult);
+                                }
+                                catch
+                                {
+                                    surfaceBuildResult?.Dispose();
+                                    data.Dispose();
+                                    throw;
+                                }
                             }
                             finally
                             {
                                 ArrayPool<VoxelSample>.Shared.Return(samples);
+                                surfaceSamples?.Dispose();
                             }
                         }));
                 captured++;
             }
+        }
+
+        private ISet<Vector3Int> CaptureCarvedVoxelsForMeshSection(
+            Vector3Int columnCoordinate,
+            int startY)
+        {
+            if (gameplayCarvedVoxels.Count == 0)
+            {
+                return null;
+            }
+
+            int minimumX =
+                columnCoordinate.x * VoxelColumnChunkData.Width - 2;
+            int maximumX = minimumX
+                + VoxelColumnChunkData.Width + 4;
+            int minimumY = startY - 2;
+            int maximumY = startY + MeshSectionHeight + 2;
+            int minimumZ =
+                columnCoordinate.z * VoxelColumnChunkData.Depth - 2;
+            int maximumZ = minimumZ
+                + VoxelColumnChunkData.Depth + 4;
+            HashSet<Vector3Int> captured = null;
+            foreach (Vector3Int coordinate in gameplayCarvedVoxels)
+            {
+                if (coordinate.x < minimumX
+                    || coordinate.x > maximumX
+                    || coordinate.y < minimumY
+                    || coordinate.y > maximumY
+                    || coordinate.z < minimumZ
+                    || coordinate.z > maximumZ)
+                {
+                    continue;
+                }
+
+                if (captured == null)
+                {
+                    captured = new HashSet<Vector3Int>();
+                }
+                captured.Add(coordinate);
+            }
+            return captured;
         }
 
         private bool TryDequeueMeshCandidate(
@@ -2505,7 +3174,14 @@ namespace Supernova.MinecraftCaves
                 baseSolidType,
                 bedrockType,
                 voxelGroupMap);
-            ApplyChunkMeshData(coordinate, data);
+            try
+            {
+                ApplyChunkMeshData(coordinate, data);
+            }
+            finally
+            {
+                data.Dispose();
+            }
         }
 
         private void ApplyChunkMeshData(
@@ -2525,6 +3201,8 @@ namespace Supernova.MinecraftCaves
             }
             if (data.Vertices.Count == 0)
             {
+                applyingSurfaceBuildResult?.Dispose();
+                applyingSurfaceBuildResult = null;
                 DestroyChunkObject(coordinate, false);
                 FinalizeColumnPhysicsIfReady(columnCoordinate);
                 return;
@@ -2539,10 +3217,8 @@ namespace Supernova.MinecraftCaves
                 && chunkObject != null;
             if (!reuseChunkObject)
             {
-                chunkObject = new GameObject(
+                chunkObject = AcquireChunkObject(
                     $"CaveColumn_{coordinate.x}_{coordinate.z}_Section_{section}");
-                chunkObject.hideFlags = HideFlags.DontSave;
-                chunkObject.transform.SetParent(transform, false);
             }
             chunkObject.transform.localPosition = new Vector3(
                 coordinate.x * VoxelColumnChunkData.Width,
@@ -2560,31 +3236,45 @@ namespace Supernova.MinecraftCaves
                 renderer = chunkObject.AddComponent<MeshRenderer>();
             }
             MeshCollider collider = chunkObject.GetComponent<MeshCollider>();
-            if (collider != null)
-            {
-                // Detach before mutating a reused mesh so Unity cooks the updated
-                // collider only after all vertex and index data has been uploaded.
-                collider.sharedMesh = null;
-            }
 
             if (reuseChunkObject)
             {
                 ClearChunkSurfaceContent(coordinate, chunkObject.transform);
             }
 
-            chunkMeshes.TryGetValue(coordinate, out Mesh mesh);
-            if (mesh == null)
+            // A queued request may still refer to the current render mesh. Cancel it
+            // before that mesh is reused for a newer version.
+            CancelPendingMeshPostProcess(coordinate);
+
+            chunkMeshes.TryGetValue(coordinate, out Mesh currentRenderMesh);
+            if (currentRenderMesh == null)
             {
-                mesh = filter.sharedMesh;
+                currentRenderMesh = filter.sharedMesh;
             }
-            if (mesh == null)
-            {
-                mesh = data.CreateMesh(meshName);
-                mesh.hideFlags = HideFlags.DontSave;
-            }
-            else
+
+            Mesh currentColliderMesh = collider != null
+                ? collider.sharedMesh
+                : null;
+            // A render mesh that has not reached the collider is already the spare
+            // side of the double buffer and can be overwritten safely. Once render
+            // and collision share a mesh, build into another instance so the old
+            // collision remains valid until the deferred PhysX cook is committed.
+            Mesh mesh = currentRenderMesh != null
+                && currentRenderMesh != currentColliderMesh
+                    ? currentRenderMesh
+                    : AcquireChunkMesh(meshName);
+            try
             {
                 data.ApplyToMesh(mesh, meshName);
+                mesh.hideFlags = HideFlags.DontSave;
+            }
+            catch
+            {
+                if (mesh != currentRenderMesh)
+                {
+                    ReleaseChunkMesh(mesh);
+                }
+                throw;
             }
             filter.sharedMesh = mesh;
             IReadOnlyList<VoxelTypeDefinition> voxelDefinitions =
@@ -2597,34 +3287,275 @@ namespace Supernova.MinecraftCaves
                 voxelDefinitions);
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
 
-            if (generateColliders)
+            if (!generateColliders && collider != null)
             {
+                Mesh obsoleteColliderMesh = collider.sharedMesh;
+                collider.enabled = false;
+                collider.sharedMesh = null;
+                if (obsoleteColliderMesh != null
+                    && obsoleteColliderMesh != mesh)
+                {
+                    ReleaseChunkMesh(obsoleteColliderMesh);
+                }
+            }
+
+            chunkObject.SetActive(true);
+            chunkObjects[coordinate] = chunkObject;
+            chunkMeshes[coordinate] = mesh;
+            QueueMeshPostProcess(coordinate, data, mesh);
+            applyingSurfaceBuildResult = null;
+        }
+
+        private void QueueMeshPostProcess(
+            Vector3Int coordinate,
+            VoxelMeshData data,
+            Mesh preparedMesh)
+        {
+            CancelPendingMeshPostProcess(coordinate);
+            var request = new MeshPostProcessRequest(
+                coordinate,
+                GetMeshBuildVersion(coordinate),
+                generateColliders
+                    ? MeshPostProcessStage.Collider
+                    : MeshPostProcessStage.Surface,
+                data,
+                preparedMesh,
+                applyingSurfaceBuildResult);
+            pendingMeshPostProcesses[coordinate] = request;
+            meshPostProcessQueue.Enqueue(request);
+
+            if (!generateColliders)
+            {
+                NotifyOreTerrainMeshRebuilt(coordinate);
+                FinalizeColumnPhysicsIfReady(ToColumnCoordinate(coordinate));
+            }
+        }
+
+        private void ProcessPendingMeshPostProcesses(
+            int budget,
+            float timeBudgetMilliseconds)
+        {
+            if (budget <= 0 || meshPostProcessQueue.Count == 0)
+            {
+                return;
+            }
+
+            int attempts = 0;
+            int processed = 0;
+            while (meshPostProcessQueue.Count > 0 && processed < budget)
+            {
+                if (attempts > 0
+                    && meshCommitStopwatch.Elapsed.TotalMilliseconds
+                        >= timeBudgetMilliseconds)
+                {
+                    break;
+                }
+                attempts++;
+
+                MeshPostProcessRequest request =
+                    meshPostProcessQueue.Dequeue();
+                if (request == null || request.IsCanceled)
+                {
+                    continue;
+                }
+                if (!pendingMeshPostProcesses.TryGetValue(
+                        request.Coordinate,
+                        out MeshPostProcessRequest currentRequest)
+                    || !ReferenceEquals(request, currentRequest))
+                {
+                    request.Cancel();
+                    continue;
+                }
+                if (GetMeshBuildVersion(request.Coordinate) != request.Version
+                    || !chunkObjects.TryGetValue(
+                        request.Coordinate,
+                        out GameObject chunkObject)
+                    || chunkObject == null
+                    || !chunkMeshes.TryGetValue(
+                        request.Coordinate,
+                        out Mesh mesh)
+                    || mesh == null
+                    || request.PreparedMesh == null
+                    || request.PreparedMesh != mesh)
+                {
+                    CompleteMeshPostProcess(request);
+                    continue;
+                }
+
+                processed++;
+                if (request.Stage == MeshPostProcessStage.Collider)
+                {
+                    ProcessMeshColliderPostProcess(
+                        request,
+                        chunkObject,
+                        mesh);
+                }
+                else
+                {
+                    ProcessMeshSurfacePostProcess(
+                        request,
+                        chunkObject.transform);
+                }
+            }
+        }
+
+        private void ProcessMeshColliderPostProcess(
+            MeshPostProcessRequest request,
+            GameObject chunkObject,
+            Mesh mesh)
+        {
+            using (MeshColliderPostProcessMarker.Auto())
+            {
+                MeshCollider collider =
+                    chunkObject.GetComponent<MeshCollider>();
                 if (collider == null)
                 {
                     collider = chunkObject.AddComponent<MeshCollider>();
                 }
                 collider.sharedMaterial = terrainPhysicsMaterial;
+                Mesh previousColliderMesh = collider.sharedMesh;
                 collider.sharedMesh = mesh;
                 collider.enabled = true;
+                if (previousColliderMesh != null
+                    && previousColliderMesh != mesh)
+                {
+                    ReleaseChunkMesh(previousColliderMesh);
+                }
+
+                request.Stage = MeshPostProcessStage.Surface;
+                meshPostProcessQueue.Enqueue(request);
+                NotifyOreTerrainMeshRebuilt(request.Coordinate);
+                FinalizeColumnPhysicsIfReady(
+                    ToColumnCoordinate(request.Coordinate));
             }
-            else if (collider != null)
+        }
+
+        private void ProcessMeshSurfacePostProcess(
+            MeshPostProcessRequest request,
+            Transform chunkTransform)
+        {
+            try
             {
-                collider.enabled = false;
+                CaveSurfaceBuildResult surfaceBuildResult =
+                    request.SurfaceBuildResult;
+                if (surfaceBuildResult != null)
+                {
+                    using (MeshSurfaceUploadMarker.Auto())
+                    {
+                        SpawnPreparedTerrainSurfaceLayer(
+                            chunkTransform,
+                            request.Coordinate,
+                            surfaceBuildResult.TerrainLayer);
+                    }
+                    using (MeshSurfaceObjectsMarker.Auto())
+                    {
+                        SpawnSurfacePlacements(
+                            chunkTransform,
+                            request.Coordinate,
+                            surfaceBuildResult.Placements);
+                    }
+                }
+                else
+                {
+                    int section = Mathf.Clamp(
+                        request.Coordinate.y,
+                        0,
+                        EffectiveMeshSectionsPerColumn - 1);
+                    int startY = section * MeshSectionHeight;
+                    IReadOnlyList<VoxelTypeDefinition> voxelDefinitions =
+                        voxelTypeCatalog != null
+                            ? voxelTypeCatalog.Definitions
+                            : null;
+                    using (MeshSurfaceUploadMarker.Auto())
+                    {
+                        SpawnTerrainSurfaceLayer(
+                            chunkTransform,
+                            request.Coordinate,
+                            startY,
+                            request.Data,
+                            voxelDefinitions);
+                    }
+                    using (MeshSurfaceObjectsMarker.Auto())
+                    {
+                        SpawnSurfaceContent(
+                            chunkTransform,
+                            request.Coordinate,
+                            startY,
+                            request.Data);
+                    }
+                }
+
+            }
+            finally
+            {
+                CompleteMeshPostProcess(request);
+            }
+        }
+
+        private void CompleteMeshPostProcess(
+            MeshPostProcessRequest request)
+        {
+            if (request == null)
+            {
+                return;
+            }
+            if (pendingMeshPostProcesses.TryGetValue(
+                    request.Coordinate,
+                    out MeshPostProcessRequest currentRequest)
+                && ReferenceEquals(request, currentRequest))
+            {
+                pendingMeshPostProcesses.Remove(request.Coordinate);
+            }
+            request.Cancel();
+        }
+
+        private void CancelPendingMeshPostProcess(Vector3Int coordinate)
+        {
+            if (!pendingMeshPostProcesses.TryGetValue(
+                    coordinate,
+                    out MeshPostProcessRequest request))
+            {
+                return;
             }
 
-            chunkObject.SetActive(true);
-            SpawnTerrainSurfaceLayer(
-                chunkObject.transform,
-                coordinate,
-                startY,
-                data,
-                voxelDefinitions);
-            SpawnSurfaceContent(chunkObject.transform, coordinate, startY, data);
+            pendingMeshPostProcesses.Remove(coordinate);
+            request.Cancel();
+        }
 
-            chunkObjects[coordinate] = chunkObject;
-            chunkMeshes[coordinate] = mesh;
-            NotifyOreTerrainMeshRebuilt(coordinate);
-            FinalizeColumnPhysicsIfReady(columnCoordinate);
+        private bool HasPendingColliderPostProcess(Vector3Int column)
+        {
+            for (int section = 0;
+                section < EffectiveMeshSectionsPerColumn;
+                section++)
+            {
+                var coordinate = new Vector3Int(
+                    column.x,
+                    section,
+                    column.z);
+                if (pendingMeshPostProcesses.TryGetValue(
+                        coordinate,
+                        out MeshPostProcessRequest request)
+                    && request.Stage == MeshPostProcessStage.Collider)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private bool HasPendingColliderPostProcessesForRequiredChunks()
+        {
+            foreach (KeyValuePair<Vector3Int, MeshPostProcessRequest> pair
+                in pendingMeshPostProcesses)
+            {
+                if (pair.Value.Stage == MeshPostProcessStage.Collider
+                    && requiredChunks.Contains(
+                        ToColumnCoordinate(pair.Key)))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void ClearChunkSurfaceContent(
@@ -2653,6 +3584,46 @@ namespace Supernova.MinecraftCaves
                 DestroyGeneratedObject(terrainSurfaceMesh);
                 terrainSurfaceMeshes.Remove(coordinate);
             }
+        }
+
+        private void SpawnPreparedTerrainSurfaceLayer(
+            Transform sectionTransform,
+            Vector3Int coordinate,
+            CaveTerrainSurfaceLayerData surfaceLayerData)
+        {
+            if (sectionTransform == null || surfaceLayerData == null)
+            {
+                return;
+            }
+
+            Mesh surfaceMesh = surfaceLayerData.CreateMesh(
+                $"Cave Turf {coordinate.x},{coordinate.z},{coordinate.y}");
+            if (surfaceMesh == null)
+            {
+                return;
+            }
+
+            Material surfaceMaterial = EnsureTerrainSurfaceMaterial();
+            if (surfaceMaterial == null)
+            {
+                DestroyGeneratedObject(surfaceMesh);
+                return;
+            }
+
+            var surfaceObject = new GameObject(
+                TerrainSurfaceLayerObjectName);
+            surfaceObject.hideFlags = HideFlags.DontSave;
+            surfaceObject.transform.SetParent(sectionTransform, false);
+            MeshFilter surfaceFilter =
+                surfaceObject.AddComponent<MeshFilter>();
+            MeshRenderer surfaceRenderer =
+                surfaceObject.AddComponent<MeshRenderer>();
+            surfaceFilter.sharedMesh = surfaceMesh;
+            surfaceRenderer.sharedMaterial = surfaceMaterial;
+            surfaceRenderer.shadowCastingMode =
+                UnityEngine.Rendering.ShadowCastingMode.Off;
+            surfaceRenderer.receiveShadows = true;
+            terrainSurfaceMeshes[coordinate] = surfaceMesh;
         }
 
         private void SpawnTerrainSurfaceLayer(
@@ -2726,7 +3697,20 @@ namespace Supernova.MinecraftCaves
                     worldSeed,
                     caveBiomeCatalog,
                     gameplayCarvedVoxels);
-            if (placements.Count == 0)
+            SpawnSurfacePlacements(
+                sectionTransform,
+                coordinate,
+                placements);
+        }
+
+        private void SpawnSurfacePlacements(
+            Transform sectionTransform,
+            Vector3Int coordinate,
+            IReadOnlyList<CaveSurfacePlacement> placements)
+        {
+            if (sectionTransform == null
+                || placements == null
+                || placements.Count == 0)
             {
                 return;
             }
@@ -2735,55 +3719,72 @@ namespace Supernova.MinecraftCaves
             contentRootObject.hideFlags = HideFlags.DontSave;
             Transform contentRoot = contentRootObject.transform;
             contentRoot.SetParent(sectionTransform, false);
-
-            var instancedPlacements = new List<CaveSurfacePlacement>();
-
-            for (int i = 0; i < placements.Count; i++)
+            instancedSurfacePlacementBuffer.Clear();
+            try
             {
-                CaveSurfacePlacement placement = placements[i];
-                if (placement.Brush.RenderMode ==
-                    CaveSurfaceBrushRenderMode.InstancedMesh)
+                for (int i = 0; i < placements.Count; i++)
                 {
-                    instancedPlacements.Add(placement);
-                    continue;
+                    CaveSurfacePlacement placement = placements[i];
+                    CaveSurfaceBrushDefinition brush = placement.Brush;
+                    if (brush == null)
+                    {
+                        continue;
+                    }
+                    if (brush.RenderMode ==
+                        CaveSurfaceBrushRenderMode.InstancedMesh)
+                    {
+                        instancedSurfacePlacementBuffer.Add(placement);
+                        continue;
+                    }
+
+                    GameObject prefab = brush.Prefab;
+                    if (prefab == null)
+                    {
+                        continue;
+                    }
+
+                    GameObject instance = Instantiate(
+                        prefab,
+                        contentRoot,
+                        false);
+                    instance.hideFlags = HideFlags.DontSave;
+                    instance.name = prefab.name;
+                    Transform instanceTransform = instance.transform;
+                    Vector3 prefabScale = instanceTransform.localScale;
+                    instanceTransform.localPosition =
+                        placement.LocalPosition;
+                    instanceTransform.localRotation =
+                        placement.LocalRotation;
+                    instanceTransform.localScale = Vector3.Scale(
+                        prefabScale,
+                        placement.Scale);
+
+                    VoxelSurfaceAttachment attachment =
+                        instance.GetComponent<VoxelSurfaceAttachment>();
+                    if (attachment == null)
+                    {
+                        attachment =
+                            instance.AddComponent<VoxelSurfaceAttachment>();
+                    }
+                    attachment.Configure(
+                        placement.AnchorVoxel,
+                        coordinate,
+                        placement.Biome,
+                        brush);
                 }
 
-                GameObject prefab = placement.Brush.Prefab;
-                if (prefab == null)
+                if (instancedSurfacePlacementBuffer.Count > 0)
                 {
-                    continue;
+                    CaveSurfaceInstanceRenderer instanceRenderer =
+                        contentRootObject.AddComponent<
+                            CaveSurfaceInstanceRenderer>();
+                    instanceRenderer.Configure(
+                        instancedSurfacePlacementBuffer);
                 }
-
-                GameObject instance = Instantiate(prefab, contentRoot, false);
-                instance.hideFlags = HideFlags.DontSave;
-                instance.name = prefab.name;
-                Transform instanceTransform = instance.transform;
-                Vector3 prefabScale = instanceTransform.localScale;
-                instanceTransform.localPosition = placement.LocalPosition;
-                instanceTransform.localRotation = placement.LocalRotation;
-                instanceTransform.localScale = Vector3.Scale(
-                    prefabScale,
-                    placement.Scale);
-
-                VoxelSurfaceAttachment attachment =
-                    instance.GetComponent<VoxelSurfaceAttachment>();
-                if (attachment == null)
-                {
-                    attachment = instance.AddComponent<VoxelSurfaceAttachment>();
-                }
-                attachment.Configure(
-                    placement.AnchorVoxel,
-                    coordinate,
-                    placement.Biome,
-                    placement.Brush);
             }
-
-            if (instancedPlacements.Count > 0)
+            finally
             {
-                CaveSurfaceInstanceRenderer instanceRenderer =
-                    contentRootObject.AddComponent<
-                        CaveSurfaceInstanceRenderer>();
-                instanceRenderer.Configure(instancedPlacements);
+                instancedSurfacePlacementBuffer.Clear();
             }
         }
 
@@ -2803,20 +3804,63 @@ namespace Supernova.MinecraftCaves
 
         private void FinalizeColumnPhysicsIfReady(Vector3Int column)
         {
-            if (generationStage != MinecraftCaveGenerationStage.Ready
-                || !HasBuiltAllColumnSections(column))
+            if (!HasBuiltAllColumnSections(column)
+                || HasPendingColliderPostProcess(column))
             {
                 return;
             }
 
-            // Called after the final section's collider is assigned (or after
-            // confirming that section has no surface).
-            Physics.SyncTransforms();
-            SpawnStructureMarkers(column);
-            SpawnCheckpoints(column);
-            SpawnPendingTreasures(column);
-            ResumeBodiesInColumn(column);
+            // Collider cooking can be deferred from the mesh upload. Queue the
+            // column only after every non-empty section has finished that stage.
+            pendingPhysicsColumns.Add(column);
         }
+
+        private void ProcessPendingColumnPhysics()
+        {
+            bool canFinalizeColumns =
+                generationStage == MinecraftCaveGenerationStage.Ready
+                && pendingPhysicsColumns.Count > 0;
+            bool hasOreDropsAwaitingSync =
+                oreDropsAwaitingPhysicsSync.Count > 0;
+            if (!canFinalizeColumns && !hasOreDropsAwaitingSync)
+            {
+                return;
+            }
+
+            pendingPhysicsColumnBuffer.Clear();
+            if (canFinalizeColumns)
+            {
+                foreach (Vector3Int column in pendingPhysicsColumns)
+                {
+                    if (requiredChunks.Contains(column)
+                        && HasBuiltAllColumnSections(column))
+                    {
+                        pendingPhysicsColumnBuffer.Add(column);
+                    }
+                }
+                pendingPhysicsColumns.Clear();
+            }
+
+            if (pendingPhysicsColumnBuffer.Count == 0
+                && !hasOreDropsAwaitingSync)
+            {
+                return;
+            }
+
+            Physics.SyncTransforms();
+            ReleaseOreDropsAfterPhysicsSync();
+            for (int i = 0; i < pendingPhysicsColumnBuffer.Count; i++)
+            {
+                Vector3Int column = pendingPhysicsColumnBuffer[i];
+                SpawnStructureMarkers(column);
+                SpawnCheckpoints(column);
+                SpawnPendingTreasures(column);
+                ResumeBodiesInColumn(column);
+            }
+            pendingPhysicsColumnBuffer.Clear();
+        }
+
+
 
         /// <summary>
         /// Instantiates the authored spawn markers of every structure piece that
@@ -2980,7 +4024,15 @@ namespace Supernova.MinecraftCaves
                 return;
             }
 
-            SpawnTreasure(request.Treasure, localPosition, request.Yaw);
+            TreasureDefinition treasure = request.TreasureSelection
+                    == StructureSpawnMarkerDefinition
+                        .TreasureSelectionMode.WeightedWorldTable
+                ? treasureSpawnTable != null
+                    ? treasureSpawnTable.SelectWeighted(
+                        request.TreasureSelectionRoll)
+                    : null
+                : request.Treasure;
+            SpawnTreasure(treasure, localPosition, request.Yaw);
         }
 
         /// <summary>
@@ -3057,13 +4109,11 @@ namespace Supernova.MinecraftCaves
         private void SpawnPendingTreasures(Vector3Int column)
         {
             if (!pendingTreasureColumns.Remove(column)) return;
-            Physics.SyncTransforms();
             TrySpawnNaturalTreasures(column);
         }
 
         private void SpawnAllPendingTreasures()
         {
-            Physics.SyncTransforms();
             var columns = new List<Vector3Int>(pendingTreasureColumns);
             for (int i = 0; i < columns.Count; i++)
             {
@@ -3677,32 +4727,123 @@ namespace Supernova.MinecraftCaves
             Vector3 localPosition,
             float yaw)
         {
-            GameObject treasureObject = Instantiate(
-                definition.Prefab,
+            if (definition == null || definition.Prefab == null)
+            {
+                return;
+            }
+
+            GameObject prefab = definition.Prefab;
+            TreasurePickup pickup = AcquireTreasureInstance(prefab);
+            if (pickup == null)
+            {
+                return;
+            }
+
+            GameObject treasureObject = pickup.gameObject;
+            treasureObject.transform.SetParent(null, false);
+            treasureObject.transform.SetPositionAndRotation(
                 transform.TransformPoint(localPosition),
                 transform.rotation * Quaternion.Euler(0f, yaw, 0f));
+            treasureObject.transform.localScale =
+                prefab.transform.localScale;
             treasureObject.name = "Natural Treasure - " + definition.name;
+
             MeshCollider[] meshColliders =
                 treasureObject.GetComponentsInChildren<MeshCollider>(true);
             for (int i = 0; i < meshColliders.Length; i++)
             {
-                // Unity ignores non-convex MeshColliders attached to dynamic
-                // rigidbodies. Enforce the valid pairing here as a safety net for
-                // newly-authored treasure prefabs.
                 meshColliders[i].convex = true;
             }
             Rigidbody body = treasureObject.GetComponent<Rigidbody>();
-            if (body == null) body = treasureObject.AddComponent<Rigidbody>();
+            if (body == null)
+            {
+                body = treasureObject.AddComponent<Rigidbody>();
+            }
             body.mass = definition.Weight;
             RigidbodyImpactFeedback.Ensure(body);
             if (treasureObject.GetComponentInChildren<Collider>() == null)
             {
                 treasureObject.AddComponent<BoxCollider>();
             }
-            TreasurePickup pickup = treasureObject.GetComponent<TreasurePickup>();
-            if (pickup == null) pickup = treasureObject.AddComponent<TreasurePickup>();
-            pickup.Configure(definition);
+
+            pickup.PrepareForReuse();
+            pickup.SetPoolReleaseHandler(ReleaseTreasureToPool);
+            treasureObject.SetActive(true);
+            pickup.Configure(definition, this);
+            activeTreasurePrefabs[pickup] = prefab;
             activeTreasures.Add(pickup);
+        }
+
+        private TreasurePickup AcquireTreasureInstance(GameObject prefab)
+        {
+            if (pooledTreasuresByPrefab.TryGetValue(
+                    prefab,
+                    out Stack<TreasurePickup> pool))
+            {
+                while (pool.Count > 0)
+                {
+                    TreasurePickup pickup = pool.Pop();
+                    pooledTreasureInstanceCount = Mathf.Max(
+                        0,
+                        pooledTreasureInstanceCount - 1);
+                    if (pickup != null)
+                    {
+                        return pickup;
+                    }
+                }
+            }
+
+            GameObject treasureObject = Instantiate(prefab);
+            treasureObject.SetActive(false);
+            TreasurePickup created =
+                treasureObject.GetComponent<TreasurePickup>();
+            if (created == null)
+            {
+                created = treasureObject.AddComponent<TreasurePickup>();
+            }
+            return created;
+        }
+
+        private void ReleaseTreasureToPool(TreasurePickup pickup)
+        {
+            if (pickup == null)
+            {
+                return;
+            }
+
+            activeTreasures.Remove(pickup);
+            if (!activeTreasurePrefabs.TryGetValue(
+                    pickup,
+                    out GameObject prefab)
+                || prefab == null)
+            {
+                pickup.SetPoolReleaseHandler(null);
+                DestroyGeneratedObject(pickup.gameObject);
+                return;
+            }
+            activeTreasurePrefabs.Remove(pickup);
+
+            GameObject treasureObject = pickup.gameObject;
+            pickup.PrepareForPool();
+            treasureObject.SetActive(false);
+            treasureObject.name = "Pooled Treasure - " + prefab.name;
+            treasureObject.transform.SetParent(transform, false);
+            if (pooledTreasureInstanceCount
+                >= MaximumPooledTreasureInstances)
+            {
+                DestroyGeneratedObject(treasureObject);
+                return;
+            }
+
+            if (!pooledTreasuresByPrefab.TryGetValue(
+                    prefab,
+                    out Stack<TreasurePickup> pool))
+            {
+                pool = new Stack<TreasurePickup>();
+                pooledTreasuresByPrefab.Add(prefab, pool);
+            }
+            pool.Push(pickup);
+            pooledTreasureInstanceCount++;
         }
 
         private CreatureBehaviorAgent SpawnMonster(
@@ -3710,26 +4851,151 @@ namespace Supernova.MinecraftCaves
             Vector3 localPosition,
             float yaw)
         {
-            GameObject monsterObject = Instantiate(
-                definition.Prefab,
-                transform.TransformPoint(localPosition),
-                transform.rotation * Quaternion.Euler(0f, yaw, 0f));
-            monsterObject.name = "Natural Monster - " + definition.name;
-            CreatureBehaviorAgent agent =
-                monsterObject.GetComponent<CreatureBehaviorAgent>();
-            if (agent == null)
+            if (definition == null || definition.Prefab == null)
             {
-                Debug.LogError(
-                    $"Monster prefab '{definition.Prefab.name}' has no "
-                    + $"{nameof(CreatureBehaviorAgent)} on its root.",
-                    definition.Prefab);
-                DestroyGeneratedObject(monsterObject);
                 return null;
             }
 
-            agent.BindWorldContext(this, viewer);
+            GameObject prefab = definition.Prefab;
+            CreatureBehaviorAgent agent =
+                AcquireMonsterInstance(prefab);
+            if (agent == null)
+            {
+                return null;
+            }
+
+            GameObject monsterObject = agent.gameObject;
+            monsterObject.transform.SetParent(null, false);
+            monsterObject.transform.SetPositionAndRotation(
+                transform.TransformPoint(localPosition),
+                transform.rotation * Quaternion.Euler(0f, yaw, 0f));
+            monsterObject.transform.localScale =
+                prefab.transform.localScale;
+            monsterObject.name = "Natural Monster - " + definition.name;
+            agent.PrepareForReuse(this, viewer);
+            agent.SetPoolReleaseHandler(ReleaseMonsterToPool);
+            monsterObject.SetActive(true);
+            activeMonsterPrefabs[agent] = prefab;
             activeMonsters.Add(agent);
             return agent;
+        }
+
+        private CreatureBehaviorAgent AcquireMonsterInstance(
+            GameObject prefab)
+        {
+            if (pooledMonstersByPrefab.TryGetValue(
+                    prefab,
+                    out Stack<CreatureBehaviorAgent> pool))
+            {
+                while (pool.Count > 0)
+                {
+                    CreatureBehaviorAgent agent = pool.Pop();
+                    pooledMonsterInstanceCount = Mathf.Max(
+                        0,
+                        pooledMonsterInstanceCount - 1);
+                    if (agent != null)
+                    {
+                        return agent;
+                    }
+                }
+            }
+
+            GameObject monsterObject = Instantiate(prefab);
+            monsterObject.SetActive(false);
+            CreatureBehaviorAgent created =
+                monsterObject.GetComponent<CreatureBehaviorAgent>();
+            if (created != null)
+            {
+                return created;
+            }
+
+            Debug.LogError(
+                "Monster prefab '" + prefab.name + "' has no "
+                + nameof(CreatureBehaviorAgent) + " on its root.",
+                prefab);
+            DestroyGeneratedObject(monsterObject);
+            return null;
+        }
+
+        private void ReleaseMonsterToPool(
+            CreatureBehaviorAgent agent)
+        {
+            if (agent == null)
+            {
+                return;
+            }
+
+            activeMonsters.Remove(agent);
+            if (!activeMonsterPrefabs.TryGetValue(
+                    agent,
+                    out GameObject prefab)
+                || prefab == null)
+            {
+                agent.SetPoolReleaseHandler(null);
+                DestroyGeneratedObject(agent.gameObject);
+                return;
+            }
+            activeMonsterPrefabs.Remove(agent);
+
+            GameObject monsterObject = agent.gameObject;
+            agent.PrepareForPool();
+            monsterObject.SetActive(false);
+            monsterObject.name = "Pooled Monster - " + prefab.name;
+            monsterObject.transform.SetParent(transform, false);
+            int maximumPoolSize = monsterSpawnTable != null
+                ? monsterSpawnTable.MaximumActiveMonsters
+                : DefaultMaximumPooledMonsterInstances;
+            if (pooledMonsterInstanceCount >= maximumPoolSize)
+            {
+                DestroyGeneratedObject(monsterObject);
+                return;
+            }
+
+            if (!pooledMonstersByPrefab.TryGetValue(
+                    prefab,
+                    out Stack<CreatureBehaviorAgent> pool))
+            {
+                pool = new Stack<CreatureBehaviorAgent>();
+                pooledMonstersByPrefab.Add(prefab, pool);
+            }
+            pool.Push(agent);
+            pooledMonsterInstanceCount++;
+        }
+
+        private void DestroyPooledTreasureInstances()
+        {
+            foreach (Stack<TreasurePickup> pool
+                in pooledTreasuresByPrefab.Values)
+            {
+                while (pool.Count > 0)
+                {
+                    TreasurePickup pickup = pool.Pop();
+                    if (pickup != null)
+                    {
+                        DestroyGeneratedObject(pickup.gameObject);
+                    }
+                }
+            }
+            pooledTreasuresByPrefab.Clear();
+            pooledTreasureInstanceCount = 0;
+        }
+
+        private void DestroyPooledMonsterInstances()
+        {
+            foreach (Stack<CreatureBehaviorAgent> pool
+                in pooledMonstersByPrefab.Values)
+            {
+                while (pool.Count > 0)
+                {
+                    CreatureBehaviorAgent agent = pool.Pop();
+                    if (agent != null)
+                    {
+                        DestroyGeneratedObject(agent.gameObject);
+                    }
+                }
+            }
+            pooledMonstersByPrefab.Clear();
+            pooledMonsterInstanceCount = 0;
         }
 
         private void ProcessPendingMonsterSpawns()
@@ -3916,6 +5182,52 @@ namespace Supernova.MinecraftCaves
                     0f));
         }
 
+        private void CullVoxelDataOutsideRetentionRadius()
+        {
+            if (world == null || UsesFixedGenerationArea)
+            {
+                return;
+            }
+
+            int retentionRadius = Mathf.Max(
+                0,
+                voxelDataRetentionRadiusInChunks);
+            int retentionRadiusSquared = retentionRadius * retentionRadius;
+            voxelColumnsToEvict.Clear();
+            foreach (Vector2Int coordinate in world.Chunks.Keys)
+            {
+                int deltaX = coordinate.x - viewerChunk.x;
+                int deltaZ = coordinate.y - viewerChunk.z;
+                if (deltaX * deltaX + deltaZ * deltaZ
+                    > retentionRadiusSquared)
+                {
+                    voxelColumnsToEvict.Add(coordinate);
+                }
+            }
+
+            for (int i = 0; i < voxelColumnsToEvict.Count; i++)
+            {
+                Vector2Int coordinate = voxelColumnsToEvict[i];
+                var column = new Vector3Int(coordinate.x, 0, coordinate.y);
+                if (requiredChunks.Contains(column)
+                    || !world.RemoveChunk(coordinate, out _))
+                {
+                    continue;
+                }
+
+                pendingTreasureColumns.Remove(column);
+                pendingPhysicsColumns.Remove(column);
+                for (int section = 0;
+                    section < EffectiveMeshSectionsPerColumn;
+                    section++)
+                {
+                    meshBuildVersions.Remove(
+                        new Vector3Int(column.x, section, column.z));
+                }
+            }
+            voxelColumnsToEvict.Clear();
+        }
+
         private void CullMeshesOutsideRequiredSet()
         {
             departingColumns.Clear();
@@ -3945,7 +5257,9 @@ namespace Supernova.MinecraftCaves
                 return;
             }
 
-            Rigidbody[] bodies = FindObjectsOfType<Rigidbody>();
+            Rigidbody[] bodies =
+                UnityEngine.Object.FindObjectsByType<Rigidbody>(
+                    FindObjectsSortMode.None);
             for (int i = 0; i < bodies.Length; i++)
             {
                 Rigidbody body = bodies[i];
@@ -3983,10 +5297,25 @@ namespace Supernova.MinecraftCaves
             }
         }
 
-        private void ProcessChunkDestructions(int budget)
+        private void ProcessChunkDestructions()
         {
-            for (int i = 0; i < budget && chunkDestructionQueue.Count > 0; i++)
+            chunkDestructionStopwatch.Restart();
+            int inspected = 0;
+            int destroyed = 0;
+            int maximumInspections =
+                MaximumChunkObjectsDestroyedPerFrame * 4;
+            while (chunkDestructionQueue.Count > 0
+                && destroyed < MaximumChunkObjectsDestroyedPerFrame
+                && inspected < maximumInspections)
             {
+                if (destroyed >= MinimumChunkObjectsDestroyedPerFrame
+                    && chunkDestructionStopwatch.Elapsed.TotalMilliseconds
+                        >= ChunkDestructionBudgetMilliseconds)
+                {
+                    break;
+                }
+
+                inspected++;
                 Vector3Int coordinate = chunkDestructionQueue.Dequeue();
                 if (!queuedChunkDestructions.Remove(coordinate)
                     || requiredChunks.Contains(ToColumnCoordinate(coordinate)))
@@ -3995,7 +5324,9 @@ namespace Supernova.MinecraftCaves
                 }
 
                 DestroyChunkObject(coordinate, true);
+                destroyed++;
             }
+            chunkDestructionStopwatch.Stop();
         }
 
         private bool IsViewerOwnedBody(Rigidbody body)
@@ -4017,7 +5348,6 @@ namespace Supernova.MinecraftCaves
             }
 
             suspendedBodiesByColumn.Remove(column);
-            Physics.SyncTransforms();
             for (int i = 0; i < suspended.Count; i++)
             {
                 SuspendedBodyState state = suspended[i];
@@ -4034,25 +5364,163 @@ namespace Supernova.MinecraftCaves
             return new Vector3Int(coordinate.x, 0, coordinate.z);
         }
 
-        private void DestroyChunkObject(Vector3Int coordinate, bool forgetBuildState)
+        private GameObject AcquireChunkObject(string objectName)
         {
-            if (chunkObjects.TryGetValue(coordinate, out GameObject chunkObject))
+            GameObject chunkObject = null;
+            while (pooledChunkObjects.Count > 0 && chunkObject == null)
             {
-                // Destroy is deferred in Play Mode. Disable the old collider immediately
-                // so a mine-and-rebuild followed by another raycast in the same frame
-                // cannot hit stale geometry in front of the replacement mesh.
-                chunkObject.SetActive(false);
-                DestroyGeneratedObject(chunkObject);
-                chunkObjects.Remove(coordinate);
+                chunkObject = pooledChunkObjects.Pop();
             }
-            if (chunkMeshes.TryGetValue(coordinate, out Mesh mesh))
+
+            if (chunkObject == null)
+            {
+                chunkObject = new GameObject();
+                chunkObject.hideFlags = HideFlags.DontSave;
+            }
+            chunkObject.name = objectName;
+            chunkObject.transform.SetParent(transform, false);
+            chunkObject.transform.localPosition = Vector3.zero;
+            chunkObject.transform.localRotation = Quaternion.identity;
+            chunkObject.transform.localScale = Vector3.one;
+            chunkObject.SetActive(false);
+            return chunkObject;
+        }
+
+        private Mesh AcquireChunkMesh(string meshName)
+        {
+            Mesh mesh = null;
+            while (pooledChunkMeshes.Count > 0 && mesh == null)
+            {
+                mesh = pooledChunkMeshes.Pop();
+            }
+
+            if (mesh == null)
+            {
+                mesh = new Mesh();
+                mesh.hideFlags = HideFlags.DontSave;
+            }
+            mesh.name = meshName;
+            return mesh;
+        }
+
+        private void ReleaseChunkMesh(Mesh mesh)
+        {
+            if (mesh == null)
+            {
+                return;
+            }
+
+            mesh.Clear();
+            mesh.name = "Pooled Cave Section Mesh";
+            if (pooledChunkMeshes.Count < MaximumPooledChunkMeshes)
+            {
+                pooledChunkMeshes.Push(mesh);
+            }
+            else
             {
                 DestroyGeneratedObject(mesh);
-                chunkMeshes.Remove(coordinate);
             }
+        }
+
+        private void ReleaseChunkObject(
+            Vector3Int coordinate,
+            GameObject chunkObject)
+        {
+            if (chunkObject == null)
+            {
+                return;
+            }
+
+            // Disable collision immediately before the old mesh is destroyed.
+            chunkObject.SetActive(false);
+            ClearChunkSurfaceContent(coordinate, chunkObject.transform);
+            MeshCollider collider = chunkObject.GetComponent<MeshCollider>();
+            if (collider != null)
+            {
+                collider.sharedMesh = null;
+                collider.enabled = false;
+            }
+            MeshFilter filter = chunkObject.GetComponent<MeshFilter>();
+            if (filter != null)
+            {
+                filter.sharedMesh = null;
+            }
+            MeshRenderer renderer = chunkObject.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterials = Array.Empty<Material>();
+            }
+
+            chunkObject.name = "PooledCaveSection";
+            chunkObject.transform.localPosition = Vector3.zero;
+            chunkObject.transform.localRotation = Quaternion.identity;
+            chunkObject.transform.localScale = Vector3.one;
+            if (pooledChunkObjects.Count < MaximumPooledChunkObjects)
+            {
+                pooledChunkObjects.Push(chunkObject);
+            }
+            else
+            {
+                DestroyGeneratedObject(chunkObject);
+            }
+        }
+
+        private void DestroyPooledChunkObjects()
+        {
+            while (pooledChunkObjects.Count > 0)
+            {
+                GameObject chunkObject = pooledChunkObjects.Pop();
+                if (chunkObject != null)
+                {
+                    DestroyGeneratedObject(chunkObject);
+                }
+            }
+        }
+
+        private void DestroyPooledChunkMeshes()
+        {
+            while (pooledChunkMeshes.Count > 0)
+            {
+                Mesh mesh = pooledChunkMeshes.Pop();
+                if (mesh != null)
+                {
+                    DestroyGeneratedObject(mesh);
+                }
+            }
+        }
+
+        private void DestroyChunkObject(
+            Vector3Int coordinate,
+            bool forgetBuildState)
+        {
+            CancelPendingMeshPostProcess(coordinate);
+            chunkMeshes.TryGetValue(coordinate, out Mesh renderMesh);
+            Mesh colliderMesh = null;
+            if (chunkObjects.TryGetValue(
+                    coordinate,
+                    out GameObject chunkObject))
+            {
+                MeshCollider collider = chunkObject != null
+                    ? chunkObject.GetComponent<MeshCollider>()
+                    : null;
+                colliderMesh = collider != null
+                    ? collider.sharedMesh
+                    : null;
+                chunkObjects.Remove(coordinate);
+                ReleaseChunkObject(coordinate, chunkObject);
+            }
+            if (renderMesh != null)
+            {
+                ReleaseChunkMesh(renderMesh);
+            }
+            if (colliderMesh != null && colliderMesh != renderMesh)
+            {
+                ReleaseChunkMesh(colliderMesh);
+            }
+            chunkMeshes.Remove(coordinate);
             if (terrainSurfaceMeshes.TryGetValue(
-                coordinate,
-                out Mesh terrainSurfaceMesh))
+                    coordinate,
+                    out Mesh terrainSurfaceMesh))
             {
                 DestroyGeneratedObject(terrainSurfaceMesh);
                 terrainSurfaceMeshes.Remove(coordinate);
@@ -4071,13 +5539,15 @@ namespace Supernova.MinecraftCaves
             if (!renderingReadyLogged
                 && generationStage == MinecraftCaveGenerationStage.Meshes
                 && CountBuiltRequiredMeshes() == requiredChunks.Count
-                && meshQueue.Count == 0)
+                && meshQueue.Count == 0
+                && !HasPendingColliderPostProcessesForRequiredChunks())
             {
                 bool initialSpawnAreaReady = initialSpawnPlacementPending;
                 int readyChunkCount = requiredChunks.Count;
                 renderingReadyLogged = true;
                 generationStage = MinecraftCaveGenerationStage.Ready;
                 FinalizeReadyColumns();
+                ProcessPendingColumnPhysics();
                 ReleaseViewerAtSpawn();
                 initialLoadComplete = true;
                 initialLoadCompletedAtUnscaledTime = Time.unscaledTime;
@@ -4984,6 +6454,7 @@ namespace Supernova.MinecraftCaves
             {
                 if (!DenseJigsawFeatureMixer.TryBuild(
                         denseJigsawRegionConfigurationOverride,
+                        worldGenerationConfiguration,
                         spawnCheckpointJigsawFeature,
                         out denseJigsawFeature,
                         out string denseError))
@@ -5139,7 +6610,39 @@ namespace Supernova.MinecraftCaves
 
         private void OnDisable()
         {
+            InstanceDisabled?.Invoke(this);
             ClearRuntimeState();
+        }
+
+        private void ResetPublishedInitialLoadProgress()
+        {
+            publishedInitialLoadStage =
+                (MinecraftCaveGenerationStage)(-1);
+            publishedInitialLoadPercent = -1;
+            publishedInitialLoadComplete = false;
+        }
+
+        private void PublishInitialLoadProgress()
+        {
+            if (InitialLoadProgressChanged == null)
+                return;
+
+            float progress = Mathf.Clamp01(InitialLoadProgress);
+            int progressPercent = Mathf.RoundToInt(progress * 100f);
+            if (generationStage == publishedInitialLoadStage
+                && progressPercent == publishedInitialLoadPercent
+                && initialLoadComplete == publishedInitialLoadComplete)
+            {
+                return;
+            }
+
+            publishedInitialLoadStage = generationStage;
+            publishedInitialLoadPercent = progressPercent;
+            publishedInitialLoadComplete = initialLoadComplete;
+            InitialLoadProgressChanged.Invoke(
+                generationStage,
+                progressPercent * 0.01f,
+                initialLoadComplete);
         }
 
         private void OnApplicationQuit()
@@ -5156,6 +6659,7 @@ namespace Supernova.MinecraftCaves
         {
             RestoreGlobalGravityAfterInitialLoad();
             generationCancellation?.Cancel();
+            CancelDenseJigsawSelectionTask();
             foreach (GenerationTaskHandle handle in generationTasks.Values)
             {
                 handle.Cancel();
@@ -5165,9 +6669,40 @@ namespace Supernova.MinecraftCaves
             generationCancellation = null;
             generationTasks.Clear();
             completedGenerationCoordinates.Clear();
+            applyingSurfaceBuildResult?.Dispose();
+            applyingSurfaceBuildResult = null;
+            foreach (Task<MeshGenerationResult> meshTask
+                in meshTasks.Values)
+            {
+                if (meshTask.Status == TaskStatus.RanToCompletion)
+                {
+                    meshTask.Result.Dispose();
+                    continue;
+                }
+
+                _ = meshTask.ContinueWith(
+                    completed =>
+                    {
+                        if (completed.Status
+                            == TaskStatus.RanToCompletion)
+                        {
+                            completed.Result.Dispose();
+                        }
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.ExecuteSynchronously,
+                    TaskScheduler.Default);
+            }
             meshTasks.Clear();
             priorityMeshTasks.Clear();
             meshBuildVersions.Clear();
+            foreach (MeshPostProcessRequest request
+                in pendingMeshPostProcesses.Values)
+            {
+                request.Cancel();
+            }
+            pendingMeshPostProcesses.Clear();
+            meshPostProcessQueue.Clear();
             completedMeshCoordinates.Clear();
             generationQueue.Clear();
             queuedChunks.Clear();
@@ -5191,20 +6726,35 @@ namespace Supernova.MinecraftCaves
             }
             activeOreDrops.Clear();
             pendingOreTerrainReleases.Clear();
+            oreDropsAwaitingPhysicsSync.Clear();
             for (int i = activeTreasures.Count - 1; i >= 0; i--)
             {
                 TreasurePickup treasure = activeTreasures[i];
-                if (treasure != null) DestroyGeneratedObject(treasure.gameObject);
+                if (treasure != null)
+                {
+                    treasure.SetPoolReleaseHandler(null);
+                    DestroyGeneratedObject(treasure.gameObject);
+                }
             }
             activeTreasures.Clear();
+            activeTreasurePrefabs.Clear();
+            DestroyPooledTreasureInstances();
             treasureSpawnedColumns.Clear();
             pendingTreasureColumns.Clear();
+            pendingPhysicsColumns.Clear();
+            pendingPhysicsColumnBuffer.Clear();
             for (int i = activeMonsters.Count - 1; i >= 0; i--)
             {
                 CreatureBehaviorAgent monster = activeMonsters[i];
-                if (monster != null) DestroyGeneratedObject(monster.gameObject);
+                if (monster != null)
+                {
+                    monster.SetPoolReleaseHandler(null);
+                    DestroyGeneratedObject(monster.gameObject);
+                }
             }
             activeMonsters.Clear();
+            activeMonsterPrefabs.Clear();
+            DestroyPooledMonsterInstances();
             markerSpawnedColumns.Clear();
             markerSpawnBuffer.Clear();
             checkpointSpawnedColumns.Clear();
@@ -5237,12 +6787,17 @@ namespace Supernova.MinecraftCaves
             {
                 DestroyChunkObject(coordinate, true);
             }
+            DestroyPooledChunkObjects();
+            DestroyPooledChunkMeshes();
             foreach (Mesh terrainSurfaceMesh in terrainSurfaceMeshes.Values)
             {
                 DestroyGeneratedObject(terrainSurfaceMesh);
             }
             terrainSurfaceMeshes.Clear();
             gameplayCarvedVoxels.Clear();
+            gameplayVoxelOverridesByColumn.Clear();
+            voxelColumnsToEvict.Clear();
+            gameplayVoxelOverrideCount = 0;
             if (runtimeTerrainSurfaceMaterial != null)
             {
                 DestroyGeneratedObject(runtimeTerrainSurfaceMaterial);
@@ -5278,6 +6833,8 @@ namespace Supernova.MinecraftCaves
                 Array.Empty<JigsawStructureFeatureSettings>();
             denseJigsawFeature = default;
             denseJigsawPlacementSelection = null;
+            hasDenseJigsawSelectionWindow = false;
+            denseJigsawSelectionRebuildCount = 0;
             hasViewerChunk = false;
 
             structurePassApplied = false;
@@ -5421,21 +6978,152 @@ namespace Supernova.MinecraftCaves
             public VoxelTypeId[] Types { get; }
         }
 
-        private sealed class MeshGenerationResult
+        private enum MeshPostProcessStage
         {
-            public MeshGenerationResult(
+            Collider,
+            Surface
+        }
+
+        private sealed class MeshPostProcessRequest
+        {
+            private bool isCanceled;
+
+            public MeshPostProcessRequest(
                 Vector3Int coordinate,
                 int version,
-                VoxelMeshData data)
+                MeshPostProcessStage stage,
+                VoxelMeshData data,
+                Mesh preparedMesh,
+                CaveSurfaceBuildResult surfaceBuildResult)
             {
                 Coordinate = coordinate;
                 Version = version;
-                Data = data ?? throw new ArgumentNullException(nameof(data));
+                Stage = stage;
+                VoxelMeshData validatedData = data
+                    ?? throw new ArgumentNullException(nameof(data));
+                PreparedMesh = preparedMesh
+                    ?? throw new ArgumentNullException(nameof(preparedMesh));
+                SurfaceBuildResult = surfaceBuildResult;
+                if (SurfaceBuildResult == null)
+                {
+                    Data = validatedData;
+                    Data.Retain();
+                }
             }
 
             public Vector3Int Coordinate { get; }
             public int Version { get; }
-            public VoxelMeshData Data { get; }
+            public MeshPostProcessStage Stage { get; set; }
+            public VoxelMeshData Data { get; private set; }
+            public Mesh PreparedMesh { get; }
+            public CaveSurfaceBuildResult SurfaceBuildResult
+            {
+                get;
+                private set;
+            }
+            public bool IsCanceled => isCanceled;
+
+            public void Cancel()
+            {
+                if (isCanceled)
+                {
+                    return;
+                }
+
+                isCanceled = true;
+                Data?.Dispose();
+                Data = null;
+                SurfaceBuildResult?.Dispose();
+                SurfaceBuildResult = null;
+            }
+        }
+
+        private sealed class MeshGenerationResult : IDisposable
+        {
+            private CaveSurfaceBuildResult surfaceBuildResult;
+            private VoxelMeshData data;
+
+            public MeshGenerationResult(
+                Vector3Int coordinate,
+                int version,
+                VoxelMeshData data,
+                CaveSurfaceBuildResult surfaceBuildResult)
+            {
+                Coordinate = coordinate;
+                Version = version;
+                this.data = data ?? throw new ArgumentNullException(nameof(data));
+                this.surfaceBuildResult = surfaceBuildResult;
+            }
+
+            public Vector3Int Coordinate { get; }
+            public int Version { get; }
+            public VoxelMeshData Data => data;
+
+            public CaveSurfaceBuildResult TakeSurfaceBuildResult()
+            {
+                CaveSurfaceBuildResult result = surfaceBuildResult;
+                surfaceBuildResult = null;
+                return result;
+            }
+
+            public void Dispose()
+            {
+                data?.Dispose();
+                data = null;
+                surfaceBuildResult?.Dispose();
+                surfaceBuildResult = null;
+            }
+        }
+
+        private sealed class DenseJigsawSelectionTaskHandle :
+            IDisposable
+        {
+            private readonly CancellationTokenSource cancellation;
+
+            public DenseJigsawSelectionTaskHandle(
+                Task<JigsawPlacementSelection> task,
+                CancellationTokenSource cancellation,
+                int minimumChunkX,
+                int maximumChunkX,
+                int minimumChunkZ,
+                int maximumChunkZ)
+            {
+                Task = task ?? throw new ArgumentNullException(nameof(task));
+                this.cancellation = cancellation
+                    ?? throw new ArgumentNullException(nameof(cancellation));
+                MinimumChunkX = minimumChunkX;
+                MaximumChunkX = maximumChunkX;
+                MinimumChunkZ = minimumChunkZ;
+                MaximumChunkZ = maximumChunkZ;
+            }
+
+            public Task<JigsawPlacementSelection> Task { get; }
+            public int MinimumChunkX { get; }
+            public int MaximumChunkX { get; }
+            public int MinimumChunkZ { get; }
+            public int MaximumChunkZ { get; }
+
+            public bool Contains(
+                int minimumChunkX,
+                int maximumChunkX,
+                int minimumChunkZ,
+                int maximumChunkZ)
+            {
+                return minimumChunkX >= MinimumChunkX
+                    && maximumChunkX <= MaximumChunkX
+                    && minimumChunkZ >= MinimumChunkZ
+                    && maximumChunkZ <= MaximumChunkZ;
+            }
+
+            public void Cancel()
+            {
+                cancellation.Cancel();
+            }
+
+            public void Dispose()
+            {
+                cancellation.Dispose();
+            }
         }
 
         private sealed class GenerationTaskHandle : IDisposable

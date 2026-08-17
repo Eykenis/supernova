@@ -141,7 +141,7 @@ namespace Supernova.Shop
             {
                 InputPromptTextRuntime.SetText(
                     label,
-                    "$" + profile.Price
+                    "$" + PlayerEconomy.GetCurrentPrice(profile)
                         + " 按 {{input:Gameplay/Interact}} 购买");
                 label.color = PlayerEconomy.CanAfford(profile)
                     ? WorldValueTextStyle.ValueColor
@@ -152,34 +152,38 @@ namespace Supernova.Shop
         private void BuildView()
         {
             ClearGeneratedView();
-            if (profile == null || profile.DisplayPrefab == null)
+            if (profile == null)
                 return;
 
             BuildPlate();
             BuildPickupLight();
 
-            var displayObject = new GameObject("Product Display");
-            displayRoot = displayObject.transform;
-            displayRoot.SetParent(transform, false);
-            displayRoot.localPosition = new Vector3(0f, 0.65f, 0f);
+            MeshRenderer[] modelRenderers = new MeshRenderer[0];
+            if (profile.DisplayPrefab != null)
+            {
+                var displayObject = new GameObject("Product Display");
+                displayRoot = displayObject.transform;
+                displayRoot.SetParent(transform, false);
+                displayRoot.localPosition = new Vector3(0f, 0.65f, 0f);
 
-            modelInstance = Instantiate(
-                profile.DisplayPrefab,
-                displayRoot,
-                false);
-            modelInstance.name = profile.DisplayName + " Display";
-            PrepareModelInstance();
-            Transform modelTransform = modelInstance.transform;
-            modelTransform.localPosition = profile.DisplayLocalPosition;
-            modelTransform.localRotation =
-                Quaternion.Euler(profile.DisplayLocalEulerAngles);
-            modelTransform.localScale = profile.DisplayLocalScale;
+                modelInstance = Instantiate(
+                    profile.DisplayPrefab,
+                    displayRoot,
+                    false);
+                modelInstance.name = profile.DisplayName + " Display";
+                PrepareModelInstance();
+                Transform modelTransform = modelInstance.transform;
+                modelTransform.localPosition = profile.DisplayLocalPosition;
+                modelTransform.localRotation =
+                    Quaternion.Euler(profile.DisplayLocalEulerAngles);
+                modelTransform.localScale = profile.DisplayLocalScale;
 
-            MeshRenderer[] renderers =
-                modelInstance.GetComponentsInChildren<MeshRenderer>(true);
-            CacheRendererPresentations(renderers);
+                modelRenderers =
+                    modelInstance.GetComponentsInChildren<MeshRenderer>(true);
+                CacheRendererPresentations(modelRenderers);
+            }
 
-            Bounds localBounds = CalculateLocalBounds(renderers);
+            Bounds localBounds = CalculateLocalBounds(modelRenderers);
             Renderer plateRenderer = plateObject != null
                 ? plateObject.GetComponent<Renderer>()
                 : null;

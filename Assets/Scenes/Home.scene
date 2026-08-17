@@ -392,7 +392,7 @@ Transform:
   m_GameObject: {fileID: 295985762}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 5, y: 0, z: 0}
+  m_LocalPosition: {x: 2.5, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2204,7 +2204,7 @@ Transform:
   m_GameObject: {fileID: 1242899944}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -2.5, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2287,6 +2287,11 @@ PrefabInstance:
         type: 3}
       propertyPath: m_AdditionalShaderChannelsFlag
       value: 25
+      objectReference: {fileID: 0}
+    - target: {fileID: 3659395525868951897, guid: d725abd71f6ceb24b8a0f1cd750651c6,
+        type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3753276617461531868, guid: d725abd71f6ceb24b8a0f1cd750651c6,
         type: 3}
@@ -2447,6 +2452,31 @@ PrefabInstance:
         type: 3}
       propertyPath: m_TextStyleHashCode
       value: -1183493901
+      objectReference: {fileID: 0}
+    - target: {fileID: 8768990278800215425, guid: d725abd71f6ceb24b8a0f1cd750651c6,
+        type: 3}
+      propertyPath: m_SizeDelta.x
+      value: 1300
+      objectReference: {fileID: 0}
+    - target: {fileID: 8768990278800215425, guid: d725abd71f6ceb24b8a0f1cd750651c6,
+        type: 3}
+      propertyPath: m_SizeDelta.y
+      value: 350
+      objectReference: {fileID: 0}
+    - target: {fileID: 8768990278800215425, guid: d725abd71f6ceb24b8a0f1cd750651c6,
+        type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8768990278800215425, guid: d725abd71f6ceb24b8a0f1cd750651c6,
+        type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: -720
+      objectReference: {fileID: 0}
+    - target: {fileID: 8768990278800215425, guid: d725abd71f6ceb24b8a0f1cd750651c6,
+        type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -45
       objectReference: {fileID: 0}
     - target: {fileID: 9218970527611223710, guid: d725abd71f6ceb24b8a0f1cd750651c6,
         type: 3}
@@ -2873,7 +2903,7 @@ Transform:
   m_GameObject: {fileID: 1792262804}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -5, y: 0, z: 0}
+  m_LocalPosition: {x: -7.5, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2892,6 +2922,55 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   productProfile: {fileID: 11400000, guid: 94d4a6b57c56e9743817d22b36300133, type: 2}
+  interactionCamera: {fileID: 0}
+  productLocalPosition: {x: 0, y: 0, z: 0}
+  interactionDistance: 2.4
+--- !u!1 &1824311551
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 7
+  m_Component:
+  - component: {fileID: 1824311552}
+  - component: {fileID: 1824311553}
+  m_Layer: 0
+  m_HasEditorInfo: 1
+  m_Name: Shop Product magnet-force-upgrade
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1824311552
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1824311551}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 7.5, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2131095383}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1824311553
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1824311551}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b6b6a80e0557afb4b90d0b79d6555200, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  productProfile: {fileID: 11400000, guid: d9f3e4411ef850940b786e9bd6439828, type: 2}
   interactionCamera: {fileID: 0}
   productLocalPosition: {x: 0, y: 0, z: 0}
   interactionDistance: 2.4
@@ -2949,7 +3028,7 @@ MonoBehaviour:
   playerToolController: {fileID: 895197083}
   cameraTransitionSeconds: 1.65
   menuFadeSeconds: 0.55
-  firstPersonVisibilityPoint: 0.5
+  firstPersonTransitionLeadSeconds: 0.2
   menuFieldOfView: 60
   menuCameraOffset: {x: 1, y: 1, z: 1}
   menuLookTargetOffset: {x: -0.75, y: 1, z: 0}
@@ -2998,14 +3077,15 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2131095381}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 45.392, y: 0, z: 21.9}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 16, y: 0, z: 22.91}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1792262805}
   - {fileID: 1242899945}
   - {fileID: 295985763}
+  - {fileID: 1824311552}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &479001922287451700

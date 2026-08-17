@@ -512,9 +512,11 @@ marker，会自动继承模板的。这样手绘的房间连带它的战利品�
 打开 `Assets/Scenes/WorldGenerationPreview.scene`，可在编辑器内直接看
 生成结果，不必进游戏。
 
-### 8.2 无限世界
+### 8.2 正式任务世界
 
-打开 `Assets/Scenes/InfiniteCaves.scene` 进 Play。若结构稀有不好找，
+打开 `Assets/Scenes/DenseJigsawRegion.scene` 进 Play。该场景是当前正式任务入口，
+会在基础洞穴上应用 `DenseJigsawRegionWorld.asset` 的高密度混合覆盖；
+`InfiniteCaves.scene` 仅用于排除 Dense 覆盖影响时的基础链路对照。若结构稀有不好找，
 临时把 `Placement Chance` 调到 `1`、`Region Size In Chunks` 调小，
 验证完再改回。
 

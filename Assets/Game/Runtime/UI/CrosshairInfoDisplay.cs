@@ -47,7 +47,6 @@ namespace Supernova.UI
     {
         private const float HideDelay = 0.15f;
         private const float AlphaLerpRate = 12f;
-        private const float TerrainResolveInterval = 2f;
 
         /// <summary>
         /// Durability at or above this value reads as unbreakable; the crosshair
@@ -131,9 +130,9 @@ namespace Supernova.UI
         public UiDesignTokens DesignTokens { get; set; }
 
         private IVoxelTerrain voxelTerrain;
+        private readonly RaycastHit[] targetHits = new RaycastHit[64];
         private int raycastMask;
         private float interactionReach;
-        private float nextTerrainResolveTime;
         private float visibilityAlpha;
         private float targetAlpha;
         private float hideCountdown;
@@ -142,15 +141,7 @@ namespace Supernova.UI
 
         private IVoxelTerrain Terrain
         {
-            get
-            {
-                if (voxelTerrain == null && Time.unscaledTime >= nextTerrainResolveTime)
-                {
-                    nextTerrainResolveTime = Time.unscaledTime + TerrainResolveInterval;
-                    ResolveTerrain();
-                }
-                return voxelTerrain;
-            }
+            get { return voxelTerrain; }
         }
 
         private void Awake()
@@ -208,6 +199,12 @@ namespace Supernova.UI
             ApplyAlpha();
         }
 
+        public void BindTerrainSource(MonoBehaviour source)
+        {
+            terrainSource = source;
+            voxelTerrain = source as IVoxelTerrain;
+        }
+
         private CrosshairLookAtInfo DetectTarget()
         {
             if (viewCamera == null)
@@ -218,19 +215,19 @@ namespace Supernova.UI
             Vector3 origin = viewCamera.transform.position;
             Vector3 direction = viewCamera.transform.forward;
 
-            RaycastHit[] hits = Physics.RaycastAll(
+            int hitCount = Physics.RaycastNonAlloc(
                 origin,
                 direction,
+                targetHits,
                 interactionReach,
                 raycastMask,
                 QueryTriggerInteraction.Ignore);
-
-            System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+            SortHitsByDistance(hitCount);
 
             // Check for treasure pickups first (closest wins).
-            for (int i = 0; i < hits.Length; i++)
+            for (int i = 0; i < hitCount; i++)
             {
-                TreasurePickup treasure = hits[i].collider
+                TreasurePickup treasure = targetHits[i].collider
                     .GetComponentInParent<TreasurePickup>();
                 if (treasure != null && treasure.Definition != null)
                 {
@@ -245,9 +242,9 @@ namespace Supernova.UI
             }
 
             // Check for mined ore drops.
-            for (int i = 0; i < hits.Length; i++)
+            for (int i = 0; i < hitCount; i++)
             {
-                MinedOreDrop oreDrop = hits[i].collider
+                MinedOreDrop oreDrop = targetHits[i].collider
                     .GetComponentInParent<MinedOreDrop>();
                 if (oreDrop == null)
                 {
@@ -314,6 +311,23 @@ namespace Supernova.UI
                 CrosshairTargetType.Voxel,
                 voxelDef.DisplayName,
                 voxelDef.Durability);
+        }
+
+        private void SortHitsByDistance(int hitCount)
+        {
+            for (int i = 1; i < hitCount; i++)
+            {
+                RaycastHit value = targetHits[i];
+                int destination = i - 1;
+                while (destination >= 0
+                    && targetHits[destination].distance > value.distance)
+                {
+                    targetHits[destination + 1] =
+                        targetHits[destination];
+                    destination--;
+                }
+                targetHits[destination + 1] = value;
+            }
         }
 
         private void ShowInfo(CrosshairLookAtInfo info)
@@ -429,18 +443,5 @@ namespace Supernova.UI
                 : 3f;
         }
 
-        private void ResolveTerrain()
-        {
-            MonoBehaviour[] candidates = FindObjectsOfType<MonoBehaviour>();
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                if (candidates[i] is IVoxelTerrain terrain)
-                {
-                    terrainSource = candidates[i];
-                    voxelTerrain = terrain;
-                    return;
-                }
-            }
-        }
     }
 }

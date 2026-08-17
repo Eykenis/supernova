@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Supernova.Gameplay;
 using TMPro;
 using UnityEngine;
@@ -5,72 +6,55 @@ using UnityEngine.UI;
 
 namespace Supernova.UI
 {
-    /// <summary>
-    /// Keeps a valuable object's current value readable above its world bounds.
-    /// The generated canvas is not parented to the object so model scale and
-    /// rotation cannot distort the label.
-    /// </summary>
     [DisallowMultipleComponent]
     public sealed class ValuableObjectWorldUi : MonoBehaviour
     {
         private const float VerticalPadding = 0.25f;
+        private const int MaximumPooledViews = 128;
+        private static readonly Stack<PooledView> ViewPool =
+            new Stack<PooledView>();
 
         private ValuableObject valuable;
         private RectTransform canvasRect;
         private Camera worldCamera;
+        private Collider[] boundColliders = new Collider[0];
+        private Renderer[] boundRenderers = new Renderer[0];
 
         public Canvas WorldCanvas { get; private set; }
         public TMP_Text ValueLabel { get; private set; }
         public ValueLossPopup LastLossPopup { get; private set; }
+        public static int PooledViewCount => ViewPool.Count;
 
         private void Awake()
         {
-            EnsureView();
             Bind(GetComponent<ValuableObject>());
         }
 
         private void OnEnable()
         {
-            if (WorldCanvas != null)
-            {
-                WorldCanvas.gameObject.SetActive(true);
-            }
+            EnsureView();
+            CacheBoundsSources();
+            RefreshValue();
+            UpdateWorldPose();
         }
 
         private void OnDisable()
         {
-            if (WorldCanvas != null)
-            {
-                WorldCanvas.gameObject.SetActive(false);
-            }
+            ReleaseView();
         }
 
         private void LateUpdate()
         {
-            if (valuable == null || WorldCanvas == null)
+            if (valuable != null && WorldCanvas != null)
             {
-                return;
+                UpdateWorldPose();
             }
-
-            UpdateWorldPose();
         }
 
         private void OnDestroy()
         {
             Unsubscribe();
-            if (WorldCanvas == null)
-            {
-                return;
-            }
-
-            if (Application.isPlaying)
-            {
-                Destroy(WorldCanvas.gameObject);
-            }
-            else
-            {
-                DestroyImmediate(WorldCanvas.gameObject);
-            }
+            ReleaseView();
         }
 
         public void Bind(ValuableObject source)
@@ -78,6 +62,7 @@ namespace Supernova.UI
             if (valuable == source)
             {
                 EnsureView();
+                CacheBoundsSources();
                 RefreshValue();
                 UpdateWorldPose();
                 return;
@@ -91,6 +76,7 @@ namespace Supernova.UI
                 valuable.ValueLost += HandleValueLost;
             }
 
+            CacheBoundsSources();
             EnsureView();
             RefreshValue();
             UpdateWorldPose();
@@ -102,7 +88,6 @@ namespace Supernova.UI
             {
                 return;
             }
-
             valuable.ValueChanged -= HandleValueChanged;
             valuable.ValueLost -= HandleValueLost;
         }
@@ -111,7 +96,7 @@ namespace Supernova.UI
         {
             if (ValueLabel != null)
             {
-                ValueLabel.text = $"${currentValue}";
+                ValueLabel.text = "$" + currentValue;
             }
         }
 
@@ -121,7 +106,6 @@ namespace Supernova.UI
             {
                 return;
             }
-
             LastLossPopup = ValueLossPopup.Create(
                 collisionPoint,
                 lostValue,
@@ -133,7 +117,7 @@ namespace Supernova.UI
             if (ValueLabel != null)
             {
                 ValueLabel.text = valuable != null
-                    ? $"${valuable.CurrentValue}"
+                    ? "$" + valuable.CurrentValue
                     : "$0";
             }
         }
@@ -145,11 +129,22 @@ namespace Supernova.UI
                 return;
             }
 
+            while (ViewPool.Count > 0)
+            {
+                PooledView pooled = ViewPool.Pop();
+                if (pooled.Canvas == null)
+                {
+                    continue;
+                }
+                AssignView(pooled);
+                PrepareViewForUse();
+                return;
+            }
+
             var canvasObject = new GameObject(
-                $"{gameObject.name} Value UI",
+                gameObject.name + " Value UI",
                 typeof(RectTransform),
                 typeof(Canvas));
-            canvasObject.layer = gameObject.layer;
             canvasRect = canvasObject.GetComponent<RectTransform>();
             canvasRect.sizeDelta = new Vector2(180f, 44f);
             canvasRect.localScale =
@@ -165,7 +160,6 @@ namespace Supernova.UI
                 typeof(RectTransform),
                 typeof(TextMeshProUGUI),
                 typeof(Outline));
-            labelObject.layer = gameObject.layer;
             RectTransform labelRect =
                 labelObject.GetComponent<RectTransform>();
             labelRect.SetParent(canvasRect, false);
@@ -180,6 +174,88 @@ namespace Supernova.UI
                 label,
                 WorldValueTextStyle.ValueColor);
             ValueLabel = label;
+            PrepareViewForUse();
+        }
+
+        private void AssignView(PooledView pooled)
+        {
+            canvasRect = pooled.CanvasRect;
+            WorldCanvas = pooled.Canvas;
+            ValueLabel = pooled.Label;
+        }
+
+        private void PrepareViewForUse()
+        {
+            GameObject canvasObject = WorldCanvas.gameObject;
+            canvasObject.name = gameObject.name + " Value UI";
+            canvasObject.layer = gameObject.layer;
+            if (ValueLabel != null)
+            {
+                ValueLabel.gameObject.layer = gameObject.layer;
+            }
+            canvasRect.sizeDelta = new Vector2(180f, 44f);
+            canvasRect.localScale =
+                Vector3.one * WorldValueTextStyle.CanvasScale;
+            canvasObject.SetActive(true);
+        }
+
+        private void ReleaseView()
+        {
+            if (WorldCanvas == null)
+            {
+                ClearViewReferences();
+                return;
+            }
+
+            GameObject canvasObject = WorldCanvas.gameObject;
+            if (!Application.isPlaying)
+            {
+                DestroyImmediate(canvasObject);
+                ClearViewReferences();
+                return;
+            }
+
+            canvasObject.SetActive(false);
+            if (ValueLabel != null)
+            {
+                ValueLabel.text = "$0";
+            }
+            var pooled = new PooledView(
+                canvasRect,
+                WorldCanvas,
+                ValueLabel);
+            ClearViewReferences();
+            if (ViewPool.Count < MaximumPooledViews)
+            {
+                ViewPool.Push(pooled);
+            }
+            else
+            {
+                Destroy(canvasObject);
+            }
+        }
+
+        private void ClearViewReferences()
+        {
+            canvasRect = null;
+            WorldCanvas = null;
+            ValueLabel = null;
+            worldCamera = null;
+            LastLossPopup = null;
+        }
+
+        private void CacheBoundsSources()
+        {
+            if (valuable == null)
+            {
+                boundColliders = new Collider[0];
+                boundRenderers = new Renderer[0];
+                return;
+            }
+            boundColliders =
+                valuable.GetComponentsInChildren<Collider>(true);
+            boundRenderers =
+                valuable.GetComponentsInChildren<Renderer>(true);
         }
 
         private void UpdateWorldPose()
@@ -189,8 +265,7 @@ namespace Supernova.UI
                 return;
             }
 
-            Bounds bounds;
-            if (TryGetWorldBounds(out bounds))
+            if (TryGetWorldBounds(out Bounds bounds))
             {
                 canvasRect.position = new Vector3(
                     bounds.center.x,
@@ -214,16 +289,15 @@ namespace Supernova.UI
         {
             bool found = false;
             bounds = new Bounds(transform.position, Vector3.zero);
-
-            Collider[] colliders = GetComponentsInChildren<Collider>(true);
-            for (int i = 0; i < colliders.Length; i++)
+            for (int i = 0; i < boundColliders.Length; i++)
             {
-                Collider collider = colliders[i];
-                if (!collider.enabled || collider.isTrigger)
+                Collider collider = boundColliders[i];
+                if (collider == null
+                    || !collider.enabled
+                    || collider.isTrigger)
                 {
                     continue;
                 }
-
                 if (!found)
                 {
                     bounds = collider.bounds;
@@ -234,21 +308,18 @@ namespace Supernova.UI
                     bounds.Encapsulate(collider.bounds);
                 }
             }
-
             if (found)
             {
                 return true;
             }
 
-            Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
-            for (int i = 0; i < renderers.Length; i++)
+            for (int i = 0; i < boundRenderers.Length; i++)
             {
-                Renderer renderer = renderers[i];
-                if (!renderer.enabled)
+                Renderer renderer = boundRenderers[i];
+                if (renderer == null || !renderer.enabled)
                 {
                     continue;
                 }
-
                 if (!found)
                 {
                     bounds = renderer.bounds;
@@ -259,7 +330,6 @@ namespace Supernova.UI
                     bounds.Encapsulate(renderer.bounds);
                 }
             }
-
             return found;
         }
 
@@ -269,13 +339,28 @@ namespace Supernova.UI
             {
                 worldCamera = Camera.main;
             }
-
             if (worldCamera == null)
             {
                 worldCamera = FindObjectOfType<Camera>();
             }
-
             return worldCamera;
+        }
+
+        private readonly struct PooledView
+        {
+            public PooledView(
+                RectTransform canvasRect,
+                Canvas canvas,
+                TMP_Text label)
+            {
+                CanvasRect = canvasRect;
+                Canvas = canvas;
+                Label = label;
+            }
+
+            public RectTransform CanvasRect { get; }
+            public Canvas Canvas { get; }
+            public TMP_Text Label { get; }
         }
     }
 }

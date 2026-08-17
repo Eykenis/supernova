@@ -173,6 +173,9 @@ namespace Supernova.Tests
                 10,
                 0.25f);
 
+            Assert.That(
+                MinedOreDrop.RecoveredLinearScale,
+                Is.EqualTo(1f));
             Assert.That(drop.VoxelCount, Is.EqualTo(4));
             Assert.That(drop.RepresentedFullVoxelVolume, Is.EqualTo(2.4f));
             Assert.That(drop.Value, Is.EqualTo(24));
@@ -231,6 +234,118 @@ namespace Supernova.Tests
             Assert.That(drop.Valuable.IsCollisionValueLossProtected, Is.False);
             Assert.That(drop.Valuable.ApplyCollisionImpulse(3f), Is.GreaterThan(0));
         }
+
+        [Test]
+        public void MinedOreDrop_TerrainRebuildKeepsProtectionUntilPhysicsSync()
+        {
+            GameObject terrainObject = Create("Terrain");
+            MinecraftCaveInfiniteWorld terrain =
+                terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            GameObject target = Create("Recovered Ore");
+            target.AddComponent<Rigidbody>();
+            target.AddComponent<BoxCollider>();
+            MinedOreDrop drop = target.AddComponent<MinedOreDrop>();
+            drop.Configure(
+                new VoxelTypeId(3),
+                1,
+                1f,
+                new Mesh(),
+                1f,
+                null,
+                100,
+                0.5f);
+            MethodInfo suspend = typeof(MinedOreDrop).GetMethod(
+                "SuspendForTerrainColliderRebuild",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo register = typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                "RegisterOreTerrainRelease",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo notify = typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                "NotifyOreTerrainMeshRebuilt",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo process = typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                "ProcessPendingColumnPhysics",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(suspend, Is.Not.Null);
+            Assert.That(register, Is.Not.Null);
+            Assert.That(notify, Is.Not.Null);
+            Assert.That(process, Is.Not.Null);
+            var coordinate = Vector3Int.zero;
+            var affectedMeshes = new HashSet<Vector3Int> { coordinate };
+
+            suspend.Invoke(drop, null);
+            register.Invoke(
+                terrain,
+                new object[] { drop, affectedMeshes });
+            notify.Invoke(terrain, new object[] { coordinate });
+
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.True);
+            Assert.That(
+                drop.Valuable.IsCollisionValueLossProtected,
+                Is.True);
+            Assert.That(drop.Valuable.ApplyCollisionImpulse(100f), Is.Zero);
+            Assert.That(drop.Value, Is.EqualTo(100));
+
+            process.Invoke(terrain, null);
+
+            Assert.That(drop.IsWaitingForTerrainColliderRebuild, Is.False);
+            Assert.That(
+                drop.Valuable.IsCollisionValueLossProtected,
+                Is.False);
+            Assert.That(drop.Value, Is.EqualTo(100));
+        }
+
+        [Test]
+        public void MinedOreDrop_EscapeDirectionUsesOnlyActualAirFaces()
+        {
+            GameObject terrainObject = Create("Terrain");
+            MinecraftCaveInfiniteWorld terrain =
+                terrainObject.AddComponent<MinecraftCaveInfiniteWorld>();
+            var world = new InfiniteVoxelWorld();
+            world.EnsureChunk(Vector2Int.zero).Data.Fill(
+                -1f,
+                VoxelTypeId.Air);
+            typeof(MinecraftCaveInfiniteWorld).GetField(
+                "world",
+                BindingFlags.Instance | BindingFlags.NonPublic).SetValue(
+                    terrain,
+                    world);
+            var coordinate = new Vector3Int(10, 10, 10);
+            var component = new HashSet<Vector3Int> { coordinate };
+            Vector3Int[] neighbours =
+            {
+                Vector3Int.right, Vector3Int.left, Vector3Int.up,
+                Vector3Int.down, Vector3Int.forward, Vector3Int.back,
+            };
+            for (int i = 0; i < neighbours.Length; i++)
+            {
+                Vector3Int neighbour = coordinate + neighbours[i];
+                world.SetVoxel(
+                    neighbour.x,
+                    neighbour.y,
+                    neighbour.z,
+                    1f,
+                    VoxelTypeId.Default);
+            }
+            Vector3Int openNeighbour = coordinate + Vector3Int.left;
+            world.SetVoxel(
+                openNeighbour.x,
+                openNeighbour.y,
+                openNeighbour.z,
+                -1f,
+                VoxelTypeId.Air);
+            MethodInfo resolve = typeof(MinecraftCaveInfiniteWorld).GetMethod(
+                "ResolveOreEscapeDirection",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(resolve, Is.Not.Null);
+
+            Vector3 direction = (Vector3)resolve.Invoke(
+                terrain,
+                new object[] { component });
+
+            Assert.That(direction, Is.EqualTo(Vector3.left));
+        }
+
 
         [Test]
         public void ExtractionZone_UsesLiveCurrentValueInsteadOfEntrySnapshot()

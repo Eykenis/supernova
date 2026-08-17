@@ -2262,7 +2262,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   viewer: {fileID: 0}
-  levelConfigurationOverride: {fileID: 0}
+  levelConfigurations: []
   worldGenerationConfigurationOverride: {fileID: 0}
   denseJigsawRegionConfigurationOverride: {fileID: 0}
   fixedPreviewArea: 0
@@ -3576,7 +3576,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "Hold {{input:Gameplay/Crouch}} \u8E72\u4E0B"
+  m_text: "\u6309\u4F4F {{input:Gameplay/Crouch}} \u8E72\u4E0B"
   m_enableAdvanceTextProcess: 0
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

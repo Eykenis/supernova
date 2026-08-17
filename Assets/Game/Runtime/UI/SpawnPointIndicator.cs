@@ -1,5 +1,6 @@
-using Supernova.MinecraftCaves;
-using Supernova.Voxels;
+using System.Collections.Generic;
+using Supernova.Gameplay;
+using Supernova.PortalExample;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -8,8 +9,8 @@ using UnityEngine.UI;
 namespace Supernova.UI
 {
     /// <summary>
-    /// Displays the generated mission spawn point in screen space and clamps it to the
-    /// safe screen edge when it is outside the camera view.
+    /// Displays the initial checkpoint portal and every player-created portal in
+    /// screen space. Markers clamp to the safe screen edge without rotating.
     /// </summary>
     [DefaultExecutionOrder(100)]
     [DisallowMultipleComponent]
@@ -19,24 +20,41 @@ namespace Supernova.UI
 
         [Header("Tracking")]
         [SerializeField, Min(0f)] private float hideDistance = 5f;
-        [SerializeField, Min(0.05f)] private float sourceSearchInterval = 0.5f;
+        [SerializeField, Min(0f)] private float fadeStartDistance = 35f;
+        [SerializeField, Min(0f)] private float invisibleDistance = 150f;
 
         [Header("Screen Placement")]
-        [SerializeField, Min(0f)] private float edgePadding = 56f;
+        [SerializeField, Min(0f)] private float edgePadding = 42f;
+
+        private readonly Dictionary<PortalExampleGate, MarkerView> markers =
+            new Dictionary<PortalExampleGate, MarkerView>();
+        private readonly List<PortalExampleGate> stalePortals =
+            new List<PortalExampleGate>();
 
         private Canvas indicatorCanvas;
         private RectTransform canvasRect;
-        private RectTransform markerRect;
-        private RectTransform arrowRect;
-        private TMP_Text distanceLabel;
+        private RectTransform markerTemplate;
+        private TMP_Text templateChevron;
+        private TMP_Text templateDistanceLabel;
         private Camera targetCamera;
         private Transform player;
-        private SpawnPointSceneStructure spawnStructure;
-        private MinecraftCaveInfiniteWorld caveWorld;
-        private float nextSourceSearchTime;
+        private DenseJigsawPortalBridge portalBridge;
 
         public float HideDistance => hideDistance;
-        public bool IsVisible => markerRect != null && markerRect.gameObject.activeSelf;
+        public float FadeStartDistance => fadeStartDistance;
+        public float InvisibleDistance => invisibleDistance;
+        public bool IsVisible
+        {
+            get
+            {
+                foreach (MarkerView marker in markers.Values)
+                {
+                    if (marker.Root != null && marker.Root.gameObject.activeSelf)
+                        return true;
+                }
+                return false;
+            }
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateRuntimeIndicator()
@@ -64,17 +82,42 @@ namespace Supernova.UI
         private void Awake()
         {
             EnsureView();
-            SetVisible(false);
+            SetAllMarkersVisible(false);
         }
 
         private void OnEnable()
         {
-            nextSourceSearchTime = 0f;
+            DenseJigsawPortalBridge.InstanceEnabled -=
+                HandlePortalBridgeEnabled;
+            DenseJigsawPortalBridge.InstanceEnabled +=
+                HandlePortalBridgeEnabled;
+            DenseJigsawPortalBridge.InstanceDisabled -=
+                HandlePortalBridgeDisabled;
+            DenseJigsawPortalBridge.InstanceDisabled +=
+                HandlePortalBridgeDisabled;
+            PlayerToolController.InstanceEnabled -=
+                HandlePlayerToolControllerEnabled;
+            PlayerToolController.InstanceEnabled +=
+                HandlePlayerToolControllerEnabled;
+            PlayerToolController.InstanceDisabled -=
+                HandlePlayerToolControllerDisabled;
+            PlayerToolController.InstanceDisabled +=
+                HandlePlayerToolControllerDisabled;
+            ResolveTrackedObjects();
         }
 
         private void OnDisable()
         {
-            SetVisible(false);
+            DenseJigsawPortalBridge.InstanceEnabled -=
+                HandlePortalBridgeEnabled;
+            DenseJigsawPortalBridge.InstanceDisabled -=
+                HandlePortalBridgeDisabled;
+            PlayerToolController.InstanceEnabled -=
+                HandlePlayerToolControllerEnabled;
+            PlayerToolController.InstanceDisabled -=
+                HandlePlayerToolControllerDisabled;
+            BindPortalBridge(null);
+            SetAllMarkersVisible(false);
         }
 
         private void LateUpdate()
@@ -84,139 +127,237 @@ namespace Supernova.UI
 
         public void RefreshNow()
         {
-            if (Time.unscaledTime >= nextSourceSearchTime)
+            PruneDestroyedPortals();
+            if (indicatorCanvas == null
+                || canvasRect == null
+                || targetCamera == null
+                || player == null
+                || markers.Count == 0)
             {
-                nextSourceSearchTime =
-                    Time.unscaledTime + sourceSearchInterval;
-                ResolveTrackedObjects();
-            }
-
-            if (indicatorCanvas == null || canvasRect == null
-                || markerRect == null || arrowRect == null
-                || targetCamera == null || player == null
-                || !TryGetSpawnPosition(out Vector3 spawnPosition))
-            {
-                SetVisible(false);
-                return;
-            }
-
-            float distance = Vector3.Distance(player.position, spawnPosition);
-            if (!Layout.ShouldShow(
-                    player.position,
-                    spawnPosition,
-                    hideDistance))
-            {
-                SetVisible(false);
+                SetAllMarkersVisible(false);
                 return;
             }
 
             Rect screenBounds = GetScreenBounds(targetCamera);
             if (screenBounds.width <= 0f || screenBounds.height <= 0f)
             {
-                SetVisible(false);
+                SetAllMarkersVisible(false);
                 return;
             }
 
-            Vector3 projectedPoint =
-                targetCamera.WorldToScreenPoint(spawnPosition);
-            Placement placement =
-                Layout.Calculate(projectedPoint, screenBounds, edgePadding);
-            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    canvasRect,
-                    placement.ScreenPosition,
-                    null,
-                    out Vector2 localPosition))
+            foreach (KeyValuePair<PortalExampleGate, MarkerView> pair
+                in markers)
             {
-                SetVisible(false);
-                return;
+                PortalExampleGate portal = pair.Key;
+                MarkerView marker = pair.Value;
+                if (portal == null || !portal.isActiveAndEnabled)
+                {
+                    marker.SetVisible(false);
+                    continue;
+                }
+
+                Vector3 portalPosition = portal.transform.position;
+                float distance = Vector3.Distance(
+                    player.position,
+                    portalPosition);
+                float alpha = Layout.CalculateDistanceAlpha(
+                    distance,
+                    fadeStartDistance,
+                    invisibleDistance);
+                if (!Layout.ShouldShow(
+                        player.position,
+                        portalPosition,
+                        hideDistance)
+                    || alpha <= 0f)
+                {
+                    marker.SetVisible(false);
+                    continue;
+                }
+
+                Vector3 projectedPoint =
+                    targetCamera.WorldToScreenPoint(portalPosition);
+                Placement placement =
+                    Layout.Calculate(projectedPoint, screenBounds, edgePadding);
+                if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                        canvasRect,
+                        placement.ScreenPosition,
+                        null,
+                        out Vector2 localPosition))
+                {
+                    marker.SetVisible(false);
+                    continue;
+                }
+
+                marker.Root.anchoredPosition = localPosition;
+                marker.Root.localRotation = Quaternion.identity;
+                marker.Chevron.rectTransform.localRotation =
+                    Quaternion.identity;
+                marker.DistanceLabel.SetText(
+                    "传送门\n{0:0}m",
+                    distance);
+                marker.CanvasGroup.alpha = alpha;
+                marker.SetVisible(true);
             }
-
-            markerRect.anchoredPosition = localPosition;
-            arrowRect.localRotation = Quaternion.Euler(
-                0f,
-                0f,
-                Vector2.SignedAngle(Vector2.up, placement.Direction));
-            distanceLabel.SetText("传送门\n{0:0}m", distance);
-            SetVisible(true);
-        }
-
-        public void BindForTesting(
-            Camera camera,
-            Transform playerTransform,
-            SpawnPointSceneStructure structure)
-        {
-            targetCamera = camera;
-            player = playerTransform;
-            spawnStructure = structure;
-            caveWorld = null;
-            nextSourceSearchTime = float.PositiveInfinity;
         }
 
         private void ResetTrackedObjects()
         {
             targetCamera = null;
             player = null;
-            spawnStructure = null;
-            caveWorld = null;
-            nextSourceSearchTime = 0f;
-            SetVisible(false);
+            BindPortalBridge(null);
+            SetAllMarkersVisible(false);
+            ResolveTrackedObjects();
         }
 
         private void ResolveTrackedObjects()
         {
-            if (targetCamera == null)
-            {
-                targetCamera = Camera.main;
-            }
+            targetCamera = Camera.main;
+            PlayerToolController playerTools = targetCamera != null
+                ? targetCamera.GetComponentInParent<
+                    PlayerToolController>(true)
+                : null;
+            if (playerTools == null)
+                playerTools = FindObjectOfType<PlayerToolController>();
+            player = playerTools != null
+                ? playerTools.transform
+                : targetCamera != null
+                    ? targetCamera.transform.root
+                    : null;
 
-            if (player == null)
-            {
-                VoxelPlayerController playerController =
-                    FindObjectOfType<VoxelPlayerController>();
-                if (playerController != null)
-                {
-                    player = playerController.transform;
-                }
-                else if (targetCamera != null)
-                {
-                    CharacterController characterController =
-                        targetCamera.GetComponentInParent<CharacterController>();
-                    if (characterController != null)
-                    {
-                        player = characterController.transform;
-                    }
-                }
-            }
+            BindPortalBridge(
+                FindObjectOfType<DenseJigsawPortalBridge>());
+        }
 
-            if (spawnStructure == null)
-            {
-                spawnStructure =
-                    FindObjectOfType<SpawnPointSceneStructure>(true);
-            }
+        private void BindPortalBridge(DenseJigsawPortalBridge source)
+        {
+            if (portalBridge != null)
+                portalBridge.PortalAdded -= HandlePortalAdded;
 
-            if (caveWorld == null)
+            portalBridge = source;
+            ClearPortalMarkers();
+            if (portalBridge == null)
+                return;
+
+            portalBridge.PortalAdded += HandlePortalAdded;
+            AddPortal(portalBridge.CheckpointGate);
+            IReadOnlyList<PortalExampleGate> spawned =
+                portalBridge.SpawnedCheckpointGates;
+            for (int i = 0; i < spawned.Count; i++)
+                AddPortal(spawned[i]);
+        }
+
+        private void HandlePortalBridgeEnabled(
+            DenseJigsawPortalBridge source)
+        {
+            BindPortalBridge(source);
+        }
+
+        private void HandlePortalBridgeDisabled(
+            DenseJigsawPortalBridge source)
+        {
+            if (source == portalBridge)
+                BindPortalBridge(null);
+        }
+
+        private void HandlePlayerToolControllerEnabled(
+            PlayerToolController source)
+        {
+            ResolveTrackedObjects();
+        }
+
+        private void HandlePlayerToolControllerDisabled(
+            PlayerToolController source)
+        {
+            if (source != null && source.transform == player)
             {
-                caveWorld = FindObjectOfType<MinecraftCaveInfiniteWorld>();
+                targetCamera = null;
+                player = null;
+                SetAllMarkersVisible(false);
             }
         }
 
-        private bool TryGetSpawnPosition(out Vector3 spawnPosition)
+        private void HandlePortalAdded(PortalExampleGate portal)
         {
-            if (spawnStructure != null
-                && spawnStructure.PlayerSpawnPoint != null)
+            AddPortal(portal);
+        }
+
+        private void AddPortal(PortalExampleGate portal)
+        {
+            if (portal == null || markers.ContainsKey(portal))
+                return;
+            markers.Add(portal, CreateMarker());
+        }
+
+        private MarkerView CreateMarker()
+        {
+            GameObject markerObject = Instantiate(
+                markerTemplate.gameObject,
+                canvasRect,
+                false);
+            markerObject.name =
+                UiHierarchyPaths.SpawnIndicator.RuntimeMarkerName;
+            RectTransform root =
+                markerObject.GetComponent<RectTransform>();
+            CanvasGroup canvasGroup =
+                markerObject.GetComponent<CanvasGroup>();
+            TMP_Text chevron = root.Find(
+                UiHierarchyPaths.SpawnIndicator.ChevronName)
+                .GetComponent<TMP_Text>();
+            TMP_Text label = root.Find(
+                UiHierarchyPaths.SpawnIndicator.DistanceName)
+                .GetComponent<TMP_Text>();
+            var marker = new MarkerView(
+                root,
+                canvasGroup,
+                chevron,
+                label);
+            marker.SetVisible(false);
+            return marker;
+        }
+
+        private void PruneDestroyedPortals()
+        {
+            stalePortals.Clear();
+            foreach (KeyValuePair<PortalExampleGate, MarkerView> pair
+                in markers)
             {
-                spawnPosition = spawnStructure.PlayerSpawnPoint.position;
-                return true;
+                if (pair.Key == null)
+                    stalePortals.Add(pair.Key);
             }
 
-            if (caveWorld != null && caveWorld.IsInitialLoadComplete)
+            for (int i = 0; i < stalePortals.Count; i++)
             {
-                spawnPosition = caveWorld.SpawnWorldPosition;
-                return true;
+                PortalExampleGate portal = stalePortals[i];
+                if (!markers.TryGetValue(portal, out MarkerView marker))
+                    continue;
+                DestroyMarkerObject(marker.Root);
+                markers.Remove(portal);
             }
+            stalePortals.Clear();
+        }
 
-            spawnPosition = default;
-            return false;
+        private void ClearPortalMarkers()
+        {
+            foreach (MarkerView marker in markers.Values)
+                DestroyMarkerObject(marker.Root);
+            markers.Clear();
+            stalePortals.Clear();
+        }
+
+        private void SetAllMarkersVisible(bool visible)
+        {
+            foreach (MarkerView marker in markers.Values)
+                marker.SetVisible(visible);
+        }
+
+        private static void DestroyMarkerObject(RectTransform marker)
+        {
+            if (marker == null)
+                return;
+            if (Application.isPlaying)
+                Destroy(marker.gameObject);
+            else
+                DestroyImmediate(marker.gameObject);
         }
 
         private static Rect GetScreenBounds(Camera camera)
@@ -228,9 +369,7 @@ namespace Supernova.UI
             float maximumX = Mathf.Min(cameraRect.xMax, safeArea.xMax);
             float maximumY = Mathf.Min(cameraRect.yMax, safeArea.yMax);
             if (maximumX <= minimumX || maximumY <= minimumY)
-            {
                 return cameraRect;
-            }
 
             return Rect.MinMaxRect(
                 minimumX,
@@ -247,34 +386,37 @@ namespace Supernova.UI
             {
                 indicatorCanvas = canvasTransform.GetComponent<Canvas>();
                 canvasRect = canvasTransform as RectTransform;
-                markerRect = transform.Find(
-                    UiHierarchyPaths.SpawnIndicator.Marker) as RectTransform;
-                arrowRect = transform.Find(
-                    UiHierarchyPaths.SpawnIndicator.Arrow) as RectTransform;
+                markerTemplate = transform.Find(
+                    UiHierarchyPaths.SpawnIndicator.Marker)
+                    as RectTransform;
+                Transform chevronTransform = transform.Find(
+                    UiHierarchyPaths.SpawnIndicator.Chevron);
+                templateChevron = chevronTransform != null
+                    ? chevronTransform.GetComponent<TMP_Text>()
+                    : null;
                 Transform distanceTransform = transform.Find(
                     UiHierarchyPaths.SpawnIndicator.Distance);
-                distanceLabel = distanceTransform != null
+                templateDistanceLabel = distanceTransform != null
                     ? distanceTransform.GetComponent<TMP_Text>()
                     : null;
             }
 
-            if (indicatorCanvas != null && canvasRect != null
-                && markerRect != null && arrowRect != null
-                && distanceLabel != null)
+            if (indicatorCanvas != null
+                && canvasRect != null
+                && markerTemplate != null
+                && templateChevron != null
+                && templateDistanceLabel != null)
             {
+                markerTemplate.gameObject.SetActive(false);
                 return;
             }
 
             if (canvasTransform != null)
             {
                 if (Application.isPlaying)
-                {
                     Destroy(canvasTransform.gameObject);
-                }
                 else
-                {
                     DestroyImmediate(canvasTransform.gameObject);
-                }
             }
 
             BuildView();
@@ -291,81 +433,100 @@ namespace Supernova.UI
 
             CanvasScaler scaler =
                 canvasRect.gameObject.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.uiScaleMode =
+                CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.screenMatchMode =
                 CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
 
-            markerRect = CreateRect(
+            markerTemplate = CreateRect(
                 UiHierarchyPaths.SpawnIndicator.MarkerName,
                 canvasRect);
             SetAnchoredRect(
-                markerRect,
+                markerTemplate,
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f),
                 Vector2.zero,
-                new Vector2(100f, 92f));
+                new Vector2(88f, 54f));
+            markerTemplate.gameObject.AddComponent<CanvasGroup>();
 
-            arrowRect = CreateRect(
-                UiHierarchyPaths.SpawnIndicator.ArrowName,
-                markerRect);
+            RectTransform chevronRect = CreateRect(
+                UiHierarchyPaths.SpawnIndicator.ChevronName,
+                markerTemplate);
             SetAnchoredRect(
-                arrowRect,
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f),
-                new Vector2(0f, 20f),
-                new Vector2(32f, 42f));
-            SpawnPointArrowGraphic arrow =
-                arrowRect.gameObject.AddComponent<SpawnPointArrowGraphic>();
-            arrow.color = new Color(0.28f, 0.86f, 1f, 0.96f);
-            arrow.raycastTarget = false;
-            Outline arrowOutline = arrowRect.gameObject.AddComponent<Outline>();
-            arrowOutline.effectColor = new Color(0f, 0.04f, 0.07f, 0.9f);
-            arrowOutline.effectDistance = new Vector2(2f, -2f);
-            arrowOutline.useGraphicAlpha = false;
+                chevronRect,
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                Vector2.zero,
+                new Vector2(24f, 18f));
+            TextMeshProUGUI chevron =
+                chevronRect.gameObject.AddComponent<TextMeshProUGUI>();
+            chevron.text = "▼";
+            chevron.fontSize = 15f;
+            chevron.fontStyle = FontStyles.Bold;
+            chevron.alignment = TextAlignmentOptions.Center;
+            chevron.color = new Color(0.28f, 0.86f, 1f, 0.96f);
+            chevron.enableWordWrapping = false;
+            chevron.raycastTarget = false;
+            Outline chevronOutline =
+                chevronRect.gameObject.AddComponent<Outline>();
+            chevronOutline.effectColor =
+                new Color(0f, 0.04f, 0.07f, 0.9f);
+            chevronOutline.effectDistance = new Vector2(1f, -1f);
+            chevronOutline.useGraphicAlpha = false;
+            templateChevron = chevron;
 
             RectTransform labelRect = CreateRect(
                 UiHierarchyPaths.SpawnIndicator.DistanceName,
-                markerRect);
+                markerTemplate);
             SetAnchoredRect(
                 labelRect,
                 new Vector2(0.5f, 0f),
                 new Vector2(0.5f, 0f),
                 new Vector2(0.5f, 0f),
                 Vector2.zero,
-                new Vector2(100f, 38f));
+                new Vector2(88f, 34f));
             TextMeshProUGUI label =
                 labelRect.gameObject.AddComponent<TextMeshProUGUI>();
             label.text = "传送门\n0m";
-            label.fontSize = 14f;
+            label.fontSize = 12f;
             label.fontStyle = FontStyles.Bold;
             label.alignment = TextAlignmentOptions.Center;
             label.color = new Color(0.9f, 0.97f, 1f, 1f);
             label.enableWordWrapping = false;
             label.raycastTarget = false;
-            Outline labelOutline = labelRect.gameObject.AddComponent<Outline>();
-            labelOutline.effectColor = new Color(0f, 0.04f, 0.07f, 0.95f);
+            Outline labelOutline =
+                labelRect.gameObject.AddComponent<Outline>();
+            labelOutline.effectColor =
+                new Color(0f, 0.04f, 0.07f, 0.95f);
             labelOutline.effectDistance = new Vector2(1f, -1f);
             labelOutline.useGraphicAlpha = false;
-            distanceLabel = label;
+            templateDistanceLabel = label;
+            markerTemplate.gameObject.SetActive(false);
         }
 
-        private void SetVisible(bool visible)
+        private void OnValidate()
         {
-            if (markerRect != null && markerRect.gameObject.activeSelf != visible)
-            {
-                markerRect.gameObject.SetActive(visible);
-            }
+            hideDistance = Mathf.Max(0f, hideDistance);
+            fadeStartDistance = Mathf.Max(
+                hideDistance,
+                fadeStartDistance);
+            invisibleDistance = Mathf.Max(
+                fadeStartDistance + 0.01f,
+                invisibleDistance);
+            edgePadding = Mathf.Max(0f, edgePadding);
         }
 
         private static RectTransform CreateRect(
             string objectName,
             Transform parent)
         {
-            var child = new GameObject(objectName, typeof(RectTransform));
+            var child = new GameObject(
+                objectName,
+                typeof(RectTransform));
             RectTransform rect = child.GetComponent<RectTransform>();
             rect.SetParent(parent, false);
             rect.localScale = Vector3.one;
@@ -385,6 +546,35 @@ namespace Supernova.UI
             rect.pivot = pivot;
             rect.anchoredPosition = anchoredPosition;
             rect.sizeDelta = sizeDelta;
+        }
+
+        private sealed class MarkerView
+        {
+            public MarkerView(
+                RectTransform root,
+                CanvasGroup canvasGroup,
+                TMP_Text chevron,
+                TMP_Text distanceLabel)
+            {
+                Root = root;
+                CanvasGroup = canvasGroup;
+                Chevron = chevron;
+                DistanceLabel = distanceLabel;
+            }
+
+            public RectTransform Root { get; }
+            public CanvasGroup CanvasGroup { get; }
+            public TMP_Text Chevron { get; }
+            public TMP_Text DistanceLabel { get; }
+
+            public void SetVisible(bool visible)
+            {
+                if (Root != null
+                    && Root.gameObject.activeSelf != visible)
+                {
+                    Root.gameObject.SetActive(visible);
+                }
+            }
         }
 
         public readonly struct Placement
@@ -408,11 +598,32 @@ namespace Supernova.UI
         {
             public static bool ShouldShow(
                 Vector3 playerPosition,
-                Vector3 spawnPosition,
+                Vector3 targetPosition,
                 float hiddenRadius)
             {
-                return Vector3.Distance(playerPosition, spawnPosition)
+                return Vector3.Distance(
+                    playerPosition,
+                    targetPosition)
                     > Mathf.Max(0f, hiddenRadius);
+            }
+
+            public static float CalculateDistanceAlpha(
+                float distance,
+                float fadeStart,
+                float invisibleAt)
+            {
+                float safeFadeStart = Mathf.Max(0f, fadeStart);
+                float safeInvisibleAt = Mathf.Max(
+                    safeFadeStart + 0.01f,
+                    invisibleAt);
+                if (distance <= safeFadeStart)
+                    return 1f;
+                if (distance >= safeInvisibleAt)
+                    return 0f;
+                return 1f - Mathf.InverseLerp(
+                    safeFadeStart,
+                    safeInvisibleAt,
+                    distance);
             }
 
             public static Placement Calculate(
@@ -422,8 +633,9 @@ namespace Supernova.UI
             {
                 float maximumPadding = Mathf.Max(
                     0f,
-                    Mathf.Min(screenBounds.width, screenBounds.height) * 0.5f
-                    - 1f);
+                    Mathf.Min(
+                        screenBounds.width,
+                        screenBounds.height) * 0.5f - 1f);
                 float padding = Mathf.Clamp(
                     edgePadding,
                     0f,
@@ -440,16 +652,13 @@ namespace Supernova.UI
                 bool isBehindCamera = projectedScreenPoint.z <= 0f;
                 Vector2 direction = screenPosition - center;
                 if (isBehindCamera)
-                {
                     direction = -direction;
-                }
                 if (direction.sqrMagnitude <= 0.0001f)
-                {
                     direction = Vector2.down;
-                }
                 direction.Normalize();
 
-                if (!isBehindCamera && paddedBounds.Contains(screenPosition))
+                if (!isBehindCamera
+                    && paddedBounds.Contains(screenPosition))
                 {
                     return new Placement(
                         screenPosition,
@@ -457,16 +666,21 @@ namespace Supernova.UI
                         false);
                 }
 
-                float horizontalScale = Mathf.Abs(direction.x) > 0.0001f
-                    ? paddedBounds.width * 0.5f / Mathf.Abs(direction.x)
-                    : float.PositiveInfinity;
-                float verticalScale = Mathf.Abs(direction.y) > 0.0001f
-                    ? paddedBounds.height * 0.5f / Mathf.Abs(direction.y)
-                    : float.PositiveInfinity;
+                float horizontalScale =
+                    Mathf.Abs(direction.x) > 0.0001f
+                        ? paddedBounds.width * 0.5f
+                            / Mathf.Abs(direction.x)
+                        : float.PositiveInfinity;
+                float verticalScale =
+                    Mathf.Abs(direction.y) > 0.0001f
+                        ? paddedBounds.height * 0.5f
+                            / Mathf.Abs(direction.y)
+                        : float.PositiveInfinity;
                 float edgeScale = Mathf.Min(
                     horizontalScale,
                     verticalScale);
-                Vector2 edgePosition = center + direction * edgeScale;
+                Vector2 edgePosition =
+                    center + direction * edgeScale;
                 edgePosition.x = Mathf.Clamp(
                     edgePosition.x,
                     paddedBounds.xMin,
@@ -475,68 +689,12 @@ namespace Supernova.UI
                     edgePosition.y,
                     paddedBounds.yMin,
                     paddedBounds.yMax);
-                return new Placement(edgePosition, direction, true);
+                return new Placement(
+                    edgePosition,
+                    direction,
+                    true);
             }
         }
     }
-
-    internal sealed class SpawnPointArrowGraphic : MaskableGraphic
-    {
-        protected override void OnPopulateMesh(VertexHelper vertexHelper)
-        {
-            vertexHelper.Clear();
-            Rect drawRect = rectTransform.rect;
-            float halfWidth = drawRect.width * 0.5f;
-            float halfHeight = drawRect.height * 0.5f;
-            float shoulderY = drawRect.height * 0.02f;
-            float shaftHalfWidth = drawRect.width * 0.14f;
-            UIVertex vertex = UIVertex.simpleVert;
-            vertex.color = color;
-
-            AddVertex(vertexHelper, vertex, 0f, halfHeight);
-            AddVertex(vertexHelper, vertex, halfWidth, shoulderY);
-            AddVertex(vertexHelper, vertex, -halfWidth, shoulderY);
-            vertexHelper.AddTriangle(0, 1, 2);
-
-            int shaftStart = vertexHelper.currentVertCount;
-            AddVertex(
-                vertexHelper,
-                vertex,
-                -shaftHalfWidth,
-                shoulderY + 1f);
-            AddVertex(
-                vertexHelper,
-                vertex,
-                shaftHalfWidth,
-                shoulderY + 1f);
-            AddVertex(
-                vertexHelper,
-                vertex,
-                shaftHalfWidth,
-                -halfHeight);
-            AddVertex(
-                vertexHelper,
-                vertex,
-                -shaftHalfWidth,
-                -halfHeight);
-            vertexHelper.AddTriangle(
-                shaftStart,
-                shaftStart + 1,
-                shaftStart + 2);
-            vertexHelper.AddTriangle(
-                shaftStart,
-                shaftStart + 2,
-                shaftStart + 3);
-        }
-
-        private static void AddVertex(
-            VertexHelper vertexHelper,
-            UIVertex vertex,
-            float x,
-            float y)
-        {
-            vertex.position = new Vector3(x, y);
-            vertexHelper.AddVert(vertex);
-        }
-    }
 }
+

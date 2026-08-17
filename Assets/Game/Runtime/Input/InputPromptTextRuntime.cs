@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Supernova.Infrastructure;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -65,7 +66,7 @@ namespace Supernova.Inputs
 
         public string PreprocessText(string text)
         {
-            return InputPromptResolver.Resolve(text);
+            return InputPromptResolver.ResolveWithGlyphs(text);
         }
 
         /// <summary>
@@ -83,6 +84,22 @@ namespace Supernova.Inputs
             InputPromptTextRuntime runtime = Instance;
             if (runtime != null)
                 runtime.Register(target);
+        }
+
+        public static void SetBindingDisplay(
+            TMP_Text target,
+            string controlPath,
+            string fallbackDisplay)
+        {
+            if (target == null)
+                return;
+
+            target.text = InputPromptGlyphs.ToRichText(
+                controlPath,
+                fallbackDisplay);
+            AssignGlyphAsset(target);
+            target.SetVerticesDirty();
+            target.SetLayoutDirty();
         }
 
         /// <summary>
@@ -147,6 +164,7 @@ namespace Supernova.Inputs
 
             promptTexts.Add(text);
             handlingTextChange = true;
+            AssignGlyphAsset(text);
             text.textPreprocessor = this;
             // Always re-mark dirty: an already-registered label may have just
             // been handed a different token that still needs resolving.
@@ -175,6 +193,7 @@ namespace Supernova.Inputs
             promptTexts.RemoveWhere(text => text == null);
             foreach (TMP_Text text in promptTexts)
             {
+                AssignGlyphAsset(text);
                 text.SetVerticesDirty();
                 text.SetLayoutDirty();
             }
@@ -189,6 +208,16 @@ namespace Supernova.Inputs
             }
             for (int i = 0; i < stale.Count; i++)
                 legacyTemplates.Remove(stale[i]);
+        }
+
+        private static void AssignGlyphAsset(TMP_Text text)
+        {
+            if (text == null || GameAssetCatalog.Current == null)
+                return;
+
+            TMP_SpriteAsset glyphs = GameAssetCatalog.Current.UI.InputGlyphs;
+            if (glyphs != null && text.spriteAsset != glyphs)
+                text.spriteAsset = glyphs;
         }
     }
 }

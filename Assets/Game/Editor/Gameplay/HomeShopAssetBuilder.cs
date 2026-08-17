@@ -20,9 +20,12 @@ namespace Supernova.Editor.Gameplay
         private const int FlashlightPrice = 100;
         private const int SolidGunPrice = 650;
         private const int PortalGunPrice = SolidGunPrice;
+        private const int MagnetUpgradeBasePrice = 100;
+        private const int MagnetUpgradePriceIncrease = 100;
+        private const float MagnetUpgradeForceIncrease = 100f;
         private const string ProductAnchorPrefix = "Shop Product ";
         private const string SessionKey =
-            "Supernova.HomeShopAssetBuilder.Ensured.V6";
+            "Supernova.HomeShopAssetBuilder.Ensured.V7";
         private static bool waitingForEditMode;
 
         [InitializeOnLoadMethod]
@@ -98,6 +101,8 @@ namespace Supernova.Editor.Gameplay
                 ProjectAssetPaths.Prefabs.SolidGun);
             GameObject portalGunModel = LoadRequired<GameObject>(
                 ProjectAssetPaths.Prefabs.PortalGun);
+            GameObject magnetUpgradeModel = LoadRequired<GameObject>(
+                ProjectAssetPaths.ThirdParty.MagnetUpgradeModel);
 
             var products = new List<ShopProductProfile>
             {
@@ -127,6 +132,18 @@ namespace Supernova.Editor.Gameplay
                     PortalGunPrice,
                     PlayerInventoryItem.PortalGun,
                     portalGunModel,
+                    wireframe),
+                EnsureUpgradeProduct(
+                    ProjectAssetPaths.Config.MagnetUpgradeProduct,
+                    "MagnetUpgradeProduct",
+                    "magnet-force-upgrade",
+                    "Magnet Upgrade",
+                    MagnetUpgradeBasePrice,
+                    PlayerUpgrade.MagnetAttractionForce,
+                    MagnetUpgradeForceIncrease,
+                    true,
+                    MagnetUpgradePriceIncrease,
+                    magnetUpgradeModel,
                     wireframe),
             };
 
@@ -160,6 +177,43 @@ namespace Supernova.Editor.Gameplay
                 displayName,
                 price,
                 item,
+                displayPrefab,
+                wireframe);
+            EditorUtility.SetDirty(profile);
+            return profile;
+        }
+
+        private static ShopProductProfile EnsureUpgradeProduct(
+            string path,
+            string assetName,
+            string id,
+            string displayName,
+            int price,
+            PlayerUpgrade upgrade,
+            float upgradeValue,
+            bool repeatable,
+            int priceIncreasePerPurchase,
+            GameObject displayPrefab,
+            Material wireframe)
+        {
+            ShopProductProfile profile =
+                AssetDatabase.LoadAssetAtPath<ShopProductProfile>(path);
+            if (profile == null)
+            {
+                profile =
+                    ScriptableObject.CreateInstance<ShopProductProfile>();
+                profile.name = assetName;
+                AssetDatabase.CreateAsset(profile, path);
+            }
+
+            profile.ConfigureUpgrade(
+                id,
+                displayName,
+                price,
+                upgrade,
+                upgradeValue,
+                repeatable,
+                priceIncreasePerPurchase,
                 displayPrefab,
                 wireframe);
             EditorUtility.SetDirty(profile);

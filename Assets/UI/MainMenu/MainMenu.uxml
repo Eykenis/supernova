@@ -46,7 +46,11 @@
             <ui:VisualElement class="menu-shell">
                 <ui:Label text="EXPEDITION CONTROL" class="menu-overline" />
                 <ui:VisualElement name="main-panel" class="menu-panel">
-                    <ui:Button name="play-button" text="BEGIN DESCENT" class="menu-button primary-button" />
+                    <ui:VisualElement class="campaign-button-row">
+                        <ui:Button name="continue-button" text="继续游戏" class="menu-button campaign-continue-button" style="display: none;" />
+                        <ui:Button name="play-button" text="新游戏" class="menu-button campaign-new-button" />
+                    </ui:VisualElement>
+                    <ui:Button name="tutorial-button" text="新手教程" class="menu-button" />
                     <ui:Button name="settings-button" text="SYSTEM SETTINGS" class="menu-button" />
                     <ui:VisualElement class="menu-divider" />
                     <ui:Button name="quit-button" text="LEAVE EXPEDITION" class="menu-button subtle-button" />

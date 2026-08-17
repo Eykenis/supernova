@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   item: 3
   primaryAction: 3
+  primaryActionHint: 投掷照明棒
   primaryActionSound: {fileID: 0}
   throwSound: {fileID: 11400000, guid: d4f4c8e6b02582d46a3829384a89b9df, type: 2}
   miningHitSound: {fileID: 0}

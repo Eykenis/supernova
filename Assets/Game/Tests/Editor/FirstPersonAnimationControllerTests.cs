@@ -75,5 +75,41 @@ namespace Supernova.Tests
             Assert.That(cappedBlendStart, Is.EqualTo(0.865f).Within(0.0001f));
         }
 
+        [Test]
+        public void MagnetHeldModel_ReappearsOnlyAfterBothToolLayersRelease()
+        {
+            MethodInfo hasReleased = null;
+            MethodInfo[] methods = typeof(VoxelPlayerController).GetMethods(
+                BindingFlags.Static | BindingFlags.NonPublic);
+            for (int i = 0; i < methods.Length; i++)
+            {
+                ParameterInfo[] parameters = methods[i].GetParameters();
+                if (methods[i].ReturnType == typeof(bool)
+                    && parameters.Length == 4
+                    && parameters[0].ParameterType == typeof(bool)
+                    && parameters[1].ParameterType == typeof(int)
+                    && parameters[2].ParameterType == typeof(float)
+                    && parameters[3].ParameterType == typeof(float))
+                {
+                    hasReleased = methods[i];
+                    break;
+                }
+            }
+            Assert.That(hasReleased, Is.Not.Null);
+
+            Assert.That(
+                hasReleased.Invoke(null, new object[] { true, 2, 0f, 0f }),
+                Is.False);
+            Assert.That(
+                hasReleased.Invoke(null, new object[] { true, -1, 0.1f, 0f }),
+                Is.False);
+            Assert.That(
+                hasReleased.Invoke(null, new object[] { true, -1, 0f, 0.1f }),
+                Is.False);
+            Assert.That(
+                hasReleased.Invoke(null, new object[] { true, -1, 0f, 0f }),
+                Is.True);
+        }
+
     }
 }

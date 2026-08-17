@@ -78,10 +78,15 @@ public static class VoxelIntegrityExperimentSceneBuilder
                 world);
             return;
         }
+        if (!world.ConfigureLevels(new[] { level }))
+        {
+            Debug.LogError(
+                "The real world rejected the configured level list.",
+                world);
+            return;
+        }
 
         var serializedWorld = new SerializedObject(world);
-        serializedWorld.FindProperty("levelConfigurationOverride")
-            .objectReferenceValue = level;
         serializedWorld.FindProperty("viewer")
             .objectReferenceValue = player.transform;
         serializedWorld.ApplyModifiedPropertiesWithoutUndo();

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Supernova.Gameplay;
 using UnityEngine;
 
@@ -22,6 +23,10 @@ namespace Supernova.Shop
             "Supernova.OwnedInventoryItem.";
         private const string OwnedUpgradePreferencePrefix =
             "Supernova.OwnedUpgrade.";
+        private const string UpgradeValuePreferencePrefix =
+            "Supernova.UpgradeValue.";
+        private const string UpgradePurchaseCountPreferencePrefix =
+            "Supernova.UpgradePurchaseCount.";
         private const string QuickSlotPreferencePrefix =
             "Supernova.QuickSlot.";
 
@@ -30,6 +35,7 @@ namespace Supernova.Shop
             ItemOwnershipChanged;
         public static event Action<PlayerUpgrade, bool>
             UpgradeOwnershipChanged;
+        public static event Action SavedProgressCleared;
 
         public static int Credits =>
             Mathf.Max(0, PlayerPrefs.GetInt(CreditsPreferenceKey, 0));
@@ -83,6 +89,7 @@ namespace Supernova.Shop
         public static bool IsProductOwned(ShopProductProfile product)
         {
             if (product == null) return false;
+            if (product.IsRepeatable) return false;
             return product.GrantType == ShopProductGrantType.Upgrade
                 ? IsUpgradeOwned(product.GrantedUpgrade)
                 : IsItemOwned(product.GrantedItem);
@@ -134,9 +141,50 @@ namespace Supernova.Shop
             return GetOwnedUpgradeKey(upgrade);
         }
 
+        public static float GetUpgradeValue(PlayerUpgrade upgrade)
+        {
+            return upgrade == PlayerUpgrade.None
+                ? 0f
+                : Mathf.Max(
+                    0f,
+                    PlayerPrefs.GetFloat(GetUpgradeValueKey(upgrade), 0f));
+        }
+
+        public static int GetUpgradePurchaseCount(PlayerUpgrade upgrade)
+        {
+            return upgrade == PlayerUpgrade.None
+                ? 0
+                : Mathf.Max(
+                    0,
+                    PlayerPrefs.GetInt(
+                        GetUpgradePurchaseCountKey(upgrade),
+                        0));
+        }
+
+        public static string GetUpgradeValuePreferenceKey(
+            PlayerUpgrade upgrade)
+        {
+            return GetUpgradeValueKey(upgrade);
+        }
+
+        public static string GetUpgradePurchaseCountPreferenceKey(
+            PlayerUpgrade upgrade)
+        {
+            return GetUpgradePurchaseCountKey(upgrade);
+        }
+
+        public static int GetCurrentPrice(ShopProductProfile product)
+        {
+            if (product == null) return 0;
+            int purchaseCount = product.IsRepeatable
+                ? GetUpgradePurchaseCount(product.GrantedUpgrade)
+                : 0;
+            return product.GetPriceAfterPurchases(purchaseCount);
+        }
+
         public static bool CanAfford(ShopProductProfile product)
         {
-            return product != null && Credits >= product.Price;
+            return product != null && Credits >= GetCurrentPrice(product);
         }
 
         public static void AddCredits(int amount)
@@ -152,20 +200,39 @@ namespace Supernova.Shop
         {
             if (product == null || !product.IsConfigured)
                 return ShopPurchaseResult.InvalidProduct;
-            if (IsProductOwned(product))
+            if (!product.IsRepeatable && IsProductOwned(product))
                 return ShopPurchaseResult.AlreadyOwned;
             if (!CanAfford(product))
                 return ShopPurchaseResult.InsufficientFunds;
 
-            SetCredits(Credits - product.Price, false);
+            int currentPrice = GetCurrentPrice(product);
+            SetCredits(Credits - currentPrice, false);
             if (product.GrantType == ShopProductGrantType.Upgrade)
+            {
                 PlayerPrefs.SetInt(
                     GetOwnedUpgradeKey(product.GrantedUpgrade),
                     1);
+                PlayerPrefs.SetFloat(
+                    GetUpgradeValueKey(product.GrantedUpgrade),
+                    GetUpgradeValue(product.GrantedUpgrade)
+                        + product.UpgradeValue);
+                if (product.IsRepeatable)
+                {
+                    int purchaseCount =
+                        GetUpgradePurchaseCount(product.GrantedUpgrade);
+                    PlayerPrefs.SetInt(
+                        GetUpgradePurchaseCountKey(product.GrantedUpgrade),
+                        purchaseCount < int.MaxValue
+                            ? purchaseCount + 1
+                            : int.MaxValue);
+                }
+            }
             else
+            {
                 PlayerPrefs.SetInt(
                     GetOwnedItemKey(product.GrantedItem),
                     1);
+            }
             PlayerPrefs.Save();
             if (product.GrantType == ShopProductGrantType.Upgrade)
                 UpgradeOwnershipChanged?.Invoke(
@@ -174,6 +241,60 @@ namespace Supernova.Shop
             else
                 ItemOwnershipChanged?.Invoke(product.GrantedItem, true);
             return ShopPurchaseResult.Purchased;
+        }
+
+        public static void ClearSavedProgress()
+        {
+            int previousCredits = Credits;
+            var removedItems = new List<PlayerInventoryItem>();
+            var removedUpgrades = new List<PlayerUpgrade>();
+
+            Array itemValues = Enum.GetValues(typeof(PlayerInventoryItem));
+            for (int i = 0; i < itemValues.Length; i++)
+            {
+                PlayerInventoryItem item =
+                    (PlayerInventoryItem)itemValues.GetValue(i);
+                if (item != PlayerInventoryItem.Empty
+                    && IsItemOwned(item)
+                    && item != PlayerInventoryItem.Pickaxe
+                    && item != PlayerInventoryItem.Bomb)
+                {
+                    removedItems.Add(item);
+                }
+                PlayerPrefs.DeleteKey(GetOwnedItemKey(item));
+            }
+
+            Array upgradeValues = Enum.GetValues(typeof(PlayerUpgrade));
+            for (int i = 0; i < upgradeValues.Length; i++)
+            {
+                PlayerUpgrade upgrade =
+                    (PlayerUpgrade)upgradeValues.GetValue(i);
+                if (upgrade != PlayerUpgrade.None
+                    && IsUpgradeOwned(upgrade))
+                {
+                    removedUpgrades.Add(upgrade);
+                }
+                PlayerPrefs.DeleteKey(GetOwnedUpgradeKey(upgrade));
+                PlayerPrefs.DeleteKey(GetUpgradeValueKey(upgrade));
+                PlayerPrefs.DeleteKey(GetUpgradePurchaseCountKey(upgrade));
+            }
+
+            PlayerPrefs.DeleteKey(CreditsPreferenceKey);
+            DeleteQuickSlotPreferences();
+            PlayerPrefs.Save();
+
+            if (previousCredits != 0)
+                CreditsChanged?.Invoke(0);
+            for (int i = 0; i < removedItems.Count; i++)
+                ItemOwnershipChanged?.Invoke(removedItems[i], false);
+            for (int i = 0; i < removedUpgrades.Count; i++)
+                UpgradeOwnershipChanged?.Invoke(removedUpgrades[i], false);
+            SavedProgressCleared?.Invoke();
+
+            // Ownership listeners may persist their refreshed loadout. Delete
+            // the slot keys again so the next session uses authoring defaults.
+            DeleteQuickSlotPreferences();
+            PlayerPrefs.Save();
         }
 
         private static void SetCredits(int value, bool save = true)
@@ -195,9 +316,26 @@ namespace Supernova.Shop
             return OwnedUpgradePreferencePrefix + (int)upgrade;
         }
 
+        private static string GetUpgradeValueKey(PlayerUpgrade upgrade)
+        {
+            return UpgradeValuePreferencePrefix + (int)upgrade;
+        }
+
+        private static string GetUpgradePurchaseCountKey(
+            PlayerUpgrade upgrade)
+        {
+            return UpgradePurchaseCountPreferencePrefix + (int)upgrade;
+        }
+
         private static string GetQuickSlotKey(int slotIndex)
         {
             return QuickSlotPreferencePrefix + slotIndex;
+        }
+
+        private static void DeleteQuickSlotPreferences()
+        {
+            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+                PlayerPrefs.DeleteKey(GetQuickSlotKey(i));
         }
 
         private static void ValidateQuickSlotIndex(int slotIndex)

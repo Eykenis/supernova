@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 82b037fcf8dbbf24295be5b12d039957, type: 3}
   m_Name: Diamond
   m_EditorClassIdentifier: 
-  resultVoxelType: {fileID: 11400000, guid: 1a9e2026aa423a147aace7954349207d, type: 2}
+  resultVoxelType: {fileID: 11400000, guid: fed88796924345a4c91beb4906026fd0, type: 2}
   replaceableVoxelTypes:
   - {fileID: 11400000, guid: 85e555c3cd06e0a4bb9b6c9c6eaf3fbb, type: 2}
   seedSalt: 11651
@@ -24,7 +24,7 @@ MonoBehaviour:
   plateau: 0
   size: 5
   discardChanceOnAirExposure: 0.05
-  oreUnitValue: 200
+  oreUnitValue: 2500
   massDensity: 8
   fragility: 0.01
   recoveredMaterial: {fileID: 2100000, guid: 47a2b427c2f34be9a8f4fb63f229cc83, type: 2}

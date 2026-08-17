@@ -103,6 +103,29 @@ namespace Supernova.Voxels
             return chunk;
         }
 
+        public bool RemoveChunk(
+            Vector2Int coordinate,
+            out InfiniteVoxelChunk removedChunk)
+        {
+            if (!chunks.TryGetValue(coordinate, out removedChunk))
+            {
+                return false;
+            }
+
+            chunks.Remove(coordinate);
+            return true;
+        }
+
+        public bool RemoveChunk(
+            Vector3Int coordinate,
+            out InfiniteVoxelChunk removedChunk)
+        {
+            return RemoveChunk(
+                new Vector2Int(coordinate.x, coordinate.z),
+                out removedChunk);
+        }
+
+
         public float GetDensityOrDefault(
             int worldX,
             int worldY,

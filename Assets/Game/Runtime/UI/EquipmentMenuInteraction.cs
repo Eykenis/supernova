@@ -19,7 +19,6 @@ namespace Supernova.UI
             None,
             OwnedItem,
             EquipmentSlot,
-            Portrait,
         }
 
         [SerializeField] private InteractionRole role;
@@ -30,7 +29,6 @@ namespace Supernova.UI
 
         public bool IsOwnedItemSource => role == InteractionRole.OwnedItem;
         public bool IsEquipmentSlotTarget => role == InteractionRole.EquipmentSlot;
-        public bool IsPortraitRotationArea => role == InteractionRole.Portrait;
         public int Index => index;
 
         public void ConfigureOwnedItem(
@@ -51,13 +49,6 @@ namespace Supernova.UI
             index = slotIndex;
         }
 
-        public void ConfigurePortrait(EquipmentLoadoutMenu configuredMenu)
-        {
-            menu = configuredMenu;
-            role = InteractionRole.Portrait;
-            index = -1;
-        }
-
         public void OnBeginDrag(PointerEventData eventData)
         {
             dragAccepted = false;
@@ -68,10 +59,6 @@ namespace Supernova.UI
             {
                 dragAccepted = menu.BeginOwnedItemDrag(index, eventData.position);
             }
-            else if (role == InteractionRole.Portrait)
-            {
-                dragAccepted = menu.BeginPortraitRotation();
-            }
         }
 
         public void OnDrag(PointerEventData eventData)
@@ -81,8 +68,6 @@ namespace Supernova.UI
 
             if (role == InteractionRole.OwnedItem)
                 menu.UpdateOwnedItemDrag(eventData.position);
-            else if (role == InteractionRole.Portrait)
-                menu.RotatePortrait(eventData.delta.x);
         }
 
         public void OnEndDrag(PointerEventData eventData)

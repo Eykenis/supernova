@@ -31,8 +31,16 @@ namespace Supernova.Voxels
     [RequireComponent(typeof(CharacterController))]
     [RequireComponent(typeof(PlayerProfile))]
     [RequireComponent(typeof(PlayerEquipmentController))]
-    public sealed class VoxelPlayerController : MonoBehaviour, IDamageable
+    public sealed class VoxelPlayerController :
+        MonoBehaviour,
+        IDamageable,
+        ICollisionImpulseDamageReceiver,
+        IExplosionImpulseReceiver
     {
+        public const float DefaultExplosionMass = 60f;
+        public const float DefaultExplosionFragility = 0.5f;
+        public const float DefaultMinimumExplosionDamageImpulse = 3f;
+        public const float DefaultMaximumExplosionVelocity = 15f;
         private static readonly int WalkFlag = Animator.StringToHash("walkFlag");
         private static readonly int JumpFlag = Animator.StringToHash("jumpFlag");
         private static readonly int IdleFlag = Animator.StringToHash("idleFlag");
@@ -106,6 +114,17 @@ namespace Supernova.Voxels
         [Header("Runtime")]
         [SerializeField] private PlayerCharacterState currentState;
 
+        [Header("Explosion Response")]
+        [Tooltip("Virtual mass used to convert a blast impulse into player velocity.")]
+        [SerializeField, Min(0.01f)] private float explosionMass =
+            DefaultExplosionMass;
+        [SerializeField, Range(0f, 1f)] private float explosionFragility =
+            DefaultExplosionFragility;
+        [SerializeField, Min(0f)] private float minimumExplosionDamageImpulse =
+            DefaultMinimumExplosionDamageImpulse;
+        [SerializeField, Min(0f)] private float maximumExplosionVelocity =
+            DefaultMaximumExplosionVelocity;
+
         private CharacterController characterController;
         private PerspectiveCameraController perspectiveCamera;
 
@@ -131,6 +150,8 @@ namespace Supernova.Voxels
         private readonly Dictionary<PlayerToolDefinition, float>
             nextToolActionCycleTimes =
                 new Dictionary<PlayerToolDefinition, float>();
+        private readonly List<PlayerToolDefinition> expiredToolActionCooldowns =
+            new List<PlayerToolDefinition>();
         private bool debugFlyMode;
         private bool hasWalkFlag;
         private bool hasJumpFlag;
@@ -157,6 +178,7 @@ namespace Supernova.Voxels
         private PlayerToolDefinition activeToolDefinition;
         private bool magnetHoldAnimationActive;
         private PlayerToolDefinition magnetHoldAnimationDefinition;
+        private bool magnetHoldModelRevealPending;
 
         private bool throwKeyRearmed = true;
         private PlayerToolController subscribedToolController;
@@ -223,7 +245,14 @@ namespace Supernova.Voxels
             public SoundEffectCue MonsterHitSound { get; }
         }
 
+        public event System.Action<float, float> HealthChanged;
+        public event System.Action<PlayerInventoryItem, float, float>
+            ToolActionCooldownChanged;
+        public event System.Action ToolActionCooldownsCleared;
+
         public GameObject Owner => gameObject;
+        public GameObject CollisionImpulseOwner => gameObject;
+        public GameObject ExplosionImpulseOwner => gameObject;
         public float CurrentHealth => vitals != null ? vitals.CurrentHealth : 0f;
         public float MaximumHealth => vitals != null ? vitals.MaximumHealth : Profile.MaximumHealth;
         public float CrouchPoseWeight => crouchArmsLocomotionLayerWeight;
@@ -270,6 +299,45 @@ namespace Supernova.Voxels
             return remainingSeconds > 0f;
         }
 
+        private void PublishToolActionCooldowns()
+        {
+            if (nextToolActionCycleTimes.Count == 0)
+                return;
+
+            expiredToolActionCooldowns.Clear();
+            foreach (KeyValuePair<PlayerToolDefinition, float> pair
+                in nextToolActionCycleTimes)
+            {
+                PlayerToolDefinition definition = pair.Key;
+                if (definition == null)
+                {
+                    expiredToolActionCooldowns.Add(definition);
+                    continue;
+                }
+
+                float duration = definition.ActionCyclePeriod;
+                float remaining = Mathf.Clamp(
+                    pair.Value - Time.time,
+                    0f,
+                    duration);
+                ToolActionCooldownChanged?.Invoke(
+                    definition.Item,
+                    remaining,
+                    duration);
+                if (remaining <= 0f)
+                    expiredToolActionCooldowns.Add(definition);
+            }
+
+            for (int i = 0;
+                i < expiredToolActionCooldowns.Count;
+                i++)
+            {
+                nextToolActionCycleTimes.Remove(
+                    expiredToolActionCooldowns[i]);
+            }
+            expiredToolActionCooldowns.Clear();
+        }
+
         private PlayerProfile Profile
         {
             get
@@ -303,6 +371,7 @@ namespace Supernova.Voxels
             EnsureStateMachine();
             if (characterController != null) characterController.enabled = !debugFlyMode;
             stateMachine.Start(vitals.IsAlive ? PlayerCharacterState.Idle : PlayerCharacterState.Dead);
+            HealthChanged?.Invoke(vitals.CurrentHealth, vitals.MaximumHealth);
         }
 
         private void OnDisable()
@@ -314,7 +383,10 @@ namespace Supernova.Voxels
             debugFlyMode = false;
             pendingMiningAttacks.Clear();
             pendingToolActions.Clear();
+            if (nextToolActionCycleTimes.Count > 0)
+                ToolActionCooldownsCleared?.Invoke();
             nextToolActionCycleTimes.Clear();
+            expiredToolActionCooldowns.Clear();
             equipmentController?.CancelActiveLocomotionOverride();
             StopEquipmentLocomotionAnimation(false);
             idleSeconds = 0f;
@@ -329,6 +401,7 @@ namespace Supernova.Voxels
         private void Update()
         {
             if (!Application.isPlaying) return;
+            PublishToolActionCooldowns();
             if (GameHudController.IsGameplayInputBlocked)
             {
                 // Opening a menu mid-drag must not leave the magnet latched or an
@@ -376,6 +449,7 @@ namespace Supernova.Voxels
             TickFirearmLocomotionLayerBlend(Time.deltaTime);
             TickFirearmArmsLayerBlend(Time.deltaTime);
             TickToolUpperBodyLayerBlend(Time.deltaTime);
+            TickMagnetHeldModelVisibility();
             TickMagnetHoldAnimationLoop();
 
             currentState = stateMachine.Current;
@@ -639,6 +713,7 @@ namespace Supernova.Voxels
         {
             EnsureVitals(false);
             if (!vitals.ApplyDamage(damage.Amount)) return false;
+            HealthChanged?.Invoke(vitals.CurrentHealth, vitals.MaximumHealth);
 
             ResolveReferences();
             EnsureMotor();
@@ -655,10 +730,57 @@ namespace Supernova.Voxels
             return true;
         }
 
+        public bool ApplyCollisionImpulseDamage(
+            float impulseMagnitude,
+            Vector3 collisionPoint)
+        {
+            EnsureVitals(false);
+            float damage = CollisionImpulseDamage.CalculateDamage(
+                vitals.MaximumHealth,
+                impulseMagnitude,
+                explosionFragility,
+                minimumExplosionDamageImpulse,
+                CollisionImpulseDamage
+                    .DefaultDamagePercentagePerSquaredImpulse,
+                explosionMass);
+            if (damage <= 0f)
+            {
+                return false;
+            }
+
+            return ReceiveDamage(new DamageInfo(
+                damage,
+                null,
+                collisionPoint,
+                transform.position - collisionPoint,
+                impulseMagnitude));
+        }
+
+        public bool ApplyExplosionImpulse(Vector3 impulse)
+        {
+            if (impulse.sqrMagnitude <= 0f)
+            {
+                return false;
+            }
+
+            ResolveReferences();
+            EnsureMotor();
+            if (motor == null)
+            {
+                return false;
+            }
+
+            motor.AddExternalVelocity(
+                impulse / Mathf.Max(0.01f, explosionMass),
+                maximumExplosionVelocity);
+            return true;
+        }
+
         public void RestoreFullHealth()
         {
             EnsureVitals(false);
             vitals.RestoreFullHealth();
+            HealthChanged?.Invoke(vitals.CurrentHealth, vitals.MaximumHealth);
             EnsureStateMachine();
             stateMachine.Change(PlayerCharacterState.Idle);
         }
@@ -2080,8 +2202,13 @@ namespace Supernova.Voxels
                     transform.position);
             }
 
+            float cooldownDuration = definition.ActionCyclePeriod;
             nextToolActionCycleTimes[definition] =
-                Time.time + definition.ActionCyclePeriod;
+                Time.time + cooldownDuration;
+            ToolActionCooldownChanged?.Invoke(
+                definition.Item,
+                cooldownDuration,
+                cooldownDuration);
             return true;
         }
 
@@ -2293,11 +2420,12 @@ namespace Supernova.Voxels
             if (magnetHoldAnimationActive == wanted) return;
 
             magnetHoldAnimationActive = wanted;
-            // Hide the equipped model while the magnet pose owns the hands so it
-            // cannot clip through the held animation.
-            toolController?.SetEquippedToolModelHidden(wanted);
             if (wanted)
             {
+                magnetHoldModelRevealPending = false;
+                // Hide the equipped model while the magnet pose owns the hands so
+                // it cannot clip through the held animation.
+                toolController?.SetEquippedToolModelHidden(true);
                 PlayerToolDefinition definition = ResolveMagnetHoldDefinition();
                 AnimationClip clip = definition != null
                     ? definition.MagnetHoldAnimation
@@ -2305,13 +2433,13 @@ namespace Supernova.Voxels
                 if (clip == null)
                 {
                     magnetHoldAnimationActive = false;
-                    toolController?.SetEquippedToolModelHidden(false);
+                    RestoreMagnetHeldModelImmediately();
                     return;
                 }
                 if (!ApplyPlaceholderAnimation(clip))
                 {
                     magnetHoldAnimationActive = false;
-                    toolController?.SetEquippedToolModelHidden(false);
+                    RestoreMagnetHeldModelImmediately();
                     return;
                 }
 
@@ -2326,6 +2454,44 @@ namespace Supernova.Voxels
 
             SetContinuousToolActionAnimation(false);
             magnetHoldAnimationDefinition = null;
+            // The Animator still owns the hands while it transitions out of the
+            // magnet state and while the tool layer blends back to zero. Keep the
+            // model hidden until that visual hand-off has fully completed.
+            magnetHoldModelRevealPending = true;
+        }
+
+        private void TickMagnetHeldModelVisibility()
+        {
+            if (!magnetHoldModelRevealPending || magnetHoldAnimationActive) return;
+
+            bool hasAnimator = animator != null
+                && animator.runtimeAnimatorController != null;
+            if (!HasMagnetHoldAnimationFullyReleased(
+                hasAnimator,
+                activeToolActionLayerIndex,
+                toolUpperBodyLayerWeight,
+                crouchToolArmsLayerWeight))
+                return;
+
+            RestoreMagnetHeldModelImmediately();
+        }
+
+        private static bool HasMagnetHoldAnimationFullyReleased(
+            bool hasAnimator,
+            int activeLayerIndex,
+            float upperBodyLayerWeight,
+            float crouchArmsLayerWeight)
+        {
+            return !hasAnimator
+                || (activeLayerIndex < 0
+                    && Mathf.Approximately(upperBodyLayerWeight, 0f)
+                    && Mathf.Approximately(crouchArmsLayerWeight, 0f));
+        }
+
+        private void RestoreMagnetHeldModelImmediately()
+        {
+            magnetHoldModelRevealPending = false;
+            toolController?.SetEquippedToolModelHidden(false);
         }
 
         private PlayerToolDefinition ResolveMagnetHoldDefinition()
@@ -2502,6 +2668,8 @@ namespace Supernova.Voxels
             }
             StopMagnetSound();
             ApplyMagnetHoldAnimation(false);
+            if (magnetHoldModelRevealPending)
+                RestoreMagnetHeldModelImmediately();
         }
 
         /// <summary>

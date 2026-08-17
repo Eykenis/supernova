@@ -128,28 +128,32 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MagnetBeam_ChangesFromGreenToRedAsTargetMassIncreases()
+        public void MagnetBeam_ChangesFromGreenToRedAsLoadExceedsCurrentForce()
         {
             GameObject host = Create("Magnet Beam");
             FirstPersonMagnetInteractor attractor =
                 host.AddComponent<FirstPersonMagnetInteractor>();
             MagnetAttractionBeam beam = host.AddComponent<MagnetAttractionBeam>();
             SetPrivateField(beam, "attractor", attractor);
-            SetPrivateField(beam, "easyMass", 5f);
-            SetPrivateField(beam, "difficultMass", 45f);
+            SetPrivateField(attractor, "attractionForce", 100f);
+            SetPrivateField(attractor, "baseMaximumLiftForce", 100000f);
 
             GameObject target = Create("Magnet Target");
             Rigidbody body = target.AddComponent<Rigidbody>();
-            body.mass = 1f;
+            body.mass = attractor.AttractionForce
+                * 0.05f
+                / Physics.gravity.magnitude;
             SetPrivateField(attractor, "heldBody", body);
-            InvokePrivate(beam, "UpdateWeightPalette", 0.016f);
+            InvokePrivate(beam, "UpdateLoadPalette", 0.016f);
             Color lightColor = GetPrivateField<Color>(
                 beam,
                 "currentEnergyColor");
 
-            body.mass = 60f;
+            body.mass = attractor.AttractionForce
+                * 2f
+                / Physics.gravity.magnitude;
             SetPrivateField(beam, "hasCurrentPalette", false);
-            InvokePrivate(beam, "UpdateWeightPalette", 0.016f);
+            InvokePrivate(beam, "UpdateLoadPalette", 0.016f);
             Color heavyColor = GetPrivateField<Color>(
                 beam,
                 "currentEnergyColor");
@@ -157,6 +161,53 @@ namespace Supernova.Tests
             Assert.That(lightColor.g, Is.GreaterThan(lightColor.r));
             Assert.That(heavyColor.r, Is.GreaterThan(heavyColor.g));
             Assert.That(heavyColor.r, Is.GreaterThan(lightColor.r));
+        }
+
+        [Test]
+        public void MagnetLoadRatio_UsesCurrentAttractionForce()
+        {
+            GameObject host = Create("Magnet");
+            FirstPersonMagnetInteractor attractor =
+                host.AddComponent<FirstPersonMagnetInteractor>();
+            SetPrivateField(attractor, "attractionForce", 100f);
+            SetPrivateField(attractor, "baseMaximumLiftForce", 300f);
+
+            Rigidbody body = Create("Magnet Target").AddComponent<Rigidbody>();
+            body.mass = 10f;
+            SetPrivateField(
+                attractor,
+                "magnetPickupHeight",
+                body.worldCenterOfMass.y);
+
+            Assert.That(
+                attractor.GetAttractionLoadRatio(body),
+                Is.EqualTo(
+                    10f
+                    * Physics.gravity.magnitude
+                    / attractor.AttractionForce)
+                    .Within(0.001f));
+        }
+
+        [Test]
+        public void MagnetLoadRatio_IncreasesAsLiftForceFallsWithHeight()
+        {
+            GameObject host = Create("Magnet");
+            FirstPersonMagnetInteractor attractor =
+                host.AddComponent<FirstPersonMagnetInteractor>();
+            SetPrivateField(attractor, "attractionForce", 1000f);
+            SetPrivateField(attractor, "baseMaximumLiftForce", 300f);
+            SetPrivateField(attractor, "liftForceFalloffPerMeter", 0.6f);
+            SetPrivateField(attractor, "magnetPickupHeight", 0f);
+
+            Rigidbody body = Create("Magnet Target").AddComponent<Rigidbody>();
+            body.mass = 20f;
+            body.position = Vector3.up * 2f;
+            float availableLiftForce = 300f / (1f + 2f * 0.6f);
+
+            Assert.That(
+                attractor.GetAttractionLoadRatio(body),
+                Is.EqualTo(20f * Physics.gravity.magnitude / availableLiftForce)
+                    .Within(0.001f));
         }
 
 

@@ -42,6 +42,7 @@ namespace Supernova.UI
         [SerializeField] private int missionOverlaySortingOrder = 900;
         [SerializeField] private int loadingSortingOrder = 1000;
         [SerializeField] private int pauseSortingOrder = 1100;
+        [SerializeField] private int sceneTransitionSortingOrder = 2000;
 
         [Header("Runtime Widgets")]
         [SerializeField] private bool showHealth = true;
@@ -60,6 +61,10 @@ namespace Supernova.UI
         [SerializeField] private Vector2 hudHealthSize = new Vector2(372f, 104f);
         [SerializeField] private Vector2 hudHotbarPosition = new Vector2(-46f, 42f);
         [SerializeField] private Vector2 hudHotbarSize = new Vector2(320f, 78f);
+        [SerializeField, Range(1f, 1.5f)] private float hudVisualScale = 1.15f;
+        [SerializeField] private Vector2 hudHotbarHintsOffset = new Vector2(0f, 14f);
+        [SerializeField] private Vector2 hudHotbarHintsSize = new Vector2(360f, 112f);
+        [SerializeField, Min(8f)] private float hudHotbarHintsFontSize = 21f;
         [SerializeField, Range(3, 16)] private int hudHealthSegmentCount = 8;
         [SerializeField, Range(-10f, 10f)] private float hudHealthTiltDegrees = 3.5f;
         [SerializeField, Range(-10f, 10f)] private float hudHotbarTiltDegrees = -3.5f;
@@ -147,6 +152,7 @@ namespace Supernova.UI
         public int MissionOverlaySortingOrder => missionOverlaySortingOrder;
         public int LoadingSortingOrder => loadingSortingOrder;
         public int PauseSortingOrder => pauseSortingOrder;
+        public int SceneTransitionSortingOrder => sceneTransitionSortingOrder;
         public bool ShowHealth => showHealth;
         public bool ShowHotbar => showHotbar;
         public bool ShowCrosshair => showCrosshair;
@@ -161,6 +167,16 @@ namespace Supernova.UI
         public Vector2 HudHealthSize => hudHealthSize;
         public Vector2 HudHotbarPosition => hudHotbarPosition;
         public Vector2 HudHotbarSize => hudHotbarSize;
+        public float HudVisualScale =>
+            Mathf.Clamp(hudVisualScale, 1.15f, 1.5f);
+        public Vector2 HudHotbarHintsOffset => new Vector2(
+            hudHotbarHintsOffset.x,
+            Mathf.Max(14f, hudHotbarHintsOffset.y));
+        public Vector2 HudHotbarHintsSize => new Vector2(
+            Mathf.Max(360f, hudHotbarHintsSize.x),
+            Mathf.Max(112f, hudHotbarHintsSize.y));
+        public float HudHotbarHintsFontSize =>
+            Mathf.Max(21f, hudHotbarHintsFontSize);
         public int HudHealthSegmentCount => hudHealthSegmentCount;
         public float HudHealthTiltDegrees => hudHealthTiltDegrees;
         public float HudHotbarTiltDegrees => hudHotbarTiltDegrees;

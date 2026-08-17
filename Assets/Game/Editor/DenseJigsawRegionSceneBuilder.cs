@@ -64,6 +64,13 @@ public static class DenseJigsawRegionSceneBuilder
         var worldObject = new GameObject("Dense Jigsaw Region World");
         MinecraftCaveInfiniteWorld world =
             worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
+        if (!world.ConfigureLevels(LoadCampaignLevels()))
+        {
+            Debug.LogError(
+                "Dense jigsaw world requires at least one configured level.",
+                world);
+            return;
+        }
         if (!world.ConfigureDenseRegion(configuration, player.transform))
         {
             Debug.LogError(
@@ -142,6 +149,13 @@ public static class DenseJigsawRegionSceneBuilder
             var worldObject = new GameObject("Dense Jigsaw Region World");
             world = worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
         }
+        if (!world.ConfigureLevels(LoadCampaignLevels()))
+        {
+            Debug.LogError(
+                "Dense jigsaw world requires at least one configured level.",
+                world);
+            return;
+        }
         world.ConfigureDenseRegion(configuration, player.transform);
         world.ConfigureSpawnCheckpointJigsaw(
             Load<JigsawStructureFeatureDefinition>(
@@ -152,6 +166,28 @@ public static class DenseJigsawRegionSceneBuilder
         EditorUtility.SetDirty(world);
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
+    }
+
+    private static LevelConfiguration[] LoadCampaignLevels()
+    {
+        string[] paths =
+        {
+            ProjectAssetPaths.Config.FirstLevel,
+            ProjectAssetPaths.Config.SecondLevel,
+            ProjectAssetPaths.Config.ThirdLevel,
+        };
+        var levels = new LevelConfiguration[paths.Length];
+        for (int i = 0; i < paths.Length; i++)
+        {
+            levels[i] = Load<LevelConfiguration>(paths[i]);
+            if (levels[i] == null)
+            {
+                throw new UnityException(
+                    "Dense jigsaw scene requires the configured level at "
+                    + paths[i] + ".");
+            }
+        }
+        return levels;
     }
 
     private static DenseJigsawWorldConfiguration LoadOrCreateConfiguration()

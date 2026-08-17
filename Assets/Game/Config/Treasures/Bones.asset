@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55c4c72518c3412459e3a631737b16ad, type: 3}
   m_Name: Bones
   m_EditorClassIdentifier: 
-  displayName: 化石
+  displayName: "\u5316\u77F3"
   prefab: {fileID: 4740405957763486878, guid: 7e6bb8922352a794bb09e105bfc90f49, type: 3}
-  value: 35
+  value: 350
   weight: 7
   fragility: 0.15
   spawnChance: 0.8

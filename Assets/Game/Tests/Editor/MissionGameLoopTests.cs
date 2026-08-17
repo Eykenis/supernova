@@ -2,6 +2,7 @@ using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
 using Supernova.Audio;
+using Supernova.Gameplay;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
 using Supernova.Missions;
@@ -10,6 +11,7 @@ using Supernova.UI;
 using Supernova.Voxels;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.TestTools.Utils;
 
 namespace Supernova.Tests
@@ -18,6 +20,7 @@ namespace Supernova.Tests
     {
         private GameObject loopObject;
         private GameObject externalHudObject;
+        private LevelConfiguration levelConfiguration;
 
         [TearDown]
         public void TearDown()
@@ -29,6 +32,10 @@ namespace Supernova.Tests
             if (externalHudObject != null)
             {
                 Object.DestroyImmediate(externalHudObject);
+            }
+            if (levelConfiguration != null)
+            {
+                Object.DestroyImmediate(levelConfiguration);
             }
         }
 
@@ -79,8 +86,14 @@ namespace Supernova.Tests
                 loopObject.AddComponent<MissionGameLoop>();
             CanvasGroup fade = loop.PrepareSceneFadeFromTransparent();
             Assert.That(fade, Is.Not.Null);
+            Canvas sceneTransitionCanvas = fade.GetComponent<Canvas>();
+            Canvas overlayCanvas = fade.transform.parent.GetComponentInParent<Canvas>(true);
+            Assert.That(sceneTransitionCanvas, Is.Not.Null);
+            Assert.That(overlayCanvas, Is.Not.Null);
 
             fade.alpha = 0.42f;
+            sceneTransitionCanvas.gameObject.SetActive(false);
+            overlayCanvas.gameObject.SetActive(false);
             MethodInfo loadWithFadeInternal = typeof(MissionGameLoop).GetMethod(
                 "LoadWithFadeInternal",
                 BindingFlags.Instance | BindingFlags.NonPublic);
@@ -91,11 +104,154 @@ namespace Supernova.Tests
 
             Assert.That(transition.MoveNext(), Is.True);
             Assert.That(transition.Current, Is.Null);
+            Assert.That(sceneTransitionCanvas.gameObject.activeSelf, Is.True);
+            Assert.That(overlayCanvas.gameObject.activeSelf, Is.True);
             Assert.That(fade.gameObject.activeSelf, Is.True);
             Assert.That(
                 fade.alpha,
                 Is.EqualTo(1f).Within(0.0001f),
                 "A pre-faded transition must stay black until scene loading begins.");
+        }
+
+        [Test]
+        public void HomeObjective_ShowsCurrentCreditsBelowBaseLabel()
+        {
+            MethodInfo formatHomeObjective = typeof(MissionGameLoop).GetMethod(
+                "FormatHomeObjective",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(formatHomeObjective, Is.Not.Null);
+
+            string objective = (string)formatHomeObjective.Invoke(
+                null,
+                new object[] { 275 });
+            Assert.That(objective, Is.EqualTo("基地\n当前存款  $275"));
+        }
+
+        [Test]
+        public void ResultMessages_AreFullyLocalizedToChinese()
+        {
+            MethodInfo formatResult = typeof(MissionGameLoop).GetMethod(
+                "FormatResultMessage",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(formatResult, Is.Not.Null);
+
+            string success = (string)formatResult.Invoke(
+                null,
+                new object[]
+                {
+                    MissionOutcome.Success,
+                    275,
+                    100,
+                    175,
+                    true,
+                    "02",
+                });
+            Assert.That(
+                success,
+                Is.EqualTo(
+                    "任务完成\n\n已收集：$275\n存款增加：$175"
+                    + "\n下一关：第02关"
+                    + "\n\n按 {{input:UI/Submit}} 返回基地"));
+
+            string lost = (string)formatResult.Invoke(
+                null,
+                new object[]
+                {
+                    MissionOutcome.LostInCaves,
+                    0,
+                    100,
+                    0,
+                    false,
+                    "01",
+                });
+            Assert.That(
+                lost,
+                Is.EqualTo(
+                    "任务失败\n\n撤离窗口已关闭。\n你被困在洞穴中。"
+                    + "\n\n按 {{input:UI/Submit}} 返回基地"));
+
+            string insufficient = (string)formatResult.Invoke(
+                null,
+                new object[]
+                {
+                    MissionOutcome.Fired,
+                    80,
+                    100,
+                    0,
+                    false,
+                    "01",
+                });
+            Assert.That(
+                insufficient,
+                Is.EqualTo(
+                    "任务失败\n\n收集的资源不足\n已收集：$80 / $100"
+                    + "\n\n按 {{input:UI/Submit}} 返回基地"));
+        }
+
+        [Test]
+        public void DirectHomeGameplayEntry_IsConsumedOnlyOnce()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop =
+                loopObject.AddComponent<MissionGameLoop>();
+            FieldInfo directEntry = typeof(MissionGameLoop).GetField(
+                "enterHomeGameplayDirectly",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(directEntry, Is.Not.Null);
+            directEntry.SetValue(loop, true);
+
+            Assert.That(
+                MissionGameLoop.ConsumeDirectHomeGameplayEntry(),
+                Is.True);
+            Assert.That(
+                MissionGameLoop.ConsumeDirectHomeGameplayEntry(),
+                Is.False);
+        }
+
+        [Test]
+        public void ConfigureNonHomeScene_ClearsHomeObjective()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo ensureUi = typeof(MissionGameLoop).GetMethod(
+                "EnsureUi",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(ensureUi, Is.Not.Null);
+            ensureUi.Invoke(loop, null);
+            levelConfiguration =
+                ScriptableObject.CreateInstance<LevelConfiguration>();
+            typeof(LevelConfiguration).GetField(
+                    "homeSceneName",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(levelConfiguration, "Mission UI Home Test");
+            typeof(MissionGameLoop).GetField(
+                    "definition",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(loop, levelConfiguration);
+            MissionUiView missionView =
+                loopObject.GetComponentInChildren<MissionUiView>(true);
+            Assert.That(missionView, Is.Not.Null);
+            missionView.SetObjective("基地\n当前存款  $275");
+
+            Scene nonHomeScene = SceneManager.GetActiveScene();
+            Assert.That(nonHomeScene.IsValid(), Is.True);
+            Assert.That(
+                nonHomeScene.name,
+                Is.Not.EqualTo(levelConfiguration.HomeSceneName));
+            MethodInfo configureScene = typeof(MissionGameLoop).GetMethod(
+                "ConfigureScene",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(configureScene, Is.Not.Null);
+            configureScene.Invoke(loop, new object[] { nonHomeScene });
+
+            FieldInfo objectiveLabelField = typeof(MissionUiView).GetField(
+                "objectiveLabel",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(objectiveLabelField, Is.Not.Null);
+            TMPro.TMP_Text objectiveLabel =
+                (TMPro.TMP_Text)objectiveLabelField.GetValue(missionView);
+            Assert.That(objectiveLabel, Is.Not.Null);
+            Assert.That(objectiveLabel.text, Is.Empty);
         }
 
         [Test]
@@ -455,6 +611,36 @@ namespace Supernova.Tests
             Assert.That(middle, Is.GreaterThan(500));
             Assert.That(middle, Is.LessThan(1000));
             Assert.That(end, Is.EqualTo(1000));
+        }
+
+        [Test]
+        public void ResultOverlay_HidesWorldValueLabelsUntilDismissed()
+        {
+            loopObject = new GameObject("Mission Result Overlay Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo ensureUi = typeof(MissionGameLoop).GetMethod(
+                "EnsureUi",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(ensureUi, Is.Not.Null);
+            ensureUi.Invoke(loop, null);
+
+            var valuableObject = new GameObject("Visible World Value");
+            valuableObject.transform.SetParent(loopObject.transform);
+            ValuableObject valuable =
+                valuableObject.AddComponent<ValuableObject>();
+            valuable.Configure(344, 0.5f);
+            ValuableObjectWorldUi worldUi =
+                valuableObject.GetComponent<ValuableObjectWorldUi>();
+            Assert.That(worldUi, Is.Not.Null);
+            Assert.That(worldUi.WorldCanvas.enabled, Is.True);
+
+            MissionUiView missionView =
+                loopObject.GetComponentInChildren<MissionUiView>(true);
+            missionView.ShowResult("任务失败");
+            Assert.That(worldUi.WorldCanvas.enabled, Is.False);
+
+            missionView.HideResult();
+            Assert.That(worldUi.WorldCanvas.enabled, Is.True);
         }
     }
 }

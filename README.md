@@ -1,189 +1,116 @@
 # Supernova
 
-Supernova 是一个基于 Unity/Tuanjie 2022.3 的体素洞穴实验型游戏项目。当前产品主线围绕 `InfiniteCaves` 场景展开，核心目标是把无限三维洞穴、可修改体素、玩家工具、生物导航和战斗系统组合成一个可持续扩展的游戏原型。
+Supernova 是一个基于 Unity/Tuanjie 2022.3 的体素洞穴游戏原型。当前主线已经从单一洞穴演示扩展为完整的任务闭环：玩家从 Home 基地进入任务、探索程序化洞穴与高密度 Jigsaw 结构、采集矿物和宝藏、对抗生物，并在倒计时结束后结算收益、推进关卡和购买装备。
 
-本文根据当前代码库以及 `Assets/Game/Docs` 中保留的设计文档整理，重点描述项目现状、代码边界和维护问题。性能优化不属于本文当前优先级。
+## 当前入口
 
-## 当前状态
+项目使用 Tuanjie `2022.3.62t11`（Tuanjie `1.9.3`）。`ProjectSettings/EditorBuildSettings.asset` 当前启用的场景为：
 
-- 主场景：`Assets/Scenes/InfiniteCaves.scene`
-- 核心世界实现：`Supernova.MinecraftCaves.MinecraftCaveInfiniteWorld`
-- 体素基础设施：`Supernova.Voxels`
-- 玩家与通用玩法：`Supernova.Gameplay`
-- UI：`Supernova.UI`
-- 生物系统：`Supernova.MinecraftCaves.Creatures`
-- 第三方资源统一位于：`Assets/3rd`
-- 第一方 C#、编辑器工具和测试统一位于：`Assets/Game`
-- 已删除旧的 `Room_Template`、`Room_Structure`、`ProceduralCaveWorld` 链路。
+| 顺序 | 场景 | 用途 |
+| ---: | --- | --- |
+| 0 | `Assets/Scenes/Home.scene` | 产品入口、整合式主菜单、基地、商店和任务舱 |
+| 1 | `Assets/Scenes/DenseJigsawRegion.scene` | 三个正式关卡共用的洞穴任务场景 |
+| 2 | `Assets/Scenes/SpawnShelterStoneTest.scene` | 新手教程与隔离玩法验证 |
+
+`Assets/Scenes/InfiniteCaves.scene` 保留为基础无限洞穴参考场景，目前未加入构建。`CombatTest`、`JigsawSuperflat`、`WorldGenerationPreview`、`VoxelStructureEditor` 及 `Experiments/`、`Prototypes/` 下的场景用于开发、预览或专项验证。
+
+## 已实现系统
+
+- **任务与经济**：Home 基地、任务舱、三个顺序关卡、限时采集、自动撤离结算、持久化进度、货币和商店。
+- **体素世界**：按 X/Z 流送的 `32 × 256 × 32` 体素柱、确定性三维洞穴密度、Marching Cubes 网格、碰撞体、运行时编辑和跨柱重建。
+- **Dense Jigsaw 世界**：正式任务在基础洞穴配置上叠加高密度 Jigsaw 结构、外置降落舱、检查点传送门和有限/无限区域控制。
+- **结构生成**：固定体素结构、Random Spread、Concentric Rings、Structure Set 竞争、显式 Socket、模板 Piece、Processor、缓存和柱级裁剪。
+- **采集与破坏**：五类矿物配置、整片矿脉回收、价值/质量计算、宝藏、炸弹破坏，以及失去支撑后生成动态体素刚体的完整性链路。
+- **玩家与装备**：第一/第三人称相机、移动/跳跃/蹲伏、近战、投掷与召回探险镐、手电筒、地形发生器、炸弹、传送门发生器和喷气背包。
+- **生物**：配置化生成、状态机、近战与受击、体素 A* 寻路、跳跃/下落和卡住恢复。
+- **表现与界面**：UGUI + TextMeshPro 主菜单、HUD、暂停、加载、任务、装备和输入重绑；洞穴植被、柔化点光衰减、晶体矿石材质、音频事件与空间音效。
+
+## 运行流程
+
+```text
+Home.scene
+  ├─ MainMenuController        主菜单与镜头过渡
+  ├─ HomeShopController        装备商店
+  └─ MissionGameLoop           选择当前 LevelConfiguration
+          ↓
+DenseJigsawRegion.scene
+  ├─ MinecraftCaveInfiniteWorld
+  │    ├─ DenseJigsawWorldConfiguration
+  │    ├─ MinecraftWorldGenerationConfiguration
+  │    ├─ InfiniteVoxelWorld / MarchingCubesMesher
+  │    └─ 矿物、结构、生物、宝藏与体素完整性
+  └─ MissionGameLoop           采集、倒计时与结算
+          ↓
+Home.scene                     结算、关卡推进与购买
+```
+
+`Assets/Game/Config/GameAssetCatalog.asset` 是运行时全局引用入口，集中保存关卡列表、场景名、输入、UI、音频和效果资产。关卡再通过 `LevelConfiguration` 组合世界、怪物与宝藏配置。编辑器工具的固定资产路径统一维护在 `Assets/Game/Editor/ProjectAssetPaths.cs`；新增或移动资产时应更新目录或全局路径表，不应在业务代码中散落硬编码路径。
 
 ## 项目结构
 
 ```text
 Assets/
-├─ 3rd/                         第三方模型、动画、插件和素材
-├─ Game/                        第一方游戏代码与功能资源
+├─ 3rd/                         第三方模型、动画、插件与素材
+├─ Game/                        第一方代码、配置、资源、测试与文档
 │  ├─ Runtime/
-│  │  ├─ Animation/             运行时动画辅助
-│  │  ├─ Creatures/             生物行为、物理移动和体素寻路
-│  │  ├─ Effects/               区域效果、磁力表现
-│  │  ├─ Gameplay/              玩家、战斗、工具、炸弹、相机
-│  │  ├─ Physics/               矿车和可吸附物体物理组件
-│  │  ├─ UI/                    HUD 与展示逻辑
-│  │  └─ Voxels/                体素数据、网格、采矿和结构编辑
-│  ├─ Editor/
-│  │  ├─ Animation/             动画生成、重定向和合成工具
-│  │  ├─ Creatures/             生物形状烘焙与验证工具
-│  │  ├─ Player/                玩家模型与 Animator 配置工具
-│  │  └─ Voxels/                固定体素结构编辑工具
-│  ├─ Tests/Editor/             EditMode 测试
-│  ├─ Animations/               第一方 Animator 与动画片段
-│  ├─ Config/                   体素类型等配置资产
-│  ├─ CreatureAssets/           生物示例与烘焙数据
-│  ├─ Prefabs/                  Player 等游戏预制体
-│  ├─ Scenes/                   Gallery、模型和结构编辑场景
-│  ├─ Structures/               固定体素结构资产
-│  └─ Docs/                     专题设计与实现文档
-├─ Scenes/                      产品场景与 Unity 示例场景
-├─ Prefabs/                     跨模块共享预制体
-├─ Materials/                   跨模块共享材质
+│  │  ├─ Audio/                 音频管理、Cue 与事件
+│  │  ├─ Creatures/             生物行为、生成与体素寻路
+│  │  ├─ Gameplay/              玩家、武器、装备、投射物与交互
+│  │  ├─ Infrastructure/        GameAssetCatalog 等全局资产入口
+│  │  ├─ Input/                 Input System、重绑与按键提示
+│  │  ├─ MinecraftCaves/        洞穴生态、表面植被与出生结构
+│  │  ├─ Missions/              关卡配置、任务运行与撤离
+│  │  ├─ PortalExample/         传送门渲染、穿越与 Dense 集成
+│  │  ├─ Shop/                  经济与基地商店
+│  │  ├─ Structures/            Jigsaw 定义、选址、布局与落地
+│  │  ├─ UI/                    主菜单、HUD、暂停、装备与世界 UI
+│  │  ├─ Voxels/                体素数据、网格、采矿、完整性与支撑
+│  │  └─ WorldGeneration/       Dense Jigsaw 世界覆盖与特征混合
+│  ├─ Editor/                   场景构建、资产生成和创作工具
+│  ├─ Tests/Editor/             NUnit / Unity Test Framework EditMode 测试
+│  ├─ Config/                   ScriptableObject 配置资产
+│  ├─ Prefabs/                  第一方游戏 Prefab
+│  ├─ Structures/               体素结构数据
+│  ├─ Docs/                     实现、配置、决策与调研文档
+│  └─ Research/                 体素物理与支撑系统研究/实验报告
+├─ Scenes/                      产品、教程、预览、实验与原型场景
+├─ UI/                          UGUI/TMP Prefab、遗留 UI Toolkit 与贴图
+├─ Materials/、Prefabs/         跨模块共享资源
 └─ Settings/                    URP 与渲染配置
 ```
 
-## 核心运行链路
+第一方代码目前仍进入默认 `Assembly-CSharp` / `Assembly-CSharp-Editor`，仓库中没有第一方 `.asmdef`。目录和命名空间表达模块边界，但尚未形成编译边界。
 
-```text
-Assets/Scenes/InfiniteCaves.scene
-  ├─ MinecraftCaveInfiniteWorld
-  │  ├─ MinecraftCaveDensityField
-  │  ├─ MinecraftCaveVolumeGenerator
-  │  ├─ InfiniteVoxelWorld
-  │  ├─ MarchingCubesMesher
-  │  └─ VoxelStructureAsset
-  ├─ VoxelPlayerController
-  │  ├─ PerspectiveCameraController
-  │  ├─ VoxelPlayerInteractor
-  │  ├─ PlayerToolController
-  │  ├─ FirstPersonCartAttractor
-  │  └─ CharacterCombat
-  ├─ CreatureBehaviorAgent
-  │  └─ CreaturePhysicsMotor
-  └─ GameHudController
+## 开发与验证
+
+使用 Tuanjie Hub 打开仓库根目录，日常运行从 `Assets/Scenes/Home.scene` 开始。批处理命令中的 `<Editor>` 应替换为本机 Tuanjie Editor 可执行文件：
+
+```powershell
+& '<Editor>' -batchmode -quit -projectPath . -runTests -testPlatform EditMode -testResults Logs/EditMode.xml
+& '<Editor>' -batchmode -quit -projectPath . -buildWindows64Player Builds/Windows/Supernova.exe
 ```
 
-### 洞穴与体素
+提交前应核对：
 
-洞穴使用绝对世界坐标采样确定性密度场，组合 Cheese、Spaghetti、Noodle 和 Pillar 等结构。正密度表示固体，负密度表示空气。世界以 `32³` 体素 Chunk 存储，通过 Marching Cubes 生成可渲染和可碰撞网格。
+1. `Home`、`DenseJigsawRegion` 和 `SpawnShelterStoneTest` 的构建开关与顺序符合目标版本。
+2. Unity/Tuanjie 完成脚本刷新且 Console 没有新增第一方编译错误。
+3. EditMode 测试结果来自本次工作区运行，而不是文档中的历史数字。
+4. 场景、Prefab、材质或 UI 改动附带截图或录屏；资源移动保留 `.meta`。
 
-`MinecraftCaveInfiniteWorld` 负责观察者周围 Chunk 的生成、提交、网格构建、卸载和编辑。玩家采矿、放置和炸弹破坏最终都通过体素编辑接口修改世界并触发受影响 Chunk 的重建。
+不要提交 `Library/`、`Temp/`、`Logs/`、`UserSettings/` 或本地构建输出。
 
-### 玩家与工具
+## 文档
 
-玩家支持第一/第二/第三人称视角、CharacterController 移动、跳跃、蹲伏、近战、挖矿、磁力工具、矿车把手牵引和炸弹。矿车把手可在任意工具状态下通过近距离左键交互，牵引时保持开始时的世界方向和相对位移，不跟随准星。`PlayerToolController` 管理工具栏选择，HUD 展示生命值和当前工具。
+文档导航见 [`Assets/Game/Docs/README.md`](Assets/Game/Docs/README.md)。常用入口：
 
-### 生物
+- [地形生成运行时链路](Assets/Game/Docs/MinecraftCaves世界生成与Voxel依赖.md)
+- [Jigsaw 结构配置手册](Assets/Game/Docs/Jigsaw结构配置手册.md)
+- [Jigsaw 结构生成算法](Assets/Game/Docs/Jigsaw结构生成.md)
+- [矿物生成与体素链路](Assets/Game/Docs/Minecraft矿物生成与项目体素链路.md)
+- [固定体素结构](Assets/Game/Docs/FixedVoxelStructures.md)
+- [生物状态与体素寻路](Assets/Game/Docs/生物和行为树.md)
+- [UI 技术决策](Assets/Game/Docs/UI/ADR-001-Runtime-UI-Stack.md)
+- [UI 审计与重构 PRD](Assets/Game/Docs/UI/UI_AUDIT_AND_REFACTOR_PRD.md)
+- [游戏内显示文本清单](LANGUAGES.md)
 
-生物系统的 `CreatureBehaviorAgent` 保留 Idle、Wander、Pursue、Attack、Hurt、Dead 和 Caught 状态。Wander/Pursue 当前仅作为静止占位状态；`CreaturePhysicsMotor` 只保留刚体朝向、冲量和生物间碰撞管理，不再规划或执行路径。
-
-### 固定体素结构
-
-固定结构使用 `VoxelStructureAsset` 持久化密度和类型数据。结构编辑流程由 `Assets/Game/Editor/Voxels` 中的工具以及 `VoxelStructureEditor.scene` 支持。
-
-## 主要文档
-
-- `Assets/Game/Docs/Minecraft洞穴与无限区块生成.md`
-- `Assets/Game/Docs/MinecraftCaves世界生成与Voxel依赖.md`
-- `Assets/Game/Docs/体素与距离场生成.md`
-- `Assets/Game/Docs/FixedVoxelStructures.md`
-- `Assets/Game/Docs/生物体素寻路实现.md`
-- `Assets/Game/Docs/生物和行为树.md`
-- `Assets/Game/Docs/FIRST_PERSON_ANIMATION.md`
-- `Assets/Game/Docs/CartPhysicsAndPlayerTools.md`
-- `Assets/Game/Docs/BOMB_SYSTEM.md`
-- `Assets/Game/Docs/SparseAnimationResearch.md`
-- `Assets/Game/Docs/DRG_TECH_GOALS.md`
-
-Blender、NLA 和外部动画迁移教学文档已从项目资源中删除；项目文档只保留与当前 Unity 游戏实现直接相关的内容。
-
-## 当前验证状态
-
-整理完成后的验证结果：
-
-- Unity 脚本刷新和编译：通过，无第一方编译错误。
-- `InfiniteCaves` 场景校验：通过，缺失脚本 `0`，损坏 Prefab `0`。
-- EditMode 测试：共 `39` 项，`37` 通过，`2` 失败。
-
-仍失败的测试：
-
-1. `BombAndVoxelEffectTests.ViewerMovement_RefreshesStreamingWhileMeshesAreStillQueued`
-   - 期望 Viewer Chunk 为 `(1, 0, 0)`，实际仍为 `(0, 0, 0)`。
-2. `FirstPersonAnimationControllerTests.UnifiedController_DrivesMuryotaisuAnimatorContract`
-   - 反射调用 `SetAnimationState` 时参数数量与当前方法签名不一致。
-
-第二项是测试和实现签名漂移，第一项需要进一步确认测试对流送刷新时机的预期是否仍符合当前世界生命周期。
-
-## 已知架构与维护问题
-
-### P0：入口与验证
-
-1. **构建入口未同步**
-   - 当前实际主场景是 `Assets/Scenes/InfiniteCaves.scene`。
-   - `ProjectSettings/EditorBuildSettings.asset` 仍只启用 `Assets/Scenes/SampleScene.scene`。
-
-2. **全量测试尚未全绿**
-   - 两项失败会降低后续重构的安全性，应优先修复或更新已经过期的断言。
-
-### P1：模块边界
-
-3. **缺少第一方程序集定义**
-   - 第一方代码仍主要进入默认 `Assembly-CSharp` 与 `Assembly-CSharp-Editor`。
-   - 目录表达了模块，但编译器没有强制依赖方向。
-   - 建议拆分 `Supernova.Voxels`、`Supernova.Gameplay`、`Supernova.MinecraftCaves`、`Supernova.UI`、`Supernova.Editor` 和测试程序集。
-
-4. **逻辑依赖仍存在回环**
-   - `MinecraftCaves` 合理地依赖 `Voxels`。
-   - `VoxelPlayerInteractor` 和 `VoxelDestructionReceiver` 仍知道具体的 `MinecraftCaveInfiniteWorld`。
-   - 建议让通用体素层只依赖 `IVoxelTerrain`，把具体适配器放到 MinecraftCaves 集成层。
-
-5. **核心 MonoBehaviour 职责过大**
-   - `MinecraftCaveInfiniteWorld` 同时负责生成调度、Chunk 生命周期、网格、编辑、出生点、Viewer 控制和调试显示。
-   - `VoxelPlayerController` 同时负责输入、移动、战斗、采矿、磁力、生命值、动画和状态机。
-   - `CreatureBehaviorAgent` 同时负责状态决策、战斗、生命值和调试。
-   - `GameHudController` 同时负责运行时创建、对象查找、视图构造、绑定和展示。
-
-6. **场景装配过于隐式**
-   - 多处通过 `FindObjectOfType`、`Camera.main`、Tag 和运行时 `AddComponent` 自动补齐引用。
-   - 建议由 `InfiniteCaves` 的 Bootstrap/Composition Root 显式连接 World、Player、HUD 和 Creature。
-
-### P2：代码整洁度
-
-7. **命名空间仍不完全统一**
-   - 少量脚本仍处于全局命名空间。
-   - Editor 工具同时使用 `Supernova.MinecraftCaves.Editor` 和 `Supernova.EditorTools.*`。
-
-8. **多个公共类型集中在单文件**
-   - `CharacterCombat.cs`、`AreaEffect.cs`、`GameHudController.cs` 等文件包含多个高关注度公共类型，降低按类型检索的可读性。
-
-9. **测试依赖私有实现**
-   - 多个测试通过反射调用私有方法或访问私有字段，重命名和拆分类很容易造成测试失效。
-   - 建议把纯逻辑提取为可直接测试的 C# 类，并增加主场景/Prefab 的 PlayMode 装配测试。
-
-10. **示例与产品场景边界不清晰**
-    - `Assets/Scenes/InfiniteCaves.scene`、`Assets/Game/Scenes/MinecraftCaveInfiniteWorld.scene` 和 Gallery/Model 场景并存。
-    - 建议把非产品入口统一放入 `Samples` 或 `Authoring` 子目录。
-
-## 推荐整理顺序
-
-1. 把 `InfiniteCaves.scene` 设为明确的构建入口。
-2. 修复当前两项 EditMode 测试。
-3. 添加第一方 asmdef，固化依赖方向。
-4. 移除 `Voxels -> MinecraftCaves` 的反向依赖。
-5. 逐步拆分 World、Player、Creature 和 HUD 四个超大协调类。
-6. 最后统一命名空间、公共类型文件和示例场景位置。
-
-## 维护约定
-
-- 第三方内容只放在 `Assets/3rd`，第一方代码不得再引用 `Assets/3rdChara`。
-- 第一方 C#、Editor 工具和测试统一放在 `Assets/Game`。
-- 运行时代码不得引用 `UnityEditor`；编辑器工具必须位于 `Editor` 目录。
-- 新增硬编码资产路径时集中到 Editor-only 路径目录，并添加存在性检查。
-- 删除或移动资源时必须保留 `.meta`，并在完成后执行 Unity 刷新、场景校验和测试。
+文档中的“调研”“目标”“PRD”“实验报告”用于记录方案与历史，不等同于已实现功能；当前事实以场景、配置资产、运行时代码和本次测试结果为准。

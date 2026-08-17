@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using Supernova.Inputs;
 using TMPro;
 using UnityEngine;
@@ -21,6 +22,8 @@ namespace Supernova.UI
         [SerializeField] private float fadeInSeconds = 0.55f;
 
         private Coroutine resultAnimation;
+        private readonly List<Canvas> suppressedWorldValueCanvases =
+            new List<Canvas>();
 
         public bool IsResultVisible =>
             resultPanel != null && resultPanel.activeSelf;
@@ -62,6 +65,7 @@ namespace Supernova.UI
         public void ShowResult(string value)
         {
             StopResultAnimation();
+            SetWorldValueLabelsSuppressed(true);
             InputPromptTextRuntime.SetText(resultLabel, value);
             if (resultPanel != null)
                 resultPanel.SetActive(true);
@@ -74,6 +78,7 @@ namespace Supernova.UI
             float durationSeconds)
         {
             StopResultAnimation();
+            SetWorldValueLabelsSuppressed(true);
             int clampedTarget = Mathf.Max(0, targetValue);
             SetAnimatedResultText(prefix, suffix, 0);
             if (resultPanel != null)
@@ -95,8 +100,39 @@ namespace Supernova.UI
         public void HideResult()
         {
             StopResultAnimation();
+            SetWorldValueLabelsSuppressed(false);
             if (resultPanel != null)
                 resultPanel.SetActive(false);
+        }
+
+        private void SetWorldValueLabelsSuppressed(bool suppressed)
+        {
+            if (!suppressed)
+            {
+                for (int i = 0; i < suppressedWorldValueCanvases.Count; i++)
+                {
+                    Canvas canvas = suppressedWorldValueCanvases[i];
+                    if (canvas != null)
+                        canvas.enabled = true;
+                }
+                suppressedWorldValueCanvases.Clear();
+                return;
+            }
+
+            if (suppressedWorldValueCanvases.Count > 0)
+                return;
+
+            ValuableObjectWorldUi[] worldValueViews =
+                FindObjectsOfType<ValuableObjectWorldUi>(true);
+            for (int i = 0; i < worldValueViews.Length; i++)
+            {
+                Canvas canvas = worldValueViews[i].WorldCanvas;
+                if (canvas == null || !canvas.enabled)
+                    continue;
+
+                canvas.enabled = false;
+                suppressedWorldValueCanvases.Add(canvas);
+            }
         }
 
         private IEnumerator AnimateResultCount(

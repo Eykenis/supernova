@@ -275,6 +275,7 @@ namespace Supernova.Editor.Gameplay
             }
             SerializedObject serialized = new SerializedObject(definition);
             SetInteger(serialized, "item", (int)PlayerInventoryItem.Bomb);
+            serialized.FindProperty("primaryActionHint").stringValue = "投掷炸弹";
             SetInteger(
                 serialized,
                 "primaryAction",

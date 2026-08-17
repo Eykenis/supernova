@@ -19,9 +19,17 @@ namespace Supernova.MinecraftCaves
             PlayerSpawn = 3,
         }
 
+        public enum TreasureSelectionMode
+        {
+            WeightedWorldTable = 0,
+            Specific = 1,
+        }
+
         [SerializeField] private string stableId = "marker";
         [SerializeField] private Kind kind = Kind.Treasure;
         [SerializeField] private TreasureDefinition treasure;
+        [SerializeField] private TreasureSelectionMode treasureSelectionMode =
+            TreasureSelectionMode.WeightedWorldTable;
         [SerializeField] private GameObject checkpointPrefab;
 
         [Header("Placement")]
@@ -45,6 +53,8 @@ namespace Supernova.MinecraftCaves
             : stableId.Trim();
         public Kind MarkerKind => kind;
         public TreasureDefinition Treasure => treasure;
+        public TreasureSelectionMode TreasureSelection =>
+            treasureSelectionMode;
         public GameObject CheckpointPrefab => checkpointPrefab;
 
         /// <summary>
@@ -64,8 +74,9 @@ namespace Supernova.MinecraftCaves
                     return true;
                 }
                 return kind == Kind.Treasure
-                    && treasure != null
-                    && treasure.Prefab != null;
+                    && (treasureSelectionMode
+                            == TreasureSelectionMode.WeightedWorldTable
+                        || (treasure != null && treasure.Prefab != null));
             }
         }
 
@@ -96,6 +107,14 @@ namespace Supernova.MinecraftCaves
         {
             treasure = value;
             kind = Kind.Treasure;
+            treasureSelectionMode = TreasureSelectionMode.Specific;
+        }
+
+        public void ConfigureWeightedTreasure()
+        {
+            kind = Kind.Treasure;
+            treasureSelectionMode =
+                TreasureSelectionMode.WeightedWorldTable;
         }
 
         internal StructureSpawnMarkerSettings CreateSettings()
@@ -105,6 +124,7 @@ namespace Supernova.MinecraftCaves
                 StableId,
                 kind,
                 treasure,
+                treasureSelectionMode,
                 checkpointPrefab,
                 localOffset,
                 yaw,
@@ -138,6 +158,8 @@ namespace Supernova.MinecraftCaves
             string stableId,
             StructureSpawnMarkerDefinition.Kind kind,
             TreasureDefinition treasure,
+            StructureSpawnMarkerDefinition.TreasureSelectionMode
+                treasureSelectionMode,
             GameObject checkpointPrefab,
             Vector3Int localOffset,
             float yaw,
@@ -152,6 +174,7 @@ namespace Supernova.MinecraftCaves
                 : stableId.Trim();
             Kind = kind;
             Treasure = treasure;
+            TreasureSelection = treasureSelectionMode;
             CheckpointPrefab = checkpointPrefab;
             LocalOffset = localOffset;
             Yaw = yaw;
@@ -168,6 +191,8 @@ namespace Supernova.MinecraftCaves
         public string StableId { get; }
         public StructureSpawnMarkerDefinition.Kind Kind { get; }
         public TreasureDefinition Treasure { get; }
+        public StructureSpawnMarkerDefinition.TreasureSelectionMode
+            TreasureSelection { get; }
         public GameObject CheckpointPrefab { get; }
         public Vector3Int LocalOffset { get; }
         public float Yaw { get; }
@@ -196,8 +221,10 @@ namespace Supernova.MinecraftCaves
                     return true;
                 }
                 return Kind == StructureSpawnMarkerDefinition.Kind.Treasure
-                    && Treasure != null
-                    && Treasure.Prefab != null;
+                    && (TreasureSelection
+                            == StructureSpawnMarkerDefinition
+                                .TreasureSelectionMode.WeightedWorldTable
+                        || (Treasure != null && Treasure.Prefab != null));
             }
         }
 
@@ -234,9 +261,35 @@ namespace Supernova.MinecraftCaves
             float yaw,
             bool snapToFloor,
             int floorSearchDistance)
+            : this(
+                kind,
+                treasure,
+                StructureSpawnMarkerDefinition.TreasureSelectionMode.Specific,
+                0f,
+                voxelPosition,
+                yaw,
+                snapToFloor,
+                floorSearchDistance)
+        {
+        }
+
+        public StructureSpawnRequest(
+            StructureSpawnMarkerDefinition.Kind kind,
+            TreasureDefinition treasure,
+            StructureSpawnMarkerDefinition.TreasureSelectionMode
+                treasureSelection,
+            float treasureSelectionRoll,
+            Vector3Int voxelPosition,
+            float yaw,
+            bool snapToFloor,
+            int floorSearchDistance)
         {
             Kind = kind;
             Treasure = treasure;
+            TreasureSelection = treasureSelection;
+            TreasureSelectionRoll = treasureSelectionRoll < 0f
+                ? 0f
+                : treasureSelectionRoll > 1f ? 1f : treasureSelectionRoll;
             VoxelPosition = voxelPosition;
             Yaw = yaw;
             SnapToFloor = snapToFloor;
@@ -245,6 +298,9 @@ namespace Supernova.MinecraftCaves
 
         public StructureSpawnMarkerDefinition.Kind Kind { get; }
         public TreasureDefinition Treasure { get; }
+        public StructureSpawnMarkerDefinition.TreasureSelectionMode
+            TreasureSelection { get; }
+        public float TreasureSelectionRoll { get; }
         public Vector3Int VoxelPosition { get; }
         public float Yaw { get; }
         public bool SnapToFloor { get; }

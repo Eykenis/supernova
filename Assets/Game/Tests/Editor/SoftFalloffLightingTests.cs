@@ -21,7 +21,7 @@ namespace Supernova.MinecraftCaves.Tests
                 Is.Empty);
         }
 
-        [TestCase(ProjectAssetPaths.Materials.Ore)]
+
         [TestCase(ProjectAssetPaths.Materials.Bedrock)]
         public void CaveVoxelMaterial_UsesSoftFalloffLitShader(
             string materialPath)

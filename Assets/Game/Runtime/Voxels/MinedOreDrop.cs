@@ -15,7 +15,7 @@ namespace Supernova.Voxels
         ValuableObject.IBreakEffect
     {
         public const float DefaultMassDensity = 10f;
-        public const float RecoveredLinearScale = 0.68f;
+        public const float RecoveredLinearScale = 1f;
 
         [SerializeField] private VoxelTypeId voxelType = VoxelTypeId.Default;
         [SerializeField, Min(1)] private int voxelCount = 1;

@@ -110,6 +110,60 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void CampaignProgressPersistence_UsesStableLevelNumbers()
+        {
+            bool hadSavedProgress = PlayerPrefs.HasKey(
+                MissionProgressPersistence.CurrentLevelPreferenceKey);
+            int previousLevelNumber = PlayerPrefs.GetInt(
+                MissionProgressPersistence.CurrentLevelPreferenceKey,
+                1);
+            LevelConfiguration[] levels = LevelPaths
+                .Select(AssetDatabase.LoadAssetAtPath<LevelConfiguration>)
+                .ToArray();
+
+            try
+            {
+                MissionProgressPersistence.ClearSavedProgress();
+                Assert.That(
+                    MissionProgressPersistence.HasSavedProgress,
+                    Is.False);
+                Assert.That(
+                    MissionProgressPersistence.ResolveSavedOrDefault(
+                        levels,
+                        levels[0]),
+                    Is.SameAs(levels[0]));
+
+                Assert.That(
+                    MissionProgressPersistence.SaveCurrentLevel(levels[1]),
+                    Is.True);
+                Assert.That(
+                    MissionProgressPersistence.TryLoadLevel(
+                        levels,
+                        out LevelConfiguration restored),
+                    Is.True);
+                Assert.That(restored, Is.SameAs(levels[1]));
+                Assert.That(
+                    MissionProgressPersistence.CurrentLevelNumber,
+                    Is.EqualTo(levels[1].LevelNumber));
+            }
+            finally
+            {
+                if (hadSavedProgress)
+                {
+                    PlayerPrefs.SetInt(
+                        MissionProgressPersistence.CurrentLevelPreferenceKey,
+                        previousLevelNumber);
+                }
+                else
+                {
+                    PlayerPrefs.DeleteKey(
+                        MissionProgressPersistence.CurrentLevelPreferenceKey);
+                }
+                PlayerPrefs.Save();
+            }
+        }
+
+        [Test]
         public void EachLevel_OverridesTheSharedWorldConfigurationSeed()
         {
             LevelConfiguration[] levels = LevelPaths
@@ -161,11 +215,51 @@ namespace Supernova.Tests
             Assert.That(configuration.BedrockVoxelType, Is.Not.Null);
             Assert.That(configuration.OreFeatures, Is.Not.Empty);
             Assert.That(configuration.SpawnPointStructureRule.IsConfigured, Is.True);
-            Assert.That(configuration.MaxConcurrentGenerationJobs, Is.EqualTo(1));
-            Assert.That(configuration.MeshesBuiltPerFrame, Is.EqualTo(1));
+            Assert.That(configuration.MaxConcurrentGenerationJobs, Is.EqualTo(2));
+            Assert.That(configuration.MaxConcurrentMeshJobs, Is.EqualTo(1));
+            Assert.That(configuration.MeshesBuiltPerFrame, Is.EqualTo(2));
+            Assert.That(
+                configuration.MeshSnapshotsCapturedPerFrame,
+                Is.EqualTo(2));
+            Assert.That(
+                configuration.MeshCommitBudgetMilliseconds,
+                Is.EqualTo(4f));
+            Assert.That(
+                configuration.MeshSnapshotBudgetMilliseconds,
+                Is.EqualTo(2f));
+            Assert.That(
+                configuration.VoxelDataRetentionRadiusInChunks,
+                Is.EqualTo(3));
             AssertDepthScaling(configuration.OreDepthProbability);
             AssertDepthScaling(configuration.TreasureDepthProbability);
         }
+
+        [Test]
+        public void DefaultWorldGeneration_UsesParallelBudgetedStreaming()
+        {
+            MinecraftWorldGenerationConfiguration configuration =
+                AssetDatabase.LoadAssetAtPath<
+                    MinecraftWorldGenerationConfiguration>(
+                    WorldGenerationPath);
+
+            Assert.That(configuration, Is.Not.Null);
+            Assert.That(configuration.MaxConcurrentGenerationJobs, Is.EqualTo(2));
+            Assert.That(configuration.MaxConcurrentMeshJobs, Is.EqualTo(1));
+            Assert.That(configuration.MeshesBuiltPerFrame, Is.EqualTo(2));
+            Assert.That(
+                configuration.MeshSnapshotsCapturedPerFrame,
+                Is.EqualTo(2));
+            Assert.That(
+                configuration.MeshCommitBudgetMilliseconds,
+                Is.EqualTo(4f));
+            Assert.That(
+                configuration.MeshSnapshotBudgetMilliseconds,
+                Is.EqualTo(2f));
+            Assert.That(
+                configuration.VoxelDataRetentionRadiusInChunks,
+                Is.EqualTo(3));
+        }
+
 
         [Test]
         public void WorldCategoryConfigurations_AreNotSerializedOnSceneComponent()
@@ -211,14 +305,13 @@ namespace Supernova.Tests
                 Is.True,
                 "The default mission cave scene (DenseJigsawRegion) must be "
                 + "enabled in the build.");
-            // InfiniteCaves remains a valid cave scene for other levels
-            // (e.g. SecondLevel) and must stay loadable.
+            // All campaign levels now route through DenseJigsawRegion.
             Assert.That(
                 scenes.Any(scene =>
                     scene.path == ProjectAssetPaths.Scenes.InfiniteCaves
                     && scene.enabled),
-                Is.True,
-                "InfiniteCaves must remain enabled for non-default levels.");
+                Is.False,
+                "The legacy InfiniteCaves scene must not remain enabled.");
             Assert.That(
                 scenes.Any(scene =>
                     scene.path == ProjectAssetPaths.Scenes.SpawnShelterStoneTest

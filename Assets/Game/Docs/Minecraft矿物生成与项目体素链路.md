@@ -209,17 +209,15 @@ Unity 资产。
 - 耐久度（当前项目中硬度的实际游戏语义：所需挖掘次数）；
 - 材质。
 
-`MinecraftVoxelTypes.asset` 只保存定义资产引用，不再内嵌多个定义。当前资产：
+`MinecraftVoxelTypes.asset` 只保存定义资产引用，不再内嵌多个定义。基础地形位于
+`Assets/Game/Config/VoxelTypes/Terrain/`，矿物位于
+`Assets/Game/Config/VoxelTypes/Mineral/`。当前矿物类型为 YellowIron（ID 3）、
+Obsidian（ID 11）、Diamond（ID 13）、Amethyst（ID 14）和 Copper（ID 15）。
 
-```text
-Assets/Game/Config/VoxelTypes/Default.asset  -> ID 1, Default, 1
-Assets/Game/Config/VoxelTypes/Stone.asset    -> ID 2, Stone,   4
-Assets/Game/Config/VoxelTypes/Ore.asset      -> ID 3, Ore,     8
-```
-
-`Ore.asset` 指向独立的
-`Assets/Game/Materials/Voxels/Ore.mat`，因此矿石 submesh 与灰色的运行时基岩
-材质可直接区分。未指定材质的体素类型继续使用 chunk fallback material。
+每一种矿物都引用独立材质，材质位于 `Assets/Game/Materials/Voxels/` 的对应目录；
+采掘后的统一回收材质为 `Assets/Game/Materials/Voxels/Ore/RecoveredOre.mat`。
+这些材质使用不透明的 `Supernova/Lighting/Crystal Ore Lit`，保留深度写入并通过
+Clear Coat、法线与闪烁参数区分晶体表面。
 
 普通矿团的“怎样生成”不放进体素类型资产，而由独立的
 `VoxelOreFeatureDefinition` 配置：
@@ -233,20 +231,20 @@ Assets/Game/Config/VoxelTypes/Ore.asset      -> ID 3, Ore,     8
 - 普通矿团 `size`；
 - `discardChanceOnAirExposure`。
 
-```text
-Assets/Game/Config/OreFeatures/Ore.asset
-    result:       Ore
-    replaceable:  Stone
-    attempts:     8 / 16×16 region
-    chance:       1
-    height:       trapezoid, -64..64, plateau 0
-    size:         8
-    air discard:  0.5
-```
+`DefaultWorldGeneration.asset` 当前按列表顺序启用五个 Feature：
 
-`InfiniteCaves.scene` 引用 `Stone.asset` 作为 base solid，并启用上述
-`OreFeature`。列表可以继续加入其他独立矿物 pass；执行顺序就是列表顺序，后续
-pass 仍必须命中自己的 replaceable type 才能覆盖现有类型。
+| Feature | 尝试/16×16 区域 | 发生概率 | Size | 空气暴露丢弃率 |
+| --- | ---: | ---: | ---: | ---: |
+| YellowIron | 32 | 1.00 | 8 | 0.05 |
+| Obsidian | 16 | 0.50 | 6 | 0.075 |
+| Diamond | 16 | 0.30 | 5 | 0.05 |
+| Copper | 16 | 0.80 | 10 | 0.10 |
+| Amethyst | 8 | 0.45 | 5 | 0.10 |
+
+五份资产都位于 `Assets/Game/Config/OreFeatures/`，并显式声明结果类型、可替换
+类型、高度分布、价值、质量密度和回收材质。正式 `LevelConfiguration` 通过
+`DefaultWorldGeneration.asset` 取得 Stone base 与上述列表；后续 pass 仍必须命中
+自己的 replaceable type 才能覆盖已有类型。
 
 ## 8. 普通矿团实现
 
@@ -294,18 +292,19 @@ EditMode 测试覆盖：
 - 只替换配置的基岩类型；
 - 相邻 Chunk 反向生成仍得到相同结果，并存在跨边界连续矿团；
 - 空气暴露丢弃率为 1 时拒绝全部暴露候选；
-- 默认矿团资产的类型引用、参数与矿石材质；
-- `InfiniteCaves.scene` 的 Stone base 和 OreFeature 引用。
+- 默认矿团资产的类型引用、参数与回收材质；
+- FirstLevel → DefaultWorldGeneration 的 Stone base 与矿物 Feature 引用；
+- 五类矿物各自使用独立、不透明且开启深度写入的 Crystal Ore 材质。
 
-实际 Play Mode 冒烟检查在 220 个已生成 Chunk 中统计到 Stone 与 Ore 类型，且
-控制台无错误，证明矿团已进入正式异步生成和提交链路，而不只是独立算法测试。
+文档不保留易过期的 Play Mode Chunk 数量快照。运行时接入应通过当前
+`DenseJigsawRegion.scene` 冒烟检查和本次测试报告确认。
 
 大型 `OreVeinifier` 矿脉仍不在本次范围内；如果以后实现，应作为独立 feature，
 不应通过无限增大普通矿团 `size` 模拟。
 
 ## 10. 采掘后的矿石刚体
 
-配置在 `MinecraftCaveInfiniteWorld.oreFeatures` 中的每一种结果类型都被视为矿石。
+配置在当前 `MinecraftWorldGenerationConfiguration.OreFeatures` 中的每一种结果类型都被视为矿石。
 当其中任意一个体素耐久耗尽时，系统按 26 邻域搜索同类型的完整连通矿脉，包括
 跨 Chunk 的相邻样本，并一次性采集整片矿脉。
 

@@ -16,6 +16,10 @@ namespace Supernova.Gameplay
         [SerializeField, Range(0f, 45f)] private float maximumSurfaceSlope = 12f;
         [SerializeField, Min(0.1f)] private float requiredHeadroom = 1.5f;
         [Tooltip(
+            "Optional bomb tool whose explosion is emitted when this treasure "
+            + "is destroyed.")]
+        [SerializeField] private PlayerToolDefinition destructionExplosionTool;
+        [Tooltip(
             "Each prefab is one complete pre-cut fragment arrangement. "
             + "Exactly one variant is selected when this treasure breaks.")]
         [SerializeField] private List<GameObject> fractureVariants =
@@ -32,6 +36,8 @@ namespace Supernova.Gameplay
         public int AttemptsPerChunk => Mathf.Max(1, attemptsPerChunk);
         public float MaximumSurfaceSlope => Mathf.Clamp(maximumSurfaceSlope, 0f, 45f);
         public float RequiredHeadroom => Mathf.Max(0.1f, requiredHeadroom);
+        public PlayerToolDefinition DestructionExplosionTool =>
+            destructionExplosionTool;
         public IReadOnlyList<GameObject> FractureVariants =>
             fractureVariants;
 
@@ -59,6 +65,17 @@ namespace Supernova.Gameplay
             fractureVariants = variants != null
                 ? new List<GameObject>(variants)
                 : new List<GameObject>();
+        }
+
+        public void ConfigureDisplayName(string value)
+        {
+            displayName = value ?? string.Empty;
+        }
+
+        public void ConfigureDestructionExplosion(
+            PlayerToolDefinition explosionTool)
+        {
+            destructionExplosionTool = explosionTool;
         }
 
         public GameObject GetFractureVariant(int selectionSeed)

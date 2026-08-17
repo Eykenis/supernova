@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:yousandi.cn,2023:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 55c4c72518c3412459e3a631737b16ad, type: 3}
+  m_Name: MysticCore
+  m_EditorClassIdentifier: 
+  displayName: "\u795E\u79D8\u6838\u5FC3"
+  prefab: {fileID: 1885092489560387551, guid: b1ab738820d6c004ebe4f8096c6ab32d, type: 3}
+  value: 2500
+  weight: 6
+  fragility: 0.7
+  spawnChance: 0.1
+  attemptsPerChunk: 1
+  maximumSurfaceSlope: 12
+  requiredHeadroom: 1.5
+  destructionExplosionTool: {fileID: 11400000, guid: de13f51e58e58df4985d8aa8b2fe88f8,
+    type: 2}
+  fractureVariants:
+  - {fileID: 6932407427484462890, guid: da47297b160f27b4a9b6b9f828432f57, type: 3}
+  - {fileID: 5206706398560196028, guid: edaa2b355ffa4994dbf162e886fe2270, type: 3}
+  - {fileID: 1320970015364686401, guid: 884b1412b6162914dbacfb3d46947f7a, type: 3}

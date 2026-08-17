@@ -442,6 +442,7 @@ namespace Supernova.Editor.Gameplay
             }
 
             var serialized = new SerializedObject(definition);
+            serialized.FindProperty("primaryActionHint").stringValue = "挥镐";
             SetReference(
                 serialized,
                 "magnetHoldAnimation",

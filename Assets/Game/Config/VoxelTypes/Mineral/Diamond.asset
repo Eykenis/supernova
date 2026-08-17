@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: Diamond
   m_EditorClassIdentifier: 
   type: 13
-  displayName: 钻石
+  displayName: "\u94BB\u77F3"
   group: 2
   durability: 50
-  material: {fileID: 2100000, guid: bacb4a0d1f00adb4cb01f351f4ca302e, type: 2}
+  structuralSupport: 0
+  material: {fileID: 2100000, guid: 70b97c9f65324bc8960d0d6f2836016d, type: 2}
+  sparkleDensity: 0.35

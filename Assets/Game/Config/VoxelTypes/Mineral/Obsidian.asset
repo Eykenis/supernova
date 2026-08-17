@@ -13,7 +13,9 @@ MonoBehaviour:
   m_Name: Obsidian
   m_EditorClassIdentifier: 
   type: 11
-  displayName: 黑曜石
+  displayName: "\u9ED1\u66DC\u77F3"
   group: 2
   durability: 80
+  structuralSupport: 0
   material: {fileID: 2100000, guid: 245862d287dbc454fbdb4d077f07e214, type: 2}
+  sparkleDensity: 0.14

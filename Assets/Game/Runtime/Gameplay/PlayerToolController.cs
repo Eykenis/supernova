@@ -19,6 +19,7 @@ namespace Supernova.Gameplay
     public enum PlayerUpgrade
     {
         None = 0,
+        MagnetAttractionForce = 1,
     }
 
     [Serializable]
@@ -300,6 +301,9 @@ namespace Supernova.Gameplay
     [DisallowMultipleComponent]
     public sealed class PlayerToolController : MonoBehaviour
     {
+        public static event Action<PlayerToolController> InstanceEnabled;
+        public static event Action<PlayerToolController> InstanceDisabled;
+
         [SerializeField, Range(0, PlayerInventory.SlotCount - 1)]
         private int initialSelectedSlot;
         [Tooltip("Inspector-visible snapshot of the items and upgrades owned by this player.")]
@@ -331,6 +335,7 @@ namespace Supernova.Gameplay
         private WeaponMuzzle equippedWeaponMuzzle;
         private Transform twoHandedModelMount;
         private PlayerInventorySessionSettings sessionSettings;
+        private PlayerInventoryItem[] defaultConfiguredSlots;
 
         public event Action<int, PlayerInventoryItem> SelectionChanged;
         public event Action LoadoutChanged;
@@ -373,9 +378,17 @@ namespace Supernova.Gameplay
 
         private void Awake()
         {
+            CacheDefaultConfiguredSlots();
             ResolveReferences();
             EnsureInventory();
             ApplySelectedItem();
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetRuntimeEvents()
+        {
+            InstanceEnabled = null;
+            InstanceDisabled = null;
         }
 
         private void OnEnable()
@@ -387,17 +400,23 @@ namespace Supernova.Gameplay
                     HandleItemOwnershipChanged;
                 PlayerEconomy.UpgradeOwnershipChanged +=
                     HandleUpgradeOwnershipChanged;
+                PlayerEconomy.SavedProgressCleared +=
+                    HandleSavedProgressCleared;
             }
             EnsureInventory();
             RefreshPurchasableItemOwnership();
             ApplySelectedItem();
+            InstanceEnabled?.Invoke(this);
         }
 
         private void OnDisable()
         {
+            InstanceDisabled?.Invoke(this);
             PlayerEconomy.ItemOwnershipChanged -= HandleItemOwnershipChanged;
             PlayerEconomy.UpgradeOwnershipChanged -=
                 HandleUpgradeOwnershipChanged;
+            PlayerEconomy.SavedProgressCleared -=
+                HandleSavedProgressCleared;
             equippedToolModelHidden = false;
             ClearEquippedToolModel();
         }
@@ -412,6 +431,39 @@ namespace Supernova.Gameplay
         public PlayerInventoryItem GetItemAtSlot(int slotIndex)
         {
             return Inventory.GetItemAtSlot(slotIndex);
+        }
+
+        /// <summary>
+        /// Returns the item represented by a hotbar slot even while that item is
+        /// temporarily out of the player's hands, such as a thrown pickaxe.
+        /// Gameplay selection continues to use <see cref="GetItemAtSlot"/>, which
+        /// correctly reports the suspended slot as empty.
+        /// </summary>
+        public PlayerInventoryItem GetDisplayItemAtSlot(int slotIndex)
+        {
+            PlayerInventoryItem item = Inventory.GetItemAtSlot(slotIndex);
+            if (item != PlayerInventoryItem.Empty)
+                return item;
+
+            foreach (KeyValuePair<PlayerInventoryItem, int> suspended
+                in suspendedItemSlots)
+            {
+                if (suspended.Value == slotIndex)
+                    return suspended.Key;
+            }
+            return PlayerInventoryItem.Empty;
+        }
+
+        public bool IsItemSuspendedAtSlot(int slotIndex)
+        {
+            Inventory.GetItemAtSlot(slotIndex);
+            foreach (KeyValuePair<PlayerInventoryItem, int> suspended
+                in suspendedItemSlots)
+            {
+                if (suspended.Value == slotIndex)
+                    return true;
+            }
+            return false;
         }
 
         public bool OwnsItem(PlayerInventoryItem item)
@@ -738,6 +790,37 @@ namespace Supernova.Gameplay
             ownedItems.SetOwned(upgrade, isOwned);
         }
 
+        private void HandleSavedProgressCleared()
+        {
+            if (!UsesPersistentPlayerData)
+                return;
+
+            PlayerInventoryItem previousSelectedItem = inventory != null
+                ? inventory.SelectedItem
+                : PlayerInventoryItem.Empty;
+            CacheDefaultConfiguredSlots();
+            configuredSlots = (PlayerInventoryItem[])defaultConfiguredSlots.Clone();
+            suspendedItemSlots.Clear();
+            SynchronizeOwnedItems();
+            inventory = new PlayerInventory(
+                initialSelectedSlot,
+                ownedItems.Owns,
+                configuredSlots);
+            selectedSlotIndex = inventory.SelectedSlotIndex;
+            CaptureConfiguredSlots();
+            ammunitionInventory = null;
+            EnsureAmmunitionInventory();
+            ApplySelectedItem();
+            OwnedItemsChanged?.Invoke();
+            LoadoutChanged?.Invoke();
+            if (previousSelectedItem != inventory.SelectedItem)
+            {
+                SelectionChanged?.Invoke(
+                    inventory.SelectedSlotIndex,
+                    inventory.SelectedItem);
+            }
+        }
+
         private void SynchronizeOwnedItems()
         {
             if (ownedItems == null) ownedItems = new PlayerOwnedItems();
@@ -827,6 +910,19 @@ namespace Supernova.Gameplay
                         resized.Length));
             }
             configuredSlots = resized;
+        }
+
+        private void CacheDefaultConfiguredSlots()
+        {
+            if (defaultConfiguredSlots != null
+                && defaultConfiguredSlots.Length == PlayerInventory.SlotCount)
+            {
+                return;
+            }
+
+            EnsureConfiguredSlotsArray();
+            defaultConfiguredSlots =
+                (PlayerInventoryItem[])configuredSlots.Clone();
         }
 
         private void ApplySessionQuickSlots()

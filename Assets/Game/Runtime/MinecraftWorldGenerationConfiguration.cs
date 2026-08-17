@@ -9,6 +9,11 @@ namespace Supernova.MinecraftCaves
         menuName = "Supernova/Levels/World Generation Configuration")]
     public sealed class MinecraftWorldGenerationConfiguration : ScriptableObject
     {
+        private const int MinimumVoxelDataRetentionRadiusInChunks = 0;
+        private const int MaximumVoxelDataRetentionRadiusInChunks = 16;
+        private const float MinimumMeshPhaseBudgetMilliseconds = 0.25f;
+        private const float MaximumMeshPhaseBudgetMilliseconds = 16f;
+
         [Header("Density")]
         [SerializeField] private MinecraftWorldGenerationMode generationMode;
         [SerializeField, Min(1)] private int superflatStoneHeight = 10;
@@ -19,8 +24,24 @@ namespace Supernova.MinecraftCaves
         [Header("Generation Runtime")]
         [SerializeField] private bool placeViewerInCave = true;
         [SerializeField, Range(1, 8)]
-        private int maxConcurrentGenerationJobs = 4;
-        [SerializeField, Range(1, 8)] private int meshesBuiltPerFrame = 1;
+        private int maxConcurrentGenerationJobs = 2;
+        [SerializeField, Range(1, 8)]
+        private int maxConcurrentMeshJobs = 1;
+        [SerializeField, Range(1, 8)] private int meshesBuiltPerFrame = 2;
+        [SerializeField, Range(1, 8)]
+        private int meshSnapshotsCapturedPerFrame = 2;
+        [SerializeField, Range(
+            MinimumMeshPhaseBudgetMilliseconds,
+            MaximumMeshPhaseBudgetMilliseconds)]
+        private float meshCommitBudgetMilliseconds = 4f;
+        [SerializeField, Range(
+            MinimumMeshPhaseBudgetMilliseconds,
+            MaximumMeshPhaseBudgetMilliseconds)]
+        private float meshSnapshotBudgetMilliseconds = 2f;
+        [SerializeField, Range(
+            MinimumVoxelDataRetentionRadiusInChunks,
+            MaximumVoxelDataRetentionRadiusInChunks)]
+        private int voxelDataRetentionRadiusInChunks = 3;
 
         [Header("Depth Probability Scaling")]
         [Tooltip("Depth scaling applied to every configured ore feature.")]
@@ -80,7 +101,27 @@ namespace Supernova.MinecraftCaves
             maxConcurrentGenerationJobs,
             1,
             8);
+        public int MaxConcurrentMeshJobs => Mathf.Clamp(
+            maxConcurrentMeshJobs,
+            1,
+            8);
         public int MeshesBuiltPerFrame => Mathf.Clamp(meshesBuiltPerFrame, 1, 8);
+        public int MeshSnapshotsCapturedPerFrame => Mathf.Clamp(
+            meshSnapshotsCapturedPerFrame,
+            1,
+            8);
+        public float MeshCommitBudgetMilliseconds => Mathf.Clamp(
+            meshCommitBudgetMilliseconds,
+            MinimumMeshPhaseBudgetMilliseconds,
+            MaximumMeshPhaseBudgetMilliseconds);
+        public float MeshSnapshotBudgetMilliseconds => Mathf.Clamp(
+            meshSnapshotBudgetMilliseconds,
+            MinimumMeshPhaseBudgetMilliseconds,
+            MaximumMeshPhaseBudgetMilliseconds);
+        public int VoxelDataRetentionRadiusInChunks => Mathf.Clamp(
+            voxelDataRetentionRadiusInChunks,
+            MinimumVoxelDataRetentionRadiusInChunks,
+            MaximumVoxelDataRetentionRadiusInChunks);
         public DepthProbabilityProfile OreDepthProbability =>
             oreDepthProbability;
         public DepthProbabilityProfile TreasureDepthProbability =>
@@ -136,7 +177,27 @@ namespace Supernova.MinecraftCaves
                 maxConcurrentGenerationJobs,
                 1,
                 8);
+            maxConcurrentMeshJobs = Mathf.Clamp(
+                maxConcurrentMeshJobs,
+                1,
+                8);
             meshesBuiltPerFrame = Mathf.Clamp(meshesBuiltPerFrame, 1, 8);
+            meshSnapshotsCapturedPerFrame = Mathf.Clamp(
+                meshSnapshotsCapturedPerFrame,
+                1,
+                8);
+            meshCommitBudgetMilliseconds = Mathf.Clamp(
+                meshCommitBudgetMilliseconds,
+                MinimumMeshPhaseBudgetMilliseconds,
+                MaximumMeshPhaseBudgetMilliseconds);
+            meshSnapshotBudgetMilliseconds = Mathf.Clamp(
+                meshSnapshotBudgetMilliseconds,
+                MinimumMeshPhaseBudgetMilliseconds,
+                MaximumMeshPhaseBudgetMilliseconds);
+            voxelDataRetentionRadiusInChunks = Mathf.Clamp(
+                voxelDataRetentionRadiusInChunks,
+                MinimumVoxelDataRetentionRadiusInChunks,
+                MaximumVoxelDataRetentionRadiusInChunks);
             voxelSize = Mathf.Max(0.01f, voxelSize);
             punctualLightFalloffPower =
                 Mathf.Clamp(punctualLightFalloffPower, 0.25f, 1f);
