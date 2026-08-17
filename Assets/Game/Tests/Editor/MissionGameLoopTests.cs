@@ -321,12 +321,14 @@ namespace Supernova.Tests
                 homeCellObject.GetComponentInChildren<OreExtractionZone>(),
                 Is.Null,
                 "Home must only provide the mission launch trigger.");
-            MissionCellButton homeButton =
-                homeCellObject.GetComponentInChildren<MissionCellButton>();
-            Assert.That(homeButton, Is.Not.Null);
-            Assert.That(homeButton.IsHomeMode, Is.True);
             Assert.That(
-                homeButton.transform.parent,
+                homeCellObject.GetComponentInChildren<MissionCellButton>(),
+                Is.Null);
+            MissionCellZone homeZone =
+                homeCellObject.GetComponentInChildren<MissionCellZone>();
+            Assert.That(homeZone, Is.Not.Null);
+            Assert.That(
+                homeZone.transform.parent,
                 Is.EqualTo(homeCellObject.transform));
 
             var caveCellObject = new GameObject("Cave Cell");

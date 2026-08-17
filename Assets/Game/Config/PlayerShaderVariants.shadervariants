@@ -905,3 +905,15 @@ ShaderVariantCollection:
         passType: 13
       - keywords: _NORMALMAP
         passType: 13
+  - first: {fileID: -6465566751694194690, guid: c80f2e3e1c1c4665b73152e079af2c6b,
+      type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: 
+        passType: 11
+      - keywords: 
+        passType: 12
+      - keywords: 
+        passType: 13

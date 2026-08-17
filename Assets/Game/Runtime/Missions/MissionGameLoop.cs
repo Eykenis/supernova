@@ -532,7 +532,8 @@ namespace Supernova.Missions
             MissionCellZone zone = triggerObject.AddComponent<MissionCellZone>();
             zone.Configure(this, home);
             cellZone = zone;
-            MissionCellButton.Create(cell, home);
+            if (!home)
+                MissionCellButton.Create(cell, false);
             if (!home)
             {
                 extractionZone = triggerObject.AddComponent<OreExtractionZone>();

@@ -17,5 +17,5 @@ MonoBehaviour:
   group: 2
   durability: 50
   structuralSupport: 0
-  material: {fileID: 2100000, guid: 70b97c9f65324bc8960d0d6f2836016d, type: 2}
+  material: {fileID: 2100000, guid: a9b4511cd4c0a29479408c2c086ccb21, type: 2}
   sparkleDensity: 0.35
