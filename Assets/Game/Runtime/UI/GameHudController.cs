@@ -5,6 +5,7 @@ using Supernova.Inputs;
 using Supernova.Infrastructure;
 using Supernova.MinecraftCaves;
 using Supernova.Missions;
+using Supernova.Shop;
 using Supernova.Voxels;
 using TMPro;
 using UnityEngine;
@@ -40,6 +41,7 @@ namespace Supernova.UI
         [SerializeField] private RectTransform healthFill;
         [SerializeField] private Image healthFillImage;
         [SerializeField] private TMP_Text healthValueLabel;
+        [SerializeField] private TMP_Text magnetForceLabel;
         [SerializeField] private GameObject hotbarRoot;
         [SerializeField] private TMP_Text hotbarActionHintsLabel;
         [SerializeField] private HeadingCompass headingCompass;
@@ -117,6 +119,8 @@ namespace Supernova.UI
         private static GameHudController runtimeHud;
         private static int gameplayInputBlockedThroughFrame = -1;
         private PauseMenuPresentation pausePresentation;
+        private bool mainMenuSettingsOpen;
+        private Action mainMenuSettingsClosed;
         private AngledPanelGraphic[] healthSegments = new AngledPanelGraphic[0];
         private readonly Image[] hotbarSlotBackgrounds = new Image[PlayerInventory.SlotCount];
         private readonly Outline[] hotbarSlotOutlines = new Outline[PlayerInventory.SlotCount];
@@ -160,8 +164,13 @@ namespace Supernova.UI
         public Canvas MissionOverlayCanvas => missionOverlayCanvas;
         public MissionUiView MissionView => missionView;
         public TMP_Text MissionTimerValueLabel => missionTimerValueLabel;
+        public TMP_Text MagnetForceLabel => magnetForceLabel;
         public UiDesignTokens DesignTokens => designTokens;
         public bool IsPauseMenuVisible => pausePanel != null && pausePanel.activeSelf;
+        public bool IsMainMenuSettingsVisible =>
+            mainMenuSettingsOpen
+            && pausePanel != null
+            && pausePanel.activeSelf;
         public EquipmentLoadoutMenu EquipmentMenu => equipmentMenu;
         public bool IsEquipmentMenuVisible =>
             equipmentMenu != null && equipmentMenu.IsOpen;
@@ -176,7 +185,9 @@ namespace Supernova.UI
         public PlayerToolController InventorySource => inventorySource;
         public static bool IsPauseMenuOpen => pauseOwner != null && pauseOwner.pauseMenuOpen;
         public static bool IsModalMenuOpen =>
-            IsPauseMenuOpen || EquipmentLoadoutMenu.IsAnyOpen;
+            IsPauseMenuOpen
+            || EquipmentLoadoutMenu.IsAnyOpen
+            || NewGameGuideOverlay.IsOpen;
         public static bool IsGameplayInputBlocked =>
             IsModalMenuOpen
             || MainMenuController.IsIntegratedMenuActive
@@ -184,12 +195,14 @@ namespace Supernova.UI
         public bool CanPauseGame =>
             isActiveAndEnabled
             && !IsEquipmentMenuVisible
+            && !NewGameGuideOverlay.IsOpen
             && !IsMainMenuActive()
             && !MissionGameLoop.IsSceneTransitioning
             && !IsLoadingBlockingPause();
         public bool CanOpenEquipmentMenu =>
             isActiveAndEnabled
             && !pauseMenuOpen
+            && !NewGameGuideOverlay.IsOpen
             && !IsMainMenuActive()
             && !MissionGameLoop.IsSceneTransitioning
             && !IsLoadingBlockingPause();
@@ -334,6 +347,10 @@ namespace Supernova.UI
                 HandleMagnetAttractorDisabled;
             FirstPersonMagnetInteractor.InstanceDisabled +=
                 HandleMagnetAttractorDisabled;
+            PlayerEconomy.UpgradeOwnershipChanged -=
+                HandleHudUpgradeOwnershipChanged;
+            PlayerEconomy.UpgradeOwnershipChanged +=
+                HandleHudUpgradeOwnershipChanged;
             ResetFpsDebugCounter();
             RebindSceneSources();
         }
@@ -352,6 +369,8 @@ namespace Supernova.UI
                 HandleMagnetAttractorEnabled;
             FirstPersonMagnetInteractor.InstanceDisabled -=
                 HandleMagnetAttractorDisabled;
+            PlayerEconomy.UpgradeOwnershipChanged -=
+                HandleHudUpgradeOwnershipChanged;
             ResumeGame();
             equipmentMenu?.Close();
             BindMagnetAttractor(null);
@@ -587,8 +606,37 @@ namespace Supernova.UI
             SetCursorState(CursorLockMode.None, true);
         }
 
+        public bool ShowMainMenuSettings(Action closed)
+        {
+            EnsureView();
+            CachePauseMenuReferences();
+            if (pauseCanvas == null
+                || pausePanel == null
+                || pauseSettingsPanel == null)
+            {
+                return false;
+            }
+
+            mainMenuSettingsOpen = true;
+            mainMenuSettingsClosed = closed;
+            pauseCanvas.gameObject.SetActive(true);
+            pausePanel.SetActive(true);
+            pausePresentation = pausePanel.GetComponent<PauseMenuPresentation>();
+            if (pausePresentation == null)
+                pausePresentation = pausePanel.AddComponent<PauseMenuPresentation>();
+            ShowPauseSettings();
+            pausePresentation.PlayIntro();
+            return true;
+        }
+
+        public void HideMainMenuSettings()
+        {
+            HideMainMenuSettings(false);
+        }
+
         public void ResumeGame()
         {
+            HideMainMenuSettings(false);
             if (pausePresentation != null)
                 pausePresentation.StopPresentation();
             if (pausePanel != null) pausePanel.SetActive(false);
@@ -781,13 +829,41 @@ namespace Supernova.UI
                     HandleMagnetTargetAvailabilityChanged;
                 magnetAttractor.RefreshTargetAvailability();
             }
+            RefreshMagnetForceView();
         }
 
         public void RefreshNow()
         {
             RefreshHealthView();
+            RefreshMagnetForceView();
             RefreshHotbar();
             RefreshLoadingView();
+        }
+
+        private void RefreshMagnetForceView()
+        {
+            if (magnetForceLabel == null)
+                return;
+
+            bool hasMagnet = magnetAttractor != null;
+            magnetForceLabel.gameObject.SetActive(hasMagnet);
+            if (hasMagnet)
+            {
+                magnetForceLabel.text = FormatMagnetForceLabel(
+                    magnetAttractor.AttractionForce);
+            }
+        }
+
+        public static string FormatMagnetForceLabel(float force)
+        {
+            float safeForce = float.IsNaN(force) || float.IsInfinity(force)
+                ? 0f
+                : Mathf.Max(0f, force);
+            return "当前最大磁力："
+                + safeForce.ToString(
+                    "0.#",
+                    System.Globalization.CultureInfo.InvariantCulture)
+                + "N";
         }
 
         private void RefreshHealthView()
@@ -850,7 +926,9 @@ namespace Supernova.UI
                     GameInputActionId.SecondaryAction)
                 + "  牵引\n"
                 + InputPromptResolver.Token(GameInputActionId.Crouch)
-                + "  蹲下";
+                + "  蹲下\n"
+                + InputPromptResolver.Token(GameInputActionId.ToggleLoadout)
+                + "  打开背包";
             InputPromptTextRuntime.SetText(hotbarActionHintsLabel, value);
         }
 
@@ -1151,6 +1229,14 @@ namespace Supernova.UI
                 BindMagnetAttractor(null);
         }
 
+        private void HandleHudUpgradeOwnershipChanged(
+            PlayerUpgrade upgrade,
+            bool owned)
+        {
+            if (upgrade == PlayerUpgrade.MagnetAttractionForce)
+                RefreshMagnetForceView();
+        }
+
         private bool IsGameplayViewActive =>
             rootCanvas != null
             && rootCanvas.gameObject.activeInHierarchy;
@@ -1194,6 +1280,11 @@ namespace Supernova.UI
             }
             if (headingCompass == null)
                 BuildCompassView();
+            if (magnetForceLabel == null && rootCanvas != null)
+            {
+                BuildMagnetForceView(
+                    (RectTransform)rootCanvas.transform);
+            }
             bool missionViewNeedsUpgrade =
                 transform.Find(UiHierarchyPaths.Mission.Timer) == null;
             if (missionView == null || missionOverlayCanvas == null
@@ -1270,6 +1361,11 @@ namespace Supernova.UI
             Transform value = transform.Find(UiHierarchyPaths.Hud.HealthValue);
             if (healthValueLabel == null && value != null)
                 healthValueLabel = value.GetComponent<TMP_Text>();
+
+            Transform magnetForce = transform.Find(
+                UiHierarchyPaths.Hud.MagnetForce);
+            if (magnetForceLabel == null && magnetForce != null)
+                magnetForceLabel = magnetForce.GetComponent<TMP_Text>();
 
             Transform pauseCanvasTransform = transform.Find(UiHierarchyPaths.Pause.Canvas);
             if (pauseCanvas == null && pauseCanvasTransform != null)
@@ -1457,9 +1553,9 @@ namespace Supernova.UI
 
             RectTransform crosshair = CreateRect("Crosshair", crosshairRoot);
             SetAnchoredRect(crosshair, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(18f, 18f));
-            CreateCrosshairBar("Horizontal", crosshair, new Vector2(18f, 2f));
-            CreateCrosshairBar("Vertical", crosshair, new Vector2(2f, 18f));
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(27f, 27f));
+            CreateCrosshairBar("Horizontal", crosshair, new Vector2(27f, 3f));
+            CreateCrosshairBar("Vertical", crosshair, new Vector2(3f, 27f));
 
             RectTransform panel = CreateRect("Health Panel", rootRect);
             SetAnchoredRect(panel, Vector2.one, Vector2.one, Vector2.one,
@@ -1506,10 +1602,49 @@ namespace Supernova.UI
 
             BuildHotbarView(rootRect);
             BuildCompassView();
+            BuildMagnetForceView(rootRect);
             healthPanel.SetActive(designTokens == null || designTokens.ShowHealth);
             hotbarRoot.SetActive(designTokens == null || designTokens.ShowHotbar);
             crosshairRoot.gameObject.SetActive(
                 designTokens == null || designTokens.ShowCrosshair);
+        }
+
+        private void BuildMagnetForceView(RectTransform rootRect)
+        {
+            Transform existing = rootRect.Find(
+                UiHierarchyPaths.Hud.MagnetForceName);
+            if (existing != null)
+            {
+                if (Application.isPlaying) Destroy(existing.gameObject);
+                else DestroyImmediate(existing.gameObject);
+            }
+
+            Color primary = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            magnetForceLabel = CreateText(
+                UiHierarchyPaths.Hud.MagnetForceName,
+                rootRect,
+                "当前最大磁力：--N",
+                TextAlignmentOptions.TopRight);
+            SetAnchoredRect(
+                (RectTransform)magnetForceLabel.transform,
+                Vector2.one,
+                Vector2.one,
+                Vector2.one,
+                new Vector2(-48f, -42f),
+                new Vector2(420f, 42f));
+            magnetForceLabel.fontSize = 21f;
+            magnetForceLabel.fontStyle = FontStyles.Bold;
+            magnetForceLabel.characterSpacing = 1.2f;
+            magnetForceLabel.color = primary;
+            magnetForceLabel.raycastTarget = false;
+            Outline outline =
+                magnetForceLabel.gameObject.AddComponent<Outline>();
+            outline.effectColor = new Color(0f, 0f, 0f, 0.76f);
+            outline.effectDistance = new Vector2(1f, -1f);
+            outline.useGraphicAlpha = true;
+            RefreshMagnetForceView();
         }
 
         private void BuildFpsDebugView()
@@ -1732,8 +1867,70 @@ namespace Supernova.UI
                 ? designTokens.TextPrimary
                 : new Color(0.82f, 0.96f, 1f);
             prompt.enableWordWrapping = true;
-            prompt.gameObject.SetActive(
-                designTokens == null || designTokens.ShowMissionPrompt);
+            prompt.gameObject.SetActive(false);
+
+            TMP_Text evacuationPrompt = CreateText(
+                UiHierarchyPaths.Mission.EarlyEvacuationPromptName,
+                missionRoot,
+                string.Empty,
+                TextAlignmentOptions.Bottom);
+            SetAnchoredRect(
+                (RectTransform)evacuationPrompt.transform,
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                designTokens != null
+                    ? designTokens.MissionPromptPosition
+                    : new Vector2(0f, 112f),
+                designTokens != null
+                    ? designTokens.MissionPromptSize
+                    : new Vector2(1100f, 70f));
+            evacuationPrompt.fontSize = designTokens != null
+                ? designTokens.MissionPromptFontSize
+                : 25f;
+            evacuationPrompt.color = designTokens != null
+                ? designTokens.TextPrimary
+                : new Color(0.82f, 0.96f, 1f);
+            evacuationPrompt.enableWordWrapping = true;
+            evacuationPrompt.gameObject.SetActive(false);
+
+            RectTransform evacuationProgress = CreateRect(
+                UiHierarchyPaths.Mission.EarlyEvacuationProgressName,
+                missionRoot);
+            SetAnchoredRect(
+                evacuationProgress,
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0.5f, 0f),
+                new Vector2(0f, 168f),
+                new Vector2(420f, 10f));
+            Image evacuationProgressTrack =
+                evacuationProgress.gameObject.AddComponent<Image>();
+            Color progressTrackColor = designTokens != null
+                ? designTokens.HudMuted
+                : new Color(0.96f, 0.98f, 1f, 0.2f);
+            evacuationProgressTrack.color = new Color(
+                progressTrackColor.r,
+                progressTrackColor.g,
+                progressTrackColor.b,
+                Mathf.Max(0.24f, progressTrackColor.a));
+            evacuationProgressTrack.raycastTarget = false;
+
+            RectTransform evacuationProgressFill = CreateRect(
+                UiHierarchyPaths.Mission.EarlyEvacuationProgressFillName,
+                evacuationProgress);
+            evacuationProgressFill.anchorMin = Vector2.zero;
+            evacuationProgressFill.anchorMax = new Vector2(0f, 1f);
+            evacuationProgressFill.pivot = new Vector2(0f, 0.5f);
+            evacuationProgressFill.offsetMin = Vector2.zero;
+            evacuationProgressFill.offsetMax = Vector2.zero;
+            Image evacuationProgressFillImage =
+                evacuationProgressFill.gameObject.AddComponent<Image>();
+            evacuationProgressFillImage.color = designTokens != null
+                ? designTokens.HudPrimary
+                : new Color(0.96f, 0.98f, 1f, 1f);
+            evacuationProgressFillImage.raycastTarget = false;
+            evacuationProgress.gameObject.SetActive(false);
 
             RectTransform timer = CreateRect("Mission Timer", missionRoot);
             SetAnchoredRect(
@@ -1870,6 +2067,9 @@ namespace Supernova.UI
             missionView.Configure(
                 objective,
                 prompt,
+                evacuationPrompt,
+                evacuationProgress.gameObject,
+                evacuationProgressFill,
                 result.gameObject,
                 resultText,
                 fade,
@@ -2733,12 +2933,14 @@ pauseSettingsBackButton = FindPauseComponent(
                 pauseControlsButton.onClick.RemoveListener(ShowInputBindings);
                 pauseControlsButton.onClick.AddListener(ShowInputBindings);
             }
-if (pauseSettingsBackButton != null)
+            if (pauseSettingsBackButton != null)
             {
                 pauseSettingsBackButton.onClick.RemoveListener(
                     ShowPauseMainOptions);
+                pauseSettingsBackButton.onClick.RemoveListener(
+                    HandlePauseSettingsBack);
                 pauseSettingsBackButton.onClick.AddListener(
-                    ShowPauseMainOptions);
+                    HandlePauseSettingsBack);
             }
             if (pauseFullscreenToggle != null)
             {
@@ -2810,6 +3012,40 @@ if (pauseSettingsBackButton != null)
             inputBindingSettingsView?.Hide();
             if (EventSystem.current != null && resumeButton != null)
                 EventSystem.current.SetSelectedGameObject(resumeButton.gameObject);
+        }
+
+        private void HandlePauseSettingsBack()
+        {
+            if (!mainMenuSettingsOpen)
+            {
+                ShowPauseMainOptions();
+                return;
+            }
+
+            HideMainMenuSettings(true);
+        }
+
+        private void HideMainMenuSettings(bool notifyClosed)
+        {
+            if (!mainMenuSettingsOpen)
+                return;
+
+            Action closed = mainMenuSettingsClosed;
+            mainMenuSettingsOpen = false;
+            mainMenuSettingsClosed = null;
+            pausePresentation?.StopPresentation();
+            inputBindingSettingsView?.Hide();
+            if (pauseSettingsPanel != null)
+                pauseSettingsPanel.SetActive(false);
+            if (pauseMainOptions != null)
+                pauseMainOptions.SetActive(true);
+            if (pausePanel != null)
+                pausePanel.SetActive(false);
+            if (pauseCanvas != null)
+                pauseCanvas.gameObject.SetActive(false);
+
+            if (notifyClosed)
+                closed?.Invoke();
         }
 
         private void LoadPauseSettings()
@@ -3158,7 +3394,7 @@ if (pauseSettingsBackButton != null)
                 new Vector2(0.5f, 0f),
                 new Vector2(0.5f, 0f),
                 new Vector2(0f, 180f),
-                new Vector2(340f, 72f));
+                new Vector2(380f, 84f));
 
             AngledPanelGraphic panelGraphic =
                 panelObject.AddComponent<AngledPanelGraphic>();
@@ -3211,7 +3447,7 @@ if (pauseSettingsBackButton != null)
                 new Vector2(0.5f, 1f),
                 new Vector2(0f, -8f),
                 new Vector2(-24f, 0f));
-            nameLabel.fontSize = 16f;
+            nameLabel.fontSize = 20f;
             nameLabel.fontStyle = FontStyles.Bold;
             nameLabel.characterSpacing = 1.5f;
             nameLabel.color = overlayPrimary;
@@ -3229,7 +3465,7 @@ if (pauseSettingsBackButton != null)
                 new Vector2(0.5f, 0.5f),
                 Vector2.zero,
                 new Vector2(-24f, 0f));
-            statsLabel.fontSize = 12f;
+            statsLabel.fontSize = 15f;
             statsLabel.fontStyle = FontStyles.Normal;
             statsLabel.characterSpacing = 1f;
             statsLabel.color = overlaySecondary;

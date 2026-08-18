@@ -113,9 +113,13 @@ namespace Supernova.Shop
             int value = PlayerPrefs.GetInt(
                 GetQuickSlotKey(slotIndex),
                 (int)PlayerInventoryItem.Empty);
-            return Enum.IsDefined(typeof(PlayerInventoryItem), value)
+            PlayerInventoryItem item =
+                Enum.IsDefined(typeof(PlayerInventoryItem), value)
                 ? (PlayerInventoryItem)value
                 : PlayerInventoryItem.Empty;
+            // Keep legacy layouts intact while loading so PlayerInventory can
+            // migrate the item displaced from the fixed pickaxe slot.
+            return item;
         }
 
         public static void SetQuickSlotItem(
@@ -124,7 +128,9 @@ namespace Supernova.Shop
             bool save = true)
         {
             ValidateQuickSlotIndex(slotIndex);
-            PlayerPrefs.SetInt(GetQuickSlotKey(slotIndex), (int)item);
+            PlayerPrefs.SetInt(
+                GetQuickSlotKey(slotIndex),
+                (int)NormalizeQuickSlotItem(slotIndex, item));
             if (save)
                 PlayerPrefs.Save();
         }
@@ -342,6 +348,17 @@ namespace Supernova.Shop
         {
             if (slotIndex < 0 || slotIndex >= PlayerInventory.SlotCount)
                 throw new ArgumentOutOfRangeException(nameof(slotIndex));
+        }
+
+        private static PlayerInventoryItem NormalizeQuickSlotItem(
+            int slotIndex,
+            PlayerInventoryItem item)
+        {
+            if (PlayerInventory.IsFixedSlot(slotIndex))
+                return PlayerInventoryItem.Pickaxe;
+            return item == PlayerInventoryItem.Pickaxe
+                ? PlayerInventoryItem.Empty
+                : item;
         }
     }
 }

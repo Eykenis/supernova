@@ -512,7 +512,9 @@ namespace Supernova.UI
             }
 
             PlayerInventoryItem item = displayedOwnedItems[cellIndex];
-            if (item == PlayerInventoryItem.Empty)
+            if (item == PlayerInventoryItem.Empty
+                || item == PlayerInventoryItem.Pickaxe
+                || PlayerInventory.IsFixedSlot(slotIndex))
                 return false;
 
             configuringSlotIndex = slotIndex;
@@ -525,7 +527,9 @@ namespace Supernova.UI
         {
             if (cellIndex < 0
                 || cellIndex >= displayedOwnedItems.Length
-                || displayedOwnedItems[cellIndex] == PlayerInventoryItem.Empty)
+                || displayedOwnedItems[cellIndex] == PlayerInventoryItem.Empty
+                || displayedOwnedItems[cellIndex]
+                    == PlayerInventoryItem.Pickaxe)
             {
                 return false;
             }
@@ -632,7 +636,10 @@ namespace Supernova.UI
                 }
                 if (ownedStateLabels[i] != null)
                 {
-                    ownedStateLabels[i].text = assignedSlot >= 0
+                    ownedStateLabels[i].text =
+                        item == PlayerInventoryItem.Pickaxe
+                        ? "固定在 1 槽"
+                        : assignedSlot >= 0
                         ? "已装备在 " + (assignedSlot + 1) + " 槽"
                         : occupied
                             ? ""

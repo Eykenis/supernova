@@ -103,7 +103,9 @@ namespace Supernova.Voxels
             }
             if (entry.Source != source)
             {
-                entry.Runtime.shader = source.shader;
+                entry.Runtime.shader = ResolveRuntimeShader(
+                    definition,
+                    source);
                 entry.Runtime.CopyPropertiesFromMaterial(source);
                 entry.Source = source;
             }
@@ -140,17 +142,29 @@ namespace Supernova.Voxels
                         hideFlags = HideFlags.DontSave,
                     },
                 };
+                entry.Runtime.shader = ResolveRuntimeShader(
+                    definition,
+                    source);
                 runtimeMaterials[definition] = entry;
             }
             else if (entry.Source != source)
             {
-                entry.Runtime.shader = source.shader;
+                entry.Runtime.shader = ResolveRuntimeShader(
+                    definition,
+                    source);
                 entry.Runtime.CopyPropertiesFromMaterial(source);
                 entry.Source = source;
             }
 
             definition.ApplyRenderingOverrides(entry.Runtime);
             return entry.Runtime;
+        }
+
+        private static Shader ResolveRuntimeShader(
+            VoxelTypeDefinition definition,
+            Material source)
+        {
+            return source.shader;
         }
 
         [RuntimeInitializeOnLoadMethod(

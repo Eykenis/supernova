@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: MagnetUpgradeProduct
   m_EditorClassIdentifier: 
   productId: magnet-force-upgrade
-  displayName: Magnet Upgrade
+  displayName: "\u78C1\u529B\u5347\u7EA7"
   price: 100
   grantType: 1
   grantedItem: 0

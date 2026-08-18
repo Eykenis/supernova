@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using Supernova.MinecraftCaves.Creatures;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -51,6 +52,17 @@ namespace Supernova.MinecraftCaves.Editor
             var serializedWorld = new SerializedObject(world);
             serializedWorld.FindProperty("worldGenerationConfigurationOverride")
                 .objectReferenceValue = configuration;
+            MonsterSpawnTable monsterSpawnTable =
+                AssetDatabase.LoadAssetAtPath<MonsterSpawnTable>(
+                    ProjectAssetPaths.Config.MonsterSpawnTable);
+            if (monsterSpawnTable == null)
+            {
+                throw new InvalidOperationException(
+                    "Missing monster spawn table at "
+                    + ProjectAssetPaths.Config.MonsterSpawnTable + ".");
+            }
+            serializedWorld.FindProperty("monsterSpawnTable")
+                .objectReferenceValue = monsterSpawnTable;
             serializedWorld.FindProperty("fixedPreviewArea").boolValue = false;
             serializedWorld.ApplyModifiedPropertiesWithoutUndo();
 

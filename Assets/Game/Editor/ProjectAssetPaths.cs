@@ -100,6 +100,8 @@ public static class ProjectAssetPaths
         public const string UiTextures = Textures + "/UI";
         public const string EquipmentIconTextures =
             UiTextures + "/EquipmentIcons";
+        public const string NewGameGuideTextures =
+            UiTextures + "/NewGameGuide";
         public const string EffectTextures = Textures + "/Effects";
         public const string MuzzleFlashTextures =
             EffectTextures + "/MuzzleFlashes";
@@ -451,6 +453,14 @@ public static class ProjectAssetPaths
             Folders.LightingMaterials + "/CrystalOreLit.shader";
         public const string CrystalOreLitForwardPass =
             Folders.LightingMaterials + "/CrystalOreLitForwardPass.hlsl";
+        public const string CrystalOreLitCompatible =
+            Folders.LightingMaterials + "/CrystalOreLitCompatible.shader";
+        public const string CrystalOreLitCompatibleForwardPass =
+            Folders.LightingMaterials
+            + "/CrystalOreLitCompatibleForwardPass.hlsl";
+        public const string CrystalOreSparkleOverlay =
+            Folders.LightingMaterials
+            + "/CrystalOreSparkleOverlay.shader";
         public const string DiamondCrystal =
             Folders.DiamondVoxelMaterials + "/DiamondCrystal.shadergraph";
         public const string SoftFalloffAttenuation =
@@ -567,6 +577,14 @@ public static class ProjectAssetPaths
 
     public static class Textures
     {
+        public const string NewGameGuideMineOre =
+            Folders.NewGameGuideTextures + "/MineOre.png";
+        public const string NewGameGuideFindTreasure =
+            Folders.NewGameGuideTextures + "/FindTreasure.png";
+        public const string NewGameGuidePullCargo =
+            Folders.NewGameGuideTextures + "/PullCargo.png";
+        public const string NewGameGuideDeliverCargo =
+            Folders.NewGameGuideTextures + "/DeliverCargo.png";
         public const string SolidGunBaseColor =
             Folders.ToolTextures + "/SolidGunBodyBaseColor.png";
         public const string SolidGunNormal =
@@ -635,6 +653,8 @@ public static class ProjectAssetPaths
 
         public const string WorldGenerationPreview =
             Folders.Scenes + "/WorldGenerationPreview.scene";
+        public const string WorldGenerationPassDebug =
+            Folders.Scenes + "/WorldGenerationPassDebug.scene";
         public const string JigsawSuperflat =
             Folders.Scenes + "/JigsawSuperflat.scene";
         public const string DenseJigsawRegion =

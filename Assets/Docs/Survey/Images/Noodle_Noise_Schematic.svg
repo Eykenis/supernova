@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#273449"/>
+    </linearGradient>
+    <linearGradient id="rock" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#74716d"/>
+      <stop offset="1" stop-color="#353d48"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M 36 0 L 0 0 0 36" fill="none" stroke="#d7dee8" stroke-opacity="0.07" stroke-width="1"/>
+    </pattern>
+    <pattern id="gate" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="4" cy="4" r="2.5" fill="#bb86fc" opacity="0.45"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <text x="60" y="70" fill="#f8fafc" font-family="Arial, Microsoft YaHei, sans-serif" font-size="38" font-weight="700">Noodle Noise · 细小捷径</text>
+  <text x="60" y="108" fill="#a8b8cb" font-family="Arial, Microsoft YaHei, sans-serif" font-size="21">与 Spaghetti 原理相近，但通道更细，并先经过稀有度激活噪声筛选，只在局部出现</text>
+
+  <g transform="translate(70 155)" filter="url(#shadow)">
+    <rect width="790" height="500" rx="28" fill="url(#rock)" stroke="#b6c0cc" stroke-width="2"/>
+    <rect width="790" height="500" rx="28" fill="url(#grid)"/>
+
+    <path d="M52,104 C158,54 252,100 307,187 C357,266 424,285 493,238 C572,184 604,91 747,82 L767,180 C659,187 635,265 557,326 C455,405 326,390 249,301 C184,225 135,211 61,250Z"
+          fill="url(#gate)" stroke="#c49cff" stroke-width="3" stroke-dasharray="10 9" opacity="0.82"/>
+    <text x="84" y="139" fill="#e5d3ff" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18" font-weight="700">Activation 允许区域</text>
+
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M48,356 C122,320 142,246 217,252 C284,258 300,323 367,316 C446,307 449,222 523,213 C599,204 639,259 742,234"
+            stroke="#083d54" stroke-width="30"/>
+      <path d="M48,356 C122,320 142,246 217,252 C284,258 300,323 367,316 C446,307 449,222 523,213 C599,204 639,259 742,234"
+            stroke="#53e1f3" stroke-width="17" filter="url(#glow)"/>
+
+      <path d="M217,252 C223,188 270,158 327,153" stroke="#083d54" stroke-width="24"/>
+      <path d="M217,252 C223,188 270,158 327,153" stroke="#53e1f3" stroke-width="12"/>
+
+      <path d="M522,213 C546,160 585,134 646,131" stroke="#083d54" stroke-width="22"/>
+      <path d="M522,213 C546,160 585,134 646,131" stroke="#53e1f3" stroke-width="11"/>
+
+      <path d="M365,316 C395,367 452,398 518,399" stroke="#083d54" stroke-width="20"/>
+      <path d="M365,316 C395,367 452,398 518,399" stroke="#53e1f3" stroke-width="10"/>
+    </g>
+
+    <g fill="#59dff0" stroke="#d5fbff" stroke-width="3">
+      <circle cx="48" cy="356" r="25"/>
+      <circle cx="742" cy="234" r="25"/>
+    </g>
+
+    <g transform="translate(565 360)">
+      <rect width="185" height="92" rx="15" fill="#111d2d" stroke="#53667d"/>
+      <text x="17" y="31" fill="#c8a7ff" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">未通过激活门：</text>
+      <text x="17" y="59" fill="#f0f4f8" font-family="Consolas, monospace" font-size="17">density = 1</text>
+      <text x="17" y="81" fill="#96a9bf" font-family="Arial, Microsoft YaHei, sans-serif" font-size="15">直接保留岩石</text>
+    </g>
+  </g>
+
+  <g transform="translate(900 170)">
+    <rect width="240" height="480" rx="22" fill="#0d1626" stroke="#52657d" stroke-width="2"/>
+    <text x="24" y="48" fill="#fff" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" font-weight="700">生成步骤</text>
+
+    <circle cx="40" cy="98" r="15" fill="#9b6be8"/>
+    <text x="35" y="104" fill="#fff" font-family="Arial" font-size="16" font-weight="700">1</text>
+    <text x="68" y="105" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18">激活噪声筛选</text>
+
+    <circle cx="40" cy="158" r="15" fill="#3cbdd0"/>
+    <text x="35" y="164" fill="#fff" font-family="Arial" font-size="16" font-weight="700">2</text>
+    <text x="68" y="165" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18">两噪声交线</text>
+
+    <circle cx="40" cy="218" r="15" fill="#3cbdd0"/>
+    <text x="35" y="224" fill="#fff" font-family="Arial" font-size="16" font-weight="700">3</text>
+    <text x="68" y="225" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18">赋予较小厚度</text>
+
+    <line x1="24" y1="260" x2="216" y2="260" stroke="#52657d"/>
+    <circle cx="42" cy="307" r="9" fill="#53e1f3"/>
+    <text x="64" y="315" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">更细</text>
+    <circle cx="42" cy="353" r="9" fill="#53e1f3"/>
+    <text x="64" y="361" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">更稀疏</text>
+    <circle cx="42" cy="399" r="9" fill="#53e1f3"/>
+    <text x="64" y="407" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">短支路/捷径</text>
+    <circle cx="42" cy="445" r="9" fill="#53e1f3"/>
+    <text x="64" y="453" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">避免遍布全图</text>
+  </g>
+
+  <text x="70" y="708" fill="#8da2b9" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">示意图：紫色虚线区域代表激活噪声允许生成的局部空间，蓝色细线代表最终 Noodle 通道。</text>
+</svg>

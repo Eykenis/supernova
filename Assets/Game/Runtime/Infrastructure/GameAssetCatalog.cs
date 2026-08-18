@@ -78,6 +78,9 @@ namespace Supernova.Infrastructure
         [SerializeField] private Texture2D telemetryBackdrop;
         [SerializeField] private TMP_SpriteAsset inputGlyphs;
 
+        [Header("New Game Guide")]
+        [SerializeField] private Texture2D[] newGameGuideImages;
+
         public GameObject MainMenuPrefab => mainMenuPrefab;
         public UiDesignTokens DesignTokens => designTokens;
         public PausePortraitSettings PausePortraitSettings => pausePortraitSettings;
@@ -99,6 +102,7 @@ namespace Supernova.Infrastructure
         public Sprite LoadingDial => loadingDial;
         public Texture2D TelemetryBackdrop => telemetryBackdrop;
         public TMP_SpriteAsset InputGlyphs => inputGlyphs;
+        public Texture2D[] NewGameGuideImages => newGameGuideImages;
 
         public bool IsComplete =>
             mainMenuPrefab != null
@@ -120,7 +124,12 @@ namespace Supernova.Infrastructure
             && pauseCardFrame != null
             && loadingDial != null
             && telemetryBackdrop != null
-            && inputGlyphs != null;
+            && inputGlyphs != null
+            && newGameGuideImages != null
+            && newGameGuideImages.Length == 4
+            && Array.TrueForAll(
+                newGameGuideImages,
+                image => image != null);
     }
 
     [Serializable]

@@ -658,6 +658,7 @@ namespace Supernova.Voxels.Integrity
 
             MeshRenderer renderer = GetComponent<MeshRenderer>();
             renderer.sharedMaterials = ResolveMaterials(buildData.MeshData);
+            CrystalOreSparkleOverlay.Synchronize(renderer, mesh);
 
             MeshCollider[] oldColliders = GetComponents<MeshCollider>();
             for (int i = 0; i < oldColliders.Length; i++)

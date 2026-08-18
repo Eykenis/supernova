@@ -33,7 +33,7 @@ MonoBehaviour:
   heldModelMountStrategy: 1
   allowMovementWhileUsing: 1
   actionTriggerDelay: 0
-  actionCyclePeriod: 45
+  actionCyclePeriod: 0.6666667
   actionIsPeriodic: 1
   projectilePrefab: {fileID: 0}
   throwSpeed: 8

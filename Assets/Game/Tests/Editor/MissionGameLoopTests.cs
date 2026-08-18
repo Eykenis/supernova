@@ -255,7 +255,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void MissionPrompt_SitsAboveBottomHudHotbar()
+        public void MissionPrompts_KeepHomeStartSeparateFromEarlyEvacuation()
         {
             loopObject = new GameObject("Mission Game Loop Test");
             MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
@@ -270,9 +270,87 @@ namespace Supernova.Tests
             Assert.That(gameUi, Is.Not.Null);
             RectTransform prompt = gameUi.transform.Find(
                 UiHierarchyPaths.Mission.Prompt) as RectTransform;
+            RectTransform evacuationPrompt = gameUi.transform.Find(
+                UiHierarchyPaths.Mission.EarlyEvacuationPrompt)
+                as RectTransform;
+            RectTransform evacuationProgress = gameUi.transform.Find(
+                UiHierarchyPaths.Mission.EarlyEvacuationProgress)
+                as RectTransform;
             Assert.That(prompt, Is.Not.Null);
+            Assert.That(evacuationPrompt, Is.Not.Null);
+            Assert.That(evacuationProgress, Is.Not.Null);
             Assert.That(prompt.anchoredPosition.y, Is.GreaterThanOrEqualTo(100f));
+            Assert.That(
+                evacuationProgress.anchoredPosition.y,
+                Is.GreaterThan(evacuationPrompt.anchoredPosition.y));
+            loop.SetPrompt("按 {{input:Gameplay/Interact}} 开始任务");
+            Assert.That(prompt.gameObject.activeSelf, Is.True);
+            Assert.That(
+                prompt.GetComponent<TMPro.TMP_Text>().text,
+                Does.Contain("开始任务"));
+            Assert.That(evacuationPrompt.gameObject.activeSelf, Is.False);
+            Assert.That(evacuationProgress.gameObject.activeSelf, Is.False);
+
+            MissionUiView missionView = gameUi.GetOrCreateMissionView();
+            missionView.SetEarlyEvacuationState(true, 0.5f);
+
+            Assert.That(prompt.gameObject.activeSelf, Is.True);
+            Assert.That(evacuationPrompt.gameObject.activeSelf, Is.True);
+            Assert.That(
+                evacuationPrompt.GetComponent<TMPro.TMP_Text>().text,
+                Does.Contain("提前撤离"));
+            Assert.That(evacuationProgress.gameObject.activeSelf, Is.True);
+            Assert.That(
+                missionView.EarlyEvacuationProgressFill.anchorMax.x,
+                Is.EqualTo(0.5f).Within(0.001f));
             Assert.That(loopObject.transform.Find("Mission UI"), Is.Null);
+        }
+
+        [Test]
+        public void EarlyEvacuationHold_UsesTwoSecondsAndResetsOnRelease()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            var run = new MissionRun(60f, 100);
+            run.AddDeliveredValue(100);
+            typeof(MissionGameLoop).GetField(
+                    "run",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.SetValue(loop, run);
+            typeof(MissionGameLoop).GetField(
+                    "caveSetup",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.SetValue(loop, true);
+            MethodInfo tickHold = typeof(MissionGameLoop).GetMethod(
+                "TickEarlyEvacuationHold",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(tickHold, Is.Not.Null);
+            Assert.That(loop.EarlyEvacuationHoldDuration, Is.EqualTo(2f));
+
+            tickHold.Invoke(loop, new object[] { 1f, true, false });
+
+            Assert.That(loop.EarlyEvacuationHoldProgress, Is.EqualTo(0.5f));
+            Assert.That(run.IsFinished, Is.False);
+            MissionUiView missionView =
+                loopObject.GetComponentInChildren<MissionUiView>(true);
+            Assert.That(missionView, Is.Not.Null);
+            Assert.That(
+                missionView.EarlyEvacuationProgressFill.anchorMax.x,
+                Is.EqualTo(0.5f).Within(0.001f));
+
+            tickHold.Invoke(loop, new object[] { 0f, false, false });
+
+            Assert.That(loop.EarlyEvacuationHoldProgress, Is.Zero);
+            Assert.That(
+                missionView.EarlyEvacuationProgressRoot.activeSelf,
+                Is.False);
+
+            tickHold.Invoke(loop, new object[] { 1.99f, true, false });
+
+            Assert.That(
+                loop.EarlyEvacuationHoldProgress,
+                Is.EqualTo(0.995f).Within(0.001f));
+            Assert.That(run.IsFinished, Is.False);
         }
 
         [Test]
@@ -348,6 +426,59 @@ namespace Supernova.Tests
             Assert.That(
                 caveButton.transform.parent,
                 Is.EqualTo(caveCellObject.transform));
+        }
+
+        [Test]
+        public void TutorialExitTrigger_UsesCellBoundsWithoutOreExtraction()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+            MethodInfo createTutorialExitTrigger = typeof(MissionGameLoop)
+                .GetMethod(
+                    "CreateTutorialExitTrigger",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(createTutorialExitTrigger, Is.Not.Null);
+
+            var cellObject = new GameObject("Tutorial Cell");
+            cellObject.transform.SetParent(loopObject.transform);
+            GameObject renderedCell = GameObject.CreatePrimitive(
+                PrimitiveType.Cube);
+            renderedCell.transform.SetParent(cellObject.transform, false);
+            renderedCell.transform.localScale = new Vector3(6f, 3f, 5f);
+
+            createTutorialExitTrigger.Invoke(
+                loop,
+                new object[] { cellObject.transform });
+
+            MissionCellZone zone =
+                cellObject.GetComponentInChildren<MissionCellZone>();
+            Assert.That(zone, Is.Not.Null);
+            Assert.That(zone.IsTutorialExitMode, Is.True);
+            Assert.That(zone.GetComponent<BoxCollider>().isTrigger, Is.True);
+            Assert.That(
+                cellObject.GetComponentInChildren<OreExtractionZone>(),
+                Is.Null);
+            Assert.That(
+                cellObject.GetComponentInChildren<MissionCellButton>(),
+                Is.Null);
+        }
+
+        [Test]
+        public void TutorialExitPrompt_UsesInteractGlyphEscape()
+        {
+            loopObject = new GameObject("Mission Game Loop Test");
+            MissionGameLoop loop = loopObject.AddComponent<MissionGameLoop>();
+
+            loop.ShowTutorialExitPrompt();
+
+            GameHudController gameUi =
+                loopObject.GetComponentInChildren<GameHudController>(true);
+            RectTransform prompt = gameUi.transform.Find(
+                UiHierarchyPaths.Mission.Prompt) as RectTransform;
+            Assert.That(prompt, Is.Not.Null);
+            Assert.That(
+                prompt.GetComponent<TMPro.TMP_Text>().text,
+                Is.EqualTo("按 {{input:Gameplay/Interact}} 结束教程"));
         }
 
         [Test]

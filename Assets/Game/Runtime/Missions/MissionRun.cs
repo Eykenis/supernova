@@ -182,5 +182,22 @@ namespace Supernova.Missions
             // Timed missions evacuate automatically when the mission clock ends.
             return false;
         }
+
+        public bool TryEvacuateEarly(int extractionStoredValue)
+        {
+            if (IsFinished)
+                return false;
+
+            int storedValue = Math.Max(0, extractionStoredValue);
+            long totalValue = (long)DeliveredValue + storedValue;
+            if (totalValue < RequiredValue)
+                return false;
+
+            DeliveredValue = totalValue >= int.MaxValue
+                ? int.MaxValue
+                : (int)totalValue;
+            Outcome = MissionOutcome.Success;
+            return true;
+        }
     }
 }

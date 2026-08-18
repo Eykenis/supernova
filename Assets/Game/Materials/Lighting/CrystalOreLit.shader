@@ -148,30 +148,6 @@ Shader "Supernova/Lighting/Crystal Ore Lit"
         UsePass "Supernova/Lighting/Soft Falloff Lit/Universal2D"
     }
 
-    // Some player graphics backends strip the custom forward pass even when
-    // the editor's active D3D11 compiler accepts it. Keep a complete,
-    // geometry-free fallback subshader so voxel ores never resolve to the
-    // magenta error shader in packaged players.
-    SubShader
-    {
-        Tags
-        {
-            "RenderType" = "Opaque"
-            "RenderPipeline" = "UniversalPipeline"
-            "UniversalMaterialType" = "Lit"
-            "Queue" = "Geometry"
-        }
-
-        LOD 200
-
-        UsePass "Supernova/Lighting/Soft Falloff Lit/ForwardLit"
-        UsePass "Supernova/Lighting/Soft Falloff Lit/ShadowCaster"
-        UsePass "Supernova/Lighting/Soft Falloff Lit/DepthOnly"
-        UsePass "Supernova/Lighting/Soft Falloff Lit/DepthNormals"
-        UsePass "Supernova/Lighting/Soft Falloff Lit/Meta"
-        UsePass "Supernova/Lighting/Soft Falloff Lit/Universal2D"
-    }
-
     Fallback "Hidden/Universal Render Pipeline/FallbackError"
 }
 

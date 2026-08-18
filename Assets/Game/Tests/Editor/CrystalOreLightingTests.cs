@@ -10,7 +10,11 @@ namespace Supernova.Tests.Editor
     public sealed class CrystalOreLightingTests
     {
         private const string ShaderName =
-            "Supernova/Lighting/Crystal Ore Lit";
+            VoxelShaderNames.CrystalOreLit;
+        private const string CompatibleShaderName =
+            VoxelShaderNames.CrystalOreLitCompatible;
+        private const string OverlayShaderName =
+            VoxelShaderNames.CrystalOreSparkleOverlay;
         private const string DiamondShaderName =
             "Supernova/Voxels/DiamondCrystal";
 
@@ -20,6 +24,30 @@ namespace Supernova.Tests.Editor
             Shader shader = Shader.Find(ShaderName);
 
             Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.isSupported, Is.True);
+            Assert.That(ShaderUtil.GetShaderMessages(shader), Is.Empty);
+        }
+
+        [Test]
+        public void CompatibleCrystalOreShader_IsSupportedAndHasNoCompileErrors()
+        {
+            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(
+                ProjectAssetPaths.Shaders.CrystalOreLitCompatible);
+
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.name, Is.EqualTo(CompatibleShaderName));
+            Assert.That(shader.isSupported, Is.True);
+            Assert.That(ShaderUtil.GetShaderMessages(shader), Is.Empty);
+        }
+
+        [Test]
+        public void CrystalOreSparkleOverlay_IsSupportedAndHasNoCompileErrors()
+        {
+            Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(
+                ProjectAssetPaths.Shaders.CrystalOreSparkleOverlay);
+
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.name, Is.EqualTo(OverlayShaderName));
             Assert.That(shader.isSupported, Is.True);
             Assert.That(ShaderUtil.GetShaderMessages(shader), Is.Empty);
         }

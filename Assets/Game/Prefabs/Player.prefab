@@ -632,7 +632,7 @@ MonoBehaviour:
   ownedItems:
     inventoryItems: 01000000
     upgrades: 
-  configuredSlots: 0000000000000000000000000000000000000000
+  configuredSlots: 0100000000000000000000000000000000000000
   toolDefinitions:
   - {fileID: 11400000, guid: 8a9fb7101563a89428fd7b0a3eb7c987, type: 2}
   - {fileID: 11400000, guid: 65c5172b3db665047b12e3bbd8ffc923, type: 2}

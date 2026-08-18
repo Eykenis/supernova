@@ -112,6 +112,14 @@ namespace Supernova.MinecraftCaves
                         Severity.Warning,
                         $"Spawn marker '{piece.StableId}/{marker.StableId}' places {marker.Count} instances with no scatter radius, so they will stack on one voxel."));
                 }
+                if (marker.Kind
+                        == StructureSpawnMarkerDefinition.Kind.Treasure
+                    && marker.Count > 1)
+                {
+                    issues.Add(new Issue(
+                        Severity.Warning,
+                        $"Treasure marker '{piece.StableId}/{marker.StableId}' requests {marker.Count} instances, but each placed jigsaw piece is capped to one treasure."));
+                }
                 if (marker.SnapToFloor && marker.FloorSearchDistance == 0)
                 {
                     issues.Add(new Issue(

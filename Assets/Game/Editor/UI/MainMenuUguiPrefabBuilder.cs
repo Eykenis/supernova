@@ -240,7 +240,7 @@ namespace Supernova.Editor.UI
             BuildHeader(safeArea, tokens);
             BuildThemeTitle(safeArea);
             MainMenuViewReferences viewReferences = BuildMenuCard(safeArea, tokens);
-            BuildFooter(safeArea, tokens);
+            viewReferences.VersionLabel = BuildFooter(safeArea, tokens);
 
             RectTransform characterOverlay = CreateRect(
                 "Character Overlay",
@@ -277,6 +277,7 @@ namespace Supernova.Editor.UI
                 viewReferences.VolumeSlider,
                 viewReferences.VolumeValue,
                 viewReferences.Status,
+                viewReferences.VersionLabel,
                 viewReferences.OverwriteConfirmation,
                 viewReferences.OverwriteConfirmButton,
                 viewReferences.OverwriteCancelButton,
@@ -695,7 +696,7 @@ namespace Supernova.Editor.UI
             };
         }
 
-        private static void BuildFooter(RectTransform parent, UiDesignTokens tokens)
+        private static TMP_Text BuildFooter(RectTransform parent, UiDesignTokens tokens)
         {
             RectTransform footer = CreateRect(
                 "Footer",
@@ -713,10 +714,10 @@ namespace Supernova.Editor.UI
                 new Vector2(0f, -1f),
                 new Vector2(0f, 1f),
                 false);
-            CreateText(
+            TMP_Text versionLabel = CreateText(
                 "Controls",
                 footer,
-                "版本号: v1.0.0",
+                MainMenuView.FormatVersionLabel(Application.version),
                 tokens.CaptionSize,
                 tokens.OverlaySecondary,
                 TextAlignmentOptions.MidlineLeft,
@@ -731,6 +732,7 @@ namespace Supernova.Editor.UI
                 TextAlignmentOptions.MidlineRight,
                 new Vector2(0.75f, 0f),
                 Vector2.one);
+            return versionLabel;
         }
 
         private static void CreateAmbientPanel(
@@ -1042,6 +1044,7 @@ namespace Supernova.Editor.UI
             public Slider VolumeSlider;
             public TMP_Text VolumeValue;
             public TMP_Text Status;
+            public TMP_Text VersionLabel;
             public GameObject OverwriteConfirmation;
             public Button OverwriteConfirmButton;
             public Button OverwriteCancelButton;

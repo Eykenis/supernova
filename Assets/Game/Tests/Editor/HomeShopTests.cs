@@ -55,6 +55,32 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void PlayerInventory_MigratesOldLoadoutIntoFixedPickaxeSlot()
+        {
+            var inventory = new PlayerInventory(
+                0,
+                _ => true,
+                new[]
+                {
+                    PlayerInventoryItem.Bomb,
+                    PlayerInventoryItem.Empty,
+                    PlayerInventoryItem.Pickaxe,
+                    PlayerInventoryItem.PortalGun,
+                    PlayerInventoryItem.Empty,
+                });
+
+            Assert.That(
+                inventory.GetItemAtSlot(0),
+                Is.EqualTo(PlayerInventoryItem.Pickaxe));
+            Assert.That(
+                inventory.GetItemAtSlot(2),
+                Is.EqualTo(PlayerInventoryItem.Bomb));
+            Assert.That(
+                inventory.GetItemAtSlot(3),
+                Is.EqualTo(PlayerInventoryItem.PortalGun));
+        }
+
+        [Test]
         public void Purchase_DeductsCreditsPersistsOwnershipAndRejectsRepeat()
         {
             ShopProductProfile profile =
@@ -103,6 +129,21 @@ namespace Supernova.Tests
             }
         }
 
+        [TestCase(ProjectAssetPaths.Config.FlashlightProduct, "照明灯")]
+        [TestCase(ProjectAssetPaths.Config.SolidGunProduct, "地形发生器")]
+        [TestCase(ProjectAssetPaths.Config.PortalGunProduct, "传送门发生器")]
+        [TestCase(ProjectAssetPaths.Config.MagnetUpgradeProduct, "磁力升级")]
+        public void ShopProducts_UseChineseDisplayNames(
+            string assetPath,
+            string expectedName)
+        {
+            ShopProductProfile profile =
+                AssetDatabase.LoadAssetAtPath<ShopProductProfile>(assetPath);
+
+            Assert.That(profile, Is.Not.Null);
+            Assert.That(profile.DisplayName, Is.EqualTo(expectedName));
+        }
+
         [Test]
         public void RepeatableMagnetUpgrade_IncreasesForceAndNextPrice()
         {
@@ -140,6 +181,16 @@ namespace Supernova.Tests
                     Is.EqualTo(ProjectAssetPaths.ThirdParty.MagnetUpgradeModel));
                 Assert.That(PlayerEconomy.GetCurrentPrice(profile), Is.EqualTo(100));
 
+                displayObject = new GameObject("Magnet Upgrade Test");
+                ShopProductDisplay display =
+                    displayObject.AddComponent<ShopProductDisplay>();
+                display.Configure(profile);
+                display.SetTargeted(true);
+                StringAssert.StartsWith(
+                    "1级磁力升级\n$100",
+                    display.Label.text);
+                StringAssert.DoesNotContain("购买", display.Label.text);
+
                 Assert.That(
                     PlayerEconomy.TryPurchase(profile),
                     Is.EqualTo(ShopPurchaseResult.Purchased));
@@ -147,6 +198,9 @@ namespace Supernova.Tests
                 Assert.That(PlayerEconomy.GetUpgradePurchaseCount(upgrade), Is.EqualTo(1));
                 Assert.That(PlayerEconomy.GetUpgradeValue(upgrade), Is.EqualTo(100f));
                 Assert.That(PlayerEconomy.GetCurrentPrice(profile), Is.EqualTo(200));
+                StringAssert.StartsWith(
+                    "2级磁力升级\n$200",
+                    display.Label.text);
 
                 Assert.That(
                     PlayerEconomy.TryPurchase(profile),
@@ -157,21 +211,22 @@ namespace Supernova.Tests
                 Assert.That(PlayerEconomy.GetCurrentPrice(profile), Is.EqualTo(300));
                 Assert.That(PlayerEconomy.IsProductOwned(profile), Is.False);
                 Assert.That(PlayerEconomy.IsUpgradeOwned(upgrade), Is.True);
+                StringAssert.StartsWith(
+                    "3级磁力升级\n$300",
+                    display.Label.text);
 
-                displayObject = new GameObject("Magnet Upgrade Test");
                 FirstPersonMagnetInteractor magnet =
                     displayObject.AddComponent<FirstPersonMagnetInteractor>();
                 Assert.That(magnet.BaseAttractionForce, Is.EqualTo(100f));
                 Assert.That(magnet.AttractionForce, Is.EqualTo(300f));
 
-                ShopProductDisplay display =
-                    displayObject.AddComponent<ShopProductDisplay>();
-                display.Configure(profile);
-                display.SetTargeted(true);
                 Assert.That(display.TargetCollider, Is.Not.Null);
                 Assert.That(displayObject.transform.Find("Pickup Plate"), Is.Not.Null);
                 Assert.That(displayObject.transform.Find("Product Display"), Is.Not.Null);
                 Assert.That(display.WireframeRendererCount, Is.GreaterThan(0));
+                StringAssert.StartsWith(
+                    "3级磁力升级\n",
+                    display.Label.text);
                 StringAssert.Contains("$300", display.Label.text);
             }
             finally
@@ -286,7 +341,9 @@ namespace Supernova.Tests
 
             if (display.IsOwned)
             {
-                Assert.That(display.Label.text, Is.EqualTo("已拥有"));
+                Assert.That(
+                    display.Label.text,
+                    Is.EqualTo(profile.DisplayName + "\n已拥有"));
                 Assert.That(
                     display.Label.color,
                     Is.EqualTo(WorldValueTextStyle.OwnedColor));
@@ -302,7 +359,7 @@ namespace Supernova.Tests
             {
                 Assert.That(
                     display.Label.text,
-                    Does.StartWith("$100").And.Contain("购买"));
+                    Is.EqualTo(profile.DisplayName + "\n$100"));
                 Assert.That(
                     display.Label.color,
                     Is.EqualTo(PlayerEconomy.CanAfford(profile)

@@ -326,6 +326,77 @@ namespace Supernova.Tests.Editor.PortalExample
         }
 
         [Test]
+        public void RestrictedReturnGate_OnlyTeleportsConfiguredPlayer()
+        {
+            GameObject returnGateObject = new GameObject("Landing Cell Gate");
+            GameObject triggerObject = new GameObject("Traversal Trigger");
+            triggerObject.transform.SetParent(returnGateObject.transform, false);
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            PortalExampleGate returnGate =
+                returnGateObject.AddComponent<PortalExampleGate>();
+            InvokePrivate(returnGate, "EnsureTriggerRelays");
+
+            GameObject destinationObject = new GameObject("Cave Gate");
+            destinationObject.transform.position = new Vector3(8f, 0f, 0f);
+            PortalExampleGate destination =
+                destinationObject.AddComponent<PortalExampleGate>();
+            Link(returnGate, destination);
+
+            GameObject playerObject = new GameObject("Player");
+            Rigidbody playerBody = playerObject.AddComponent<Rigidbody>();
+            playerBody.useGravity = false;
+            playerBody.velocity = Vector3.back;
+            SphereCollider playerCollider =
+                playerObject.AddComponent<SphereCollider>();
+            PortalExampleTraveller player =
+                playerObject.AddComponent<PortalExampleTraveller>();
+
+            GameObject oreObject = new GameObject("Ore Feature");
+            Rigidbody oreBody = oreObject.AddComponent<Rigidbody>();
+            oreBody.useGravity = false;
+            oreBody.velocity = Vector3.back;
+            SphereCollider oreCollider = oreObject.AddComponent<SphereCollider>();
+
+            returnGate.RestrictTraversalTo(player);
+            PortalExampleTriggerRelay relay =
+                triggerObject.GetComponent<PortalExampleTriggerRelay>();
+
+            oreObject.transform.position = Vector3.forward * 0.2f;
+            Physics.SyncTransforms();
+            InvokePrivate(relay, "OnTriggerEnter", oreCollider);
+            oreObject.transform.position = Vector3.back * 0.1f;
+            Physics.SyncTransforms();
+            InvokePrivate(relay, "OnTriggerStay", oreCollider);
+
+            Assert.That(
+                Vector3.Distance(
+                    oreObject.transform.position,
+                    destinationObject.transform.position),
+                Is.GreaterThan(1f),
+                "A non-player Rigidbody must not return through the landing gate.");
+
+            playerObject.transform.position = Vector3.forward * 0.2f;
+            Physics.SyncTransforms();
+            InvokePrivate(relay, "OnTriggerEnter", playerCollider);
+            playerObject.transform.position = Vector3.back * 0.1f;
+            Physics.SyncTransforms();
+            InvokePrivate(relay, "OnTriggerStay", playerCollider);
+
+            Assert.That(
+                Vector3.Distance(
+                    playerObject.transform.position,
+                    destinationObject.transform.position),
+                Is.LessThan(1f),
+                "The configured player must retain bidirectional traversal.");
+
+            Object.DestroyImmediate(returnGateObject);
+            Object.DestroyImmediate(destinationObject);
+            Object.DestroyImmediate(playerObject);
+            Object.DestroyImmediate(oreObject);
+        }
+
+        [Test]
         public void ThinRigidbody_RendersBothSidesBeforePhysicalPlaneCrossing()
         {
             GameObject sourceObject = new GameObject("Source");

@@ -90,6 +90,7 @@ namespace Supernova.Voxels.Integrity
             filter.sharedMesh = mesh;
             MeshRenderer renderer = root.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = material;
+            CrystalOreSparkleOverlay.Synchronize(renderer, mesh);
             renderer.shadowCastingMode = ShadowCastingMode.On;
 
             List<VoxelConvexColliderMeshData> colliderMeshes =
@@ -194,6 +195,7 @@ namespace Supernova.Voxels.Integrity
                 && materials.Length > 0
                     ? materials
                     : new Material[1];
+            CrystalOreSparkleOverlay.Synchronize(renderer, mesh);
             renderer.shadowCastingMode = ShadowCastingMode.On;
 
             // Dynamic rigidbodies cannot use one concave MeshCollider. CoACD

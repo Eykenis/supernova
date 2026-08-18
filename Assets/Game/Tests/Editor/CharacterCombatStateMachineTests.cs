@@ -70,26 +70,30 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void PlayerInventory_UsesFivePlayerConfiguredSlots()
+        public void PlayerInventory_LocksPickaxeToTheFirstOfFiveSlots()
         {
             var inventory = new PlayerInventory();
 
             Assert.That(PlayerInventory.SlotCount, Is.EqualTo(5));
-            for (int i = 0; i < PlayerInventory.SlotCount; i++)
+            Assert.That(
+                inventory.GetItemAtSlot(PlayerInventory.FixedPickaxeSlotIndex),
+                Is.EqualTo(PlayerInventoryItem.Pickaxe));
+            Assert.That(
+                PlayerInventory.GetDefaultItemAtSlot(
+                    PlayerInventory.FixedPickaxeSlotIndex),
+                Is.EqualTo(PlayerInventoryItem.Pickaxe));
+            for (int i = 1; i < PlayerInventory.SlotCount; i++)
                 Assert.That(inventory.GetItemAtSlot(i), Is.EqualTo(PlayerInventoryItem.Empty));
 
             Assert.That(
                 inventory.SetItemAtSlot(3, PlayerInventoryItem.Pickaxe),
-                Is.True);
-            Assert.That(inventory.SelectSlot(3), Is.True);
-            Assert.That(inventory.SelectedItem, Is.EqualTo(PlayerInventoryItem.Pickaxe));
+                Is.False);
             Assert.That(
-                inventory.SetItemAtSlot(0, PlayerInventoryItem.Pickaxe),
-                Is.True);
+                inventory.SetItemAtSlot(0, PlayerInventoryItem.Empty),
+                Is.False);
             Assert.That(
-                inventory.GetItemAtSlot(3),
-                Is.EqualTo(PlayerInventoryItem.Empty),
-                "An item can only occupy one quick slot.");
+                inventory.SetItemAtSlot(0, PlayerInventoryItem.Bomb),
+                Is.False);
             Assert.That(
                 inventory.GetItemAtSlot(0),
                 Is.EqualTo(PlayerInventoryItem.Pickaxe));
@@ -207,7 +211,7 @@ namespace Supernova.Tests
             SetPrivateField(inventory, "toolDefinitions", new[] { pickaxe, bomb });
             Assert.That(
                 inventory.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
-                Is.True);
+                Is.False);
             Assert.That(
                 inventory.ConfigureSlot(1, PlayerInventoryItem.Bomb),
                 Is.True);
@@ -408,7 +412,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void SuspendItem_RemovesTheToolThenRestoresItsOriginalSlot()
+        public void SuspendItem_RestoresPickaxeToItsFixedFirstSlot()
         {
             GameObject playerObject = Create("Player");
             PlayerToolController inventory =
@@ -424,8 +428,8 @@ namespace Supernova.Tests
                     new[] { pickaxe });
                 Assert.That(
                     inventory.ConfigureSlot(2, PlayerInventoryItem.Pickaxe),
-                    Is.True);
-                inventory.SelectSlot(2);
+                    Is.False);
+                inventory.SelectSlot(0);
 
                 Assert.That(
                     inventory.SuspendItem(PlayerInventoryItem.Pickaxe),
@@ -434,7 +438,7 @@ namespace Supernova.Tests
                     inventory.IsItemSuspended(PlayerInventoryItem.Pickaxe),
                     Is.True);
                 Assert.That(
-                    inventory.GetItemAtSlot(2),
+                    inventory.GetItemAtSlot(0),
                     Is.EqualTo(PlayerInventoryItem.Empty));
                 Assert.That(
                     inventory.SelectedItem,
@@ -455,7 +459,7 @@ namespace Supernova.Tests
                     inventory.IsItemSuspended(PlayerInventoryItem.Pickaxe),
                     Is.False);
                 Assert.That(
-                    inventory.GetItemAtSlot(2),
+                    inventory.GetItemAtSlot(0),
                     Is.EqualTo(PlayerInventoryItem.Pickaxe));
                 Assert.That(
                     inventory.SelectedItem,

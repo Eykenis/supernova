@@ -365,6 +365,7 @@ MonoBehaviour:
   levelConfigurations: []
   worldGenerationConfigurationOverride: {fileID: 11400000, guid: 3ee677c9382ca744f85bc25982a524f8,
     type: 2}
+  monsterSpawnTable: {fileID: 11400000, guid: 09d92db632bafda4096a3f8350baafa2, type: 2}
   fixedPreviewArea: 0
   spawnPointSceneStructure: {fileID: 0}
 --- !u!4 &1581011168

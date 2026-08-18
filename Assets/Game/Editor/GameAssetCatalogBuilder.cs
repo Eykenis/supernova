@@ -195,6 +195,13 @@ public static class GameAssetCatalogBuilder
             serialized,
             "ui.inputGlyphs",
             ProjectAssetPaths.Config.InputGlyphSpriteAsset);
+        SetReferenceArray<Texture2D>(
+            serialized,
+            "ui.newGameGuideImages",
+            ProjectAssetPaths.Textures.NewGameGuideMineOre,
+            ProjectAssetPaths.Textures.NewGameGuideFindTreasure,
+            ProjectAssetPaths.Textures.NewGameGuidePullCargo,
+            ProjectAssetPaths.Textures.NewGameGuideDeliverCargo);
         SetString(
             serialized,
             "sceneLookups.mainMenuSceneName",

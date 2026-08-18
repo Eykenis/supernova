@@ -1,8 +1,8 @@
 using System.Collections;
 using Supernova.Inputs;
 using System.Collections.Generic;
-using Supernova.MinecraftCaves;
 using Supernova.Voxels;
+using Supernova.UI;
 using UnityEngine;
 
 namespace Supernova.Missions
@@ -12,8 +12,8 @@ namespace Supernova.Missions
     {
         private MissionGameLoop owner;
         private bool homeMode;
+        private bool tutorialExitMode;
         private bool sequenceRunning;
-        private ProximitySlidingDoor[] proximityDoors;
         private readonly HashSet<Collider> playerOverlaps =
             new HashSet<Collider>();
 
@@ -21,12 +21,26 @@ namespace Supernova.Missions
         {
             owner = missionOwner;
             homeMode = isHome;
-            FindDoors();
+            tutorialExitMode = false;
         }
+
+        public void ConfigureTutorialExit(MissionGameLoop missionOwner)
+        {
+            owner = missionOwner;
+            homeMode = false;
+            tutorialExitMode = true;
+        }
+
+        public bool IsTutorialExitMode => tutorialExitMode;
 
         public void RefreshActionPrompt()
         {
-            if (playerOverlaps.Count > 0)
+            if (playerOverlaps.Count == 0)
+                return;
+
+            if (tutorialExitMode)
+                owner?.ShowTutorialExitPrompt();
+            else
                 owner?.ShowCellActionPrompt(homeMode);
         }
 
@@ -34,7 +48,7 @@ namespace Supernova.Missions
         {
             if (other.GetComponentInParent<VoxelPlayerController>() == null) return;
             if (playerOverlaps.Add(other) && playerOverlaps.Count == 1)
-                owner?.ShowCellActionPrompt(homeMode);
+                RefreshActionPrompt();
         }
 
         private void OnTriggerExit(Collider other)
@@ -42,23 +56,37 @@ namespace Supernova.Missions
             if (other.GetComponentInParent<VoxelPlayerController>() == null) return;
             playerOverlaps.Remove(other);
             if (playerOverlaps.Count == 0)
-                owner?.HideCellActionPrompt(homeMode);
+            {
+                if (tutorialExitMode)
+                    owner?.HideTutorialExitPrompt();
+                else
+                    owner?.HideCellActionPrompt(homeMode);
+            }
         }
 
         private void Update()
         {
-            if (playerOverlaps.Count == 0
+            if (tutorialExitMode)
+            {
+                if (playerOverlaps.Count == 0
+                    || sequenceRunning
+                    || GameHudController.IsGameplayInputBlocked
+                    || !GameInput.Pressed(GameInputActionId.Interact))
+                {
+                    return;
+                }
+
+                sequenceRunning = owner != null && owner.EndTutorial();
+                return;
+            }
+
+            if (!homeMode
+                || playerOverlaps.Count == 0
                 || sequenceRunning
                 || !GameInput.Pressed(GameInputActionId.Interact))
                 return;
 
-            if (homeMode)
-            {
-                StartCoroutine(HomeLaunchSequence());
-                return;
-            }
-
-            owner?.RequestEvacuation();
+            StartCoroutine(HomeLaunchSequence());
         }
 
         private IEnumerator HomeLaunchSequence()
@@ -70,24 +98,9 @@ namespace Supernova.Missions
             }
 
             sequenceRunning = true;
-            // owner?.SetPrompt("DROP POD LOCKED · HATCH CLOSED");
-            for (int i = 0; i < proximityDoors.Length; i++)
-                proximityDoors[i].CloseForLaunch();
-            yield return CloseDoors(0.65f);
-            yield return new WaitForSeconds(0.35f);
+            yield return new WaitForSeconds(1f);
             if (!owner.BeginFirstMission())
                 sequenceRunning = false;
-        }
-
-        private IEnumerator CloseDoors(float duration)
-        {
-            yield return new WaitForSeconds(duration);
-        }
-
-        private void FindDoors()
-        {
-            proximityDoors = transform.parent
-                .GetComponentsInChildren<ProximitySlidingDoor>(true);
         }
     }
 }

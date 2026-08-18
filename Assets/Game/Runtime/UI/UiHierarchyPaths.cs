@@ -80,6 +80,9 @@ namespace Supernova.UI
             public const string HealthFill = "HUD Canvas/Health Panel/Track/Fill";
             public const string HealthTitle = "HUD Canvas/Health Panel/Header/Title";
             public const string HealthValue = "HUD Canvas/Health Panel/Header/Value";
+            public const string MagnetForceName = "Magnet Force";
+            public const string MagnetForce =
+                RootCanvas + "/" + MagnetForceName;
             public const string HealthHeader = "Header";
             public const string HealthTrack = "Track";
             public const string HealthSegmentsName = "Segments";
@@ -279,6 +282,18 @@ public const string FullSettingsPanel = FullMenu + "/" + SettingsPanel;
             public const string Root = "HUD Canvas/Mission";
             public const string Objective = Root + "/Objective";
             public const string Prompt = Root + "/Prompt";
+            public const string EarlyEvacuationPromptName =
+                "Early Evacuation Prompt";
+            public const string EarlyEvacuationPrompt =
+                Root + "/" + EarlyEvacuationPromptName;
+            public const string EarlyEvacuationProgressName =
+                "Early Evacuation Progress";
+            public const string EarlyEvacuationProgressFillName = "Fill";
+            public const string EarlyEvacuationProgress =
+                Root + "/" + EarlyEvacuationProgressName;
+            public const string EarlyEvacuationProgressFill =
+                EarlyEvacuationProgress
+                + "/" + EarlyEvacuationProgressFillName;
             public const string Timer = Root + "/Mission Timer";
             public const string TimerCaption = Timer + "/Caption";
             public const string TimerValue = Timer + "/Value";
@@ -290,6 +305,32 @@ public const string FullSettingsPanel = FullMenu + "/" + SettingsPanel;
                 ResultPanel + "/Result Text";
             public const string SceneFade =
                 OverlayCanvas + "/Scene Fade";
+        }
+
+        public static class NewGameGuide
+        {
+            public const string CanvasName = "New Game Guide Canvas";
+            public const string BackdropName = "Backdrop";
+            public const string PanelName = "Guide Panel";
+            public const string HeaderName = "Header";
+            public const string PageIndicatorName = "Page Indicator";
+            public const string ImageName = "Guide Image";
+            public const string CaptionName = "Caption";
+            public const string SkipButtonName = "Skip";
+            public const string NextButtonName = "Next";
+            public const string LabelName = "Label";
+            public const string Canvas = CanvasName;
+            public const string Backdrop = Canvas + "/" + BackdropName;
+            public const string Panel = Canvas + "/" + PanelName;
+            public const string Header = Panel + "/" + HeaderName;
+            public const string PageIndicator =
+                Panel + "/" + PageIndicatorName;
+            public const string Image = Panel + "/" + ImageName;
+            public const string Caption = Panel + "/" + CaptionName;
+            public const string SkipButton =
+                Panel + "/" + SkipButtonName;
+            public const string NextButton =
+                Panel + "/" + NextButtonName;
         }
 
         public static class SpawnIndicator

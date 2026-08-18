@@ -99,6 +99,18 @@ namespace Supernova.Tests
                 Is.EqualTo(expected));
         }
 
+        [TestCase(100f, "当前最大磁力：100N")]
+        [TestCase(250.5f, "当前最大磁力：250.5N")]
+        [TestCase(-10f, "当前最大磁力：0N")]
+        public void FormatMagnetForceLabel_UsesNewtons(
+            float force,
+            string expected)
+        {
+            Assert.That(
+                GameHudController.FormatMagnetForceLabel(force),
+                Is.EqualTo(expected));
+        }
+
         [TestCase(0f, "极低")]
         [TestCase(0.01f, "极低")]
         [TestCase(0.06f, "极低")]
@@ -176,6 +188,18 @@ namespace Supernova.Tests
                 Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.CrosshairHorizontal)?.GetComponent<Image>(), Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.CrosshairVertical)?.GetComponent<Image>(), Is.Not.Null);
+            Assert.That(
+                ((RectTransform)hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.Crosshair)).sizeDelta,
+                Is.EqualTo(new Vector2(27f, 27f)));
+            Assert.That(
+                ((RectTransform)hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.CrosshairHorizontal)).sizeDelta,
+                Is.EqualTo(new Vector2(27f, 3f)));
+            Assert.That(
+                ((RectTransform)hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.CrosshairVertical)).sizeDelta,
+                Is.EqualTo(new Vector2(3f, 27f)));
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.HealthPanel), Is.Not.Null);
             Assert.That(
                 hudObject.transform.Find(UiHierarchyPaths.Hud.HealthSegment(1))
@@ -183,6 +207,22 @@ namespace Supernova.Tests
                 Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.HealthFill)?.GetComponent<Image>(), Is.Not.Null);
             Assert.That(hudObject.transform.Find(UiHierarchyPaths.Hud.HealthValue)?.GetComponent<TMP_Text>(), Is.Not.Null);
+            TMP_Text magnetForce = hudObject.transform.Find(
+                    UiHierarchyPaths.Hud.MagnetForce)
+                ?.GetComponent<TMP_Text>();
+            Assert.That(magnetForce, Is.Not.Null);
+            Assert.That(magnetForce.fontSize, Is.EqualTo(21f));
+            Assert.That(magnetForce.gameObject.activeSelf, Is.False);
+            TMP_Text crosshairName = hudObject.transform.Find(
+                    UiHierarchyPaths.Crosshair.NameLabel)
+                ?.GetComponent<TMP_Text>();
+            TMP_Text crosshairStats = hudObject.transform.Find(
+                    UiHierarchyPaths.Crosshair.StatsLabel)
+                ?.GetComponent<TMP_Text>();
+            Assert.That(crosshairName, Is.Not.Null);
+            Assert.That(crosshairStats, Is.Not.Null);
+            Assert.That(crosshairName.fontSize, Is.EqualTo(20f));
+            Assert.That(crosshairStats.fontSize, Is.EqualTo(15f));
             RectTransform healthPanel =
                 (RectTransform)hudObject.transform.Find(UiHierarchyPaths.Hud.HealthPanel);
             Assert.That(healthPanel.anchorMin, Is.EqualTo(Vector2.zero));
@@ -214,6 +254,11 @@ namespace Supernova.Tests
             Assert.That(actionHints, Is.Not.Null);
             Assert.That(actionHints.text, Does.Contain("牵引"));
             Assert.That(actionHints.text, Does.Contain("蹲下"));
+            Assert.That(actionHints.text, Does.Contain("打开背包"));
+            Assert.That(
+                actionHints.text,
+                Does.Contain(InputPromptResolver.Token(
+                    GameInputActionId.ToggleLoadout)));
             Assert.That(actionHints.text, Does.Not.Contain("LMB"));
             Assert.That(actionHints.text, Does.Not.Contain("RMB"));
             Assert.That(actionHints.transform.parent, Is.Not.SameAs(hotbar));
@@ -267,6 +312,30 @@ namespace Supernova.Tests
             Assert.That(
                 ((RectTransform)hotbar).localEulerAngles.z,
                 Is.EqualTo(356.5f).Within(0.01f));
+        }
+
+        [Test]
+        public void MagnetForceReadout_ShowsBoundAttractionForce()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+            sourceObject = new GameObject("Player Magnet");
+            FirstPersonMagnetInteractor magnet =
+                sourceObject.AddComponent<FirstPersonMagnetInteractor>();
+            MethodInfo bindMagnet = typeof(GameHudController).GetMethod(
+                "BindMagnetAttractor",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(bindMagnet, Is.Not.Null);
+            bindMagnet.Invoke(controller, new object[] { magnet });
+
+            Assert.That(controller.MagnetForceLabel.gameObject.activeSelf, Is.True);
+            Assert.That(
+                controller.MagnetForceLabel.text,
+                Is.EqualTo(GameHudController.FormatMagnetForceLabel(
+                    magnet.AttractionForce)));
         }
 
         [Test]
@@ -972,6 +1041,77 @@ namespace Supernova.Tests
             back.onClick.Invoke();
             Assert.That(mainOptions.activeSelf, Is.True);
             Assert.That(settingsPanel.activeSelf, Is.False);
+        }
+
+        [Test]
+        public void MainMenuSettings_ReusesPauseSettingsAndClosesThroughBackButton()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController controller =
+                hudObject.AddComponent<GameHudController>();
+            controller.RebuildDefaultView();
+            bool closed = false;
+
+            bool shown = controller.ShowMainMenuSettings(() => closed = true);
+
+            Assert.That(shown, Is.True);
+            Assert.That(controller.IsMainMenuSettingsVisible, Is.True);
+            Assert.That(controller.PauseCanvas.gameObject.activeSelf, Is.True);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullSettingsPanel)
+                    .gameObject.activeSelf,
+                Is.True);
+            Assert.That(
+                hudObject.transform.Find(UiHierarchyPaths.Pause.FullControls)
+                    .GetComponent<Button>(),
+                Is.Not.Null);
+            Assert.That(GameHudController.IsPauseMenuOpen, Is.False);
+
+            hudObject.transform.Find(UiHierarchyPaths.Pause.FullSettingsBack)
+                .GetComponent<Button>()
+                .onClick.Invoke();
+
+            Assert.That(closed, Is.True);
+            Assert.That(controller.IsMainMenuSettingsVisible, Is.False);
+            Assert.That(controller.PauseCanvas.gameObject.activeSelf, Is.False);
+            Assert.That(GameHudController.IsPauseMenuOpen, Is.False);
+        }
+
+        [Test]
+        public void MainMenuSettingsButton_OpensSharedHudSettingsAndRestoresMenuView()
+        {
+            hudObject = new GameObject("Game HUD");
+            GameHudController hud = hudObject.AddComponent<GameHudController>();
+            hud.RebuildDefaultView();
+
+            menuObject = new GameObject("Main Menu");
+            menuObject.SetActive(false);
+            MainMenuController menu =
+                menuObject.AddComponent<MainMenuController>();
+            GameObject viewObject = new GameObject("Main Menu View");
+            viewObject.transform.SetParent(menuObject.transform, false);
+            MainMenuView view = viewObject.AddComponent<MainMenuView>();
+            FieldInfo viewField = typeof(MainMenuController).GetField(
+                "uguiView",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(viewField, Is.Not.Null);
+            viewField.SetValue(menu, view);
+            MethodInfo showSettings = typeof(MainMenuController).GetMethod(
+                "ShowSettings",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(showSettings, Is.Not.Null);
+
+            showSettings.Invoke(menu, null);
+
+            Assert.That(viewObject.activeSelf, Is.False);
+            Assert.That(hud.IsMainMenuSettingsVisible, Is.True);
+
+            hudObject.transform.Find(UiHierarchyPaths.Pause.FullSettingsBack)
+                .GetComponent<Button>()
+                .onClick.Invoke();
+
+            Assert.That(hud.IsMainMenuSettingsVisible, Is.False);
+            Assert.That(viewObject.activeSelf, Is.True);
         }
     }
 

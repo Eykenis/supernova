@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#273449"/>
+    </linearGradient>
+    <linearGradient id="rock" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#807a70"/>
+      <stop offset="1" stop-color="#454a50"/>
+    </linearGradient>
+    <radialGradient id="void" cx="45%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#bdf8ff"/>
+      <stop offset="0.55" stop-color="#43d6eb"/>
+      <stop offset="1" stop-color="#087f9c"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M 36 0 L 0 0 0 36" fill="none" stroke="#d7dee8" stroke-opacity="0.08" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <text x="60" y="70" fill="#f8fafc" font-family="Arial, Microsoft YaHei, sans-serif" font-size="38" font-weight="700">Cheese Noise · 大型洞室</text>
+  <text x="60" y="108" fill="#a8b8cb" font-family="Arial, Microsoft YaHei, sans-serif" font-size="21">低频三维噪声产生连续的负密度团块，像奶酪孔洞一样挖出宽阔洞厅</text>
+
+  <g transform="translate(70 155)" filter="url(#shadow)">
+    <rect width="790" height="500" rx="28" fill="url(#rock)" stroke="#b6c0cc" stroke-width="2"/>
+    <rect width="790" height="500" rx="28" fill="url(#grid)"/>
+
+    <path d="M78,130 C55,72 111,32 183,52 C239,68 270,114 256,164 C242,213 184,225 129,210 C91,199 91,167 78,130Z"
+          fill="url(#void)" stroke="#d5fbff" stroke-width="5"/>
+    <path d="M310,78 C349,34 431,42 467,89 C502,135 477,181 432,197 C385,214 320,193 300,148 C290,124 290,101 310,78Z"
+          fill="url(#void)" stroke="#d5fbff" stroke-width="5"/>
+    <path d="M548,62 C600,28 685,55 712,108 C733,150 710,194 661,209 C612,225 542,201 526,151 C516,120 522,79 548,62Z"
+          fill="url(#void)" stroke="#d5fbff" stroke-width="5"/>
+
+    <path d="M122,292 C163,247 242,254 276,304 C304,344 286,397 234,420 C181,444 103,411 90,357 C83,329 98,309 122,292Z"
+          fill="url(#void)" stroke="#d5fbff" stroke-width="5"/>
+    <path d="M377,270 C425,233 497,246 524,298 C549,346 520,397 469,413 C417,429 350,396 346,341 C343,313 355,287 377,270Z"
+          fill="url(#void)" stroke="#d5fbff" stroke-width="5"/>
+    <path d="M602,288 C639,244 717,253 744,306 C770,357 738,415 682,425 C632,434 574,401 568,351 C565,325 582,302 602,288Z"
+          fill="url(#void)" stroke="#d5fbff" stroke-width="5"/>
+
+    <path d="M265,196 C292,207 321,223 348,251" fill="none" stroke="#3bcce4" stroke-width="22" stroke-linecap="round"/>
+    <path d="M520,203 C544,216 567,240 596,286" fill="none" stroke="#3bcce4" stroke-width="17" stroke-linecap="round" opacity="0.8"/>
+    <path d="M278,343 C299,340 321,340 347,341" fill="none" stroke="#3bcce4" stroke-width="14" stroke-linecap="round" opacity="0.72"/>
+
+    <g fill="#f4f0e8" opacity="0.9">
+      <path d="M0,240 C80,224 141,245 204,238 C280,230 333,208 402,220 C474,232 535,260 604,249 C669,238 729,215 790,226 L790,257 C717,248 670,270 596,278 C517,287 461,255 391,251 C321,247 275,269 204,270 C128,271 65,253 0,270Z"/>
+    </g>
+  </g>
+
+  <g transform="translate(900 170)">
+    <rect width="240" height="480" rx="22" fill="#0d1626" stroke="#52657d" stroke-width="2"/>
+    <text x="24" y="48" fill="#fff" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" font-weight="700">形状特征</text>
+    <circle cx="42" cy="94" r="9" fill="#43d6eb"/>
+    <text x="64" y="102" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">大尺度洞厅</text>
+    <circle cx="42" cy="140" r="9" fill="#43d6eb"/>
+    <text x="64" y="148" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">圆润团块</text>
+    <circle cx="42" cy="186" r="9" fill="#43d6eb"/>
+    <text x="64" y="194" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">岩层隔断</text>
+
+    <line x1="24" y1="230" x2="216" y2="230" stroke="#52657d"/>
+    <text x="24" y="274" fill="#9fb2c8" font-family="Consolas, monospace" font-size="17">density =</text>
+    <text x="24" y="305" fill="#7ee7f3" font-family="Consolas, monospace" font-size="17">noise</text>
+    <text x="82" y="305" fill="#d9e5f2" font-family="Consolas, monospace" font-size="17">+ threshold</text>
+    <text x="24" y="336" fill="#d9e5f2" font-family="Consolas, monospace" font-size="17">+ layer² × strength</text>
+
+    <rect x="24" y="378" width="192" height="58" rx="12" fill="#16263a"/>
+    <text x="40" y="404" fill="#ffcf70" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">负密度：空气</text>
+    <text x="40" y="427" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">正密度：岩石</text>
+  </g>
+
+  <text x="70" y="708" fill="#8da2b9" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">示意图：蓝色为噪声阈值以下的洞穴空间，灰色为保留岩石；并非实际游戏截图。</text>
+</svg>

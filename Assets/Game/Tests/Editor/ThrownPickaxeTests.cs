@@ -456,7 +456,7 @@ namespace Supernova.Tests
             SetPrivateField(controller, "toolModelMount", mount.transform);
             Assert.That(
                 controller.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
-                Is.True);
+                Is.False);
             controller.SelectSlot(0);
             Assert.That(controller.EquippedToolModel, Is.Not.Null);
 
@@ -626,7 +626,7 @@ namespace Supernova.Tests
                 new[] { definition });
             Assert.That(
                 controller.ConfigureSlot(0, PlayerInventoryItem.Pickaxe),
-                Is.True);
+                Is.False);
 
             ThrownPickaxe pickaxe = CreatePickaxe(out _, out _);
             pickaxe.Launch(

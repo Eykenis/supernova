@@ -2466,7 +2466,8 @@ namespace Supernova.Voxels
 
             bool hasAnimator = animator != null
                 && animator.runtimeAnimatorController != null;
-            if (!HasMagnetHoldAnimationFullyReleased(
+            if (!CanRevealMagnetHiddenModel(
+                activeToolDefinition != null,
                 hasAnimator,
                 activeToolActionLayerIndex,
                 toolUpperBodyLayerWeight,
@@ -2476,13 +2477,17 @@ namespace Supernova.Voxels
             RestoreMagnetHeldModelImmediately();
         }
 
-        private static bool HasMagnetHoldAnimationFullyReleased(
+        private static bool CanRevealMagnetHiddenModel(
+            bool primaryToolActionActive,
             bool hasAnimator,
             int activeLayerIndex,
             float upperBodyLayerWeight,
             float crouchArmsLayerWeight)
         {
-            return !hasAnimator
+            // A primary action replaces the magnet on the shared hand layer and
+            // needs its held model even while that layer remains fully weighted.
+            return primaryToolActionActive
+                || !hasAnimator
                 || (activeLayerIndex < 0
                     && Mathf.Approximately(upperBodyLayerWeight, 0f)
                     && Mathf.Approximately(crouchArmsLayerWeight, 0f));

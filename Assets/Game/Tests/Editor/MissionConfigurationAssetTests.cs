@@ -164,7 +164,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void EachLevel_OverridesTheSharedWorldConfigurationSeed()
+        public void NewLevelRun_ReplacesTheAuthoredSeedWithARandomSeed()
         {
             LevelConfiguration[] levels = LevelPaths
                 .Select(path =>
@@ -178,19 +178,28 @@ namespace Supernova.Tests
                 {
                     MinecraftCaveInfiniteWorld world =
                         worldObject.AddComponent<MinecraftCaveInfiniteWorld>();
-                    Assert.That(world.ApplyLevelConfiguration(level), Is.True);
-                    FieldInfo seedField = typeof(MinecraftCaveInfiniteWorld).GetField(
-                        "worldSeed",
-                        BindingFlags.Instance | BindingFlags.NonPublic);
-
-                    Assert.That(seedField, Is.Not.Null);
-                    Assert.That(seedField.GetValue(world), Is.EqualTo(level.WorldSeed));
+                    Assert.That(
+                        world.ApplyLevelConfigurationForNewRun(level),
+                        Is.True);
+                    Assert.That(world.WorldSeed, Is.GreaterThan(0));
+                    Assert.That(world.WorldSeed, Is.Not.EqualTo(level.WorldSeed));
                 }
                 finally
                 {
                     Object.DestroyImmediate(worldObject);
                 }
             }
+        }
+
+        [Test]
+        public void RandomWorldSeed_ChangesForEveryNewRun()
+        {
+            int firstSeed = MinecraftCaveInfiniteWorld.CreateRandomWorldSeed();
+            int secondSeed = MinecraftCaveInfiniteWorld.CreateRandomWorldSeed();
+
+            Assert.That(firstSeed, Is.GreaterThan(0));
+            Assert.That(secondSeed, Is.GreaterThan(0));
+            Assert.That(secondSeed, Is.Not.EqualTo(firstSeed));
         }
 
         [Test]

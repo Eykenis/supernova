@@ -85,11 +85,12 @@ namespace Supernova.Tests
             {
                 ParameterInfo[] parameters = methods[i].GetParameters();
                 if (methods[i].ReturnType == typeof(bool)
-                    && parameters.Length == 4
+                    && parameters.Length == 5
                     && parameters[0].ParameterType == typeof(bool)
-                    && parameters[1].ParameterType == typeof(int)
-                    && parameters[2].ParameterType == typeof(float)
-                    && parameters[3].ParameterType == typeof(float))
+                    && parameters[1].ParameterType == typeof(bool)
+                    && parameters[2].ParameterType == typeof(int)
+                    && parameters[3].ParameterType == typeof(float)
+                    && parameters[4].ParameterType == typeof(float))
                 {
                     hasReleased = methods[i];
                     break;
@@ -98,16 +99,19 @@ namespace Supernova.Tests
             Assert.That(hasReleased, Is.Not.Null);
 
             Assert.That(
-                hasReleased.Invoke(null, new object[] { true, 2, 0f, 0f }),
+                hasReleased.Invoke(null, new object[] { false, true, 2, 0f, 0f }),
                 Is.False);
             Assert.That(
-                hasReleased.Invoke(null, new object[] { true, -1, 0.1f, 0f }),
+                hasReleased.Invoke(null, new object[] { false, true, -1, 0.1f, 0f }),
                 Is.False);
             Assert.That(
-                hasReleased.Invoke(null, new object[] { true, -1, 0f, 0.1f }),
+                hasReleased.Invoke(null, new object[] { false, true, -1, 0f, 0.1f }),
                 Is.False);
             Assert.That(
-                hasReleased.Invoke(null, new object[] { true, -1, 0f, 0f }),
+                hasReleased.Invoke(null, new object[] { false, true, -1, 0f, 0f }),
+                Is.True);
+            Assert.That(
+                hasReleased.Invoke(null, new object[] { true, true, 2, 1f, 0f }),
                 Is.True);
         }
 

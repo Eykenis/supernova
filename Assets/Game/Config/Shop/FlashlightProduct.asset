@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: FlashlightProduct
   m_EditorClassIdentifier: 
   productId: flashlight
-  displayName: FlashLight
+  displayName: "\u7167\u660E\u706F"
   price: 100
   grantType: 0
   grantedItem: 3

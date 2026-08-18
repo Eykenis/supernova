@@ -78,6 +78,7 @@ public sealed class MainMenuController : MonoBehaviour
     private bool tutorialTransition;
     private bool tutorialSceneLoadStarted;
     private bool awaitingLegacyNewGameConfirmation;
+    private GameHudController mainMenuSettingsHud;
 
     public static bool IsIntegratedMenuActive =>
         activeIntegratedMenu != null
@@ -166,6 +167,8 @@ public sealed class MainMenuController : MonoBehaviour
         if (!Application.isPlaying)
             return;
 
+        mainMenuSettingsHud?.HideMainMenuSettings();
+        mainMenuSettingsHud = null;
         UnbindUguiEvents();
         UnbindLegacyEvents();
         StopMenuIdleAnimation();
@@ -920,7 +923,22 @@ public sealed class MainMenuController : MonoBehaviour
 
     private void ShowSettings()
     {
-        if (uguiView != null) uguiView.ShowSettingsPanel();
+        if (uguiView != null)
+        {
+            GameHudController hud = FindObjectOfType<GameHudController>(true);
+            if (hud != null)
+            {
+                uguiView.gameObject.SetActive(false);
+                mainMenuSettingsHud = hud;
+                if (hud.ShowMainMenuSettings(ShowMainMenu))
+                    return;
+
+                mainMenuSettingsHud = null;
+                uguiView.gameObject.SetActive(true);
+            }
+
+            uguiView.ShowSettingsPanel();
+        }
         if (legacyMainPanel != null) legacyMainPanel.EnableInClassList("is-hidden", true);
         if (legacySettingsPanel != null)
             legacySettingsPanel.EnableInClassList("is-visible", true);
@@ -929,7 +947,13 @@ public sealed class MainMenuController : MonoBehaviour
     private void ShowMainMenu()
     {
         awaitingLegacyNewGameConfirmation = false;
-        if (uguiView != null) uguiView.ShowMainPanel();
+        mainMenuSettingsHud?.HideMainMenuSettings();
+        mainMenuSettingsHud = null;
+        if (uguiView != null)
+        {
+            uguiView.gameObject.SetActive(true);
+            uguiView.ShowMainPanel();
+        }
         if (legacyMainPanel != null) legacyMainPanel.EnableInClassList("is-hidden", false);
         if (legacySettingsPanel != null)
             legacySettingsPanel.EnableInClassList("is-visible", false);

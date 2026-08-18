@@ -684,6 +684,11 @@ namespace Supernova.MinecraftCaves
                 return;
             }
 
+            // Treasure markers on one piece are alternatives, in authored order.
+            // Once one marker passes its chance roll, it owns this piece's single
+            // treasure even when its anchor belongs to another streamed column.
+            // Returning before the column check is what keeps two columns from
+            // selecting different markers on the same piece.
             for (int i = 0; i < module.SpawnMarkers.Count; i++)
             {
                 StructureSpawnMarkerSettings marker = module.SpawnMarkers[i];
@@ -712,42 +717,26 @@ namespace Supernova.MinecraftCaves
                     continue;
                 }
 
-                float pieceYaw = piece.Direction * 90f;
-                for (int instance = 0; instance < marker.Count; instance++)
+                float treasureSelectionRoll = (float)random.NextDouble();
+                if (anchor.x >= targetMinX
+                    && anchor.x <= targetMaxX
+                    && anchor.z >= targetMinZ
+                    && anchor.z <= targetMaxZ)
                 {
-                    Vector3Int position = anchor;
-                    if (instance > 0 && marker.ScatterRadiusInVoxels > 0f)
-                    {
-                        double angle = random.NextDouble() * Math.PI * 2.0;
-                        double distance = Math.Sqrt(random.NextDouble())
-                            * marker.ScatterRadiusInVoxels;
-                        position = new Vector3Int(
-                            anchor.x + (int)Math.Round(Math.Cos(angle) * distance),
-                            anchor.y,
-                            anchor.z + (int)Math.Round(Math.Sin(angle) * distance));
-                    }
-                    float treasureSelectionRoll =
-                        (float)random.NextDouble();
-                    // A scattered instance can land in a neighbouring column; that
-                    // column will resolve it itself, so drop it here to avoid
-                    // spawning the same instance twice.
-                    if (position.x < targetMinX
-                        || position.x > targetMaxX
-                        || position.z < targetMinZ
-                        || position.z > targetMaxZ)
-                    {
-                        continue;
-                    }
                     results.Add(new StructureSpawnRequest(
                         marker.Kind,
                         marker.Treasure,
                         marker.TreasureSelection,
                         treasureSelectionRoll,
-                        position,
-                        Mathf.Repeat(pieceYaw + marker.Yaw, 360f),
+                        anchor,
+                        Mathf.Repeat(
+                            piece.Direction * 90f + marker.Yaw,
+                            360f),
                         marker.SnapToFloor,
                         marker.FloorSearchDistance));
                 }
+
+                return;
             }
         }
 

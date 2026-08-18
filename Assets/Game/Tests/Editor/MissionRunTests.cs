@@ -28,6 +28,22 @@ namespace Supernova.Tests
         }
 
         [Test]
+        public void EarlyEvacuation_RequiresEnoughValueAndFinishesImmediately()
+        {
+            var run = new MissionRun(60f, 100);
+
+            Assert.That(run.TryEvacuateEarly(90), Is.False);
+            Assert.That(run.IsFinished, Is.False);
+            Assert.That(run.DeliveredValue, Is.Zero);
+
+            Assert.That(run.TryEvacuateEarly(135), Is.True);
+            Assert.That(run.IsFinished, Is.True);
+            Assert.That(run.DeliveredValue, Is.EqualTo(135));
+            Assert.That(run.Outcome, Is.EqualTo(MissionOutcome.Success));
+            Assert.That(run.ExcessValue, Is.EqualTo(35));
+        }
+
+        [Test]
         public void CountdownExpiry_BanksCellValueAndAwardsOnlyExcess()
         {
             var run = new MissionRun(5f, 100);

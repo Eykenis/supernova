@@ -15,6 +15,9 @@ namespace Supernova.UI
     {
         [SerializeField] private TMP_Text objectiveLabel;
         [SerializeField] private TMP_Text promptLabel;
+        [SerializeField] private TMP_Text earlyEvacuationPromptLabel;
+        [SerializeField] private GameObject earlyEvacuationProgressRoot;
+        [SerializeField] private RectTransform earlyEvacuationProgressFill;
         [SerializeField] private GameObject resultPanel;
         [SerializeField] private TMP_Text resultLabel;
         [SerializeField] private CanvasGroup sceneFade;
@@ -22,18 +25,30 @@ namespace Supernova.UI
         [SerializeField] private float fadeInSeconds = 0.55f;
 
         private Coroutine resultAnimation;
+        private bool earlyEvacuationAvailabilityInitialized;
+        private bool earlyEvacuationAvailable;
         private readonly List<Canvas> suppressedWorldValueCanvases =
             new List<Canvas>();
 
         public bool IsResultVisible =>
             resultPanel != null && resultPanel.activeSelf;
         public CanvasGroup SceneFade => sceneFade;
+        public TMP_Text PromptLabel => promptLabel;
+        public TMP_Text EarlyEvacuationPromptLabel =>
+            earlyEvacuationPromptLabel;
+        public GameObject EarlyEvacuationProgressRoot =>
+            earlyEvacuationProgressRoot;
+        public RectTransform EarlyEvacuationProgressFill =>
+            earlyEvacuationProgressFill;
         public float FadeOutSeconds => fadeOutSeconds;
         public float FadeInSeconds => fadeInSeconds;
 
         public void Configure(
             TMP_Text objective,
             TMP_Text prompt,
+            TMP_Text evacuationPrompt,
+            GameObject evacuationProgressRoot,
+            RectTransform evacuationProgressFill,
             GameObject result,
             TMP_Text resultText,
             CanvasGroup fade,
@@ -41,6 +56,9 @@ namespace Supernova.UI
         {
             objectiveLabel = objective;
             promptLabel = prompt;
+            earlyEvacuationPromptLabel = evacuationPrompt;
+            earlyEvacuationProgressRoot = evacuationProgressRoot;
+            earlyEvacuationProgressFill = evacuationProgressFill;
             resultPanel = result;
             resultLabel = resultText;
             sceneFade = fade;
@@ -50,6 +68,7 @@ namespace Supernova.UI
             fadeInSeconds = configuration != null
                 ? configuration.SceneFadeInSeconds
                 : 0.55f;
+            SetEarlyEvacuationState(false, 0f);
         }
 
         public void SetObjective(string value)
@@ -60,6 +79,48 @@ namespace Supernova.UI
         public void SetPrompt(string value)
         {
             InputPromptTextRuntime.SetText(promptLabel, value);
+            if (promptLabel != null)
+            {
+                promptLabel.gameObject.SetActive(
+                    !string.IsNullOrWhiteSpace(value));
+            }
+        }
+
+        public void SetEarlyEvacuationState(
+            bool available,
+            float progress)
+        {
+            float clampedProgress = Mathf.Clamp01(progress);
+            if (!earlyEvacuationAvailabilityInitialized
+                || earlyEvacuationAvailable != available)
+            {
+                earlyEvacuationAvailabilityInitialized = true;
+                earlyEvacuationAvailable = available;
+                if (earlyEvacuationPromptLabel != null)
+                {
+                    InputPromptTextRuntime.SetText(
+                        earlyEvacuationPromptLabel,
+                        available
+                            ? "长按 {{input:Gameplay/Interact}} 提前撤离"
+                            : string.Empty);
+                    earlyEvacuationPromptLabel.gameObject.SetActive(available);
+                }
+            }
+
+            if (earlyEvacuationProgressFill != null)
+            {
+                Vector2 anchorMax =
+                    earlyEvacuationProgressFill.anchorMax;
+                anchorMax.x = clampedProgress;
+                earlyEvacuationProgressFill.anchorMax = anchorMax;
+            }
+            if (earlyEvacuationProgressRoot != null)
+            {
+                bool progressVisible =
+                    available && clampedProgress > 0f;
+                if (earlyEvacuationProgressRoot.activeSelf != progressVisible)
+                    earlyEvacuationProgressRoot.SetActive(progressVisible);
+            }
         }
 
         public void ShowResult(string value)

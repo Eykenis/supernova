@@ -190,6 +190,11 @@ namespace Supernova.Tests.Editor
                         root.GetComponentsInChildren<TMP_Text>(true))
                     .FirstOrDefault(label =>
                         label.text.Trim() == "Try more props!");
+                TMP_Text miningPrompt = scene
+                    .GetRootGameObjects()
+                    .SelectMany(root =>
+                        root.GetComponentsInChildren<TMP_Text>(true))
+                    .Single(label => label.name == "Mine");
 
                 Assert.That(session.IsolatedFromPersistentData, Is.True);
                 Assert.That(structure, Is.Not.Null);
@@ -198,6 +203,19 @@ namespace Supernova.Tests.Editor
                     session.InitialOwnedItems,
                     Is.EqualTo(new[] { PlayerInventoryItem.Pickaxe }));
                 Assert.That(pickups, Has.Length.EqualTo(3));
+                Assert.That(
+                    miningPrompt.text,
+                    Is.EqualTo(
+                        "{{input:Gameplay/PrimaryAction}} 开采矿物"));
+                Vector3Int miningPromptVoxel =
+                    testWorld.WorldPositionToVoxel(
+                        miningPrompt.transform.position);
+                Assert.That(
+                    (miningPromptVoxel - new Vector3Int(25, 25, 80))
+                        .sqrMagnitude,
+                    Is.LessThanOrEqualTo(64),
+                    "The mining instruction must stay on the wall beside the "
+                    + "authored YellowIron cluster.");
                 Assert.That(
                     pickups.Select(pickup => pickup.Item),
                     Is.EquivalentTo(new[]

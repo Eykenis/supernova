@@ -20,7 +20,7 @@ MonoBehaviour:
   spawnChance: 0.15
   attemptsPerChunk: 1
   maximumSurfaceSlope: 12
-  requiredHeadroom: 1.5
+  requiredHeadroom: 2
   destructionExplosionTool: {fileID: 0}
   fractureVariants:
   - {fileID: 489636063472270184, guid: 86424415007d8804c8c70f460bfaa139, type: 3}

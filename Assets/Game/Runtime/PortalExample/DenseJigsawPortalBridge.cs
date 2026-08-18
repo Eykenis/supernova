@@ -390,6 +390,13 @@ namespace Supernova.PortalExample
                 resolved =
                     playerRoot.gameObject.AddComponent<PortalExampleTraveller>();
             }
+            if (landingCellGate != null)
+            {
+                // The landing-cell endpoint receives cargo, monsters, mined ore,
+                // and every other dynamic Rigidbody. Only the configured player
+                // may enter this endpoint again; all other arrivals are one-way.
+                landingCellGate.RestrictTraversalTo(resolved);
+            }
             if (resolved == playerTraveller)
             {
                 return;

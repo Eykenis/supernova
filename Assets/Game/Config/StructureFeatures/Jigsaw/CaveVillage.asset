@@ -390,7 +390,7 @@ MonoBehaviour:
       localOffset: {x: 0, y: 1, z: 0}
       yaw: 0
       spawnChance: 0.9
-      count: 2
+      count: 1
       scatterRadiusInVoxels: 3
       snapToFloor: 1
       floorSearchDistance: 6
@@ -450,7 +450,7 @@ MonoBehaviour:
       localOffset: {x: 0, y: 1, z: 2}
       yaw: 0
       spawnChance: 0.7
-      count: 2
+      count: 1
       scatterRadiusInVoxels: 2
       snapToFloor: 1
       floorSearchDistance: 6

@@ -1,5 +1,6 @@
 using System.Reflection;
 using NUnit.Framework;
+using Supernova.MinecraftCaves;
 using Supernova.UI;
 using TMPro;
 using UnityEditor;
@@ -275,10 +276,13 @@ namespace Supernova.Tests
                     UiHierarchyPaths.MainMenu.LeaveExpedition,
                     "    退出游戏",
                     -14f);
+                MainMenuView mainMenuView = instance.GetComponent<MainMenuView>();
+                Assert.That(mainMenuView.VersionLabel, Is.Not.Null);
+                mainMenuView.RefreshVersionLabel();
                 Assert.That(
                     instance.transform.Find("Safe Area/Footer/Controls")
                         ?.GetComponent<TMP_Text>().text,
-                    Is.EqualTo("版本号: v1.0.0"));
+                    Is.EqualTo(MainMenuView.FormatVersionLabel(Application.version)));
                 Assert.That(
                     instance.transform.Find("Safe Area/Footer/Signal")
                         ?.GetComponent<TMP_Text>().text,
@@ -379,6 +383,19 @@ namespace Supernova.Tests
                 Assert.That(
                     serializedController.FindProperty("menuFieldOfView").floatValue,
                     Is.InRange(15f, 120f));
+
+                ProximitySlidingDoor homeDoor = null;
+                for (int i = 0; i < roots.Length && homeDoor == null; i++)
+                {
+                    homeDoor = roots[i]
+                        .GetComponentInChildren<ProximitySlidingDoor>(true);
+                }
+
+                Assert.That(homeDoor, Is.Not.Null);
+                Assert.That(
+                    homeDoor.StayOpenAfterFirstOpen,
+                    Is.True,
+                    "The Home door must remain open after its first activation.");
             }
             finally
             {

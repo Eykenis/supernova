@@ -1299,7 +1299,18 @@ MonoBehaviour:
   viewer: {fileID: 729396773}
   levelConfigurations:
   - {fileID: 11400000, guid: 59c6d35c3174c2847a5a57ae6d1a0f1f, type: 2}
+  worldGenerationConfigurationOverride: {fileID: 11400000, guid: aae73aa900a741345aad2a073c4a6054,
+    type: 2}
+  denseJigsawRegionConfigurationOverride: {fileID: 0}
+  fixedPreviewArea: 0
+  fixedPreviewColumnsPerSide: 0
+  overrideWorldSeed: 0
+  worldSeedOverride: 18731
+  generationDebugPass: 0
+  keepViewerTransformDuringGeneration: 0
   spawnPointSceneStructure: {fileID: 1913240833}
+  checkpointSpawnChance: 0.35
+  spawnCheckpointJigsawFeature: {fileID: 0}
 --- !u!4 &1110579180
 Transform:
   m_ObjectHideFlags: 0
@@ -2139,7 +2150,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 暂停
+  m_text: "\u6682\u505C"
   m_enableAdvanceTextProcess: 0
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2275,7 +2286,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 继续
+  m_text: "\u7EE7\u7EED"
   m_enableAdvanceTextProcess: 0
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

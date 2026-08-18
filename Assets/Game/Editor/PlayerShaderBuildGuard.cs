@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
+using Supernova.Voxels;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -24,7 +25,11 @@ namespace Supernova.Editor
         private const string SoftFalloffLitShaderName =
             "Supernova/Lighting/Soft Falloff Lit";
         private const string CrystalOreLitShaderName =
-            "Supernova/Lighting/Crystal Ore Lit";
+            VoxelShaderNames.CrystalOreLit;
+        private const string CrystalOreLitCompatibleShaderName =
+            VoxelShaderNames.CrystalOreLitCompatible;
+        private const string CrystalOreSparkleOverlayShaderName =
+            VoxelShaderNames.CrystalOreSparkleOverlay;
         private const string PortalClippedLitShaderName =
             "Supernova/PortalExample/Clipped Lit";
         private const string PortalSurfaceShaderName =
@@ -47,6 +52,8 @@ namespace Supernova.Editor
         {
             SoftFalloffLitShaderName,
             CrystalOreLitShaderName,
+            CrystalOreLitCompatibleShaderName,
+            CrystalOreSparkleOverlayShaderName,
             LilToonShaderName,
             StencilGeometryShaderName,
             PortalClippedLitShaderName,
@@ -56,6 +63,8 @@ namespace Supernova.Editor
         private static readonly string[] RuntimeVariantShaderNames =
         {
             CrystalOreLitShaderName,
+            CrystalOreLitCompatibleShaderName,
+            CrystalOreSparkleOverlayShaderName,
             GrassTurfLayerShaderName,
             "Supernova/Vegetation/Cave Grass Blade",
         };
@@ -95,6 +104,8 @@ namespace Supernova.Editor
             ValidateShader(StencilGeometryShaderName);
             ValidateShader(SoftFalloffLitShaderName);
             ValidateShader(CrystalOreLitShaderName);
+            ValidateShader(CrystalOreLitCompatibleShaderName);
+            ValidateShader(CrystalOreSparkleOverlayShaderName);
             ValidateShader(PortalClippedLitShaderName);
             ValidateShader(PortalSurfaceShaderName);
 
@@ -249,6 +260,14 @@ namespace Supernova.Editor
             AddShaderVariants(
                 collection,
                 Shader.Find(StencilGeometryShaderName),
+                Array.Empty<string>());
+            AddRuntimeLightingVariants(
+                collection,
+                Shader.Find(CrystalOreLitCompatibleShaderName),
+                Array.Empty<string>());
+            AddShaderVariants(
+                collection,
+                Shader.Find(CrystalOreSparkleOverlayShaderName),
                 Array.Empty<string>());
             AddPortalClippedLitVariants(collection, materials);
             EditorUtility.SetDirty(collection);

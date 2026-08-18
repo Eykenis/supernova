@@ -917,3 +917,19 @@ ShaderVariantCollection:
         passType: 12
       - keywords: 
         passType: 13
+  - first: {fileID: 4800000, guid: c6410dc9b8054a1395402fc30255852a, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 0
+      - keywords: 
+        passType: 8
+      - keywords: 
+        passType: 11
+      - keywords: 
+        passType: 13
+  - first: {fileID: 4800000, guid: 48d0c8e057dbf314cb10a59b1a566ae0, type: 3}
+    second:
+      variants:
+      - keywords: 
+        passType: 13

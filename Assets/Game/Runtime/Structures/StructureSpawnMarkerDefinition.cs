@@ -39,9 +39,13 @@ namespace Supernova.MinecraftCaves
         [SerializeField, Range(0f, 360f)] private float yaw;
         [Tooltip("Chance this marker produces anything at all.")]
         [SerializeField, Range(0f, 1f)] private float spawnChance = 1f;
-        [Tooltip("How many instances to place around this point.")]
+        [Tooltip(
+            "Legacy instance count. Treasure generation is capped to one "
+            + "instance per placed jigsaw piece.")]
         [SerializeField, Min(1)] private int count = 1;
-        [Tooltip("Horizontal scatter radius in voxels when Count is above one.")]
+        [Tooltip(
+            "Legacy scatter radius for multi-instance markers. Treasure "
+            + "markers always use their authored anchor.")]
         [SerializeField, Min(0f)] private float scatterRadiusInVoxels = 1.5f;
         [Tooltip("Drop the spawn onto the first solid surface below the marker.")]
         [SerializeField] private bool snapToFloor = true;

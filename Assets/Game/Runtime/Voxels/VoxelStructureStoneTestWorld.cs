@@ -475,6 +475,7 @@ namespace Supernova.Voxels
                 data,
                 stone.Material,
                 definitions);
+            CrystalOreSparkleOverlay.Synchronize(renderer, mesh);
             renderer.shadowCastingMode = ShadowCastingMode.On;
 
             if (generateColliders)

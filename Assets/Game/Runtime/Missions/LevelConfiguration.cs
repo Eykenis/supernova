@@ -14,6 +14,9 @@ namespace Supernova.Missions
         [Header("Identity")]
         [SerializeField] private int levelNumber = 1;
         [SerializeField] private string displayName = "FIRST DESCENT";
+        [Tooltip(
+            "Authoring/debug fallback only. A new runtime seed is generated "
+            + "whenever a configured level run starts.")]
         [SerializeField] private int worldSeed = 6667;
 
         [Header("Configuration Composition")]

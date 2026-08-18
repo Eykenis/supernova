@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SolidGunProduct
   m_EditorClassIdentifier: 
   productId: solid-gun
-  displayName: SolidGun
+  displayName: "\u5730\u5F62\u53D1\u751F\u5668"
   price: 650
   grantType: 0
   grantedItem: 5

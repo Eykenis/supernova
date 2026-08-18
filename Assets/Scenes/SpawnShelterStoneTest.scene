@@ -227,7 +227,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 211960605}
   m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 0, y: 0, z: 122.1}
+  m_LocalPosition: {x: 0, y: 0, z: 2410}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -235,8 +235,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -305, y: -324}
-  m_SizeDelta: {x: 200, y: 50}
+  m_AnchoredPosition: {x: -70, y: -165}
+  m_SizeDelta: {x: 300, y: 60}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &211960607
 MonoBehaviour:
@@ -258,7 +258,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "{{input:Gameplay/PrimaryAction}} \u7834\u574F\u77F3\u5934\n\u2190"
+  m_text: "{{input:Gameplay/PrimaryAction}} \u5F00\u91C7\u77FF\u7269"
   m_enableAdvanceTextProcess: 0
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -278,7 +278,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 0}
+  m_spriteAsset: {fileID: 11400000, guid: 93343388926b2ab47a20b59250e1caf2, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -286,8 +286,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 30
-  m_fontSizeBase: 30
+  m_fontSize: 34
+  m_fontSizeBase: 34
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -1051,7 +1051,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 0}
+  m_spriteAsset: {fileID: 11400000, guid: 93343388926b2ab47a20b59250e1caf2, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -1365,7 +1365,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 746579751}
   m_LocalRotation: {x: -0.7071068, y: 0, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: 0, y: 0, z: 1108.9}
+  m_LocalPosition: {x: 0, y: 0, z: 1123}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1396,7 +1396,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "{{input:Gameplay/ThrowPickaxe}} \u6254\u51FA/\u53EC\u56DE\u63A2\u9669\u9550"
+  m_text: "{{input:Gameplay/ThrowPickaxe}} \u6254\u51FA/\u53EC\u56DE\u63A2\u9669\u9550\n\n{{input:Gameplay/SecondaryAction}}
+    \u5438\u9644\n\n{{input:Gameplay/HotbarScroll}} \u8C03\u6574\u7275\u5F15\u957F\u5EA6"
   m_enableAdvanceTextProcess: 0
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1416,7 +1417,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 0}
+  m_spriteAsset: {fileID: 11400000, guid: 93343388926b2ab47a20b59250e1caf2, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -1852,7 +1853,7 @@ TextMesh:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 927020559}
-  m_Text: ''
+  m_Text: 
   m_OffsetZ: 0
   m_CharacterSize: 0.025
   m_LineSpacing: 1
@@ -1953,7 +1954,7 @@ TextMesh:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 952559510}
-  m_Text: ''
+  m_Text: 
   m_OffsetZ: 0
   m_CharacterSize: 0.025
   m_LineSpacing: 1
@@ -2289,74 +2290,6 @@ MonoBehaviour:
   maxBodyCommitsPerFrame: 1
   colliderConcavityThreshold: 0.1
   maxConvexCollidersPerBody: 8
---- !u!1001 &978168226
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 14.297
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 8.19
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 34.091072
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalRotation.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalRotation.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 2862807068714679641, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 4302944737786620945, guid: 51a94baa14be45249bc06cfa0b2d7f1a,
-        type: 3}
-      propertyPath: m_Name
-      value: Cauldron
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 51a94baa14be45249bc06cfa0b2d7f1a, type: 3}
 --- !u!134 &1018205172
 PhysicMaterial:
   m_ObjectHideFlags: 0
@@ -2411,7 +2344,7 @@ TextMesh:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1026287285}
-  m_Text: ''
+  m_Text: 
   m_OffsetZ: 0
   m_CharacterSize: 0.025
   m_LineSpacing: 1
@@ -2614,7 +2547,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 0}
+  m_spriteAsset: {fileID: 11400000, guid: 93343388926b2ab47a20b59250e1caf2, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -2804,7 +2737,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 0}
+  m_spriteAsset: {fileID: 11400000, guid: 93343388926b2ab47a20b59250e1caf2, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -3460,7 +3393,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 0}
+  m_spriteAsset: {fileID: 11400000, guid: 93343388926b2ab47a20b59250e1caf2, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -3596,7 +3529,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 0}
+  m_spriteAsset: {fileID: 11400000, guid: 93343388926b2ab47a20b59250e1caf2, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -4054,7 +3987,6 @@ SceneRoots:
   - {fileID: 315103042}
   - {fileID: 1811894345}
   - {fileID: 1655443870}
-  - {fileID: 978168226}
   - {fileID: 337997081}
   - {fileID: 634710077}
   - {fileID: 1464617900}

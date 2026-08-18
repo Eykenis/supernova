@@ -7,7 +7,9 @@ using Supernova.MinecraftCaves.Creatures;
 using Supernova.Voxels;
 using UnityEditor;
 using UnityEditor.Animations;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityAnimatorController = UnityEditor.Animations.AnimatorController;
 
 namespace Supernova.Tests
@@ -147,6 +149,40 @@ namespace Supernova.Tests
                         Is.True,
                         definition.name + " does not transition to "
                             + stateNames[expectedState] + ".");
+                }
+            }
+        }
+
+        [Test]
+        public void JigsawSuperflatScene_AssignsDefaultMonsterSpawnTable()
+        {
+            Scene scene = SceneManager.GetSceneByPath(
+                ProjectAssetPaths.Scenes.JigsawSuperflat);
+            bool openedForTest = !scene.IsValid() || !scene.isLoaded;
+            if (openedForTest)
+            {
+                scene = EditorSceneManager.OpenScene(
+                    ProjectAssetPaths.Scenes.JigsawSuperflat,
+                    OpenSceneMode.Additive);
+            }
+
+            try
+            {
+                MinecraftCaveInfiniteWorld world = scene.GetRootGameObjects()
+                    .Select(root =>
+                        root.GetComponent<MinecraftCaveInfiniteWorld>())
+                    .Single(candidate => candidate != null);
+                MonsterSpawnTable expected =
+                    AssetDatabase.LoadAssetAtPath<MonsterSpawnTable>(TablePath);
+
+                Assert.That(expected, Is.Not.Null);
+                Assert.That(world.MonsterSpawnTable, Is.SameAs(expected));
+            }
+            finally
+            {
+                if (openedForTest)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
                 }
             }
         }

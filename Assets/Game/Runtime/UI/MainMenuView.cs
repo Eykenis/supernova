@@ -25,6 +25,7 @@ namespace Supernova.UI
         [SerializeField] private Slider volumeSlider;
         [SerializeField] private TMP_Text volumeValueLabel;
         [SerializeField] private TMP_Text statusLabel;
+        [SerializeField] private TMP_Text versionLabel;
         [SerializeField] private GameObject overwriteConfirmationPanel;
         [SerializeField] private Button overwriteConfirmButton;
         [SerializeField] private Button overwriteCancelButton;
@@ -39,6 +40,7 @@ namespace Supernova.UI
         public Button SettingsBackButton => settingsBackButton;
         public Toggle FullscreenToggle => fullscreenToggle;
         public Slider VolumeSlider => volumeSlider;
+        public TMP_Text VersionLabel => versionLabel;
         public GameObject OverwriteConfirmationPanel =>
             overwriteConfirmationPanel;
         public Button OverwriteConfirmButton => overwriteConfirmButton;
@@ -72,6 +74,7 @@ namespace Supernova.UI
             Slider volume,
             TMP_Text volumeValue,
             TMP_Text status,
+            TMP_Text version,
             GameObject overwriteConfirmation,
             Button overwriteConfirm,
             Button overwriteCancel,
@@ -90,10 +93,32 @@ namespace Supernova.UI
             volumeSlider = volume;
             volumeValueLabel = volumeValue;
             statusLabel = status;
+            versionLabel = version;
             overwriteConfirmationPanel = overwriteConfirmation;
             overwriteConfirmButton = overwriteConfirm;
             overwriteCancelButton = overwriteCancel;
             characterOverlay = overlay;
+            RefreshVersionLabel();
+        }
+
+        private void OnEnable()
+        {
+            RefreshVersionLabel();
+        }
+
+        public void RefreshVersionLabel()
+        {
+            if (versionLabel != null)
+                versionLabel.text = FormatVersionLabel(Application.version);
+        }
+
+        public static string FormatVersionLabel(string version)
+        {
+            string versionPrefix = !string.IsNullOrEmpty(version)
+                && (version[0] == 'v' || version[0] == 'V')
+                    ? string.Empty
+                    : "v";
+            return "版本号: " + versionPrefix + version;
         }
 
         public void SetContinueGameVisible(bool visible)

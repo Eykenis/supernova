@@ -572,7 +572,7 @@ MonoBehaviour:
       localOffset: {x: 0, y: 1, z: -3}
       yaw: 0
       spawnChance: 1
-      count: 3
+      count: 1
       scatterRadiusInVoxels: 3
       snapToFloor: 1
       floorSearchDistance: 6

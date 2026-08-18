@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#273449"/>
+    </linearGradient>
+    <linearGradient id="rock" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#77736c"/>
+      <stop offset="1" stop-color="#363d47"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M 36 0 L 0 0 0 36" fill="none" stroke="#d7dee8" stroke-opacity="0.07" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <text x="60" y="70" fill="#f8fafc" font-family="Arial, Microsoft YaHei, sans-serif" font-size="38" font-weight="700">Spaghetti Noise · 粗主通道</text>
+  <text x="60" y="108" fill="#a8b8cb" font-family="Arial, Microsoft YaHei, sans-serif" font-size="21">两张噪声零值曲面的交线形成空间曲线，再赋予较大厚度并进行坐标扭曲</text>
+
+  <g transform="translate(70 155)" filter="url(#shadow)">
+    <rect width="790" height="500" rx="28" fill="url(#rock)" stroke="#b6c0cc" stroke-width="2"/>
+    <rect width="790" height="500" rx="28" fill="url(#grid)"/>
+
+    <g opacity="0.28">
+      <path d="M30,385 C170,210 300,110 470,100 C610,92 668,175 760,300" fill="none" stroke="#f879d4" stroke-width="90"/>
+      <path d="M45,100 C210,165 245,365 395,404 C555,445 646,220 760,190" fill="none" stroke="#ffe37a" stroke-width="82"/>
+    </g>
+
+    <path d="M42,388 C130,352 155,250 249,239 C341,229 349,340 444,335 C536,330 536,184 630,178 C694,174 716,232 758,276"
+          fill="none" stroke="#083d54" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M42,388 C130,352 155,250 249,239 C341,229 349,340 444,335 C536,330 536,184 630,178 C694,174 716,232 758,276"
+          fill="none" stroke="#37d6ee" stroke-width="47" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+    <path d="M42,388 C130,352 155,250 249,239 C341,229 349,340 444,335 C536,330 536,184 630,178 C694,174 716,232 758,276"
+          fill="none" stroke="#bff9ff" stroke-opacity="0.55" stroke-width="10" stroke-linecap="round"/>
+
+    <g fill="#56ddf0" stroke="#d5fbff" stroke-width="4">
+      <ellipse cx="42" cy="388" rx="50" ry="42"/>
+      <ellipse cx="758" cy="276" rx="48" ry="40"/>
+    </g>
+
+    <g font-family="Arial, Microsoft YaHei, sans-serif" font-size="17" font-weight="700">
+      <rect x="74" y="42" width="195" height="42" rx="12" fill="#311e3b" opacity="0.92"/>
+      <text x="92" y="69" fill="#ff9ae2">噪声曲面 A ≈ 0</text>
+      <rect x="492" y="410" width="195" height="42" rx="12" fill="#3e371c" opacity="0.92"/>
+      <text x="510" y="437" fill="#ffe98b">噪声曲面 B ≈ 0</text>
+      <rect x="290" y="154" width="210" height="42" rx="12" fill="#102f3b" opacity="0.95"/>
+      <text x="310" y="181" fill="#9af2ff">交线膨胀成隧道</text>
+    </g>
+  </g>
+
+  <g transform="translate(900 170)">
+    <rect width="240" height="480" rx="22" fill="#0d1626" stroke="#52657d" stroke-width="2"/>
+    <text x="24" y="48" fill="#fff" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" font-weight="700">核心判断</text>
+    <text x="24" y="98" fill="#f4a5df" font-family="Consolas, monospace" font-size="17">A = |noiseA|</text>
+    <text x="24" y="130" fill="#ffe37a" font-family="Consolas, monospace" font-size="17">B = |noiseB|</text>
+    <text x="24" y="176" fill="#7ee7f3" font-family="Consolas, monospace" font-size="17">max(A, B)</text>
+    <text x="24" y="207" fill="#d9e5f2" font-family="Consolas, monospace" font-size="17">- thickness</text>
+
+    <line x1="24" y1="242" x2="216" y2="242" stroke="#52657d"/>
+    <circle cx="42" cy="286" r="9" fill="#43d6eb"/>
+    <text x="64" y="294" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">粗、连续</text>
+    <circle cx="42" cy="332" r="9" fill="#43d6eb"/>
+    <text x="64" y="340" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">连接洞厅</text>
+    <circle cx="42" cy="378" r="9" fill="#43d6eb"/>
+    <text x="64" y="386" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">Warp使其弯曲</text>
+    <circle cx="42" cy="424" r="9" fill="#43d6eb"/>
+    <text x="64" y="432" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">厚度略有变化</text>
+  </g>
+
+  <text x="70" y="708" fill="#8da2b9" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">示意图：粉色和黄色表示两套隐式噪声曲面，蓝色管道表示它们交线附近的负密度区域。</text>
+</svg>

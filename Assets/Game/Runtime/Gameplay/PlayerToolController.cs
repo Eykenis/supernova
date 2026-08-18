@@ -148,10 +148,11 @@ namespace Supernova.Gameplay
     public sealed class PlayerInventory
     {
         public const int SlotCount = 5;
+        public const int FixedPickaxeSlotIndex = 0;
 
         private static readonly PlayerInventoryItem[] DefaultItems =
         {
-            PlayerInventoryItem.Empty,
+            PlayerInventoryItem.Pickaxe,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
             PlayerInventoryItem.Empty,
@@ -172,14 +173,46 @@ namespace Supernova.Gameplay
                 int configuredCount = Mathf.Min(
                     configuredItems.Count,
                     SlotCount);
-                for (int i = 0; i < configuredCount; i++)
+                PlayerInventoryItem displacedFirstSlot =
+                    configuredCount > FixedPickaxeSlotIndex
+                        ? configuredItems[FixedPickaxeSlotIndex]
+                        : PlayerInventoryItem.Empty;
+                if (displacedFirstSlot == PlayerInventoryItem.Pickaxe
+                    || displacedFirstSlot == PlayerInventoryItem.Empty
+                    || (ownsItem != null && !ownsItem(displacedFirstSlot)))
+                {
+                    displacedFirstSlot = PlayerInventoryItem.Empty;
+                }
+
+                for (int i = FixedPickaxeSlotIndex + 1;
+                    i < configuredCount;
+                    i++)
                 {
                     PlayerInventoryItem item = configuredItems[i];
+                    if (item == PlayerInventoryItem.Pickaxe)
+                    {
+                        item = displacedFirstSlot;
+                        displacedFirstSlot = PlayerInventoryItem.Empty;
+                    }
                     if (item == PlayerInventoryItem.Empty
                         || ownsItem == null
                         || ownsItem(item))
                     {
                         SetItemAtSlot(i, item);
+                    }
+                }
+
+                if (displacedFirstSlot != PlayerInventoryItem.Empty
+                    && IndexOf(displacedFirstSlot) < 0)
+                {
+                    for (int i = FixedPickaxeSlotIndex + 1;
+                        i < SlotCount;
+                        i++)
+                    {
+                        if (items[i] != PlayerInventoryItem.Empty)
+                            continue;
+                        SetItemAtSlot(i, displacedFirstSlot);
+                        break;
                     }
                 }
             }
@@ -206,6 +239,11 @@ namespace Supernova.Gameplay
             return DefaultItems[slotIndex];
         }
 
+        public static bool IsFixedSlot(int slotIndex)
+        {
+            return slotIndex == FixedPickaxeSlotIndex;
+        }
+
         public int IndexOf(PlayerInventoryItem item)
         {
             return Array.IndexOf(items, item);
@@ -217,6 +255,11 @@ namespace Supernova.Gameplay
         {
             if (slotIndex < 0 || slotIndex >= SlotCount)
                 throw new ArgumentOutOfRangeException(nameof(slotIndex));
+            if (IsFixedSlot(slotIndex)
+                || item == PlayerInventoryItem.Pickaxe)
+            {
+                return false;
+            }
 
             bool changed = false;
             if (item != PlayerInventoryItem.Empty)
@@ -238,7 +281,8 @@ namespace Supernova.Gameplay
 
         public bool RemoveItem(PlayerInventoryItem item)
         {
-            if (item == PlayerInventoryItem.Empty)
+            if (item == PlayerInventoryItem.Empty
+                || item == PlayerInventoryItem.Pickaxe)
                 return false;
 
             int slotIndex = Array.IndexOf(items, item);
@@ -246,6 +290,39 @@ namespace Supernova.Gameplay
                 return false;
 
             items[slotIndex] = PlayerInventoryItem.Empty;
+            return true;
+        }
+
+        internal bool TemporarilyRemoveItemAtSlot(int slotIndex)
+        {
+            if (slotIndex < 0 || slotIndex >= SlotCount)
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
+            if (items[slotIndex] == PlayerInventoryItem.Empty)
+                return false;
+
+            items[slotIndex] = PlayerInventoryItem.Empty;
+            return true;
+        }
+
+        internal bool RestoreTemporaryItemAtSlot(
+            int slotIndex,
+            PlayerInventoryItem item)
+        {
+            if (slotIndex < 0 || slotIndex >= SlotCount)
+                throw new ArgumentOutOfRangeException(nameof(slotIndex));
+            if (items[slotIndex] != PlayerInventoryItem.Empty)
+                return false;
+            if (IsFixedSlot(slotIndex))
+            {
+                if (item != PlayerInventoryItem.Pickaxe)
+                    return false;
+            }
+            else if (item == PlayerInventoryItem.Pickaxe)
+            {
+                return false;
+            }
+
+            items[slotIndex] = item;
             return true;
         }
 
@@ -623,7 +700,7 @@ namespace Supernova.Gameplay
             int slotIndex = inventory.IndexOf(item);
             PlayerInventoryItem previousSelectedItem = inventory.SelectedItem;
             if (slotIndex >= 0)
-                inventory.SetItemAtSlot(slotIndex, PlayerInventoryItem.Empty);
+                inventory.TemporarilyRemoveItemAtSlot(slotIndex);
             suspendedItemSlots.Add(item, slotIndex);
 
             ApplySelectedItem();
@@ -650,7 +727,7 @@ namespace Supernova.Gameplay
                 && inventory.GetItemAtSlot(slotIndex)
                     == PlayerInventoryItem.Empty)
             {
-                inventory.SetItemAtSlot(slotIndex, item);
+                inventory.RestoreTemporaryItemAtSlot(slotIndex, item);
             }
 
             ApplySelectedItem();

@@ -4319,6 +4319,7 @@ MonoBehaviour:
   volumeSlider: {fileID: 6455876444995768086}
   volumeValueLabel: {fileID: 5134906231792877245}
   statusLabel: {fileID: 1574931385609811736}
+  versionLabel: {fileID: 3973908396253836103}
   overwriteConfirmationPanel: {fileID: 7314758434329812648}
   overwriteConfirmButton: {fileID: 3547438550720649528}
   overwriteCancelButton: {fileID: 1027859989815271610}
@@ -5575,7 +5576,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "\u7248\u672C\u53F7: v1.0.0"
+  m_text: "\u7248\u672C\u53F7: v0.1.0"
   m_enableAdvanceTextProcess: 0
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

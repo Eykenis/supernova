@@ -20,6 +20,7 @@ namespace Supernova.Missions
         private const float CaveAmbienceVolumeScale = 0.01f;
         private const float TransitionSoundVolumeScale = 0.6f;
         private const float DefaultResultCountDurationSeconds = 2f;
+        private const float EarlyEvacuationHoldSeconds = 2f;
         private static MissionGameLoop instance;
 
         private LevelConfiguration definition;
@@ -39,9 +40,22 @@ namespace Supernova.Missions
         private int ambienceLoopId;
         private bool playReadyAfterCaveLoad;
         private bool enterHomeGameplayDirectly;
+        private float earlyEvacuationHeldSeconds;
+        private bool displayedEarlyEvacuationAvailable;
+        private float displayedEarlyEvacuationProgress = -1f;
 
         public MissionRun CurrentRun => run;
         public int Credits => PlayerEconomy.Credits;
+        public float EarlyEvacuationHoldDuration =>
+            EarlyEvacuationHoldSeconds;
+        public float EarlyEvacuationHoldProgress => Mathf.Clamp01(
+            earlyEvacuationHeldSeconds / EarlyEvacuationHoldSeconds);
+        public bool IsEarlyEvacuationAvailable =>
+            run != null
+            && !run.IsFinished
+            && !transitioning
+            && caveSetup
+            && DisplayedCollectedValue >= run.RequiredValue;
         public bool CanBeginCurrentMission =>
             !transitioning
             && campaign != null
@@ -157,9 +171,6 @@ namespace Supernova.Missions
             if (GameInput.Pressed(GameInputActionId.DebugMission))
             {
                 PlayerEconomy.AddCredits(DebugCreditGrant);
-                SetPrompt(
-                    "DEBUG +$" + DebugCreditGrant
-                    + "    BALANCE: $" + Credits);
             }
 #endif
 
@@ -176,7 +187,22 @@ namespace Supernova.Missions
                     : 0;
                 run.Tick(Time.deltaTime, storedValue);
                 RefreshObjective();
-                if (run.IsFinished) ShowResult();
+                if (run.IsFinished)
+                {
+                    ResetEarlyEvacuationState();
+                    ShowResult();
+                }
+                else
+                {
+                    TickEarlyEvacuationHold(
+                        Time.deltaTime,
+                        GameInput.Held(GameInputActionId.Interact),
+                        GameHudController.IsGameplayInputBlocked);
+                }
+            }
+            else
+            {
+                ResetEarlyEvacuationState();
             }
 
             if (missionUi != null && missionUi.IsResultVisible
@@ -211,7 +237,10 @@ namespace Supernova.Missions
             run = null;
             MissionProgressPersistence.ClearSavedProgress();
             PlayerEconomy.ClearSavedProgress();
-            return MissionProgressPersistence.SaveCurrentLevel(definition);
+            bool saved = MissionProgressPersistence.SaveCurrentLevel(definition);
+            if (saved)
+                NewGameGuideOverlay.MarkForNewCampaign();
+            return saved;
         }
 
         public bool ContinueCampaign()
@@ -325,6 +354,7 @@ namespace Supernova.Missions
         {
             run?.AddDeliveredValue(value);
             RefreshObjective();
+            RefreshEarlyEvacuationAvailability();
         }
 
         /// <summary>
@@ -347,41 +377,133 @@ namespace Supernova.Missions
 
         public bool RequestEvacuation()
         {
-            if (run == null || run.IsFinished || transitioning) return false;
-            SetPrompt(
-                "将在 "
-                + FormatCountdown(run.TimeRemaining)
-                + " 后结束任务");
-            return false;
+            if (!IsEarlyEvacuationAvailable)
+                return false;
+
+            int storedValue = extractionZone != null
+                ? extractionZone.CurrentStoredValue
+                : 0;
+            if (!run.TryEvacuateEarly(storedValue))
+                return false;
+
+            ResetEarlyEvacuationState();
+            ShowResult();
+            return true;
+        }
+
+        private void TickEarlyEvacuationHold(
+            float deltaTime,
+            bool interactHeld,
+            bool gameplayInputBlocked)
+        {
+            if (!IsEarlyEvacuationAvailable)
+            {
+                ResetEarlyEvacuationState();
+                return;
+            }
+
+            bool canContinueHolding = interactHeld
+                && !gameplayInputBlocked;
+            earlyEvacuationHeldSeconds = canContinueHolding
+                ? Mathf.Min(
+                    EarlyEvacuationHoldSeconds,
+                    earlyEvacuationHeldSeconds
+                        + Mathf.Max(0f, deltaTime))
+                : 0f;
+            float progress = EarlyEvacuationHoldProgress;
+            PublishEarlyEvacuationState(true, progress);
+            if (progress >= 1f)
+                RequestEvacuation();
+        }
+
+        private void RefreshEarlyEvacuationAvailability()
+        {
+            if (!IsEarlyEvacuationAvailable)
+            {
+                ResetEarlyEvacuationState();
+                return;
+            }
+
+            PublishEarlyEvacuationState(
+                true,
+                EarlyEvacuationHoldProgress);
+        }
+
+        private void ResetEarlyEvacuationState()
+        {
+            earlyEvacuationHeldSeconds = 0f;
+            PublishEarlyEvacuationState(false, 0f);
+        }
+
+        private void PublishEarlyEvacuationState(
+            bool available,
+            float progress)
+        {
+            float clampedProgress = Mathf.Clamp01(progress);
+            if (displayedEarlyEvacuationAvailable == available
+                && Mathf.Approximately(
+                    displayedEarlyEvacuationProgress,
+                    clampedProgress))
+            {
+                return;
+            }
+
+            displayedEarlyEvacuationAvailable = available;
+            displayedEarlyEvacuationProgress = clampedProgress;
+            if (missionUi == null)
+                EnsureUi();
+            missionUi?.SetEarlyEvacuationState(
+                available,
+                clampedProgress);
         }
 
         public void ShowCellActionPrompt(bool home)
         {
-            if (home)
-            {
-                SetPrompt(campaign != null && campaign.IsComplete
-                    ? ""
-                    : "按 {{input:Gameplay/Interact}} 开始任务");
+            if (!home)
                 return;
-            }
 
-            if (run == null || run.IsFinished) return;
+            SetPrompt(campaign != null && campaign.IsComplete
+                ? string.Empty
+                : "按 {{input:Gameplay/Interact}} 开始任务");
         }
 
         public void HideCellActionPrompt(bool home)
         {
-            if (!home)
+            // Proximity prompts were removed from the lower-middle HUD.
+        }
+
+        public void ShowTutorialExitPrompt()
+        {
+            SetPrompt("按 {{input:Gameplay/Interact}} 结束教程");
+        }
+
+        public void HideTutorialExitPrompt()
+        {
+            SetPrompt(string.Empty);
+        }
+
+        public bool EndTutorial()
+        {
+            if (transitioning
+                || SceneManager.GetActiveScene().name != TutorialSceneName)
             {
-                SetPrompt("");
+                return false;
             }
+
+            string mainMenuSceneName = GameAssetCatalog.Current != null
+                ? GameAssetCatalog.Current.SceneLookups.MainMenuSceneName
+                : string.Empty;
+            if (!BeginSceneLoadWithFade(mainMenuSceneName))
+                return false;
+
+            HideTutorialExitPrompt();
+            return true;
         }
 
         public void NotifyStoredValueChanged(int value)
         {
-            SetPrompt(
-                "已收集：$" + Mathf.Max(0, DisplayedCollectedValue));
             RefreshObjective();
-            cellZone?.RefreshActionPrompt();
+            RefreshEarlyEvacuationAvailability();
         }
 
         public void NotifyStoredResourceAdded(
@@ -423,7 +545,9 @@ namespace Supernova.Missions
             configuredSceneHandle = scene.handle;
             InvalidateObjectiveCache();
             EnsureUi();
+            ResetEarlyEvacuationState();
             missionUi.HideResult();
+            missionUi.SetPrompt(string.Empty);
             if (scene.name != HomeSceneName)
                 missionUi.SetObjective(string.Empty);
             caveSetup = false;
@@ -440,7 +564,14 @@ namespace Supernova.Missions
                 StartCaveAmbience();
                 EnsureRunForDirectCaveEntry();
                 gameUi?.HideMissionTimer();
-                SetPrompt("");
+                RefreshEarlyEvacuationAvailability();
+            }
+            else if (scene.name == TutorialSceneName)
+            {
+                StopCaveAmbience();
+                playReadyAfterCaveLoad = false;
+                gameUi?.HideMissionTimer();
+                CreateTutorialExitTrigger(FindCell());
             }
             else
             {
@@ -508,6 +639,14 @@ namespace Supernova.Missions
                 playReadyAfterCaveLoad = false;
             }
             RefreshObjective();
+            if (NewGameGuideOverlay.IsPendingForCurrentCampaign
+                && !NewGameGuideOverlay.TryShow(gameUi))
+            {
+                Debug.LogError(
+                    "The new-game guide could not be shown when the first mission "
+                    + "became ready.",
+                    this);
+            }
         }
 
         private void CreateCellTrigger(Transform cell, bool home)
@@ -539,6 +678,30 @@ namespace Supernova.Missions
                 extractionZone = triggerObject.AddComponent<OreExtractionZone>();
                 extractionZone.Configure(this);
             }
+        }
+
+        private void CreateTutorialExitTrigger(Transform cell)
+        {
+            if (cell == null)
+            {
+                Debug.LogError(
+                    "The tutorial Cell could not be found, so its exit zone "
+                    + "was not created.",
+                    this);
+                return;
+            }
+
+            GameObject triggerObject = new GameObject("Tutorial Exit Trigger");
+            triggerObject.transform.SetParent(cell, false);
+            triggerObject.transform.localPosition = Vector3.up;
+            BoxCollider trigger = triggerObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = new Vector3(5f, 3f, 5f);
+            FitTriggerToCellRenderers(cell, trigger);
+
+            MissionCellZone zone = triggerObject.AddComponent<MissionCellZone>();
+            zone.ConfigureTutorialExit(this);
+            cellZone = zone;
         }
 
         private static void FitTriggerToCellRenderers(
@@ -641,6 +804,7 @@ namespace Supernova.Missions
         {
             EnsureUi();
             if (run == null || missionUi.IsResultVisible) return;
+            ResetEarlyEvacuationState();
             Time.timeScale = 0f;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
@@ -966,6 +1130,9 @@ namespace Supernova.Missions
             : string.Empty;
         private string HomeSceneName => definition != null
             ? definition.HomeSceneName
+            : string.Empty;
+        private string TutorialSceneName => GameAssetCatalog.Current != null
+            ? GameAssetCatalog.Current.SceneLookups.TutorialSceneName
             : string.Empty;
     }
 }

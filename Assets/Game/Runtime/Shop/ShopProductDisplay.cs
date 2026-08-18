@@ -132,21 +132,41 @@ namespace Supernova.Shop
             if (label == null)
                 return;
 
+            string displayName = ResolveDisplayName();
             if (owned)
             {
-                label.text = "已拥有";
+                label.text = displayName + "\n已拥有";
                 label.color = WorldValueTextStyle.OwnedColor;
             }
             else
             {
                 InputPromptTextRuntime.SetText(
                     label,
-                    "$" + PlayerEconomy.GetCurrentPrice(profile)
-                        + " 按 {{input:Gameplay/Interact}} 购买");
+                    displayName
+                        + "\n$" + PlayerEconomy.GetCurrentPrice(profile));
                 label.color = PlayerEconomy.CanAfford(profile)
                     ? WorldValueTextStyle.ValueColor
                     : WorldValueTextStyle.LossColor;
             }
+        }
+
+        private string ResolveDisplayName()
+        {
+            if (profile == null)
+                return string.Empty;
+            if (!profile.IsRepeatable
+                || profile.GrantedUpgrade
+                    != Gameplay.PlayerUpgrade.MagnetAttractionForce)
+            {
+                return profile.DisplayName;
+            }
+
+            int purchaseCount = PlayerEconomy.GetUpgradePurchaseCount(
+                profile.GrantedUpgrade);
+            int nextLevel = purchaseCount < int.MaxValue
+                ? purchaseCount + 1
+                : int.MaxValue;
+            return nextLevel + "级" + profile.DisplayName;
         }
 
         private void BuildView()

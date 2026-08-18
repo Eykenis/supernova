@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="1" stop-color="#273449"/>
+    </linearGradient>
+    <linearGradient id="rock" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8d8575"/>
+      <stop offset="0.48" stop-color="#565b61"/>
+      <stop offset="1" stop-color="#373e47"/>
+    </linearGradient>
+    <linearGradient id="pillar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#655f55"/>
+      <stop offset="0.45" stop-color="#c3b79c"/>
+      <stop offset="1" stop-color="#5d5952"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M 36 0 L 0 0 0 36" fill="none" stroke="#d7dee8" stroke-opacity="0.07" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="760" fill="url(#bg)"/>
+  <text x="60" y="70" fill="#f8fafc" font-family="Arial, Microsoft YaHei, sans-serif" font-size="38" font-weight="700">Pillar Noise · 洞穴石柱</text>
+  <text x="60" y="108" fill="#a8b8cb" font-family="Arial, Microsoft YaHei, sans-serif" font-size="21">水平变化快、垂直变化慢，使同一水平位置在较长高度范围内持续为正密度</text>
+
+  <g transform="translate(70 155)" filter="url(#shadow)">
+    <rect width="790" height="500" rx="28" fill="#242c36" stroke="#b6c0cc" stroke-width="2"/>
+    <rect width="790" height="500" rx="28" fill="url(#grid)"/>
+
+    <path d="M0,0 H790 V95 C698,84 625,111 532,91 C432,70 363,108 278,91 C182,72 103,108 0,88Z"
+          fill="url(#rock)"/>
+    <path d="M0,500 H790 V414 C693,432 614,399 522,419 C427,440 351,406 265,420 C166,437 93,404 0,424Z"
+          fill="url(#rock)"/>
+
+    <path d="M118,82 C142,107 148,139 146,178 L139,313 C137,358 126,395 99,426
+             L206,426 C181,390 174,355 176,313 L182,178 C184,139 192,108 218,87Z"
+          fill="url(#pillar)" stroke="#d5ccb8" stroke-width="4"/>
+    <path d="M337,91 C360,121 365,157 360,204 L351,292 C347,345 337,383 311,420
+             L422,420 C399,379 391,342 395,292 L403,204 C408,157 417,120 443,92Z"
+          fill="url(#pillar)" stroke="#d5ccb8" stroke-width="4"/>
+    <path d="M566,98 C586,127 592,161 589,203 L582,296 C578,346 566,388 541,416
+             L659,416 C634,380 625,341 629,296 L636,203 C640,159 649,126 674,91Z"
+          fill="url(#pillar)" stroke="#d5ccb8" stroke-width="4"/>
+
+    <g stroke-linecap="round">
+      <line x1="720" y1="125" x2="720" y2="370" stroke="#67e8f9" stroke-width="8"/>
+      <path d="M704,148 L720,119 L736,148" fill="none" stroke="#67e8f9" stroke-width="7"/>
+      <path d="M704,348 L720,377 L736,348" fill="none" stroke="#67e8f9" stroke-width="7"/>
+      <text x="676" y="405" fill="#9af3ff" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">Y方向变化慢</text>
+
+      <line x1="470" y1="460" x2="650" y2="460" stroke="#ffcf70" stroke-width="8"/>
+      <path d="M493,444 L464,460 L493,476" fill="none" stroke="#ffcf70" stroke-width="7"/>
+      <path d="M627,444 L656,460 L627,476" fill="none" stroke="#ffcf70" stroke-width="7"/>
+      <text x="496" y="488" fill="#ffe2a6" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">XZ变化快</text>
+    </g>
+
+    <g font-family="Arial, Microsoft YaHei, sans-serif" font-size="17" font-weight="700">
+      <rect x="30" y="220" width="220" height="48" rx="13" fill="#111d2d" opacity="0.92"/>
+      <text x="50" y="251" fill="#f1e7cf">正密度重新填回岩石</text>
+    </g>
+  </g>
+
+  <g transform="translate(900 170)">
+    <rect width="240" height="480" rx="22" fill="#0d1626" stroke="#52657d" stroke-width="2"/>
+    <text x="24" y="48" fill="#fff" font-family="Arial, Microsoft YaHei, sans-serif" font-size="24" font-weight="700">各向异性采样</text>
+    <text x="24" y="99" fill="#ffcf70" font-family="Consolas, monospace" font-size="17">x × horizontalFreq</text>
+    <text x="24" y="133" fill="#67e8f9" font-family="Consolas, monospace" font-size="17">y × verticalFreq</text>
+    <text x="24" y="167" fill="#ffcf70" font-family="Consolas, monospace" font-size="17">z × horizontalFreq</text>
+
+    <line x1="24" y1="208" x2="216" y2="208" stroke="#52657d"/>
+    <text x="24" y="252" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="18">最终合并：</text>
+    <text x="24" y="288" fill="#7ee7f3" font-family="Consolas, monospace" font-size="17">finalDensity =</text>
+    <text x="24" y="320" fill="#d9e5f2" font-family="Consolas, monospace" font-size="17">max(caves, pillar)</text>
+
+    <circle cx="42" cy="372" r="9" fill="#c3b79c"/>
+    <text x="64" y="380" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">连接顶与底</text>
+    <circle cx="42" cy="418" r="9" fill="#c3b79c"/>
+    <text x="64" y="426" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">粗细随噪声变化</text>
+    <circle cx="42" cy="454" r="9" fill="#c3b79c"/>
+    <text x="64" y="462" fill="#d9e5f2" font-family="Arial, Microsoft YaHei, sans-serif" font-size="19">打破空旷洞厅</text>
+  </g>
+
+  <text x="70" y="708" fill="#8da2b9" font-family="Arial, Microsoft YaHei, sans-serif" font-size="17">示意图：Pillar 不是挖洞，而是在已生成洞穴内用正密度重新保留纵向岩体。</text>
+</svg>

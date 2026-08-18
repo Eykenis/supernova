@@ -124,6 +124,10 @@ namespace Supernova.Tests
                         == StructureSpawnMarkerDefinition.Kind.Treasure),
                     Is.True,
                     $"{path} has a non-treasure spawn marker.");
+                Assert.That(
+                    markers.All(marker => marker.Count == 1),
+                    Is.True,
+                    $"{path} has a treasure marker requesting multiple instances.");
             }
         }
 
@@ -2631,7 +2635,7 @@ namespace Supernova.Tests
         }
 
         [Test]
-        public void SpawnMarkers_HonourZeroChanceAndInstanceCount()
+        public void SpawnMarkers_HonourZeroChanceAndLimitTreasurePerPiece()
         {
             JigsawStructureFeatureSettings never = BuildMarkerFixture(
                 StructureSpawnMarkerDefinition.Kind.Treasure,
@@ -2657,7 +2661,8 @@ namespace Supernova.Tests
                 new Vector3Int(0, 1, 0),
                 chance: 1f,
                 count: 3,
-                out int alwaysFloor);
+                out int alwaysFloor,
+                markerCount: 2);
             JigsawStructureGenerator.Piece alwaysPiece =
                 GetMarkerStartPiece(always);
             var alwaysRequests = new List<StructureSpawnRequest>();
@@ -2669,9 +2674,7 @@ namespace Supernova.Tests
                 MarkerSeed,
                 new[] { always },
                 alwaysRequests);
-            // Scattered instances may land in a neighbouring column, so the owning
-            // column reports at least the anchor and at most the full count.
-            Assert.That(alwaysRequests.Count, Is.InRange(1, 3));
+            Assert.That(alwaysRequests, Has.Count.EqualTo(1));
             Assert.That(
                 alwaysRequests,
                 Has.All.Matches<StructureSpawnRequest>(
@@ -2810,7 +2813,8 @@ namespace Supernova.Tests
             float chance,
             int count,
             out int floorY,
-            bool includeMarker = true)
+            bool includeMarker = true,
+            int markerCount = 1)
         {
             var definition = ScriptableObject.CreateInstance<
                 JigsawStructureFeatureDefinition>();
@@ -2845,19 +2849,24 @@ namespace Supernova.Tests
                 start.AddConnector(exit);
                 if (includeMarker)
                 {
-                    var marker = new StructureSpawnMarkerDefinition();
-                    marker.Configure(
-                        "fixture_marker",
-                        kind,
-                        localOffset,
-                        0f,
-                        chance,
-                        count,
-                        2f,
-                        false,
-                        0);
-                    marker.ConfigureTreasure(LoadAnyTreasure());
-                    start.AddSpawnMarker(marker);
+                    for (int markerIndex = 0;
+                        markerIndex < markerCount;
+                        markerIndex++)
+                    {
+                        var marker = new StructureSpawnMarkerDefinition();
+                        marker.Configure(
+                            $"fixture_marker_{markerIndex}",
+                            kind,
+                            localOffset,
+                            0f,
+                            chance,
+                            count,
+                            2f,
+                            false,
+                            0);
+                        marker.ConfigureTreasure(LoadAnyTreasure());
+                        start.AddSpawnMarker(marker);
+                    }
                 }
 
                 floorY = 110;

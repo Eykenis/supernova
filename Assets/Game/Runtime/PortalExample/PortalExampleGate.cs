@@ -30,6 +30,8 @@ namespace Supernova.PortalExample
 
         private MaterialPropertyBlock propertyBlock;
         private RenderTexture renderTexture;
+        private PortalExampleTraveller exclusiveTraveller;
+        private bool restrictTraversal;
 
         public PortalExampleGate LinkedGate => linkedGate;
         internal Shader SeamlessClipShader => seamlessClipShader != null
@@ -55,6 +57,17 @@ namespace Supernova.PortalExample
         public void LinkTo(PortalExampleGate destination)
         {
             linkedGate = destination;
+        }
+
+        /// <summary>
+        /// Restricts entry through this gate to one traveller. The gate can still
+        /// receive every traveller from its linked entrances, but arrivals other
+        /// than the configured traveller cannot use it for a return trip.
+        /// </summary>
+        public void RestrictTraversalTo(PortalExampleTraveller traveller)
+        {
+            exclusiveTraveller = traveller;
+            restrictTraversal = true;
         }
 
         private void OnEnable()
@@ -97,7 +110,17 @@ namespace Supernova.PortalExample
         internal void HandleTriggerEnter(Collider other)
         {
             PortalExampleTraveller traveller = ResolveTraveller(other);
-            if (traveller != null && linkedGate != null)
+            if (traveller == null)
+            {
+                return;
+            }
+            if (!IsTraversalAllowed(traveller))
+            {
+                ForgetTraveller(traveller);
+                traveller.CompletePortalTraversal(this);
+                return;
+            }
+            if (linkedGate != null)
             {
                 HashSet<Collider> colliders = TrackCollider(traveller, other);
                 float currentSide = GetTraversalSide(traveller);
@@ -116,7 +139,17 @@ namespace Supernova.PortalExample
         internal void HandleTriggerStay(Collider other)
         {
             PortalExampleTraveller traveller = ResolveTraveller(other);
-            if (traveller == null || linkedGate == null || !traveller.CanTeleport)
+            if (traveller == null)
+            {
+                return;
+            }
+            if (!IsTraversalAllowed(traveller))
+            {
+                ForgetTraveller(traveller);
+                traveller.CompletePortalTraversal(this);
+                return;
+            }
+            if (linkedGate == null || !traveller.CanTeleport)
             {
                 return;
             }
@@ -260,6 +293,11 @@ namespace Supernova.PortalExample
             return controller != null
                 ? controller.GetComponent<PortalExampleTraveller>()
                 : null;
+        }
+
+        private bool IsTraversalAllowed(PortalExampleTraveller traveller)
+        {
+            return !restrictTraversal || traveller == exclusiveTraveller;
         }
 
         private bool TryTeleportSweptEntry(
